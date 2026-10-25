@@ -264,6 +264,8 @@ Valeurs des pixels : 0 = occupé, 254 = libre, 205 = inconnu. La ligne 0 de l'im
 | `g1-carte-2d --lieu L --etage E` | .pcd → carte .pgm/.yaml | Scan |
 | `g1-salle ajouter NOM [--type salle|noeud] --lieu L` | position actuelle du robot → salles ou itinéraires | Scan |
 
+Ajouts de la phase 1, acceptés à l'assemblage : `g1-lieu liste` ; `g1-monde simuler … [--monde F.sdf] [--afficher]` ; `g1-guide etat` et `g1-guide aller ID --sans-suivre` ; `g1-banc … [--simu] [--lancer] [--graine N] [--seuil P] [--csv F]` ; `g1-slam etat` et `g1-slam faux-service [--gazebo] [--relocalise]`, `scan-fin --lieu L` (note `carte_unitree`) ; `g1-atelier [--sans-navigateur] [--hote H]`.
+
 ### 4.4 API du serveur
 
 REST sous `/api`, en JSON. Chaque route correspond à un fichier du paquet, ou à une action.
@@ -276,6 +278,13 @@ REST sous `/api`, en JSON. Chaque route correspond à un fichier du paquet, ou �
 - `POST /api/guide/aller {cible}`, `POST /api/guide/stop`
 - `POST /api/scan/debut`, `POST /api/scan/fin {nom}` (vrai robot ou faux service)
 - WebSocket `/ws/etat` : environ 10 messages par seconde, `{robot: {x, y, theta}, guide: {...}, pietons: [...], processus: {...}}`
+
+Précisions et ajouts de la phase 1, acceptés à l'assemblage :
+- `GET …/carte.yaml` renvoie du JSON : les champs du fichier, plus `largeur` et `hauteur` (pixels), `bornes` `{xmin, ymin, xmax, ymax}` en mètres et `modifiee`.
+- Routes ajoutées : `GET /api/etat`, `PUT /api/lieux/{id}` (lieu.yaml), `GET /api/lieux/{id}/verification`, `PUT …/salles?synchroniser=true` (crée ou déplace le nœud de même id, recopie l'accueil dans lieu.yaml), `GET /api/scan/etat`, `POST /api/scan/faux-service/arreter`.
+- Champs facultatifs : `fenetre` (false) et `navigation` (true) de `simulation/demarrer` ; `faux`, `lieu` et `etage` du scan.
+- Chaque PUT renvoie `{enregistre: [...], rapport: {ok, erreurs, avertissements}}` ; une erreur est toujours `{detail, erreurs?, sortie?}`, en français.
+- `/ws/etat` contient aussi `simulation`, `temps_sim` et `ros {actif, erreur, nav2}`.
 
 ### 4.5 Lancements ROS 2
 
@@ -296,7 +305,10 @@ ros2 launch g1_nav navigation.launch.py lieu:=DOSSIER etage:=ID simu:=true|false
 - g1_nav lit `<lieu>/cartes/<etage>.yaml`, `<lieu>/cartes/<etage>_interdit.yaml`, `<lieu>/salles.yaml` et `<lieu>/itineraires.yaml`.
 - Les commandes `g1-monde simuler` et `g1-guide navigation` ne font que traduire leurs options en ces arguments.
 - Les deux lancements respectent les variables `ROS_DOMAIN_ID` et `IGN_PARTITION` de l'environnement : pendant les tests, chaque agent a les siennes.
-- En phase 0, ces deux fichiers sont des lancements provisoires : ils déclarent les arguments, les affichent et s'arrêtent. Les agents Simulation et Navigation les remplacent.
+- Le monde Gazebo porte le nom de l'étage (`<world name="rdc">`) : sujets `/world/rdc/…`.
+- `moteur:=factice` (ajout de la phase 1) : `MoteurFactice`, sans Gazebo ni Nav2, pour les essais.
+- Si `cartes/<etage>_interdit.yaml` manque, g1_nav crée un masque tout libre dans `/tmp` et le signale ; si la carte manque, il s'arrête et propose `g1-monde generer`.
+- Les deux lancements sont complets depuis la phase 1 (agents Simulation et Navigation). Ils sont compilés dans `ws/install` : `cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_sim g1_nav`.
 
 ### 4.6 Interface Moteur
 
@@ -311,6 +323,7 @@ Fichier `ws/src/g1_nav/g1_nav/moteurs.py`. Le guide passe toujours par un `Moteu
 - Les méthodes rendent la main en moins d'une seconde. Elles sont appelées depuis le fil du guide, environ 5 fois par seconde pour `etat()`.
 - Réalisations : `MoteurNav2` dans `moteur_nav2.py` (agent Navigation) ; `MoteurUnitree` dans `moteur_unitree.py` (agent Scan, seul fichier de `g1_nav` qui lui appartient).
 - `moteurs.py` fournit aussi `SuiviProgres`, qui calcule `progresse`, et `MoteurFactice`, un moteur sans ROS pour les tests du guide. Tests : `ws/src/g1_nav/test/test_moteurs.py`.
+- Constructeurs (phase 1) : `MoteurNav2()` ; `MoteurUnitree(noeud=None, …)`, que le guide crée avec `noeud=` son propre nœud. Le faux service est choisi par `G1_SLAM_FAUX=1`, ou par `use_sim_time`.
 
 ---
 
@@ -358,7 +371,7 @@ Tâches :
    - écrire `lieux/demo` : 30 × 20 m, deux couloirs, l'accueil et cinq salles ;
    - faire le premier commit.
 2. `bin/g1-atelier` est confié à l'agent Interface (fiche 6).
-3. À chaque fin de phase :
+3. À chaque fin de phase (phase 1 assemblée le 25/10, voir le journal) :
    - fusionner les branches ;
    - lancer `colcon build --symlink-install --packages-select g1_sim g1_nav`, puis tous les tests ;
    - corriger les écarts aux contrats.

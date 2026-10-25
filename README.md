@@ -24,6 +24,7 @@ Toutes les commandes s'utilisent dans un terminal ouvert après l'installation (
 | `g1-personnes` | Détecter et suivre les personnes (webcam ou caméra) | non |
 | `g1-parler "texte"` | Voix française hors ligne (Piper) | non |
 | `g1-ecouter` | Reconnaissance vocale en français (Vosk, faster-whisper) | non |
+| `g1-atelier` | Atelier G1 : décrire un lieu, fabriquer la carte, essayer le guide dans Gazebo (section ci-dessous) | non |
 
 Le calendrier jour par jour, avec toutes les commandes de chaque étape, est sur la page du
 projet : https://claude.ai/artifact/3sjPDb9CYcwJGrTZ8vgxNP
@@ -33,6 +34,94 @@ ou fermer la fenêtre MuJoCo.
 
 Si un terminal répond « commande introuvable », il a été ouvert avant l'installation :
 tapez `source ~/.bashrc` ou ouvrez-en un nouveau.
+
+## Atelier G1 : décrire un lieu et y essayer le guide
+
+L'Atelier G1 sert à décrire un bâtiment (murs, portes, meubles, piétons), à en tirer la carte
+de navigation, à placer les salles et les itinéraires, puis à essayer le guide dans Gazebo,
+**sans robot**. Le même lieu servira ensuite au vrai G1 : seule la carte (scan au lieu du
+monde dessiné) et le moteur de déplacement changent.
+Plan : `docs/plan-atelier-multi-agents.md`. Décisions et état : `docs/journal-atelier.md`.
+
+### Le plus simple : l'interface web
+
+```bash
+g1-atelier                 # ouvre http://localhost:8000 dans le navigateur
+```
+
+Les onglets se suivent de gauche à droite : **Lieux** (créer ou choisir un lieu),
+**Monde** (dessiner murs, passages, meubles et piétons, vue 3D), **Carte**
+(« Fabriquer la carte »), **Salles**, **Itinéraires** (nœuds et couloirs de 8 m au plus),
+**Zones** (interdites en rouge, lentes en orange), **Simulation** (« Lancer la simulation »,
+puis « Y aller » ; gros bouton ARRÊT) et **Scan** (à essayer avec le faux service).
+Ctrl+C dans le terminal arrête le serveur, et avec lui la simulation et la navigation.
+
+### Les mêmes étapes en ligne de commande
+
+Sur le lieu fourni `demo` (lycée de 30 × 20 m, deux couloirs, accueil et cinq salles) :
+
+```bash
+g1-lieu valider --lieu demo                                 # vérifie les fichiers et dit quoi corriger
+g1-monde generer --lieu demo --etage rdc                    # monde Gazebo, carte 2D, masque des zones interdites
+g1-monde simuler --lieu demo --etage rdc --sans-fenetre     # terminal 1 : Gazebo, robot proxy, piétons
+g1-guide navigation --lieu demo --etage rdc --simu          # terminal 2 : Nav2, routeur et guide
+g1-guide aller b204                                         # terminal 3 : le robot y va (suit l'état jusqu'à l'arrivée)
+g1-guide stop                                               # arrêt immédiat
+```
+
+Sans `--sans-fenetre`, Gazebo s'ouvre dans une fenêtre. `--lieu` accepte un id (dossier de
+`~/robot-g1/lieux/`) ou un chemin.
+
+| Commande | À quoi elle sert |
+|---|---|
+| `g1-atelier [--port 8000] [--sans-navigateur] [--hote 0.0.0.0]` | Le logiciel web (`--hote 0.0.0.0` : depuis une tablette du réseau) |
+| `g1-lieu creer ID --nom "Nom"`, `g1-lieu valider --lieu L`, `g1-lieu liste` | Créer, vérifier, lister les lieux |
+| `g1-monde generer --lieu L --etage E` | Monde Gazebo `.sdf`, carte `.pgm`/`.yaml` et masque, depuis le monde dessiné |
+| `g1-monde simuler --lieu L --etage E [--sans-fenetre]` | Gazebo avec le robot proxy (LiDAR à 1,2 m) et les piétons |
+| `g1-guide navigation --lieu L --etage E --simu` | Nav2, routeur et guide (sans `--simu` : vrai robot) |
+| `g1-guide aller ID`, `g1-guide stop`, `g1-guide etat` | Envoyer le robot vers une salle, l'arrêter, voir l'état du guide |
+| `g1-banc --lieu L --etage E --trajets 20 --lancer` | Banc de test : trajets tirés au sort, résultats en CSV dans `journaux/` |
+| `g1-slam scan-debut`, `scan-fin --nom N`, `relocaliser`, `aller`, `pause`, `reprendre`, `arreter` | Service de cartographie du G1 (`--faux` : faux service, à lancer avec `g1-slam faux-service`) |
+| `g1-carte-3d --lieu L --etage E --enregistrement DOSSIER` | Enregistrement ros2 bag → nuage 3D `.pcd` |
+| `g1-carte-2d --lieu L --etage E` | Nuage 3D → carte 2D de navigation |
+| `g1-salle ajouter "Nom" --lieu L` | Ajoute une salle à la position actuelle du robot |
+
+Chaque commande a un alias `gl-…` et accepte `--help`.
+
+### Les fichiers d'un lieu
+
+```
+lieux/<id>/
+├── lieu.yaml                          nom, étages, accueil
+├── mondes/<etage>.monde.yaml          monde dessiné : murs, objets, piétons, départ du robot
+├── mondes/<etage>.sdf                 monde Gazebo (généré)
+├── cartes/<etage>.pgm + .yaml         carte de navigation (générée, ou issue du scan)
+├── cartes/<etage>_interdit.pgm + .yaml   masque des zones interdites (généré)
+├── salles.yaml                        salles : nom, alias, position devant la porte, phrase d'arrivée
+├── itineraires.yaml                   nœuds et couloirs du guide
+└── zones.yaml                         zones interdites et lentes
+```
+
+Les formats exacts sont dans `atelier/lieu/schemas/` et dans la section 4 du plan.
+
+### Tester
+
+```bash
+cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q    # bibliothèques, serveur, interface : 2 à 3 min
+cd ~/robot-g1/ws && colcon test --packages-select g1_sim g1_nav && colcon test-result --all   # paquets ROS 2 : 1 min
+~/robot-g1/tests_e2e/tout.sh            # les 10 critères de recette, sans fenêtre : environ 45 min
+~/robot-g1/tests_e2e/tout.sh 1 2 3 4    # seulement certains critères
+```
+
+Tous les tests tournent sans robot et sans écran, sur des copies de `lieux/demo` dans des
+dossiers temporaires. Journaux : `~/robot-g1/journaux/`.
+
+Après une modification de `ws/src/g1_sim` ou `ws/src/g1_nav` (nouveau fichier, lancement,
+réglage), recompilez :
+
+```bash
+cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_sim g1_nav
+```
 
 ## Simulation
 
@@ -104,9 +193,9 @@ ros2 launch fast_lio mapping.launch.py config_file:=mid360.yaml    # carte 3D en
 
 ### Gazebo (navigation)
 
-Gazebo Fortress et Nav2 sont installés. Le monde du bâtiment et le robot « proxy » pour
-la navigation font partie de la semaine 2 du plan. Pour vérifier que Gazebo s'ouvre :
-`ign gazebo shapes.sdf`.
+Gazebo Fortress et Nav2 sont installés. Le monde du bâtiment, le robot « proxy » et la
+navigation sont ceux de l'Atelier G1 (section ci-dessus : `g1-monde simuler`,
+`g1-guide navigation`). Pour vérifier que Gazebo s'ouvre : `ign gazebo shapes.sdf`.
 
 ## Vrai robot
 
@@ -182,9 +271,13 @@ robot-g1/
 ├── sim/            scripts de simulation
 ├── robot/          scripts pour le vrai robot
 ├── outils/         modules communs (manette, connexion, état)
+├── atelier/        Atelier G1 : lieu, monde, scan, serveur web, interface, tests
+├── lieux/          paquets de lieu (demo : le lycée d'exemple)
+├── tests_e2e/      critères de recette de l'Atelier (tout.sh)
+├── docs/           plan de l'Atelier, journal, relevés du robot
 ├── setup/          installation et environnement (env.sh, robot.sh)
 ├── third_party/    dépôts Unitree, versions dans VERSIONS.txt
-├── ws/            espace de travail ROS 2 : pilote LiDAR, FAST-LIO2, puis vos paquets
+├── ws/            espace de travail ROS 2 : pilote LiDAR, FAST-LIO2, g1_sim, g1_nav
 ├── modeles/       YOLO, Vosk, voix Piper, Whisper
 ├── opt/           SDK C++ Unitree et SDK Livox compilés
 ├── .venv-sim/     Python de simulation (MuJoCo, PyTorch processeur)

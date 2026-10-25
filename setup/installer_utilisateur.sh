@@ -55,7 +55,7 @@ livox() {
 }
 
 ws() {
-  etape "Espace de travail ROS 2 : pilote Livox et FAST-LIO2"
+  etape "Espace de travail ROS 2 : pilote Livox, FAST-LIO2, g1_sim et g1_nav (Atelier G1)"
   mkdir -p "$R/ws/src"
   cloner https://github.com/Livox-SDK/livox_ros_driver2.git "$R/ws/src/livox_ros_driver2"
   cloner https://github.com/hku-mars/FAST_LIO.git "$R/ws/src/FAST_LIO" ROS2
@@ -88,6 +88,12 @@ projet() {
   "$pip" install -q torch torchvision --index-url https://download.pytorch.org/whl/cu126
   "$pip" install -q ultralytics open3d faster-whisper vosk piper-tts rapidfuzz sounddevice soundfile \
     fastapi "uvicorn[standard]" python-multipart pyyaml
+  # Atelier G1 : outils de test (pytest 7 : le 6 du système plante avec anyio ; httpx pour le
+  # TestClient de FastAPI ; esprima pour vérifier le JavaScript ; jsonschema pour les schémas)
+  "$pip" install -q "pytest==7.4.4" httpx esprima jsonschema
+  # Paquet Python « atelier » en mode éditable, pour .venv-projet et pour le python3 des nœuds ROS 2
+  "$pip" install -q -e "$R"
+  python3 -m pip install --user --no-deps --no-build-isolation -e "$R"
 }
 
 modeles() {
