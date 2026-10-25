@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Navigation du guide de l'Atelier G1 (Nav2, routeur, guide) :
+#   g1-guide navigation --lieu L --etage E [--simu] [--moteur nav2|unitree]
+#   g1-guide aller ID [--sans-suivre]     g1-guide stop     g1-guide etat
+# Pas de set -u : les scripts de ROS 2 ne le supportent pas.
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+source "$HOME/robot-g1/setup/env.sh"
+# g1_nav compilé avec les autres paquets (ws/install), sinon dans son propre dossier
+[ -d "$RACINE/ws/install/g1_nav" ] || source "$RACINE/ws/install_g1_nav/local_setup.bash"
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+exec python3 -m g1_nav.commande "$@"

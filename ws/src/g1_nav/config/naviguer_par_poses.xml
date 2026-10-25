@@ -1,0 +1,47 @@
+<!--
+  Arbre de comportement de Nav2 pour le guide du G1 (navigate_through_poses).
+
+  D'après navigate_through_poses_w_replanning_and_recovery.xml de Nav2 Humble, avec quatre
+  changements :
+    - un nœud de l'itinéraire est « passé » à 1,5 m (0,7 m dans l'arbre de Nav2) : MPPI coupe
+      les virages, et un nœud resté dans la liste ferait revenir le robot en arrière ;
+    - le chemin est recalculé chaque seconde (toutes les 3 s dans l'arbre de Nav2) ;
+    - la carte de coûts locale est vidée chaque seconde : elle ne garde que ce que le LiDAR
+      voit en ce moment. Dans Gazebo, des points vus pendant que le robot tourne restaient
+      marqués comme des obstacles fantômes, que rien n'effaçait (couche voxel) ;
+    - secours limités à vider les cartes de coûts et attendre : le robot ne tourne pas sur
+      lui-même et ne recule pas au milieu des gens. Si un couloir est coupé, c'est le guide
+      qui décide du détour (g1_nav/guide.py).
+-->
+<root main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
+      <PipelineSequence name="NavigateWithReplanning">
+        <RateController hz="1.0">
+          <RecoveryNode number_of_retries="1" name="ComputePathThroughPoses">
+            <ReactiveSequence>
+              <RemovePassedGoals input_goals="{goals}" output_goals="{goals}" radius="1.5"/>
+              <ComputePathThroughPoses goals="{goals}" path="{path}" planner_id="GridBased"/>
+            </ReactiveSequence>
+            <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
+          </RecoveryNode>
+        </RateController>
+        <RateController hz="1.0">
+          <ClearEntireCostmap name="ViderCarteLocale" service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RateController>
+        <RecoveryNode number_of_retries="1" name="FollowPath">
+          <FollowPath path="{path}" controller_id="FollowPath"/>
+          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+        </RecoveryNode>
+      </PipelineSequence>
+      <ReactiveFallback name="RecoveryFallback">
+        <GoalUpdated/>
+        <Sequence name="ClearingActions">
+          <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
+          <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
+          <Wait wait_duration="2"/>
+        </Sequence>
+      </ReactiveFallback>
+    </RecoveryNode>
+  </BehaviorTree>
+</root>

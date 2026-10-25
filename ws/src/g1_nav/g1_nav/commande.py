@@ -1,0 +1,204 @@
+"""
+Commande g1-guide : lancer la navigation, envoyer le robot, l'arrêter.
+
+  g1-guide navigation --lieu L --etage E [--simu] [--moteur nav2|unitree]
+      Nav2, routeur et guide sur la carte du lieu (ros2 launch g1_nav navigation.launch.py)
+  g1-guide aller ID [--sans-suivre]
+      envoie le robot vers la salle ou le nœud ID, puis affiche l'état du guide jusqu'à
+      l'arrivée (Ctrl+C arrête l'affichage, pas le robot)
+  g1-guide stop
+      arrête le robot tout de suite
+  g1-guide etat
+      affiche une fois l'état du guide
+
+Code de sortie : 0 si tout va bien, 1 en cas d'erreur (guide absent, échec), 2 si la commande
+est mal tapée.
+"""
+import argparse
+import json
+import os
+import sys
+import time
+
+# Messages d'argparse les plus courants, en français
+TRADUCTIONS = [('the following arguments are required:', 'il manque :'),
+               ('invalid choice:', 'choix inconnu :'), ('choose from', 'possibles :'),
+               ('unrecognized arguments:', 'arguments inconnus :'),
+               ('expected one argument', 'il faut une valeur')]
+
+# Délai pour trouver le guide sur le réseau ROS 2, en secondes
+DELAI_DECOUVERTE_S = 5.0
+
+
+class Analyseur(argparse.ArgumentParser):
+    """ArgumentParser qui parle français : aide, titres et messages d'erreur."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, add_help=False, **kwargs)
+        self._positionals.title = 'arguments'
+        self._optionals.title = 'options'
+        self.add_argument('-h', '--help', action='help', help='affiche cette aide et quitte')
+
+    def error(self, message):
+        for anglais, francais in TRADUCTIONS:
+            message = message.replace(anglais, francais)
+        self.print_usage(sys.stderr)
+        self.exit(2, f'erreur : {message}\nAide : {self.prog} --help\n')
+
+
+def texte_etat(etat):
+    """Une ligne lisible à partir d'un état du guide (dict de /guide/etat)."""
+    morceaux = [etat.get('etat', '?')]
+    if etat.get('cible'):
+        morceaux.append(f'vers {etat["cible"]}')
+    if etat.get('reste_m') is not None:
+        morceaux.append(f'reste {etat["reste_m"]:.1f} m')
+    if etat.get('itineraire'):
+        morceaux.append('par ' + ' → '.join(etat['itineraire']))
+    return ', '.join(morceaux)
+
+
+def commande_navigation(args):
+    """Arguments de ros2 launch pour g1-guide navigation (section 4.5 du plan)."""
+    return ['ros2', 'launch', 'g1_nav', 'navigation.launch.py', f'lieu:={args.lieu}',
+            f'etage:={args.etage}', f'simu:={"true" if args.simu else "false"}',
+            f'moteur:={args.moteur}']
+
+
+class Client:
+    """Petit nœud ROS 2 qui publie sur /guide/aller ou /guide/stop et lit /guide/etat."""
+
+    def __init__(self):
+        import rclpy
+        from std_msgs.msg import Empty, String
+
+        rclpy.init()
+        self.rclpy = rclpy
+        self.noeud = rclpy.create_node('g1_guide_commande')
+        self.String, self.Empty = String, Empty
+        self.pub_aller = self.noeud.create_publisher(String, '/guide/aller', 10)
+        self.pub_stop = self.noeud.create_publisher(Empty, '/guide/stop', 10)
+        self.etat = None
+        self.noeud.create_subscription(String, '/guide/etat', self._sur_etat, 10)
+
+    def _sur_etat(self, msg):
+        try:
+            self.etat = json.loads(msg.data)
+        except ValueError:
+            pass
+
+    def tourner(self, duree_s):
+        fin = time.monotonic() + duree_s
+        while time.monotonic() < fin:
+            self.rclpy.spin_once(self.noeud, timeout_sec=max(0.0, fin - time.monotonic()))
+
+    def attendre_guide(self, publication):
+        """Attend que le guide écoute le sujet ; False s'il n'est pas là après le délai."""
+        fin = time.monotonic() + DELAI_DECOUVERTE_S
+        while publication.get_subscription_count() == 0:
+            if time.monotonic() > fin:
+                return False
+            self.tourner(0.1)
+        return True
+
+    def fermer(self):
+        self.noeud.destroy_node()
+        self.rclpy.try_shutdown()
+
+
+def guide_absent():
+    print('Le guide ne répond pas. Lancez d\'abord la navigation, par exemple :\n'
+          '  g1-guide navigation --lieu demo --etage rdc --simu', file=sys.stderr)
+    return 1
+
+
+def aller(client, cible, suivre=True):
+    if not client.attendre_guide(client.pub_aller):
+        return guide_absent()
+    client.tourner(0.3)
+    avant = (client.etat or {}).get('cible')
+    client.pub_aller.publish(client.String(data=cible))
+    print(f'Envoyé : aller à « {cible} »')
+    if not suivre:
+        client.tourner(0.3)      # laisse le temps au message de partir
+        return 0
+    dernier = None
+    try:
+        while True:
+            client.tourner(0.2)
+            etat = client.etat
+            # On attend un état qui concerne cette cible (le guide traduit les alias en id)
+            if etat is None or not (etat.get('cible') == cible.strip()
+                                    or etat.get('cible') not in (avant, None)):
+                continue
+            texte = texte_etat(etat)
+            # Une ligne à chaque changement d'état, et la distance restante au fil de l'eau
+            if dernier is None or etat['etat'] != dernier:
+                print(f'\n{texte}', end='', flush=True)
+                dernier = etat['etat']
+            else:
+                print(f'\r{texte}   ', end='', flush=True)
+            if etat['etat'] in ('arrive', 'echec'):
+                print()
+                return 0 if etat['etat'] == 'arrive' else 1
+    except KeyboardInterrupt:
+        print('\nAffichage arrêté ; le robot continue. Pour l\'arrêter : g1-guide stop')
+        return 0
+
+
+def stop(client):
+    if not client.attendre_guide(client.pub_stop):
+        return guide_absent()
+    client.pub_stop.publish(client.Empty())
+    client.tourner(0.3)      # laisse le temps au message de partir
+    print('Arrêt envoyé.')
+    return 0
+
+
+def afficher_etat(client):
+    fin = time.monotonic() + DELAI_DECOUVERTE_S
+    while client.etat is None and time.monotonic() < fin:
+        client.tourner(0.2)
+    if client.etat is None:
+        return guide_absent()
+    print(texte_etat(client.etat))
+    return 0
+
+
+def main(argv=None):
+    p = Analyseur(prog='g1-guide', description='Navigation du guide de l\'Atelier G1.')
+    sous = p.add_subparsers(dest='action', required=True, metavar='navigation|aller|stop|etat',
+                            parser_class=Analyseur)
+    nav = sous.add_parser('navigation', help='lance Nav2, le routeur et le guide')
+    nav.add_argument('--lieu', required=True, help='dossier du lieu, ou id seul (ex. demo)')
+    nav.add_argument('--etage', required=True, help='id de l\'étage (ex. rdc)')
+    nav.add_argument('--simu', action='store_true', help='simulation Gazebo (temps simulé)')
+    nav.add_argument('--moteur', default='nav2', choices=['nav2', 'unitree'],
+                     help='nav2 (défaut) ou unitree (commande 1102 du robot)')
+    va = sous.add_parser('aller', help='envoie le robot vers une salle ou un nœud')
+    va.add_argument('cible', help='id de la salle ou du nœud (ex. b204, accueil)')
+    va.add_argument('--sans-suivre', action='store_true',
+                    help='rend la main tout de suite, sans afficher le trajet')
+    sous.add_parser('stop', help='arrête le robot tout de suite')
+    sous.add_parser('etat', help='affiche l\'état du guide')
+    args = p.parse_args(argv)
+
+    if args.action == 'navigation':
+        commande = commande_navigation(args)
+        print(' '.join(commande))
+        os.execvp(commande[0], commande)     # remplace ce processus : ne revient pas
+        return 0
+
+    client = Client()
+    try:
+        if args.action == 'aller':
+            return aller(client, args.cible, not args.sans_suivre)
+        if args.action == 'stop':
+            return stop(client)
+        return afficher_etat(client)
+    finally:
+        client.fermer()
+
+
+if __name__ == '__main__':
+    sys.exit(main())

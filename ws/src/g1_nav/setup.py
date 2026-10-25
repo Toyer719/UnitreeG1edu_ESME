@@ -13,7 +13,7 @@ setup(
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         # Réglages de Nav2 et lancements, installés dans share/g1_nav
-        ('share/' + package_name + '/config', glob('config/*.yaml')),
+        ('share/' + package_name + '/config', glob('config/*.yaml') + glob('config/*.xml')),
         ('share/' + package_name + '/launch', glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
@@ -29,6 +29,9 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'guide = g1_nav.guide:main',
+            'banc = g1_nav.banc:main',
+            'odom_vers_tf = g1_nav.odom_vers_tf:main',
         ],
     },
 )
