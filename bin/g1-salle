@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Position actuelle du robot (/odom) → nouvelle salle ou nouveau nœud du lieu :
+#   g1-salle ajouter NOM [--type salle|noeud] --lieu L
+# Pas de set -u : les scripts de ROS 2 ne le supportent pas.
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+source "$HOME/robot-g1/setup/env.sh"
+PY="$RACINE/.venv-projet/bin/python"
+[ -x "$PY" ] || PY="$HOME/robot-g1/.venv-projet/bin/python"
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PY" -m atelier.scan.commande salle "$@"
