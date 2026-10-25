@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Silhouette de piéton de l'Atelier G1, écrite par atelier.monde.pietons : ne pas modifier. -->
+<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">
+  <asset><unit name="meter" meter="1"/><up_axis>Z_UP</up_axis></asset>
+  <library_effects>
+    <effect id="effet"><profile_COMMON><technique sid="common"><lambert>
+      <diffuse><color>0.85 0.35 0.2 1</color></diffuse>
+    </lambert></technique></profile_COMMON></effect>
+  </library_effects>
+  <library_materials>
+    <material id="matiere" name="matiere"><instance_effect url="#effet"/></material>
+  </library_materials>
+  <library_geometries>
+    <geometry id="corps" name="corps"><mesh>
+      <source id="corps-pos"><float_array id="corps-pos-a" count="102">0.1800 0.0000 0.0000 0.1663 0.0957 0.0000 0.1273 0.1768 0.0000 0.0689 0.2310 0.0000 0.0000 0.2500 0.0000 -0.0689 0.2310 0.0000 -0.1273 0.1768 0.0000 -0.1663 0.0957 0.0000 -0.1800 0.0000 0.0000 -0.1663 -0.0957 0.0000 -0.1273 -0.1768 0.0000 -0.0689 -0.2310 0.0000 -0.0000 -0.2500 0.0000 0.0689 -0.2310 0.0000 0.1273 -0.1768 0.0000 0.1663 -0.0957 0.0000 0.1800 0.0000 1.7000 0.1663 0.0957 1.7000 0.1273 0.1768 1.7000 0.0689 0.2310 1.7000 0.0000 0.2500 1.7000 -0.0689 0.2310 1.7000 -0.1273 0.1768 1.7000 -0.1663 0.0957 1.7000 -0.1800 0.0000 1.7000 -0.1663 -0.0957 1.7000 -0.1273 -0.1768 1.7000 -0.0689 -0.2310 1.7000 -0.0000 -0.2500 1.7000 0.0689 -0.2310 1.7000 0.1273 -0.1768 1.7000 0.1663 -0.0957 1.7000 0.0000 0.0000 0.0000 0.0000 0.0000 1.7000</float_array><technique_common><accessor source="#corps-pos-a" count="34" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>
+      <source id="corps-nor"><float_array id="corps-nor-a" count="54">0.0000 0.0000 -1.0000 0.0000 0.0000 1.0000 0.9899 0.1418 0.0000 0.9011 0.4335 0.0000 0.6802 0.7330 0.0000 0.2663 0.9639 0.0000 -0.2663 0.9639 0.0000 -0.6802 0.7330 0.0000 -0.9011 0.4335 0.0000 -0.9899 0.1418 0.0000 -0.9899 -0.1418 0.0000 -0.9011 -0.4335 0.0000 -0.6802 -0.7330 0.0000 -0.2663 -0.9639 0.0000 0.2663 -0.9639 0.0000 0.6802 -0.7330 0.0000 0.9011 -0.4335 0.0000 0.9899 -0.1418 0.0000</float_array><technique_common><accessor source="#corps-nor-a" count="18" stride="3"><param name="X" type="float"/><param name="Y" type="float"/><param name="Z" type="float"/></accessor></technique_common></source>
+      <vertices id="corps-som"><input semantic="POSITION" source="#corps-pos"/></vertices>
+      <triangles material="matiere" count="64">
+        <input semantic="VERTEX" source="#corps-som" offset="0"/>
+        <input semantic="NORMAL" source="#corps-nor" offset="1"/>
+        <p>0 2 1 2 17 2 0 2 17 2 16 2 32 0 1 0 0 0 33 1 16 1 17 1 1 3 2 3 18 3 1 3 18 3 17 3 32 0 2 0 1 0 33 1 17 1 18 1 2 4 3 4 19 4 2 4 19 4 18 4 32 0 3 0 2 0 33 1 18 1 19 1 3 5 4 5 20 5 3 5 20 5 19 5 32 0 4 0 3 0 33 1 19 1 20 1 4 6 5 6 21 6 4 6 21 6 20 6 32 0 5 0 4 0 33 1 20 1 21 1 5 7 6 7 22 7 5 7 22 7 21 7 32 0 6 0 5 0 33 1 21 1 22 1 6 8 7 8 23 8 6 8 23 8 22 8 32 0 7 0 6 0 33 1 22 1 23 1 7 9 8 9 24 9 7 9 24 9 23 9 32 0 8 0 7 0 33 1 23 1 24 1 8 10 9 10 25 10 8 10 25 10 24 10 32 0 9 0 8 0 33 1 24 1 25 1 9 11 10 11 26 11 9 11 26 11 25 11 32 0 10 0 9 0 33 1 25 1 26 1 10 12 11 12 27 12 10 12 27 12 26 12 32 0 11 0 10 0 33 1 26 1 27 1 11 13 12 13 28 13 11 13 28 13 27 13 32 0 12 0 11 0 33 1 27 1 28 1 12 14 13 14 29 14 12 14 29 14 28 14 32 0 13 0 12 0 33 1 28 1 29 1 13 15 14 15 30 15 13 15 30 15 29 15 32 0 14 0 13 0 33 1 29 1 30 1 14 16 15 16 31 16 14 16 31 16 30 16 32 0 15 0 14 0 33 1 30 1 31 1 15 17 0 17 16 17 15 17 16 17 31 17 32 0 0 0 15 0 33 1 31 1 16 1</p>
+      </triangles>
+    </mesh></geometry>
+  </library_geometries>
+  <library_controllers>
+    <controller id="peau"><skin source="#corps">
+      <bind_shape_matrix>1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1</bind_shape_matrix>
+      <source id="peau-os"><Name_array id="peau-os-a" count="1">racine</Name_array><technique_common><accessor source="#peau-os-a" count="1" stride="1"><param name="JOINT" type="name"/></accessor></technique_common></source>
+      <source id="peau-inv"><float_array id="peau-inv-a" count="16">1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1</float_array><technique_common><accessor source="#peau-inv-a" count="1" stride="16"><param name="TRANSFORM" type="float4x4"/></accessor></technique_common></source>
+      <source id="peau-poids"><float_array id="peau-poids-a" count="1">1</float_array><technique_common><accessor source="#peau-poids-a" count="1" stride="1"><param name="WEIGHT" type="float"/></accessor></technique_common></source>
+      <joints><input semantic="JOINT" source="#peau-os"/><input semantic="INV_BIND_MATRIX" source="#peau-inv"/></joints>
+      <vertex_weights count="34">
+        <input semantic="JOINT" source="#peau-os" offset="0"/><input semantic="WEIGHT" source="#peau-poids" offset="1"/>
+        <vcount>1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1</vcount>
+        <v>0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0</v>
+      </vertex_weights>
+    </skin></controller>
+  </library_controllers>
+  <library_animations>
+    <animation id="marche">
+      <source id="anim-t"><float_array id="anim-t-a" count="2">0 1</float_array><technique_common><accessor source="#anim-t-a" count="2" stride="1"><param name="TIME" type="float"/></accessor></technique_common></source>
+      <source id="anim-m"><float_array id="anim-m-a" count="32">1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1</float_array><technique_common><accessor source="#anim-m-a" count="2" stride="16"><param name="TRANSFORM" type="float4x4"/></accessor></technique_common></source>
+      <source id="anim-i"><Name_array id="anim-i-a" count="2">LINEAR LINEAR</Name_array><technique_common><accessor source="#anim-i-a" count="2" stride="1"><param name="INTERPOLATION" type="name"/></accessor></technique_common></source>
+      <sampler id="anim-s">
+        <input semantic="INPUT" source="#anim-t"/><input semantic="OUTPUT" source="#anim-m"/>
+        <input semantic="INTERPOLATION" source="#anim-i"/>
+      </sampler>
+      <channel source="#anim-s" target="racine/transform"/>
+    </animation>
+  </library_animations>
+  <library_visual_scenes>
+    <visual_scene id="scene">
+      <node id="racine" name="racine" sid="racine" type="JOINT"><matrix sid="transform">1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1</matrix></node>
+      <node id="pieton" name="pieton" type="NODE">
+        <instance_controller url="#peau"><skeleton>#racine</skeleton>
+          <bind_material><technique_common>
+            <instance_material symbol="matiere" target="#matiere"/>
+          </technique_common></bind_material>
+        </instance_controller>
+      </node>
+    </visual_scene>
+  </library_visual_scenes>
+  <scene><instance_visual_scene url="#scene"/></scene>
+</COLLADA>

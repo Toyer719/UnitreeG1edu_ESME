@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/reperage/etat",
+  "description": "État du repérage du robot sur la carte de l'étage, publié en JSON (std_msgs/String) sur /reperage/etat par le nœud odom_vers_tf (paquet g1_nav), à 5 Hz et à chaque changement, avec localisation:=unitree ou amcl. Section 10 du plan. Des champs en plus sont permis.",
+  "type": "object",
+  "required": ["version", "etat", "repere", "localisation", "message", "pose", "precision_m", "age_s",
+               "demande", "carte", "repere_unitree", "sauts"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Version du format. Toujours 1.", "const": 1},
+    "etat": {
+      "description": "non_repere : aucun repérage réussi depuis le lancement ; en_cours : demande reçue, 1804 envoyée, attente de la relocalisation ; repere : TF map → odom publié et frais ; perdu : plus de relocalisation depuis 3 s (le pont arrête le robot), revient seul à repere quand elle reprend ; echec : la dernière demande a échoué (message), map → odom n'est pas publié.",
+      "type": "string",
+      "enum": ["non_repere", "en_cours", "repere", "perdu", "echec"]
+    },
+    "repere": {"description": "Vrai si et seulement si etat vaut repere : le pont ne laisse bouger le robot que dans ce cas.", "type": "boolean"},
+    "localisation": {"description": "Méthode : unitree (relocalisation 1804 d'Unitree) ou amcl (secours, notre carte et le LiDAR).", "type": "string", "enum": ["unitree", "amcl"]},
+    "message": {"description": "Phrase en français pour l'utilisateur (ce qui se passe, quoi faire en cas d'échec).", "type": "string"},
+    "pose": {"description": "Dernière pose de base_link dans le repère map de l'étage ; null avant le premier repérage.", "anyOf": [{"$ref": "#/definitions/pose"}, {"type": "null"}]},
+    "precision_m": {"description": "Écart-type estimé de la position, en mètres (covariance de la relocalisation) ; null si inconnu.", "type": ["number", "null"], "minimum": 0},
+    "age_s": {"description": "Secondes depuis le dernier message de relocalisation (ou de pose d'AMCL) ; null si aucun.", "type": ["number", "null"], "minimum": 0},
+    "demande": {"description": "id de la dernière demande traitée (/reperage/demander) ; null si aucune.", "type": ["string", "null"]},
+    "carte": {"description": "Nom du .pcd donné à 1804 (carte_unitree du lieu, ou repetition.pcd en répétition) ; null avec amcl.", "type": ["string", "null"]},
+    "repere_unitree": {"description": "Pose de l'origine de la carte d'Unitree dans map, utilisée par le relais (atelier.lieu.repere_unitree).", "$ref": "#/definitions/pose"},
+    "sauts": {"description": "Nombre de corrections de map → odom de plus de 0,5 m ou 0,3 rad depuis le repérage.", "type": "integer", "minimum": 0}
+  },
+  "definitions": {
+    "pose": {
+      "type": "object",
+      "required": ["x", "y", "theta"],
+      "additionalProperties": false,
+      "properties": {
+        "x": {"type": "number"},
+        "y": {"type": "number"},
+        "theta": {"type": "number", "minimum": -6.2832, "maximum": 6.2832}
+      }
+    }
+  }
+}

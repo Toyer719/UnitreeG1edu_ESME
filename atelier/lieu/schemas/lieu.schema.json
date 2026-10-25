@@ -72,7 +72,22 @@
           "description": "D'où vient la carte 2D cartes/<id>.pgm : monde = générée depuis l'environnement inventé mondes/<id>.monde.yaml ; scan = fabriquée depuis le scan du robot (cartes/<id>.pcd).",
           "type": "string",
           "enum": ["monde", "scan"]
+        },
+        "repere_unitree": {
+          "description": "Facultatif (section 10 du plan). Pose, dans le repère map de cet étage, de l'origine du repère de la carte d'Unitree (celui de /unitree/slam_relocation/odom, dont l'origine est le départ du scan) : pose_map = repere_unitree ∘ pose_unitree. C'est aussi la marque au sol où l'on pose le robot pour le repérer. Absent : (0, 0, 0) si source_carte vaut scan (même repère), sinon depart_robot du monde de l'étage (atelier.lieu.repere_unitree).",
+          "$ref": "#/definitions/pose"
         }
+      }
+    },
+    "pose": {
+      "description": "Position et orientation au sol : x, y en mètres, theta en radians.",
+      "type": "object",
+      "required": ["x", "y", "theta"],
+      "additionalProperties": false,
+      "properties": {
+        "x": {"description": "Position x, en mètres.", "$ref": "#/definitions/nombre"},
+        "y": {"description": "Position y, en mètres.", "$ref": "#/definitions/nombre"},
+        "theta": {"$ref": "#/definitions/angle"}
       }
     },
     "pose_etage": {

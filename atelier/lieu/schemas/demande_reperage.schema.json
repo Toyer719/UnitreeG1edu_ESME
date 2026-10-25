@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/reperage/demander",
+  "description": "Demande de repérage, en JSON (std_msgs/String) sur /reperage/demander, écoutée par odom_vers_tf (paquet g1_nav). x, y et theta (repère map de l'étage, base_link du robot) vont ensemble ; sans eux, le robot est supposé posé sur la marque au sol (atelier.lieu.marque_au_sol). Section 10 du plan.",
+  "type": "object",
+  "required": ["id"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {"description": "Identifiant de la demande, repris dans le champ demande de /reperage/etat.", "type": "string", "minLength": 1, "maxLength": 64},
+    "x": {"description": "Position x du robot, en mètres, repère map.", "type": "number"},
+    "y": {"description": "Position y du robot, en mètres, repère map.", "type": "number"},
+    "theta": {"description": "Cap du robot, en radians, repère map.", "type": "number", "minimum": -6.2832, "maximum": 6.2832}
+  }
+}

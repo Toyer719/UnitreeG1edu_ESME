@@ -1,12 +1,13 @@
 # Tests de bout en bout de l'Atelier G1
 
-Scripts sans fenêtre qui reprennent les critères de recette (sections 7 et 9.10 du plan),
+Scripts sans fenêtre qui reprennent les critères de recette (sections 7, 9.10 et 10 du plan),
 et `tout.sh` qui les lance tous et affiche un bilan (agents Intégrateur et Testeur).
 
 ```bash
-~/robot-g1/tests_e2e/tout.sh            # les 15 critères, puis « N / 15 »
+~/robot-g1/tests_e2e/tout.sh            # les 20 critères, puis « N / 20 »
 ~/robot-g1/tests_e2e/tout.sh 7 8        # seulement les critères 7 et 8
 ~/robot-g1/tests_e2e/tout.sh 11 12 13   # le scan intégré (le 11 garde sa session pour le 12 et le 13)
+~/robot-g1/tests_e2e/tout.sh 16 17 18 19 20   # le vrai robot en répétition (vague 3, section 10 du plan)
 ~/robot-g1/tests_e2e/critere_08_service_robot.sh    # un critère seul, sortie à l'écran
 ```
 
@@ -27,6 +28,12 @@ et `tout.sh` qui les lance tous et affiche un bilan (agents Intégrateur et Test
 | `critere_13_monde_du_scan.sh` | revue : un objet décoché (`PUT …/reconnaissance`), absent du monde adopté ; adoption avec le monde (API) ; `g1-lieu valider` ; `g1-monde generer` ; simulation sur le monde du scan et parcours du critère 4 jusqu'à une salle | 3 à 5 min (+ le 11 s'il n'a pas de session) |
 | `critere_14_repetition_robot.sh` | `g1-scan demarrer --mode robot --repetition` (moins de 3 s), puis `arreter --attendre` : 1801 puis 1802 reçus par le faux service, `/unitree/slam_mapping/*` enregistrés, `termine` | 3 à 6 min |
 | `critere_15_robustesse.sh` | « Fin » sans scan, « Scan » deux fois, flèches pendant un scan simulé (le robot avance, puis s'arrête seul quand on lâche), « Fin » pendant la préparation, mode robot sans robot (« Robot non détecté »), demandes absurdes : refus clairs, jamais d'erreur 500 ; puis le parcours de l'onglet Scan dans Firefox sans fenêtre (`test_serveur_scan_navigateur.py`) | 2 à 3 min |
+
+Critères 16 à 20 (vague 3, le vrai robot en répétition) : définis dans la section 7 du plan ; leurs scripts
+(`critere_16_conteneur.sh`, `critere_17_pont.sh`, `critere_18_reperage.sh`, `critere_19_niveau2.sh`,
+`critere_20_securite.sh`) sont écrits par les agents Jetson, Pont et faux G1, et Repérage (section 10.10).
+Tant qu'un script n'existe pas, `tout.sh` le dit « absent ». En répétition, la vérité terrain est
+`/g1_jumeau/odom` (et non `/odom`, l'odométrie du relais).
 
 Codes de sortie : 0 réussi, 1 échoué, 77 pas encore possible (une commande, une route ou un module manque).
 

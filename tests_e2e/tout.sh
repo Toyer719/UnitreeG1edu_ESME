@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
-# Lance les critères de recette (sections 7 et 9.10 du plan), sans fenêtre, et affiche « N / 15 ».
-#   tests_e2e/tout.sh            les 15 critères, dans l'ordre
+# Lance les critères de recette (sections 7, 9.10 et 10 du plan), sans fenêtre, et affiche « N / 20 ».
+#   tests_e2e/tout.sh            les 20 critères, dans l'ordre
 #   tests_e2e/tout.sh 1 2 8      seulement ceux-là
 #   tests_e2e/tout.sh 11 12 13   le scan intégré : le 11 garde sa session pour le 12 et le 13
+#   tests_e2e/tout.sh 16 17 18 19 20   le vrai robot en répétition : conteneur, pont, repérage, niveau 2
+# Un critère dont le script n'existe pas encore est « absent » : il compte comme non réussi.
 # Journal de chaque critère : ~/robot-g1/journaux/e2e_<date>/critere_NN.log
 # Le critère 10 n'est compté que si son script réussit ET que les critères 1 à 9 réussissent.
 # Code de sortie : 0 si tout ce qui a été lancé est réussi, 1 sinon.
 E2E="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 JOURNAUX="$(cd "$E2E/.." && pwd)/journaux/e2e_$(date +%Y-%m-%d_%Hh%M)"
 mkdir -p "$JOURNAUX"
-TOUS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15)
+TOUS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
 
-# Délai maximal de chaque critère, en secondes (le 13 relance le 11 s'il n'a pas de session gardée)
+# Délai maximal de chaque critère, en secondes (le 13 relance le 11 s'il n'a pas de session gardée ;
+# le 16 construit l'image du conteneur si elle manque : environ 15 min la première fois, avec Internet)
 declare -A DELAI=([1]=300 [2]=600 [3]=300 [4]=900 [5]=1200 [6]=3600 [7]=1800 [8]=1200 [9]=1200 [10]=300
-                  [11]=1800 [12]=900 [13]=3000 [14]=1800 [15]=900)
+                  [11]=1800 [12]=900 [13]=3000 [14]=1800 [15]=900
+                  [16]=3600 [17]=1200 [18]=1500 [19]=2400 [20]=1800)
 CHOIX=("$@")
 [ ${#CHOIX[@]} -eq 0 ] && CHOIX=("${TOUS[@]}")
 

@@ -380,3 +380,54 @@ Le plan de référence est `docs/plan-atelier-multi-agents.md` ; ses contrats (s
   - l'aperçu en direct garde la traînée des piétons ; le pilote direct de l'exploration ne contourne pas un obstacle bas (couloir abandonné après 30 s, ou `--pilote guide`) ;
   - limites de la reconnaissance : armoire de plus de 1,8 m prise pour un mur, catégorie fragile d'un objet vu de loin, mur vu d'un seul côté placé sur sa face ;
   - pas de pagination de l'historique des scans ; vérifications à la main sur tablette (liste de l'agent Interface) non faites.
+
+## Intégrateur (vague 3, contrats du vrai robot), 25/10/2026
+
+- **Contrats figés** : section 10 du plan. Elle couvre :
+  - les trois modes (simu, répétition, robot) et ce qui tourne où ;
+  - le conteneur du Jetson et la commande `g1-jetson` ;
+  - le pont `/cmd_vel` → `/api/sport/request` (7105) ;
+  - le faux G1 (`g1_jumeau`, argument `jumeau` de `g1_sim`) ;
+  - les repères et le relais `odom_vers_tf`, puis le repérage par 1804 ;
+  - le faux slam_operate en répétition et le lancement de la navigation (`localisation`, `pont`) ;
+  - l'API et l'onglet Simulation ;
+  - la liste de la séance de vérification sur le robot (10.9) et les fiches des trois agents.
+  Les critères 16 à 20 sont dans la section 7. Renvois ajoutés en 4.2 (`/odom`, `/points` et TF sur le vrai robot), 4.3, 4.4, 4.5, 5, 8 et dans l'arborescence.
+- **Code partagé livré**, testé par `atelier/tests/test_contrats_robot.py` (62 tests) :
+  - `atelier/lieu/robot.py`, exporté par `atelier.lieu` : `repere_unitree`, `marque_au_sol`, `carte_pour_reperage`, `pose_unitree_depuis_carte` et `pose_carte_depuis_unitree`, `valider_message`, plus les valeurs du contrat et des exemples de messages ;
+  - les poses au sol dans `conversions.py` : `composer_poses`, `inverser_pose`, `unitree_vers_carte`, `carte_vers_unitree` ;
+  - le champ facultatif `repere_unitree` d'un étage (schéma `lieu`, dataclass `Etage`), absent du fichier quand il vaut None : les lieux existants ne changent pas ;
+  - les schémas des messages `etat_pont`, `etat_reperage` et `demande_reperage`, avec leurs règles dans `validation.py` (`repere` ⇔ `etat` repere, consigne sous les plafonds, x, y et theta ensemble…) ;
+  - `tests_e2e/tout.sh` à 20 critères (« N / 20 », délais des nouveaux critères), et `tests_e2e/LISEZMOI.md`.
+- **Décisions** :
+  - **Image `ros:humble-ros-base-jammy`**, multi-architecture. Vérifié : le manifeste liste amd64 et arm64. Une image arm64 se construit et tourne sur le PC par qemu, avec le constructeur classique de Docker 29 (`docker build --platform linux/arm64`, essai sur alpine : `aarch64`, puis image effacée) : `buildx`, absent, n'est pas nécessaire. L'image dustynv est écartée pour la navigation : elle n'a pas de paquets apt ROS, il faudrait compiler Nav2. Seul `unitree_api` est compilé dans l'image, pour une construction plus courte sous émulation.
+  - **Repères (REP-105)** : `odom → base_link` vient de `/state_estimator/odom_pelvis` (continu), et `map → odom` est la correction tirée de `/unitree/slam_relocation/odom`. Cela remplace le relais de la vague 1, qui publiait `odom → base_link` directement depuis la relocalisation : MPPI et la carte locale auraient vu chaque saut. Le relais horodate lui-même (heure locale), pour ne pas dépendre de l'horloge du PC1 ; tout est ramené au sol (le cap vient de l'axe x, ce qui marche aussi avec un capteur retourné).
+  - **Repère d'Unitree et marque au sol** : une seule fonction, `atelier.lieu.repere_unitree`. Elle prend le champ de l'étage ; sinon l'origine pour une carte de scan ; sinon `depart_robot` pour un monde dessiné. C'est le décalage figé de la répétition, (2,5 ; 10 ; 0) pour le demo : il imite un scan commencé au départ du robot. Le relais, le faux service et le serveur s'en servent tous, ils ne peuvent donc pas se contredire. L'API prend la pose dans le repère map, comme toutes ses routes ; « (0, 0, 0) » est la marque, dans le repère d'Unitree.
+  - **1804 en ROS 2** (`unitree_api/Request` sur `/api/slam_operate/request`), envoyé depuis le conteneur plutôt que par le SDK Python, qui serait lourd à installer en arm64. Ainsi, l'Atelier n'a jamais à joindre le robot directement. Les formats non vérifiés restent dans `slam_client.py`.
+  - **Pont** : plafonds durs ; consigne de 0,5 s envoyée à 10 Hz ; arrêt explicite 0,3 s après le dernier `/cmd_vel` ; garde de 1 s après `/guide/stop` ; verrou par `/pont/arret`, en transient_local des deux côtés (un publieur volatile ne serait pas entendu) ; mouvement refusé tant que le robot n'est pas repéré ; état `robot_muet` après 1 s sans réponse. Les requêtes sont fiables ; les réponses et les sujets du robot sont écoutés en best_effort, qui s'accorde avec tout émetteur.
+  - **Répétition** : `nav2_g1_reel.yaml` (vitesses du robot) avec le temps simulé. Le faux G1 a une odométrie qui dérive (2 % et 0,01 rad par mètre), pour que la correction `map → odom` soit vraiment mise à l'épreuve. La vérité terrain des tests est `/g1_jumeau/odom`.
+  - **Indépendance des agents** : le critère 17 (pont) tourne avec un relais simple écrit par l'agent Pont (`localisation:=externe`). Les critères 19 et 20 utilisent la vraie chaîne et répondent « en attente » (77) tant qu'une pièce manque.
+- **Écarts à la demande** :
+  - `g1_sim` reçoit un booléen `jumeau` plutôt qu'un nom de sujet de vitesse : l'odométrie, le TF et le nuage de Gazebo doivent changer de nom en même temps (`/g1_jumeau/odom`, plus de `/tf`, `/g1_jumeau/points`), sinon ils entreraient en conflit avec le relais. Le défaut `false` ne change rien. La vitesse passe par `/g1_jumeau/cmd_vel` ;
+  - ajouts au contrat :
+    - `localisation:=externe` ;
+    - `POST /api/robot/arret` (verrou) et `/g1_jetson/etat` (présence du conteneur) ;
+    - les pannes simulées (`/g1_jumeau/panne`, `/faux_slam/panne`) et les schémas JSON des messages ;
+    - le paramètre `z_carte_unitree` du relais (hauteur de l'origine d'Unitree) ;
+  - le décalage de la répétition n'est pas une constante, c'est une règle. Pour le demo, elle donne une valeur fixe, (2,5 ; 10 ; 0), et le critère 18 essaie en plus un décalage tourné (3 ; 9 ; 0,5).
+- **Lieu demo restauré** (trouvé à 22 h) :
+  - un scan simulé avait été adopté dans `lieux/demo` depuis l'interface à 21 h 36 : `source_carte: scan`, carte du scan, `cartes/rdc.pcd`, et `scans/2026-10-25_21h32` (331 Mo, dont 328 Mo d'enregistrement). 16 tests de la référence échouaient (`test_lieu_verification`, `test_monde_carte`, `test_monde_commande`) ;
+  - **rien n'a été effacé** : la session, la carte et le nuage sont déplacés dans un nouveau lieu, `lieux/demo_scan` (nom « Lycée démo, scan simulé du 25/10/2026 », champ `lieu` de la session mis à jour, `valider_lieu` sans erreur ni avertissement). `lieux/demo` est revenu à la version de Git (`lieu.yaml`, `cartes/rdc.pgm`) ; son `cartes/rdc.pcd`, identique à celui de `demo_scan`, est retiré ;
+  - les 16 tests repassent. Règle ajoutée en 10.10 : on n'adopte pas de scan dans `lieux/demo`.
+- **Tests** (domaine 60, partition `robot_60`) :
+  - `atelier/tests` : « 671 passed, 4 skipped in 231.57s ». Un premier passage avait échoué une fois sur `test_scan_slam.py::test_commande_g1_slam` : un sous-processus `g1-slam` s'est terminé par une erreur de segmentation (code −11, fils DDS du SDK à la sortie). Relancé seul : 10 / 10. C'est un test instable connu du SDK, pas lié à cette vague ;
+  - `ws/src/g1_nav/test` : « 90 passed, 4 skipped » ;
+  - champs de `unitree_api/msg/Request` et `Response` vérifiés en Python (`identity`, `lease`, `policy`, `parameter`) ;
+  - `tests_e2e/tout.sh 16 17` : « absent », « 0 / 2 » ;
+  - les critères 1 à 15 n'ont pas été relancés. Le code qu'ils exercent ne change que par le champ facultatif d'`Etage` et les nouveaux types du validateur, et les tests unitaires couvrent ces deux points.
+- **Reste et risques** :
+  - toute la liste 10.9, en particulier : nos requêtes ROS 2 sont-elles acceptées par `sport` et par `slam_operate`, la télécommande reste-t-elle prioritaire, quels sont le repère et la fréquence de la relocalisation et de son nuage, et ce nuage suffit-il à l'évitement d'obstacles ;
+  - la durée de construction de l'image arm64 sous émulation n'est pas connue (installation de Nav2 sous qemu) ;
+  - sur le PC, le conteneur et l'hôte se trouvent par l'interface par défaut (`wlo1`, multicast) : à voir sans Wi-Fi ;
+  - un SIGKILL du faux G1 laisse la dernière consigne dans Gazebo (limite de la simulation, écrite en 10.4) ;
+  - proposé, non fait : empêcher l'adoption d'un scan dans `lieux/demo`, dans `g1-scan adopter` et dans l'onglet Scan.

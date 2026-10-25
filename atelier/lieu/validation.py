@@ -25,10 +25,15 @@ from typing import Optional
 from . import geometrie
 
 DOSSIER_SCHEMAS = Path(__file__).resolve().parent / "schemas"
-TYPES_FICHIERS = ("lieu", "monde", "salles", "itineraires", "zones", "carte", "session_scan", "reconnaissance")
+TYPES_FICHIERS = ("lieu", "monde", "salles", "itineraires", "zones", "carte", "session_scan", "reconnaissance",
+                  "etat_pont", "etat_reperage", "demande_reperage")
+# Les trois derniers ne sont pas des fichiers : ce sont les messages JSON (std_msgs/String) du pont
+# et du repérage du vrai robot (section 10 du plan) ; le nom affiché est celui du sujet ROS 2.
 NOMS_FICHIERS = {"lieu": "lieu.yaml", "monde": "monde.yaml", "salles": "salles.yaml",
                  "itineraires": "itineraires.yaml", "zones": "zones.yaml", "carte": "carte.yaml",
-                 "session_scan": "session.json", "reconnaissance": "reconnaissance.yaml"}
+                 "session_scan": "session.json", "reconnaissance": "reconnaissance.yaml",
+                 "etat_pont": "/pont/etat", "etat_reperage": "/reperage/etat",
+                 "demande_reperage": "/reperage/demander"}
 IDS_RESERVES = ("sol", "g1_proxy")                 # noms de modèles Gazebo déjà pris
 IDS_BOOLEENS = ("yes", "no", "on", "off", "y", "n", "true", "false")
 REGLE_ID = ("lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, "
@@ -647,15 +652,54 @@ def regles_reconnaissance(d, fichier="reconnaissance.yaml"):
     return messages
 
 
+def regles_etat_pont(d, fichier="/pont/etat"):
+    messages = []
+    if d["etat"] == "en_mouvement" and not d["mouvement_permis"]:
+        messages.append(f"{fichier} : etat en_mouvement alors que mouvement_permis est faux")
+    if d["etat"] in ("attente_reperage", "arret", "arret_verrouille") and d["mouvement_permis"]:
+        messages.append(f"{fichier} : etat {d['etat']} alors que mouvement_permis est vrai")
+    if d["verrou"] != (d["etat"] == "arret_verrouille"):
+        messages.append(f"{fichier} : verrou doit être vrai si et seulement si etat vaut arret_verrouille")
+    for axe in ("vx", "vy", "wz"):
+        if abs(d["consigne"][axe]) > d["limites"][axe] + 1e-6:
+            messages.append(f"{fichier} : consigne {axe} = {d['consigne'][axe]} dépasse la limite "
+                            f"{d['limites'][axe]}")
+    if d["reponses"] > d["envoyees"]:
+        messages.append(f"{fichier} : plus de réponses ({d['reponses']}) que de requêtes ({d['envoyees']})")
+    return messages
+
+
+def regles_etat_reperage(d, fichier="/reperage/etat"):
+    messages = []
+    if d["repere"] != (d["etat"] == "repere"):
+        messages.append(f"{fichier} : repere doit être vrai si et seulement si etat vaut repere "
+                        f"(etat {d['etat']}, repere {d['repere']})")
+    if d["etat"] == "repere" and d["pose"] is None:
+        messages.append(f"{fichier} : etat repere sans pose")
+    return messages
+
+
+def regles_demande_reperage(d, fichier="/reperage/demander"):
+    donnes = [c for c in ("x", "y", "theta") if c in d]
+    if donnes and len(donnes) != 3:
+        manque = [c for c in ("x", "y", "theta") if c not in d]
+        return [f"{fichier} : x, y et theta vont ensemble ; il manque {', '.join(manque)} "
+                "(sans aucun des trois : le robot est sur la marque au sol)"]
+    return []
+
+
 REGLES = {"lieu": regles_lieu, "monde": regles_monde, "salles": regles_salles,
           "itineraires": regles_itineraires, "zones": regles_zones, "carte": regles_carte,
-          "session_scan": regles_session_scan, "reconnaissance": regles_reconnaissance}
+          "session_scan": regles_session_scan, "reconnaissance": regles_reconnaissance,
+          "etat_pont": regles_etat_pont, "etat_reperage": regles_etat_reperage,
+          "demande_reperage": regles_demande_reperage}
 
 
 def valider_donnees(type_fichier, donnees, fichier=None):
     """Erreurs d'un fichier (déjà lu), en français : schéma, puis règles propres au fichier.
 
-    type_fichier : lieu, monde, salles, itineraires, zones, carte, session_scan ou reconnaissance.
+    type_fichier : lieu, monde, salles, itineraires, zones, carte, session_scan, reconnaissance,
+    ou un message du vrai robot : etat_pont, etat_reperage, demande_reperage (section 10 du plan).
     fichier : nom affiché au début de chaque message (par défaut : salles.yaml, monde.yaml...).
     Renvoie une liste vide si tout va bien.
     """

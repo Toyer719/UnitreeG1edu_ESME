@@ -110,17 +110,27 @@ class PoseEtage:
 
 @dataclass
 class Etage:
-    """Un étage : id (nomme ses fichiers), nom affiché, source de sa carte (monde ou scan)."""
+    """Un étage : id (nomme ses fichiers), nom affiché, source de sa carte (monde ou scan).
+
+    repere_unitree (facultatif, section 10 du plan) : Pose de l'origine du repère de la carte
+    d'Unitree dans le repère map de l'étage ; None : valeur par défaut (atelier.lieu.repere_unitree).
+    """
     id: str
     nom: str
     source_carte: str = "monde"
+    repere_unitree: Optional["Pose"] = None
 
     def vers_dict(self):
-        return {"id": self.id, "nom": self.nom, "source_carte": self.source_carte}
+        d = {"id": self.id, "nom": self.nom, "source_carte": self.source_carte}
+        if self.repere_unitree is not None:
+            d["repere_unitree"] = self.repere_unitree.vers_dict()
+        return d
 
     @classmethod
     def depuis_dict(cls, d):
-        return cls(d["id"], d["nom"], d["source_carte"])
+        repere = d.get("repere_unitree")
+        return cls(d["id"], d["nom"], d["source_carte"],
+                   Pose.depuis_dict(repere) if repere is not None else None)
 
 
 # ---------------------------------------------------------------- salles.yaml

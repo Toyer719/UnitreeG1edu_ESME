@@ -31,7 +31,8 @@ Point = tuple (x, y) en mètres ; angles en radians.
     Lieu(nom, etages, accueil, langue="fr", carte_unitree=None, version=1,
          salles=[], itineraires=Itineraires(), zones=Zones(), mondes={}, dossier=None)
         .id (nom du dossier), .etage(id), .salle(id) ; vers_dict() = lieu.yaml seulement
-    Etage(id, nom, source_carte="monde")            source_carte : "monde" ou "scan"
+    Etage(id, nom, source_carte="monde", repere_unitree=None)   source_carte : "monde" ou "scan" ;
+        repere_unitree : Pose facultative (section 10 du plan), absente du fichier si None
     PoseEtage(etage, x, y, theta)  .pose()           (accueil de lieu.yaml)
     Pose(x, y, theta=0.0)
     Salle(id, nom, etage, pose, alias=[], phrase_arrivee="")
@@ -117,6 +118,21 @@ Les fonctions acceptent des nombres ou des tableaux numpy.
     cap_vers_quaternion(theta) -> (x, y, z, w)
     quaternion_vers_cap(q) -> theta dans ]-π, π]       q : tuple, dict ou geometry_msgs/Quaternion
     normaliser_angle(theta) -> angle dans [-π, π[
+    composer_poses(a, b), inverser_pose(a) -> (x, y, theta)     poses au sol (tuple, dict ou Pose)
+    unitree_vers_carte(pose_unitree, repere), carte_vers_unitree(pose_carte, repere)
+
+Vrai robot (robot.py, section 10 du plan) : repère d'Unitree, marque au sol, messages JSON
+------------------------------------------------------------------------------------------
+    repere_unitree(lieu, etage) -> Pose   origine de la carte d'Unitree dans le repère map de l'étage :
+        champ repere_unitree de l'étage ; sinon (0, 0, 0) pour source_carte scan, depart_robot du
+        monde pour source_carte monde
+    marque_au_sol(lieu, etage) -> Pose    où poser le robot avant « Repérer le robot » (= repere_unitree)
+    pose_unitree_depuis_carte(pose, lieu, etage), pose_carte_depuis_unitree(pose, lieu, etage)
+    carte_pour_reperage(lieu, repetition=False) -> nom du .pcd pour 1804, ou None
+    valider_message("etat_pont" | "etat_reperage" | "demande_reperage", donnees) -> [messages]
+    Constantes : LIMITES_PONT, DUREE_CONSIGNE_S, DELAI_CMD_VEL_S, FREQUENCE_PONT_HZ, GARDE_APRES_STOP_S,
+    CARTE_REPETITION, DELAI_REPERAGE_S, DELAI_PERDU_S, ECART_MAX_M, ECART_MAX_RAD, ETATS_PONT,
+    ETATS_REPERAGE, LOCALISATIONS, MODES_NAVIGATION, EXEMPLE_ETAT_PONT, EXEMPLE_ETAT_REPERAGE...
 
 Sessions de scan intégré (scans.py, section 9 du plan) : LIEU/scans/<session>/
 --------------------------------------------------------------------------------
@@ -149,9 +165,10 @@ trou_entre, est_passage.
 Constantes : COULOIR_MAX (8 m), RAYON_ROBOT (0,35 m), DOSSIER_SCHEMAS, TYPES_FICHIERS.
 Commande : g1-lieu creer ID --nom NOM ; g1-lieu valider --lieu L ; g1-lieu liste.
 """
-from .conversions import (bornes_carte, cap_vers_quaternion, centres_pixels, dans_image,
-                          info_carte_pour_emprise, lire_info_carte, monde_vers_pixel,
-                          normaliser_angle, pixel_vers_monde, quaternion_vers_cap)
+from .conversions import (bornes_carte, cap_vers_quaternion, carte_vers_unitree, centres_pixels,
+                          composer_poses, dans_image, info_carte_pour_emprise, inverser_pose,
+                          lire_info_carte, monde_vers_pixel, normaliser_angle, pixel_vers_monde,
+                          quaternion_vers_cap, unitree_vers_carte)
 from .fichiers import (ErreurLieu, charger_carte, charger_fiche, charger_fichier, charger_info_carte,
                        charger_itineraires, charger_lieu, charger_monde, charger_salles, charger_zones,
                        chemin_carte, chemin_interdit, chemin_lent, chemin_monde, chemin_pcd, chemin_sdf,
@@ -173,10 +190,18 @@ from .scans import (APERCU_POINTS_MAX, APERCU_TRAJECTOIRE_MAX, ETAPES, ETAPES_TR
                     processus_vivant, progression_etape, reconnaissance_depuis_monde, resume_reconnaissance,
                     session_active, session_interrompue,
                     valider_reconnaissance, verifier_id_session, verrou_session)
+from .robot import (API_RELOCALISER, API_SPORT_SET_VELOCITY, CARTE_REPETITION, DELAI_CMD_VEL_S, DELAI_PERDU_S,
+                    DELAI_REPERAGE_PERIME_S, DELAI_REPERAGE_S, DELAI_ROBOT_MUET_S, DERIVE_ECHELLE,
+                    DERIVE_LACET_PAR_M, DUREE_ARRET_S, DUREE_CONSIGNE_S, ECART_MAX_M, ECART_MAX_RAD,
+                    ETATS_PONT, ETATS_REPERAGE, EXEMPLE_DEMANDE_REPERAGE, EXEMPLE_ETAT_PONT,
+                    EXEMPLE_ETAT_REPERAGE, FREQUENCE_PONT_HZ, GARDE_APRES_STOP_S, HAUTEUR_PELVIS, LIMITES_PONT,
+                    LOCALISATIONS, MODES_NAVIGATION, SAUT_M, SAUT_RAD, carte_pour_reperage, marque_au_sol,
+                    pose_carte_depuis_unitree, pose_unitree_depuis_carte, repere_unitree, valider_message)
 from .validation import DOSSIER_SCHEMAS, TYPES_FICHIERS, valider_donnees
 from .verification import COULOIR_MAX, RAYON_ROBOT, Rapport, valider_lieu, verifier_lieu
 
 __all__ = ["bornes_carte", "cap_vers_quaternion", "centres_pixels", "dans_image",
+           "carte_vers_unitree", "composer_poses", "inverser_pose", "unitree_vers_carte",
            "info_carte_pour_emprise", "lire_info_carte", "monde_vers_pixel", "normaliser_angle",
            "pixel_vers_monde", "quaternion_vers_cap", "ErreurLieu", "charger_carte", "charger_fiche",
            "charger_fichier", "charger_info_carte", "charger_itineraires", "charger_lieu",
@@ -204,4 +229,12 @@ __all__ = ["bornes_carte", "cap_vers_quaternion", "centres_pixels", "dans_image"
            "maj_session", "monde_depuis_reconnaissance", "nouvelle_reconnaissance", "passages_du_monde",
            "processus_vivant", "progression_etape", "reconnaissance_depuis_monde", "resume_reconnaissance",
            "session_active", "session_interrompue",
-           "valider_reconnaissance", "verifier_id_session", "verrou_session"]
+           "valider_reconnaissance", "verifier_id_session", "verrou_session",
+           # vrai robot (section 10 du plan)
+           "API_RELOCALISER", "API_SPORT_SET_VELOCITY", "CARTE_REPETITION", "DELAI_CMD_VEL_S", "DELAI_PERDU_S",
+           "DELAI_REPERAGE_PERIME_S", "DELAI_REPERAGE_S", "DELAI_ROBOT_MUET_S", "DERIVE_ECHELLE",
+           "DERIVE_LACET_PAR_M", "DUREE_ARRET_S", "DUREE_CONSIGNE_S", "ECART_MAX_M", "ECART_MAX_RAD",
+           "ETATS_PONT", "ETATS_REPERAGE", "EXEMPLE_DEMANDE_REPERAGE", "EXEMPLE_ETAT_PONT",
+           "EXEMPLE_ETAT_REPERAGE", "FREQUENCE_PONT_HZ", "GARDE_APRES_STOP_S", "HAUTEUR_PELVIS", "LIMITES_PONT",
+           "LOCALISATIONS", "MODES_NAVIGATION", "SAUT_M", "SAUT_RAD", "carte_pour_reperage", "marque_au_sol",
+           "pose_carte_depuis_unitree", "pose_unitree_depuis_carte", "repere_unitree", "valider_message"]

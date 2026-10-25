@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "id": "2026-10-25_21h32",
+  "lieu": "demo_scan",
+  "etage": "rdc",
+  "nom": "Scan rdc du 25/10/2026 à 21h32",
+  "mode": "simu",
+  "repetition": false,
+  "explorer": true,
+  "debut": "2026-10-25T21:32:23+01:00",
+  "fin": "2026-10-25T21:35:34+01:00",
+  "maj": "2026-10-25T22:04:20+01:00",
+  "etat": "termine",
+  "etape": "fini",
+  "progression": 100,
+  "message": "Scan terminé : carte 2D et monde prêts (24 murs, 5 passages, 12 objets reconnus). Vérifiez les éléments reconnus, puis « Adopter ».",
+  "sujets": {
+    "nuage": "/points",
+    "odom": "/odom",
+    "autres": [
+      "/tf_static"
+    ]
+  },
+  "statistiques": {
+    "duree_s": 181.8,
+    "points": 5585438,
+    "distance_m": 61.53,
+    "nuages": 1814
+  },
+  "processus": {
+    "pid": 275976,
+    "debut": 3026490,
+    "hote": "joonho-ASUS-TUF-Dash-F15-FX517ZM-FX517ZM"
+  },
+  "journal": "/home/joonho/robot-g1/journaux/scan_demo_2026-10-25_21h32.log",
+  "carte_unitree": null,
+  "adoption": {
+    "quand": "2026-10-25T21:36:29+01:00",
+    "monde": false
+  }
+}

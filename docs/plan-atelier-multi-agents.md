@@ -6,6 +6,8 @@ Ce document est la référence commune. Chaque agent lit en entier les sections 
 
 Vague 2, le scan intégré : chaque agent lit aussi la section 9 en entier (contrats, fiches et critères de cette vague). Ses contrats font foi au même titre que ceux de la section 4.
 
+Vague 3, le vrai robot (conteneur du Jetson, pont vers la marche, repérage au démarrage) : chaque agent lit aussi la section 10 en entier. Ses contrats font foi au même titre que ceux des sections 4 et 9.
+
 ---
 
 ## 1. Le but
@@ -122,11 +124,14 @@ Principe : le serveur ne contient aucune logique robotique. Il appelle les bibli
 │   │   ├── models/g1_proxy/model.sdf
 │   │   ├── config/pont_gz.yaml    # correspondances ros_gz_bridge
 │   │   └── launch/simulation.launch.py
-│   └── g1_nav/                    # agent Navigation (ament_python)
-│       ├── g1_nav/routeur.py, guide.py, banc.py, odom_vers_tf.py
-│       ├── g1_nav/moteurs.py (interface Moteur), moteur_nav2.py, moteur_unitree.py
-│       ├── config/nav2_g1_simu.yaml, nav2_g1_reel.yaml
-│       └── launch/navigation.launch.py
+│   ├── g1_nav/                    # agent Navigation (ament_python)
+│   │   ├── g1_nav/routeur.py, guide.py, banc.py, odom_vers_tf.py, reperage.py (vague 3)
+│   │   ├── g1_nav/moteurs.py (interface Moteur), moteur_nav2.py, moteur_unitree.py
+│   │   ├── config/nav2_g1_simu.yaml, nav2_g1_reel.yaml
+│   │   └── launch/navigation.launch.py
+│   ├── g1_bridge/                 # vague 3 : pont /cmd_vel → /api/sport/request (section 10.3)
+│   └── g1_jumeau/                 # vague 3 : faux service sport du G1 pour Gazebo (section 10.4)
+├── docker/                        # vague 3 : conteneur Humble du Jetson (section 10.2)
 ├── lieux/demo/                    # lieu d'exemple fourni par l'agent Données
 ├── tests_e2e/                     # agent Testeur
 └── bin/                           # commandes g1-* (chaque agent ajoute les siennes)
@@ -246,10 +251,12 @@ Valeurs des pixels : 0 = occupé, 254 = libre, 205 = inconnu. La ligne 0 de l'im
 | `/guide/aller` | std_msgs/String | → guide | identifiant de salle ou de nœud (« b204 », « accueil ») |
 | `/guide/stop` | std_msgs/Empty | → guide | arrêt immédiat |
 | `/guide/etat` | std_msgs/String (JSON) | guide → | `{"etat": "attente|en_route|bloque|detour|arrive|echec", "cible": "b204", "reste_m": 12.5, "itineraire": ["accueil","c1","b204"]}` |
-| `/cmd_vel` | geometry_msgs/Twist | Nav2 → robot | vitesses vx, vy, wz |
-| `/odom` | nav_msgs/Odometry | robot → | simulation : odométrie de Gazebo ; vrai robot : `/unitree/slam_relocation/odom` relayé |
-| `/points` | sensor_msgs/PointCloud2 | robot → | simulation : LiDAR de Gazebo ; vrai robot : `/unitree/slam_relocation/points` relayé |
-| TF | `map → odom → base_link → lidar` | | simulation : `map → odom` fixe (identité) |
+| `/cmd_vel` | geometry_msgs/Twist | Nav2 → robot | vitesses vx, vy, wz ; simulation : vers Gazebo ; répétition et vrai robot : vers le pont (10.3) |
+| `/odom` | nav_msgs/Odometry | robot → | simulation : odométrie de Gazebo ; répétition et vrai robot : odométrie locale `/state_estimator/odom_pelvis` relayée par `odom_vers_tf` (repère odom, section 10.5) |
+| `/points` | sensor_msgs/PointCloud2 | robot → | simulation : LiDAR de Gazebo ; répétition et vrai robot : `/unitree/slam_relocation/points` ramené dans le repère `lidar` par `odom_vers_tf` |
+| TF | `map → odom → base_link → lidar` | | simulation : `map → odom` fixe (identité) ; répétition et vrai robot : `map → odom` = correction de la relocalisation d'Unitree, `odom → base_link` = odométrie locale (section 10.5) |
+
+Vague 3 (section 10) : sujets du pont (`/api/sport/*`, `/pont/etat`, `/pont/arret`), du repérage (`/reperage/demander`, `/reperage/etat`, `/api/slam_operate/*`, `/unitree/slam_relocation/*`) et du faux G1 (`/g1_jumeau/*`, `/state_estimator/odom_pelvis`) en 10.3 à 10.6. `/guide/etat` peut porter un champ `message` (10.7).
 
 ### 4.3 Commandes
 
@@ -268,6 +275,8 @@ Valeurs des pixels : 0 = occupé, 254 = libre, 205 = inconnu. La ligne 0 de l'im
 | `g1-salle ajouter NOM [--type salle|noeud] --lieu L` | position actuelle du robot → salles ou itinéraires | Scan |
 
 Vague 2 (section 9.5) : `g1-scan demarrer|arreter|traiter|etat|adopter`, agent Orchestrateur.
+
+Vague 3 (section 10) : `g1-jetson construire|envoyer|lieu|demarrer|arreter|etat|journal|verifier` (agent Jetson) ; `g1-monde simuler … --jumeau` (agent Pont et faux G1) ; `g1-guide navigation … --localisation simu|unitree|amcl|externe --pont auto|oui|non` et `g1-slam faux-service --jumeau --lieu L --etage E` (agent Repérage).
 
 Ajouts de la phase 1, acceptés à l'assemblage : `g1-lieu liste` ; `g1-monde simuler … [--monde F.sdf] [--afficher]` ; `g1-guide etat` et `g1-guide aller ID --sans-suivre` ; `g1-banc … [--simu] [--lancer] [--graine N] [--seuil P] [--csv F]` ; `g1-slam etat` et `g1-slam faux-service [--gazebo] [--relocalise]`, `scan-fin --lieu L` (note `carte_unitree`) ; `g1-atelier [--sans-navigateur] [--hote H]`.
 
@@ -291,6 +300,8 @@ Précisions et ajouts de la phase 1, acceptés à l'assemblage :
 - Chaque PUT renvoie `{enregistre: [...], rapport: {ok, erreurs, avertissements}}` ; une erreur est toujours `{detail, erreurs?, sortie?}`, en français.
 - `/ws/etat` contient aussi `simulation`, `temps_sim` et `ros {actif, erreur, nav2}`.
 
+Vague 3 (section 10.8) : champ `mode` (`simu`, `repetition`, `robot`) de `POST /api/simulation/demarrer` ; `GET /api/robot/etat`, `POST /api/robot/reperer`, `POST /api/robot/arret` ; `mode`, `reperage` et `pont` dans `/ws/etat`.
+
 ### 4.5 Lancements ROS 2
 
 ```
@@ -312,6 +323,7 @@ ros2 launch g1_nav navigation.launch.py lieu:=DOSSIER etage:=ID simu:=true|false
 - Les deux lancements respectent les variables `ROS_DOMAIN_ID` et `IGN_PARTITION` de l'environnement : pendant les tests, chaque agent a les siennes.
 - Le monde Gazebo porte le nom de l'étage (`<world name="rdc">`) : sujets `/world/rdc/…`.
 - `moteur:=factice` (ajout de la phase 1) : `MoteurFactice`, sans Gazebo ni Nav2, pour les essais.
+- Vague 3 (section 10) : `jumeau:=true|false` pour g1_sim (10.4, défaut `false` : rien ne change) ; `localisation:=simu|unitree|amcl|externe` et `pont:=auto|true|false` pour g1_nav (10.7). `simu:=false` lance le relais `odom_vers_tf` de la section 10.5, qui remplace celui de la vague 1.
 - Si `cartes/<etage>_interdit.yaml` manque, g1_nav crée un masque tout libre dans `/tmp` et le signale ; si la carte manque, il s'arrête et propose `g1-monde generer`.
 - Les deux lancements sont complets depuis la phase 1 (agents Simulation et Navigation). Ils sont compilés dans `ws/install` : `cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_sim g1_nav`.
 
@@ -345,6 +357,8 @@ Sept agents. Chacun possède ses dossiers, et personne n'écrit dans les dossier
 | 5. Navigation | `ws/src/g1_nav/` (sauf `moteurs.py` et `moteur_unitree.py`), `bin/g1-guide`, `bin/g1-banc` | Données, Simulation |
 | 6. Interface | `atelier/serveur/`, `atelier/web/`, `bin/g1-atelier` | Données, Monde ; Simulation et Navigation pour l'intégration |
 | 7. Scan et Testeur | `atelier/scan/`, `ws/src/g1_nav/g1_nav/moteur_unitree.py`, `bin/g1-slam`, `g1-carte-*`, `g1-salle`, `tests_e2e/` | Données, Simulation, Navigation (guide) |
+
+Vague 2 : agents et fichiers en 9.9. Vague 3 : agents Jetson, Pont et faux G1, Repérage, en 10.10.
 
 ### Phases
 
@@ -559,6 +573,49 @@ Tâches :
 9. **Interface** : le parcours « créer → dessiner → fabriquer la carte → placer une salle → lancer la simulation → Y aller » fonctionne. L'agent 6 fournit soit un test Playwright, soit la liste de vérifications cochée.
 10. **Un seul point d'entrée** : `g1-atelier` ouvre le logiciel, et `tests_e2e/tout.sh` affiche « 10 / 10 ».
 
+Critères 11 à 15 (vague 2, scan intégré) : section 9.10. Critères 16 à 20 (vague 3, le vrai robot en répétition, section 10), ci-dessous ; `tests_e2e/tout.sh` lance les vingt et affiche « N / 20 ». En répétition, la vérité terrain est `/g1_jumeau/odom`.
+
+16. **Conteneur** (`critere_16_conteneur.sh`, agent Jetson) :
+    - `g1-jetson construire --arch amd64` réussit (une image déjà construite est réutilisée). Dans l'image : `ros2 pkg prefix g1_nav g1_bridge unitree_api`, `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`, `python3 -c "import atelier.lieu, atelier.scan.slam_client"` ;
+    - `g1-jetson demarrer --local --lieu <copie du demo> --etage rdc` rend la main en moins de 60 s ;
+    - en moins de 90 s, l'hôte (même domaine, hors du conteneur) voit les nœuds `pont_g1`, `odom_vers_tf`, `guide`, `bt_navigator` et `map_server`. Il reçoit `/g1_jetson/etat`, `/pont/etat` (conforme, `attente_reperage`), `/reperage/etat` (conforme, `non_repere`) et `/guide/etat` ;
+    - dans l'autre sens, `/pont/arret` true publié par l'hôte donne `arret_verrouille` en moins de 3 s ;
+    - `g1-jetson etat --local` répond 0. `g1-jetson arreter --local` s'arrête en moins de 30 s, et plus aucun conteneur `g1-jetson-e2e-*` ne reste ;
+    - avec `G1_INTERFACES=auto`, sur une machine sans adresse 192.168.123.x, le conteneur s'arrête sur « réseau du robot introuvable » ;
+    - jamais de ssh. Avec `E2E_ARM64=1` : aussi `construire --arch arm64`, puis les mêmes vérifications de l'image sous émulation (`uname -m` : `aarch64`).
+17. **Pont et faux G1** (`critere_17_pont.sh`, agent Pont et faux G1). Montage : Gazebo `--jumeau` (avec `g1_jumeau`), navigation `--simu --localisation externe --pont oui`, et le relais simple du test (TF tiré de la vérité terrain, `/reperage/etat` repéré). On vérifie :
+    - aucun lien direct entre `/cmd_vel` et Gazebo : `ros_gz_bridge` n'est pas abonné à `/cmd_vel`, et seul `g1_jumeau` publie `/g1_jumeau/cmd_vel` ;
+    - Nav2 → pont → faux G1 → Gazebo : avec `g1-guide aller hall_sud`, le robot proxy avance d'au moins 1 m et arrive à moins de 0,3 m. Les requêtes de `/api/sport/request` ont l'api_id 7105, un `parameter` `{velocity: [3 nombres], duration: 0,5}` et des `identity.id` croissants. Il en part au moins 8 par seconde en marche, et chacune a sa réponse ;
+    - un `/cmd_vel` du test à vx 0,3 pendant 3 s fait 0,9 ± 0,2 m. Quand il cesse, le robot est arrêté (moins de 0,02 m/s) moins de 0,6 s après le dernier `/cmd_vel`, et un 7105 `[0, 0, 0]` est parti ;
+    - la consigne (1,0 ; 0,6 ; 2,0) donne des requêtes plafonnées à (0,4 ; 0,25 ; 0,6) et une vitesse mesurée de 0,42 m/s au plus ; un NaN donne un arrêt ;
+    - `/guide/stop` en marche : arrêt en moins de 0,3 s, et `/cmd_vel` ignoré pendant 1 s ;
+    - `/pont/arret` true : arrêt en moins de 0,3 s, puis immobile pendant 3 s malgré `/cmd_vel`. Avec false, la marche ne reprend qu'au `/cmd_vel` suivant ;
+    - `/pont/etat` reste conforme au schéma tout du long.
+18. **Repérage** (`critere_18_reperage.sh`, agent Repérage). Répétition sur une copie du demo : Gazebo `--jumeau`, `g1-slam faux-service --jumeau`, navigation `--simu --localisation unitree`, `g1-atelier`. On vérifie :
+    - avant le repérage : `GET /api/robot/etat` dit non repéré, il n'y a pas de TF map → odom, et `POST /api/guide/aller` répond 409 ;
+    - `POST /api/robot/reperer {lieu, etage}` (marque au sol = départ du robot, (2,5 ; 10 ; 0)) répond en moins de 20 s, et le robot est repéré. Le faux service a reçu 1804 avec la pose (0, 0, 0) du repère d'Unitree et une `address` en `repetition.pcd`. Le TF map → base_link est à moins de 0,1 m et 0,05 rad de la vérité, et `precision_m` est renseignée ;
+    - le robot avance de 2 m et tourne de 90° (par `/cmd_vel`, donc par le pont). map → base_link reste à moins de 0,1 m de la vérité, alors que l'odométrie dérive : map → odom a changé de plus de 2 cm ;
+    - variante B, avec `repere_unitree: {x: 3.0, y: 9.0, theta: 0.5}` dans la copie. Le repérage à la marque est refusé (502, message en français) et map → odom n'est pas publié. Le repérage à x 2,5, y 10, cap 0 réussit : 1804 arrive avec la pose convertie (`carte_vers_unitree`), et map → base_link est à moins de 0,1 m ;
+    - relocalisation coupée (`/faux_slam/panne` muet) : `perdu` en moins de 4 s, puis `repere` quand elle reprend ;
+    - `/reperage/etat` reste conforme au schéma, et aucun processus ne reste.
+19. **Niveau 2 complet en répétition, depuis l'Atelier** (`critere_19_niveau2.sh`, agent Repérage) :
+    - `g1-atelier`, puis `POST /api/simulation/demarrer {lieu, etage, mode: "repetition"}`, et attente de Nav2 ;
+    - « Y aller » avant le repérage répond 409. Puis `POST /api/robot/reperer` ;
+    - `POST /api/guide/aller {cible: "b204"}` donne `arrive`, le robot à moins de 0,3 m de b204 (vérité), en moins de 180 s. Tout le mouvement passe par le pont et le faux G1 : les requêtes 7105 sont comptées, et rien dans Gazebo n'est abonné à `/cmd_vel` ;
+    - une boîte dans le couloir nord (comme au critère 5), puis `POST /api/guide/aller {cible: "accueil"}` : `bloque → detour → arrive` à moins de 0,3 m ;
+    - `POST /api/simulation/arreter` : plus aucun processus ne reste ;
+    - avec `E2E_CONTENEUR=1`, la navigation tourne dans le conteneur (`g1-jetson demarrer --local`, `G1_SIMU=true`).
+20. **Sécurité** (`critere_20_securite.sh`, agent Pont et faux G1). Chaîne de répétition réelle, avec le relais et le faux slam_operate de l'agent Repérage. Un témoin compare en continu la vérité terrain aux mouvements permis : aucun déplacement de plus de 5 cm hors d'une consigne permise. Cas :
+    - pont sans repérage : un `/cmd_vel` de 2 s laisse le robot immobile, en `attente_reperage`, sans aucun 7105 non nul ;
+    - guide avant le repérage : `echec` avec message, robot immobile ;
+    - faux G1 muet pendant la marche (`/g1_jumeau/panne` muet) : arrêt en moins de 0,6 s et `robot_muet` en moins de 1,5 s ; au retour, pas de reprise sans `/cmd_vel` frais ;
+    - faux G1 arrêté par SIGTERM : arrêt en moins de 0,6 s ; une fois relancé, le robot reste immobile ;
+    - pont tué par SIGKILL pendant la marche : arrêt en moins de 0,6 s (durée de la consigne) ;
+    - relocalisation perdue pendant la marche : `perdu`, puis robot arrêté en moins de 4 s ;
+    - arrêt : `POST /api/guide/stop` arrête le robot en moins de 0,3 s ; avec `POST /api/robot/arret {verrou: true}`, il reste immobile 5 s, même avec « Y aller » ;
+    - consignes absurdes (NaN, 1e9) : jamais au-delà des plafonds ;
+    - messages en français, jamais d'erreur 500.
+
 ---
 
 ## 8. Après ce plan, avec le robot
@@ -568,7 +625,7 @@ Tâches :
    - corriger `slam_client.py` et noter les vrais formats dans ce document.
 2. **Scanner le vrai étage** : `source_carte: scan` dans `lieu.yaml`, puis `g1-carte-3d` et `g1-carte-2d`. Le reste du logiciel ne change pas.
 3. **Placer les salles en vrai** : amener le robot devant chaque porte, puis `g1-salle ajouter`.
-4. **Pont et relais** sur le Jetson, dans le conteneur Humble : `/cmd_vel` → `/api/sport/request` (7105), et le relais de la relocalisation vers `/odom` et TF.
+4. **Pont et relais** sur le Jetson, dans le conteneur Humble : `/cmd_vel` → `/api/sport/request` (7105), et le relais de la relocalisation vers `/odom` et TF. Préparés sans robot en vague 3 (section 10), avec la liste de la séance de vérification en 10.9.
 5. **Recette en vrai** : niveau 1 (MoteurUnitree), puis niveau 2 (MoteurNav2), avec des volontaires et le même `g1-banc`.
 
 ---
@@ -911,3 +968,348 @@ Numérotation fixée à l'assemblage : celle des scripts `tests_e2e/critere_11_*
 15. **Robustesse et interface** (`critere_15_robustesse.sh`) : « Fin » sans scan, « Scan » deux fois, mode robot sans robot (« Robot non détecté »), demandes absurdes : refus clairs en français, jamais d'erreur 500 ; pendant un scan simulé, les flèches (`POST /api/simulation/teleop`) font avancer le robot, qui s'arrête seul quand on lâche ; « Fin » pendant la préparation ; puis le parcours de l'onglet Scan dans Firefox sans fenêtre (`atelier/tests/test_serveur_scan_navigateur.py`). Aucun processus ne reste (premier jet, n° 15).
 
 Les critères 1 à 10 (section 7) doivent toujours passer.
+
+---
+
+## 10. Vrai robot : Jetson, pont, repérage
+
+Contrats figés par l'intégrateur le 25/10/2026, avant le travail en parallèle de trois agents (10.10). Comme les sections 4 et 9, cette section fait foi ; on ne la modifie qu'en passant par l'intégrateur. But : préparer sans robot le passage au vrai G1, en trois pièces (le conteneur du Jetson, le pont vers la marche, le repérage au démarrage), et faire tourner le **niveau 2** (Nav2, pont, repérage d'Unitree) de bout en bout en **répétition**, contre un « faux G1 » dans Gazebo qui répond comme le vrai.
+
+Code partagé déjà livré et testé (`atelier/tests/test_contrats_robot.py`) :
+- `atelier.lieu.robot` : `repere_unitree(lieu, etage)`, `marque_au_sol(lieu, etage)`, `carte_pour_reperage(lieu, repetition)`, `pose_unitree_depuis_carte`, `pose_carte_depuis_unitree`, `valider_message(type, donnees)`, et les valeurs du contrat (`LIMITES_PONT`, `DUREE_CONSIGNE_S`, `DELAI_CMD_VEL_S`, `FREQUENCE_PONT_HZ`, `GARDE_APRES_STOP_S`, `CARTE_REPETITION`, `DELAI_REPERAGE_S`, `DELAI_PERDU_S`, `ECART_MAX_M`, `ECART_MAX_RAD`, `DERIVE_ECHELLE`, `DERIVE_LACET_PAR_M`, `ETATS_PONT`, `ETATS_REPERAGE`, `LOCALISATIONS`, `MODES_NAVIGATION`, exemples `EXEMPLE_ETAT_PONT`, `EXEMPLE_ETAT_REPERAGE`, `EXEMPLE_DEMANDE_REPERAGE`) ; tout s'importe depuis `atelier.lieu` ;
+- `atelier.lieu.conversions` : `composer_poses`, `inverser_pose`, `unitree_vers_carte`, `carte_vers_unitree` (poses au sol) ;
+- le champ facultatif `repere_unitree` d'un étage de `lieu.yaml` (schéma et dataclass `Etage`) ;
+- les schémas `etat_pont`, `etat_reperage` et `demande_reperage` (messages JSON), reconnus par `valider_donnees` ;
+- `tests_e2e/tout.sh` compte 20 critères (« N / 20 ») ; un critère sans script est « absent ».
+
+### 10.1 Les trois modes et ce qui tourne où
+
+| | simu (inchangé) | répétition (PC, sans robot) | robot |
+|---|---|---|---|
+| Robot | robot proxy de Gazebo | robot proxy de Gazebo, commandé par le faux G1 | le vrai G1 |
+| Gazebo | `g1-monde simuler` | `g1-monde simuler --jumeau` (lance aussi `g1_jumeau`) | — |
+| Service `sport` (marche, 7105) | — | `g1_jumeau` (10.4) | PC1 du robot |
+| Service `slam_operate` (1804) | — | `g1-slam faux-service --jumeau` (10.6) | robot |
+| Nav2, guide, relais, pont | `g1-guide navigation --simu` (sans relais ni pont) | `g1-guide navigation --simu --localisation unitree` sur l'hôte, ou le conteneur en local | conteneur `g1-jetson` sur le Jetson (au portique : aussi possible sur le PC au câble) |
+| Atelier | PC | PC | PC, au câble (eno2) ; Wi-Fi en option (10.2) |
+| Domaine DDS | `$ROS_DOMAIN_ID` | `$ROS_DOMAIN_ID` | 0 |
+| Vitesse → robot | `/cmd_vel` → `ros_gz_bridge` → Gazebo | `/cmd_vel` → pont → `/api/sport/request` → `g1_jumeau` → `/g1_jumeau/cmd_vel` → Gazebo | `/cmd_vel` → pont → `/api/sport/request` → G1 |
+
+En répétition et sur le robot, **aucune vitesse ne va directement à Gazebo** : tout passe par le pont et le service `sport` (vrai ou faux).
+
+```
+Nav2 : controller → velocity_smoother → collision_monitor ── /cmd_vel ──► pont_g1 (g1_bridge)
+                                                                            │ ▲
+     /reperage/etat (repéré ?), /guide/stop, /pont/arret ──────────────────►│ │ /api/sport/response
+                                                    /api/sport/request 7105 ▼ │
+                                                  service sport : vrai G1, ou g1_jumeau ──► /g1_jumeau/cmd_vel ──► Gazebo
+
+Atelier « Repérer le robot » ── POST /api/robot/reperer ──► /reperage/demander ──► odom_vers_tf (g1_nav)
+odom_vers_tf ── 1804 sur /api/slam_operate/request ──► slam_operate (vrai, ou faux_slam --jumeau)
+slam_operate ── /unitree/slam_relocation/odom, /unitree/slam_relocation/points ──► odom_vers_tf
+robot ── /state_estimator/odom_pelvis ──► odom_vers_tf ──► TF odom → base_link, /odom
+odom_vers_tf ──► TF map → odom (correction), /points (repère lidar), /reperage/etat
+```
+
+### 10.2 Le conteneur du Jetson (agent Jetson)
+
+**Choix validé : l'image officielle multi-architecture `ros:humble-ros-base-jammy`** (Ubuntu 22.04, amd64 et arm64/v8 ; vérifié le 25/10 avec `docker manifest inspect ros:humble-ros-base`). Raisons :
+- le Jetson (L4T R35.3.1, noyau 5.10 aarch64, Docker 24.0.7) fait tourner n'importe quel espace utilisateur Ubuntu 22.04 arm64 ;
+- Nav2, `rmw_cyclonedds_cpp` et `pointcloud_to_laserscan` existent en paquets apt arm64 pour Humble. L'image `dustynv/ros:humble-ros-base-l4t-r35.3.1` compile ROS depuis les sources, sans paquets apt ROS : il faudrait y compiler Nav2 (des heures, et sous émulation sur le PC) ;
+- la navigation n'a pas besoin du GPU. La vision (YOLO) aura plus tard sa propre image L4T (dustynv), reliée par DDS ;
+- un seul `Dockerfile` pour le PC (amd64, critère 16) et pour le Jetson (arm64). L'image arm64 se construit sur le PC par émulation (qemu et binfmt installés) avec le constructeur classique : `docker build --platform linux/arm64`. Essayé le 25/10 sur une petite image : `uname -m` donne `aarch64`. `buildx` n'est pas installé et n'est pas nécessaire.
+
+**Image `g1-jetson:<arch>`** (étiquettes `amd64` et `arm64`) :
+- base `ros:humble-ros-base-jammy` ; apt : `ros-humble-rmw-cyclonedds-cpp`, `ros-humble-navigation2` et `ros-humble-nav2-simple-commander`, `ros-humble-pointcloud-to-laserscan`, `python3-numpy`, `python3-yaml`, `iproute2`. Ni Gazebo, ni `ros_gz`, ni RViz, ni `g1_sim`, ni `g1_jumeau` ;
+- compilés par colcon dans `/opt/g1/install` : **`unitree_api` seul** (depuis `third_party/unitree_ros2/cyclonedds_ws/src/unitree/unitree_api` : `unitree_go` et `unitree_hg` ne servent pas et rallongeraient beaucoup la construction sous émulation), `g1_nav`, `g1_bridge` ;
+- Python : `atelier/__init__.py`, `atelier/lieu/`, `atelier/scan/__init__.py` et `atelier/scan/slam_client.py`, copiés dans `/opt/g1/python` (sur le `PYTHONPATH`). `atelier.lieu` n'a besoin que de numpy et PyYAML, et `slam_client` n'importe le SDK Unitree qu'à l'appel : le conteneur s'en passe ;
+- `/opt/g1/VERSION` : date de construction et commit Git ;
+- contexte de construction assemblé par `g1-jetson` dans un dossier temporaire : jamais tout le dépôt, car `.venv-projet` pèse plusieurs gigaoctets.
+
+**Lancement** (fixé par `g1-jetson demarrer`) :
+
+```
+docker run -d --name g1-jetson --network host --init --restart no --stop-timeout 20 \
+  --user <uid>:<gid> --cpus 4 --memory 4g \
+  -e ROS_DOMAIN_ID=0 -e G1_INTERFACES=auto -e G1_LIEU=<id> -e G1_ETAGE=<etage> -e G1_LANCEMENT=navigation \
+  -v ~/robot-g1/lieux:/lieux:ro -v ~/robot-g1/journaux/jetson:/journaux \
+  g1-jetson:arm64
+```
+
+Réseau de l'hôte (DDS sans traduction d'adresses), aucun redémarrage automatique (on ne relance pas une navigation sans un humain), pas de `--privileged`, lieux en lecture seule. Essai sur le PC (`--local`) : image `amd64`, nom `g1-jetson-local` (`G1_JETSON_NOM` le change ; tests : `g1-jetson-e2e-<domaine>`), `ROS_DOMAIN_ID` du terminal, `G1_INTERFACES=defaut`, lieux de `$ATELIER_LIEUX`, journaux dans `~/robot-g1/journaux/jetson_local/`.
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `ROS_DOMAIN_ID` | 0 | le robot publie sur le domaine 0 |
+| `RMW_IMPLEMENTATION` | `rmw_cyclonedds_cpp` | fixé dans l'image |
+| `G1_INTERFACES` | `auto` | `auto` : l'interface qui a une adresse 192.168.123.x (réseau interne du robot), sinon le conteneur s'arrête (code 1, « réseau du robot introuvable ») ; `defaut` : pas de `CYCLONEDDS_URI`, CycloneDDS choisit comme l'hôte (essais sur le PC) ; sinon des noms séparés par des virgules |
+| `G1_WIFI` | vide | option : interface Wi-Fi ajoutée pour joindre l'Atelier sans câble, multicast désactivé dessus |
+| `G1_PAIRS` | vide | adresses unicast des pairs DDS sur le Wi-Fi (le PC de l'Atelier), séparées par des virgules ; avec des pairs, `MaxAutoParticipantIndex` vaut 100 (Nav2 lance une quinzaine de processus) |
+| `G1_LANCEMENT` | `navigation` | `navigation` : `ros2 launch g1_nav navigation.launch.py lieu:=/lieux/$G1_LIEU etage:=$G1_ETAGE simu:=$G1_SIMU localisation:=$G1_LOCALISATION` ; `veille` : le nœud de présence seul ; `commande` : la commande donnée après le nom de l'image (mise au point) |
+| `G1_LIEU`, `G1_ETAGE` | — | obligatoires avec `navigation` ; le lieu est un dossier de `/lieux` |
+| `G1_LOCALISATION` | `unitree` | `unitree` ou `amcl` (`simu` est refusé dans le conteneur) |
+| `G1_SIMU` | `false` | `true` : temps simulé, pour la répétition avec Gazebo sur l'hôte (critère 19 avec `E2E_CONTENEUR=1`) |
+| `ATELIER_LIEUX` | `/lieux` | fixé dans l'image |
+| `ROS_HOME`, `ROS_LOG_DIR` | `/journaux/ros`, `/journaux/ros/log` | journaux ROS dans le dossier monté |
+| `CYCLONEDDS_URI` | généré | `file:///tmp/cyclonedds.xml`, écrit au démarrage depuis `cyclonedds.xml.modele` ; `G1_CYCLONEDDS_URI` le remplace tel quel |
+
+**Démarrage** (`docker/demarrer.sh`, point d'entrée de l'image) :
+1. il choisit les interfaces et écrit la configuration CycloneDDS ;
+2. il charge `/opt/ros/humble` et `/opt/g1/install` ;
+3. il écrit une ligne `g1-jetson : domaine N, interfaces …, lieu …, lancement …` ;
+4. il lance toujours `docker/presence.py`, qui publie `/g1_jetson/etat` (std_msgs/String JSON, 1 Hz : `{version, image, arch, domaine, interfaces, lancement, lieu, etage, depuis_s}`) ;
+5. il lance enfin ce que demande `G1_LANCEMENT`.
+
+SIGTERM (`docker stop`) devient SIGINT pour `ros2 launch`, avec 15 s pour s'arrêter proprement (le pont envoie un arrêt en quittant).
+
+**`bin/g1-jetson`** (alias `gl-jetson`). Codes de sortie : 0 réussi, 1 échec (message en français qui dit quoi faire), 2 commande mal tapée. Hôte par défaut : `unitree@192.168.123.164` (`G1_JETSON`). Avec `G1_SLAM_FAUX=1` (tous les tests), toute commande vers le Jetson (ssh, scp) est refusée.
+
+| Commande | Rôle |
+|---|---|
+| `g1-jetson construire [--arch arm64\|amd64] [--sans-cache]` | construit `g1-jetson:<arch>` (`arm64` par défaut : par émulation, 30 à 60 min la première fois ; `amd64` pour les essais sur le PC) |
+| `g1-jetson envoyer` | robot : `docker save g1-jetson:arm64 \| gzip`, copie par scp, puis `docker load` sur le Jetson |
+| `g1-jetson lieu --lieu L` | robot : copie le dossier du lieu, sans `scans/`, dans `~/robot-g1/lieux/<id>` du Jetson |
+| `g1-jetson demarrer --lieu L --etage E [--local] [--localisation unitree\|amcl] [--veille] [--wifi IFACE --pair IP]` | lance le conteneur (sur le robot, le lieu est d'abord copié) ; rend la main quand il tourne (30 s au plus) |
+| `g1-jetson arreter [--local]` | `docker stop` (arrêt propre), puis `docker rm` |
+| `g1-jetson etat [--local] [--json]` | conteneur, image, lieu, interfaces, dernier `/g1_jetson/etat` ; code 0 s'il tourne, 1 sinon |
+| `g1-jetson journal [--local] [-f]` | `docker logs` |
+| `g1-jetson verifier` | robot : Docker, architecture, place libre, mémoire, interface 192.168.123.x, puis un conteneur en veille qui doit voir `/state_estimator/odom_pelvis` et `/lf/sportmodestate` |
+
+Fichiers : `docker/Dockerfile`, `docker/demarrer.sh`, `docker/cyclonedds.xml.modele`, `docker/presence.py`, `docker/jetson.py` (le code de `g1-jetson`, Python du système, sans ROS), `docker/LISEZMOI.md`, `docker/tests/` (lancés par `.venv-projet/bin/python -m pytest docker/tests`), `bin/g1-jetson`, `bin/gl-jetson`. L'archive pour le Jetson est dans `~/robot-g1/opt/jetson/` (ignoré par Git).
+
+### 10.3 Le pont (agent Pont et faux G1)
+
+Paquet `ws/src/g1_bridge` (ament_python), exécutable `pont` (`g1_bridge.pont:main`), nœud `pont_g1`, réglages `config/pont.yaml` (installé dans `share/g1_bridge/config`). Dépendances : rclpy, geometry_msgs, std_msgs, unitree_api. Lancé par `navigation.launch.py` quand `pont` est vrai (10.7).
+
+| Sujet | Type | Sens | Rôle |
+|---|---|---|---|
+| `/cmd_vel` | geometry_msgs/Twist | entrée | consigne de Nav2 (sortie du collision_monitor), ou de la téléopération en répétition |
+| `/api/sport/request` | unitree_api/msg/Request | sortie | ordres 7105 (SetVelocity) |
+| `/api/sport/response` | unitree_api/msg/Response | entrée | réponses, appariées par `header.identity.id` (les autres clients du robot y répondent aussi) |
+| `/reperage/etat` | std_msgs/String (JSON, schéma `etat_reperage`) | entrée | `repere` : le mouvement n'est permis que si le robot est repéré |
+| `/guide/stop` | std_msgs/Empty | entrée | arrêt immédiat, puis `/cmd_vel` ignoré 1 s |
+| `/pont/arret` | std_msgs/Bool | entrée | `true` : arrêt verrouillé ; `false` : déverrouillé. QoS fiable, transient_local, profondeur 1, **pour l'abonné comme pour chaque publieur** : un publieur volatile ne serait pas entendu (règle DDS), et le verrou survit ainsi à un redémarrage du pont. En ligne de commande : `ros2 topic pub --once --qos-durability transient_local --qos-reliability reliable /pont/arret std_msgs/msg/Bool "{data: true}"` |
+| `/pont/etat` | std_msgs/String (JSON, schéma `etat_pont`) | sortie | 2 Hz et à chaque changement d'état |
+
+**La requête**, remplie exactement comme `LocoClient::SetVelocity` de `unitree_ros2` (`g1_loco_client.hpp`, `base_client.hpp`) et `LocoClient.SetVelocity` du SDK Python :
+- `header.identity.id` : `time.monotonic_ns()` (l'équivalent de `GetSystemUptimeInNanoseconds`), strictement croissant ;
+- `header.identity.api_id` : 7105 ; `header.lease.id` : 0 ; `header.policy.priority` : 0 ; `header.policy.noreply` : false ;
+- `parameter` : `json.dumps({"velocity": [vx, vy, wz], "duration": d})`, en flottants. C'est le texte du SDK Python ; nlohmann (C++) trie les clés, mais les deux se lisent pareil ;
+- `binary` : vide ; QoS des requêtes : fiable, volatile, profondeur 10 (l'exemple C++ utilise `QoS(1)`). Les réponses sont écoutées en best_effort, qui s'accorde avec un émetteur fiable comme best_effort. Même règle pour `/api/slam_operate/*` (10.5) ;
+- **arrêt** : `{"velocity": [0.0, 0.0, 0.0], "duration": 1.0}`, c'est-à-dire `StopMove` du SDK.
+
+**Règles** (valeurs de `atelier.lieu.robot`, reprises par `config/pont.yaml`) :
+1. **Plafonds** : chaque composante est ramenée à |vx| ≤ 0,4 m/s, |vy| ≤ 0,25 m/s, |wz| ≤ 0,6 rad/s, avec son signe. Une valeur non finie (NaN, infini) fait de toute la consigne un arrêt. Les plafonds sont durs : le nœud refuse de démarrer avec un réglage plus haut.
+2. **Consigne fraîche** (dernier `/cmd_vel` il y a moins de 0,3 s) : envoyée à 10 Hz avec `duration` 0,5 s. Une consigne nulle (toutes les composantes sous 1e-3) part au format de l'arrêt.
+3. **Plus de `/cmd_vel` depuis 0,3 s** : un arrêt tout de suite, sans attendre le prochain envoi, puis plus rien. Au repos, le pont n'envoie rien en continu.
+4. **`/guide/stop`** : arrêt immédiat ; `/cmd_vel` ignoré pendant 1 s (état `arret`).
+5. **`/pont/arret` true** : arrêt immédiat, envoyé 3 fois en 0,2 s ; état `arret_verrouille` ; `/cmd_vel` ignoré jusqu'à `/pont/arret` false. Ensuite, le mouvement ne reprend qu'avec un `/cmd_vel` reçu après le déverrouillage.
+6. **Repérage exigé** (paramètre `exiger_reperage`, vrai par défaut) : le mouvement n'est permis que si le dernier `/reperage/etat` date de moins de 1 s et a `repere` vrai. Sinon `/cmd_vel` est ignoré, et un arrêt part si le robot bougeait. `exiger_reperage:=false` ne sert qu'aux essais au portique (10.9).
+7. **Robot muet** : si les requêtes envoyées n'ont reçu aucune réponse depuis 1 s, l'état passe à `robot_muet`. Le pont continue d'envoyer la consigne fraîche ; le robot, lui, s'arrête seul à la fin de `duration`. On revient à la normale dès qu'une réponse arrive, et le mouvement ne reprend qu'avec un `/cmd_vel` frais.
+8. **Refus** : si une réponse a `status.code` ≠ 0, l'état passe à `refus`, avec le code et un message, par exemple « Le robot refuse de marcher (code 7301) : mettez-le en mode marche avec la télécommande ».
+9. **Au lancement** : un arrêt, qui vérifie le lien (état `demarrage` jusqu'à la réponse, `robot_muet` après 1 s sans réponse). **À la sortie** (Ctrl+C, SIGTERM) : un arrêt, envoyé avant de quitter.
+10. Tous les délais du pont comptent en temps mural monotone, jamais en temps simulé. Le pont ne publie jamais sur `/cmd_vel` ni sur un sujet de Gazebo.
+
+`config/pont.yaml` : `vx_max` 0,4, `vy_max` 0,25, `wz_max` 0,6, `duree_consigne` 0,5, `duree_arret` 1,0, `delai_cmd_vel` 0,3, `frequence` 10,0, `garde_stop` 1,0, `exiger_reperage` true, `delai_reperage` 1,0, `delai_muet` 1,0, `sujet_requete` `/api/sport/request`, `sujet_reponse` `/api/sport/response`. Un test vérifie qu'ils valent les constantes de `atelier.lieu.robot`. Les autres sujets du pont et du repérage (`/cmd_vel`, `/pont/etat`, `/reperage/*`, `/guide/*`) gardent la QoS par défaut de ROS 2 (fiable, volatile, profondeur 10).
+
+### 10.4 Le faux G1, pour la répétition dans Gazebo (agent Pont et faux G1)
+
+**`g1_sim` reçoit l'argument `jumeau:=true|false`** (défaut `false` : comportement actuel, octet pour octet). Avec `true`, le robot proxy n'est plus relié à `/cmd_vel`, `/odom` ni `/tf`, car sur le vrai robot ce sont le pont et le relais qui les tiennent. Un seul booléen plutôt qu'un nom de sujet de vitesse : l'odométrie, le TF et le nuage de Gazebo doivent changer de nom en même temps, sinon ils entreraient en conflit avec le relais (10.5).
+
+| Sujet Gazebo | ROS 2, `jumeau:=false` | ROS 2, `jumeau:=true` (`config/pont_gz_jumeau.yaml`) |
+|---|---|---|
+| `/model/g1_proxy/cmd_vel` | `/cmd_vel` | `/g1_jumeau/cmd_vel` |
+| `/model/g1_proxy/odometry` | `/odom` | `/g1_jumeau/odom` : la **vérité terrain** (repère du monde Gazebo = map) |
+| `/model/g1_proxy/tf` | `/tf` (odom → base_link) | non relié |
+| `/model/g1_proxy/lidar/points` | `/points` | `/g1_jumeau/points` (repère `lidar`) |
+| `/clock` | `/clock` | `/clock` |
+
+`robot_state_publisher` (base_link → lidar) tourne dans les deux cas. Avec `jumeau:=true`, `simulation.launch.py` lance aussi le nœud `g1_jumeau`. `g1-monde simuler … --jumeau` passe l'argument.
+
+**Paquet `ws/src/g1_jumeau`** (ament_python), exécutable `jumeau` (`g1_jumeau.jumeau:main`), nœud `g1_jumeau` : le faux service `sport` du G1.
+
+| Sujet | Type | Sens | Rôle |
+|---|---|---|---|
+| `/api/sport/request` | unitree_api/msg/Request | entrée | comme le vrai service |
+| `/api/sport/response` | unitree_api/msg/Response | sortie | `header.identity` recopié de la requête (id, api_id), `status.code` 0, `data` vide. Api inconnue : 3203 ; paramètres illisibles : 3204 ; panne `refus` : 7301 |
+| `/g1_jumeau/cmd_vel` | geometry_msgs/Twist | sortie | vers Gazebo, à 20 Hz, toujours : la consigne valide, sinon zéro |
+| `/g1_jumeau/odom` | nav_msgs/Odometry | entrée | vérité terrain de Gazebo |
+| `/state_estimator/odom_pelvis` | nav_msgs/Odometry | sortie | comme le vrai : au rythme de `/g1_jumeau/odom` (50 Hz), `frame_id` `odom`, `child_frame_id` `pelvis`, z 0,75 m. Origine : la pose du robot au lancement. **Dérive** : déplacements comptés 2 % trop longs, et 0,01 rad de lacet ajouté par mètre parcouru (`DERIVE_ECHELLE`, `DERIVE_LACET_PAR_M`). Vitesses (twist) dans le repère du robot, sans dérive |
+| `/g1_jumeau/panne` | std_msgs/String (fiable, volatile) | entrée | `aucune` ; `muet` : ne répond plus et n'applique plus rien, comme un câble coupé (la consigne en cours expire normalement) ; `refus` : répond 7301 sans bouger |
+| `/g1_jumeau/etat` | std_msgs/String (JSON) | sortie | 2 Hz, pour les tests : `{version, panne, consigne: {vx, vy, wz}, reste_s, requetes, appliquees}` |
+
+- 7105 : `parameter` `{"velocity": [vx, vy, wz], "duration": d}`. La consigne est appliquée telle quelle jusqu'à t + d, en temps mural. Le faux G1 n'a pas de plafond à lui : le vrai robot a les siens, plus hauts que ceux du pont.
+- **VelocityControl garde sa dernière consigne** : le faux G1 publie zéro à l'expiration, au lancement, en panne `muet` ou `refus`, et en quittant (SIGINT, SIGTERM). Un SIGKILL du faux G1 laisse la dernière consigne dans Gazebo : c'est une limite de la simulation (le vrai robot, lui, s'arrête seul), et le critère 20 ne tue donc le faux G1 que par SIGTERM.
+
+### 10.5 Le repérage et les repères (agent Repérage)
+
+**Les repères**, selon l'argument `localisation` de `navigation.launch.py` :
+
+| Transformation ou sujet | `simu` | `unitree` (répétition et robot) | `amcl` (secours) | `externe` |
+|---|---|---|---|---|
+| map → odom | statique, identité | `odom_vers_tf` : correction issue de la relocalisation, à 20 Hz, seulement une fois repéré | `nav2_amcl` | un autre programme |
+| odom → base_link | Gazebo | `odom_vers_tf`, depuis `/state_estimator/odom_pelvis` | `odom_vers_tf`, depuis `/state_estimator/odom_pelvis` | un autre programme |
+| base_link → lidar | `g1_sim` | répétition : `g1_sim` ; robot : `navigation.launch.py`, statique (−0,004 ; 0 ; 1,245), sans rotation, à vérifier | idem | un autre programme |
+| map → carte_unitree | — | `odom_vers_tf`, statique : `repere_unitree` (pour RViz) | — | — |
+| `/odom` | Gazebo | `odom_vers_tf` (odom → base_link, twist de l'odométrie) | `odom_vers_tf` | un autre programme |
+| `/points` (repère `lidar`) | Gazebo | `odom_vers_tf`, depuis `/unitree/slam_relocation/points` | répétition : `/g1_jumeau/points` recopié ; robot : à déterminer (10.9) | un autre programme |
+
+**Le choix de l'odométrie locale et de la correction** (REP-105) : `odom → base_link` vient de `/state_estimator/odom_pelvis`, l'odométrie continue du robot (jambes et centrale inertielle), sans saut. MPPI et la carte des coûts locale, qui travaillent dans `odom`, restent donc lisses. La relocalisation d'Unitree, plus lente et qui peut sauter, ne corrige que `map → odom`. Si elle s'arrête, le repère local reste valable et le pont arrête le robot (`perdu`). Le relais de la vague 1, qui publiait `odom → base_link` directement depuis la relocalisation, est remplacé.
+
+**Le repère d'Unitree** (`atelier.lieu.repere_unitree(lieu, etage)`, en-tête de `atelier/lieu/robot.py`) est la pose, dans le repère map de l'étage, de l'origine de la carte d'Unitree. Cette origine est le départ du scan ; c'est aussi **la marque au sol** où l'on pose le robot. On a `pose_map = repere ∘ pose_unitree`. Valeur :
+- le champ `repere_unitree` de l'étage dans `lieu.yaml` s'il existe ;
+- sinon (0, 0, 0) si `source_carte: scan` : la carte vient du scan, dans son repère ;
+- sinon `depart_robot` du monde de l'étage. **C'est le décalage figé de la répétition** : il imite un scan commencé au départ du robot, là où le robot proxy apparaît dans Gazebo. Pour le demo : (2,5 ; 10 ; 0).
+
+Le relais, le faux service et le serveur passent tous par cette fonction et par `atelier.lieu.conversions` : il n'y a qu'une façon de changer de repère. Le critère 18 essaie aussi un `repere_unitree` tourné (3 ; 9 ; 0,5). Adopter un scan du vrai robot (`g1-scan adopter`) laisse `repere_unitree` absent, donc l'identité (à vérifier en 10.9).
+
+**`g1_nav/odom_vers_tf.py`**, nœud `odom_vers_tf` : relais de position et repérage. Le code de l'envoi de 1804 est dans le nouveau module `g1_nav/reperage.py`.
+- **Entrées** (paramètres) : `relocalisation` (`/unitree/slam_relocation/odom`), `odometrie` (`/state_estimator/odom_pelvis`), `nuage` (`/unitree/slam_relocation/points`). Les trois sont écoutés en best_effort (`qos_profile_sensor_data`), qui s'accorde avec un émetteur fiable comme avec un best_effort. Autres paramètres : `localisation` (`unitree` ou `amcl`), `repere_unitree` (`[x, y, theta]`), `carte` (nom du .pcd pour 1804 : `carte_pour_reperage`), `lieu`, `etage`, `horodatage` (`local` par défaut, ou `message`), `points_repere` (`auto`, `carte` ou `capteur`), `pose_suivi` (`[x, y, theta]` du repère suivi par la relocalisation dans base_link, (0, 0, 0) par défaut), `pose_capteur` (pour `points_repere: capteur`), `z_carte_unitree` (hauteur de l'origine du repère d'Unitree au-dessus du sol, en mètres : 0 en répétition ; sur le robot, sans doute la hauteur du capteur au départ du scan, à vérifier).
+- **Au sol** : chaque pose reçue est ramenée à x, y et un cap. Le cap est celui de l'axe x tourné, ce qui marche aussi avec un capteur monté à l'envers. z, le roulis et le tangage valent 0 (base_link est au sol).
+- **Correction** : à chaque relocalisation R (instant t), `P_map = repere ∘ R ∘ inverse(pose_suivi)`. L'odométrie O de l'instant t est le message le plus proche dans un tampon de 2 s, ou le dernier si les horodatages ne se comparent pas. Puis `map → odom = P_map ∘ inverse(O)`, republié à 20 Hz. Une correction de plus de 0,5 m ou 0,3 rad compte comme un saut (`sauts`). Elle est appliquée quand même.
+- **Horodatage `local`** : TF, `/odom` et `/points` portent l'heure du relais (`now()`, temps simulé en répétition), pour ne pas dépendre du décalage d'horloge entre le PC1 du robot et le Jetson. L'appariement relocalisation ↔ odométrie, lui, utilise les horodatages des messages, qui viennent tous deux du robot.
+- **Nuage** : avec `points_repere: auto`, un nuage dont le `frame_id` est `map`, `odom`, `world`, `camera_init` ou celui de la relocalisation est dans le repère d'Unitree. Il est ramené dans `lidar` par `inverse(map → lidar) ∘ (map → carte_unitree)`, où map → carte_unitree vaut `repere_unitree` et la hauteur `z_carte_unitree`, et publié sur `/points` (best_effort, 10 Hz au plus), comme le nuage de Gazebo en simulation. Sinon (`capteur`), ses points sont placés par `pose_capteur` dans `lidar`.
+- **`/reperage/etat`** (schéma `etat_reperage`, 5 Hz et à chaque changement) ; **`/reperage/demander`** (schéma `demande_reperage`).
+
+**Le repérage** (localisation `unitree`), à chaque `/reperage/demander` `{id, x?, y?, theta?}` (une nouvelle demande remplace celle en cours) :
+1. Pose annoncée P (repère map) : celle de la demande, sinon la marque au sol. Pose U = `carte_vers_unitree(P, repere)`. Sans carte, `echec` : « Ce lieu n'a pas de carte enregistrée sur le robot : faites d'abord un scan avec le robot (onglet Scan) ».
+2. Envoi de 1804 **en ROS 2** sur `/api/slam_operate/request` : unitree_api/Request rempli comme le pont (identity, api_id 1804), `parameter` = `json.dumps(slam_client.parametres_relocaliser(U.x, U.y, U.theta, carte))`. Les formats non vérifiés restent dans `atelier/scan/slam_client.py`, et nulle part ailleurs.
+3. Réponse attendue 10 s au plus sur `/api/slam_operate/response`, avec le même id, et lue par `slam_client.lire_reponse`. Sans réponse, `echec` : « Le service de cartographie du robot ne répond pas : vérifiez que unitree_slam est activé dans l'appli Unitree ». Si elle est refusée, `echec` avec son `info`.
+4. Une relocalisation reçue après la réponse, en moins de 15 s depuis la demande ; sinon `echec` : « Le robot n'a pas réussi à se repérer : vérifiez qu'il est sur la marque, tourné dans le bon sens, puis recommencez ».
+5. Pose trouvée à plus de 1,0 m ou 0,5 rad de P : `echec`, « le robot s'est repéré à X m de la position annoncée » ; `map → odom` n'est pas publié.
+6. Sinon `repere` : `map → odom` est publié, avec le message « Robot repéré (précision N cm) ». `precision_m` = √((cov[0] + cov[7]) / 2) de la relocalisation, ou null si la covariance est nulle.
+7. Une fois repéré : plus de relocalisation depuis 3 s donne `perdu`. Le dernier `map → odom` reste publié, mais `repere` est faux et le pont arrête le robot. L'état revient seul à `repere` quand la relocalisation reprend. Un `echec` après une réussite arrête la publication de `map → odom`.
+
+**`amcl`** (secours, « notre carte et le LiDAR ») : `nav2_amcl` (`config/amcl_g1.yaml`) sur un `/scan` tiré de `/points` par `pointcloud_to_laserscan` (tranche de 0,1 à 1,5 m). Le repérage publie `/initialpose` (σ 0,25 m et 0,2 rad), et l'état passe à `repere` quand l'écart-type d'AMCL descend sous 0,15 m (15 s au plus). Il passe à `perdu` au-dessus de 0,5 m. Essayé en répétition seulement.
+
+**`externe`** : `navigation.launch.py` ne lance aucune localisation, et un autre programme fournit `map → odom → base_link` et `/reperage/etat`. C'est le cas du relais simple du critère 17, et ce sera celui d'une autre localisation plus tard.
+
+### 10.6 Le faux service slam_operate en répétition (agent Repérage)
+
+`atelier/scan/faux_slam.py`, lancé par `g1-slam faux-service --jumeau --lieu L --etage E` :
+- en plus du serveur du SDK sur `lo` (inchangé, pour `g1-slam --faux`), un **frontal ROS 2** dans le nœud `faux_slam` : il écoute `/api/slam_operate/request` (unitree_api/Request), traite chaque requête par le même `_traiter(api, parameter)`, et publie `/api/slam_operate/response` (identity recopiée, `status.code` = code RPC, `data` = texte JSON) ;
+- le robot est la vérité terrain `/g1_jumeau/odom`, et le nuage `/g1_jumeau/points` (LiDAR à (−0,004 ; 0 ; 1,245) dans base_link). Il ne publie jamais de vitesse, et refuse 1102 (code `ERREUR_DEROULE` : « pas de 1102 en répétition du niveau 2 : la navigation passe par Nav2 ») ;
+- son repère d'Unitree est `repere_unitree(lieu, etage)`, celui du relais. Cartes connues : `carte_unitree` du lieu et `repetition.pcd` ;
+- **1804** : une `address` inconnue donne `ERREUR_CARTE`. Si la pose initiale, ramenée dans map, est à plus de 1,0 m ou 0,5 rad de la vérité, c'est un refus avec le nouveau code `ERREUR_RELOCALISATION` = 5 (« relocalisation impossible : le robot n'est pas à la position donnée »). Sinon, il se repère ;
+- une fois repéré, à 10 Hz :
+  - **`/unitree/slam_relocation/odom`** : `frame_id` `map`, `child_frame_id` `body` ; pose = vérité exprimée dans le repère d'Unitree (`carte_vers_unitree`), z 1,245 ; covariance diagonale 0,0004 (x, y) et 0,0001 (lacet) ; twist nul ;
+  - **`/unitree/slam_relocation/points`** : le dernier `/g1_jumeau/points`, placé dans le repère d'Unitree par la vérité à son instant, `frame_id` `map` ;
+  - `/slam_info` (`pos_info`, repère d'Unitree), comme aujourd'hui ;
+- rien sur ces deux sujets avant le premier 1804 réussi, après un 1804 refusé ou après 1901 ; horodatage : celui des messages de Gazebo ;
+- options `--retard S` (latence) et `--bruit M` (σ de position), nulles par défaut ; `/faux_slam/panne` (std_msgs/String, fiable, volatile) : `aucune` ou `muet` (il ne publie plus la relocalisation : essais de `perdu`).
+
+### 10.7 Le lancement de la navigation (agent Repérage)
+
+```
+ros2 launch g1_nav navigation.launch.py lieu:=DOSSIER etage:=ID simu:=true|false moteur:=nav2|unitree|factice
+    [localisation:=simu|unitree|amcl|externe] [pont:=auto|true|false]
+```
+
+| Argument | Défaut | Rôle |
+|---|---|---|
+| `localisation` | vide : `simu` si `simu:=true`, `unitree` sinon | 10.5 |
+| `pont` | `auto` : vrai sauf avec `localisation:=simu` | lance `g1_bridge` (`pont_g1`, `config/pont.yaml`). Si le paquet manque alors qu'il le faut, le lancement s'arrête avec un message |
+
+- Réglages de Nav2 : `nav2_g1_simu.yaml` avec `localisation:=simu`, `nav2_g1_reel.yaml` sinon, même en répétition (vitesses du robot) ; `use_sim_time` = `simu`.
+- Avec `unitree` : `odom_vers_tf`, avec ses paramètres lus dans le lieu (`repere_unitree`, `carte_pour_reperage(lieu, repetition)` ; `repetition` = `simu:=true`) ; sur le robot (`simu:=false`), en plus, le TF statique base_link → lidar.
+- `g1-guide navigation` : options `--localisation simu|unitree|amcl|externe` et `--pont auto|oui|non`.
+- **Défauts de la vague 1 corrigés dans le guide** : si Nav2 n'est pas encore actif (serveur d'action absent), le guide passe à `attente`, avec le `message` « La navigation démarre : départ dès qu'elle est prête », et réessaie à chaque pas pendant 90 s au plus avant `echec`. Sans TF map → base_link, si le dernier `/reperage/etat` dit `repere` faux, c'est `echec` tout de suite : « Robot non repéré : cliquez sur « Repérer le robot » » ; sinon il attend comme pour Nav2. `/guide/etat` reçoit un champ facultatif `message` (texte en français), ajout rétrocompatible au contrat 4.2.
+
+### 10.8 L'API et l'interface de l'Atelier (agent Repérage)
+
+| Route | Corps | Réponse |
+|---|---|---|
+| `POST /api/simulation/demarrer` | `{lieu, etage, fenetre?, navigation?, mode?}` | `mode` (champ ajouté, `simu` par défaut) : `simu` ne change pas. `repetition` lance trois rôles : `simulation` (`g1-monde simuler --jumeau --sans-fenetre`), `faux_slam` (`g1-slam faux-service --jumeau --lieu L --etage E`) et `navigation` (`g1-guide navigation --simu --localisation unitree`). `robot` lance le rôle `navigation` : `g1-jetson demarrer --lieu L --etage E`. 409 sans câble (carrier de `ATELIER_INTERFACE_ROBOT`), ou si le serveur n'a pas été lancé dans un terminal relié au robot (`source setup/robot.sh` : `CYCLONEDDS_URI` sur cette interface, domaine 0). Dans les modes `repetition` et `robot`, aucune vitesse ne va directement à Gazebo |
+| `POST /api/simulation/arreter` | | arrête tous les rôles ; en mode robot, par `g1-jetson arreter` |
+| `GET /api/robot/etat` | | `{mode, lieu, etage, localisation, repere, etat, position: {x, y, theta} \| null, precision_m, age_s, message, marque: {x, y, theta}, pont: dernier /pont/etat \| null, reperage: dernier /reperage/etat \| null}`. `mode` vaut null si aucune navigation ne tourne |
+| `POST /api/robot/reperer` | `{lieu, etage, x?, y?, cap?}` (repère map, cap en radians ; sans eux : la marque au sol, (0, 0, 0) dans le repère d'Unitree) | publie `/reperage/demander` (nouvel id ; `cap` devient `theta`) et attend 25 s au plus le `/reperage/etat` de cette demande. Repéré : 200 et l'état de `GET /api/robot/etat` ; `echec` : 502, avec le message du relais en `detail` ; rien : 504 ; 409 en mode simu, sans navigation, ou pour un autre lieu ou étage ; 400 si x, y et cap ne sont pas donnés ensemble ; 503 sans pont ROS 2 |
+| `POST /api/robot/arret` | `{verrou: bool}` | publie `/pont/arret` ; `{verrou, pont}` |
+| `POST /api/guide/aller` | | en `repetition` et `robot` : 409 « Repérez d'abord le robot » si l'état n'est pas repéré |
+| `POST /api/simulation/teleop` | | en `repetition` : permise, elle passe par `/cmd_vel` puis le pont ; en `robot` : 409, comme avant |
+| `/ws/etat` | | en plus : `mode`, `reperage`, `pont`. `robot` est la pose de `/reperage/etat` quand il est reçu, sinon `/odom` comme avant (en répétition, `/odom` est l'odométrie du relais, pas une position sur la carte) |
+
+**Onglet Simulation** :
+- un choix du mode : « Simulation », « Répétition sans robot » ou « Robot » ; ce dernier demande une confirmation, comme pour le scan (câble, télécommande en main) ;
+- en répétition et en mode robot, un panneau « Repérage » :
+  - la consigne « Posez le robot sur la marque au sol (croix sur la carte), tourné dans le sens de la flèche » ;
+  - le gros bouton **« Repérer le robot »**, et le lien « Le robot n'est pas sur la marque », qui permet de cliquer sa position sur la carte puis de glisser vers son orientation ;
+  - l'état : « Repéré », avec la précision et l'âge ; « Non repéré » ; « Repérage perdu » ; ou un échec avec son message ;
+  - la pastille du pont, avec son état et son message ;
+  - les boutons « Bloquer le robot » et « Débloquer » (`/api/robot/arret`) ;
+- la marque au sol est dessinée sur la carte. « Y aller » reste grisé tant que le robot n'est pas repéré ou que Nav2 n'est pas prêt.
+
+En répétition, la vérité terrain des tests est `/g1_jumeau/odom` (repère du monde Gazebo = map) ; `/odom` est l'odométrie du relais. L'outil `pres-de` de `tests_e2e/outils_e2e.py` (qui lit `/odom`) ne convient donc pas : les critères 17 à 20 lisent `/g1_jumeau/odom`.
+
+### 10.9 Ce qui reste à vérifier sur le robot (séance d'environ 1 h 30)
+
+Aucune simulation ne garantit que le vrai robot comprend ces formats de messages (ils viennent d'un projet tiers), ni comment il réagit vraiment. Liste de la séance, robot au portique et télécommande en main :
+
+**Installation (≈ 30 min)**
+1. `ssh-copy-id unitree@192.168.123.164`, puis `g1-jetson verifier` : Docker, aarch64, place libre, mémoire, interface 192.168.123.164.
+2. `g1-jetson construire`, `envoyer`, `demarrer --veille` : depuis le conteneur Humble, on voit les sujets du robot (Foxy et SDK2) : `/state_estimator/odom_pelvis`, `/lf/sportmodestate`, et le type `unitree_api/msg/Request`.
+3. Charge du Jetson avec le conteneur : `--cpus 4 --memory 4g` suffisent-ils, et des services d'Unitree tournent-ils sur le Jetson ?
+4. Décalage d'horloge entre le PC1 (horodatage des messages du robot) et le Jetson.
+5. En option, l'Atelier par le Wi-Fi : `G1_WIFI`, `G1_PAIRS`, multicast coupé.
+
+**Pont, au portique (≈ 30 min)**
+6. Le service `sport` accepte nos requêtes ROS 2 sur `/api/sport/request` (sans bail, priorité 0). Noter le format de la réponse (code, `data`).
+7. Une consigne de 0,5 s : le robot s'arrête seul à la fin (`kill -9` du pont pendant une marche lente).
+8. L'arrêt `[0, 0, 0]` (durée 1,0) est net. 10 Hz passent sans saccade. Mesurer la latence entre l'ordre et le mouvement.
+9. Les codes de refus réels, par exemple 7301 hors du mode marche : ajuster le message.
+10. Les vitesses réelles pour 0,1 à 0,4 m/s, vy 0,25 et wz 0,6 : régler les plafonds et `nav2_g1_reel.yaml`.
+11. **La télécommande reste-t-elle prioritaire et sert-elle toujours d'arrêt d'urgence** pendant que le pont envoie ? C'est la condition pour aller plus loin.
+12. Ces essais se font avec `ros2 run g1_bridge pont --ros-args -p exiger_reperage:=false`, au portique seulement.
+
+**Repérage (≈ 30 min, le plus incertain)**
+13. 1804 envoyé en ROS 2 sur `/api/slam_operate/request` est-il accepté, sans passer par `unitree_sdk2py` ? Vérifier le format `{"data": {x, y, z, q_x, q_y, q_z, q_w, address}}`, le dossier des cartes, la réponse, et `/slam_info` après 1804.
+14. `/unitree/slam_relocation/odom` :
+    - n'est-elle publiée qu'après 1804 ? À quelle fréquence ?
+    - quels sont son `frame_id` et son `child_frame_id`, et quel point du robot suit-elle (`pose_suivi`) ?
+    - sa covariance est-elle remplie ?
+    - son repère est-il celui du scan adopté (`repere_unitree` identité), avec l'origine au départ du scan ?
+15. `/unitree/slam_relocation/points` : fréquence, repère (monde recalé ou capteur : `points_repere`), hauteur du sol dans ce repère (`z_carte_unitree`), contenu (balayage en cours ou carte). Suffit-il à l'évitement d'obstacles de Nav2 ? Sinon, trouver une autre source : MID-360 brut, `/unitree/slam_mapping/points`… C'est aussi la source de `/points` pour `amcl`.
+16. `/state_estimator/odom_pelvis` : fréquence, `frame_id`, dérive réelle, continuité. Solution de rechange : `/unitree_slam/high_rate_odometry`.
+17. Précision : robot sur la marque, « Repérer », puis écart mesuré au mètre ruban en trois endroits. Robustesse à 0,5 m ou 20° de la marque, et durée du repérage.
+18. Comportement quand la relocalisation se perd (couloir sans repères, foule).
+19. Montage du MID-360 (retourné ?) : base_link → lidar réel, et réglage de `voxel_layer` (un capteur retourné voit le sol).
+
+### 10.10 Les agents de la vague 3
+
+| Agent | Possède | Dépend de |
+|---|---|---|
+| Intégrateur | sections 4, 7, 9 et 10 du plan ; `atelier/lieu/` (dont les schémas et `robot.py`) ; `atelier/tests/test_contrats*.py` ; `tests_e2e/tout.sh`, `tests_e2e/LISEZMOI.md`, `commun.sh` ; `.gitignore`, `README.md` ; `lieux/demo` ; assemblage | — |
+| J. Jetson | `docker/` (tout), `bin/g1-jetson`, `bin/gl-jetson`, `tests_e2e/critere_16_conteneur.sh` et ses outils (`tests_e2e/outils_jetson_e2e.py`) | contrats ; `g1_nav` et `g1_bridge` pour l'image (paquets en cours : l'image se reconstruit) |
+| P. Pont et faux G1 | `ws/src/g1_bridge/`, `ws/src/g1_jumeau/` (tout) ; dans `ws/src/g1_sim/` : l'argument `jumeau`, `config/pont_gz_jumeau.yaml`, le lancement de `g1_jumeau` et leurs tests ; dans `atelier/monde/commande.py` : l'option `--jumeau` de `g1-monde simuler`, seulement ; `tests_e2e/critere_17_pont.sh`, `critere_20_securite.sh`, `tests_e2e/outils_pont_e2e.py` (dont le relais simple) | contrats ; Repérage pour le critère 20 (relais réel) |
+| R. Repérage | `ws/src/g1_nav/` sauf `moteurs.py` (`odom_vers_tf.py`, `reperage.py`, `launch/navigation.launch.py`, `guide.py`, `commande.py`, `config/amcl_g1.yaml`, `nav2_g1_reel.yaml` si besoin, tests) ; `atelier/scan/faux_slam.py`, `slam_client.py` (ajouts seulement) et l'option `faux-service --jumeau` de `atelier/scan/commande.py` ; `atelier/serveur/`, `atelier/web/` ; `atelier/tests/test_serveur_robot*.py`, `test_scan_faux_slam_ros*.py` ; `tests_e2e/critere_18_reperage.sh`, `critere_19_niveau2.sh`, `tests_e2e/outils_reperage_e2e.py` | contrats ; Pont et faux G1 pour la répétition (`--jumeau`, `g1_jumeau`, `g1_bridge`) |
+
+Règles communes (celles de la section 9.9, plus) :
+- chaque agent n'écrit que dans ce qu'il possède et demande le reste à l'intégrateur ; `atelier/lieu` et les schémas ne changent que par lui ;
+- domaines et partitions, sauf consigne contraire du lancement : Jetson 61 (`robot_61`), Pont 62 (`robot_62`), Repérage 63 (`robot_63`), y compris dans les conteneurs (réseau de l'hôte, même `ROS_DOMAIN_ID`) ; les critères se lancent avec `E2E_DOMAINE` et `E2E_PARTITION` ;
+- Gazebo sans fenêtre ; compilations dans `ws/build_<paquet>` et `ws/install_<paquet>`, jamais dans `ws/build` ;
+- **jamais rien sur eno2, jamais de ssh vers 192.168.123.x** : le vrai robot ne s'essaie qu'en répétition ;
+- à la fin, tous les processus et conteneurs lancés sont arrêtés (vérifier avec `ps` et `docker ps -a`) ; tests réels, sans écran ni robot ; une section dans `docs/journal-atelier.md`, avec la liste de ce qui reste à vérifier sur le robot ;
+- `lieux/demo` est la référence des tests : on n'y adopte pas de scan et on n'y écrit rien (voir le journal de l'intégrateur du 25/10 au soir). On travaille sur des copies.
+
+**J. Jetson.**
+1. Le `Dockerfile` multi-architecture, `demarrer.sh`, le modèle CycloneDDS (choix de l'interface 192.168.123.x, `defaut`, Wi-Fi et pairs), le nœud de présence.
+2. `g1-jetson` et ses sous-commandes (10.2), avec l'aide en français. Le code qui parle au robot (ssh, scp) est écrit et relu, mais seulement essayé à blanc : commande affichée, et refus avec `G1_SLAM_FAUX=1`.
+3. Construire l'image amd64 et la faire tourner sur le PC. Construire aussi l'image **arm64** une fois sous émulation, et y lancer les vérifications de l'image (`aarch64`, `ros2 pkg prefix`, imports) ; noter le temps de construction et la taille.
+4. Tests : `docker/tests/`, avec la génération de la configuration CycloneDDS pour de fausses sorties de `ip -o -4 addr`, les commandes `docker run` produites et les refus ; puis le critère 16.
+
+**P. Pont et faux G1.**
+1. `g1_bridge` (10.3) : la logique du pont dans une classe sans ROS, à horloge injectable, testée finement (plafonds, délais, garde, verrou, repérage, robot muet, refus), puis le nœud.
+2. `g1_jumeau` (10.4).
+3. L'argument `jumeau` de `g1_sim`, dont les tests existants doivent passer sans changement, et `g1-monde simuler --jumeau`.
+4. Tests ROS avec le faux G1 (et Gazebo pour les mesures de temps d'arrêt), puis les critères 17 et 20. Le relais simple du critère 17 (`outils_pont_e2e.py relais-simple`) publie map → odom (identité), odom → base_link depuis `/g1_jumeau/odom`, `/points` recopié de `/g1_jumeau/points` et `/reperage/etat` repéré ; il prend aussi la commande `perdre` pour les essais. Le critère 20 utilise le vrai relais et le faux slam_operate de l'agent Repérage. Tant qu'ils manquent, il répond « en attente » (code 77) ; avec `E2E_RELAIS=simple`, il tourne sur le relais simple.
+
+**R. Repérage.**
+1. Le relais et le repérage (10.5), avec la logique des repères testée sans ROS (corrections, dérive, sauts, perte, échecs), et l'envoi de 1804 en ROS 2.
+2. Le faux service en répétition (10.6).
+3. `navigation.launch.py` (10.7) et la correction du guide.
+4. L'API, l'onglet Simulation et le bouton « Repérer le robot » (10.8), avec la mise à jour du parcours navigateur.
+5. Le mode `amcl`, essayé en répétition.
+6. Les critères 18 et 19. Le 19 répond « en attente » tant que `g1_jumeau` ou `g1_bridge` manquent ; avec `E2E_CONTENEUR=1`, il fait tourner la navigation dans le conteneur, si l'agent Jetson l'a livré.
+
+### 10.11 Critères de recette de la vague 3
+
+Les critères 16 à 20 sont dans la section 7, avec les dix premiers. `tests_e2e/tout.sh` les lance (scripts `critere_16_*` à `critere_20_*`) et affiche « N / 20 ». Les critères 1 à 15 doivent toujours passer.

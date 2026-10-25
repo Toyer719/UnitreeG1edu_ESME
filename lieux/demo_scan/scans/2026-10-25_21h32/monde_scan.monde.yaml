@@ -1,0 +1,71 @@
+# Monde tiré du scan : éléments gardés de reconnaissance.yaml (atelier.lieu.monde_depuis_reconnaissance). Format : atelier/lieu/schemas/monde.schema.json.
+# Écrit par l'Atelier G1 : les commentaires ajoutés à la main ne sont pas conservés.
+version: 1
+emprise: {min: [-0.05, 0.0], max: [30.0, 20.0]}
+murs:
+- {id: mur_1, de: [29.899, 14.503], a: [29.901, 0.059], epaisseur: 0.15, hauteur: 2.54, source: scan,
+  confiance: 1.0}
+- {id: mur_2, de: [0.073, 0.096], a: [29.86, 0.098], epaisseur: 0.15, hauteur: 2.56, source: scan, confiance: 1.0}
+- {id: mur_3, de: [19.999, 4.81], a: [20.019, 0.143], epaisseur: 0.212, hauteur: 2.523, source: scan,
+  confiance: 1.0}
+- {id: mur_4, de: [9.981, 0.166], a: [10.003, 4.81], epaisseur: 0.197, hauteur: 2.505, source: scan, confiance: 1.0}
+- {id: mur_5, de: [0.073, 4.474], a: [0.078, 0.189], epaisseur: 0.133, hauteur: 2.403, source: scan, confiance: 1.0}
+- {id: mur_6, de: [0.053, 19.857], a: [0.072, 5.495], epaisseur: 0.133, hauteur: 2.568, source: scan,
+  confiance: 0.99}
+- {id: mur_7, de: [23.579, 5.575], a: [29.859, 5.574], epaisseur: 0.15, hauteur: 2.545, source: scan,
+  confiance: 1.0}
+- {id: mur_8, de: [0.158, 5.578], a: [6.433, 5.577], epaisseur: 0.15, hauteur: 2.546, source: scan, confiance: 1.0}
+- {id: mur_9, de: [7.577, 5.577], a: [14.438, 5.576], epaisseur: 0.15, hauteur: 2.542, source: scan, confiance: 1.0}
+- {id: mur_10, de: [15.578, 5.576], a: [22.438, 5.575], epaisseur: 0.15, hauteur: 2.541, source: scan,
+  confiance: 1.0}
+- {id: mur_11, de: [4.882, 8.432], a: [25.1, 8.43], epaisseur: 0.15, hauteur: 2.546, source: scan, confiance: 1.0}
+- {id: mur_12, de: [25.075, 11.449], a: [25.075, 8.546], epaisseur: 0.15, hauteur: 2.543, source: scan,
+  confiance: 0.99}
+- {id: mur_13, de: [4.925, 8.574], a: [4.925, 11.458], epaisseur: 0.15, hauteur: 2.565, source: scan,
+  confiance: 0.99}
+- {id: mur_14, de: [4.861, 9.378], a: [8.967, 11.448], epaisseur: 0.15, hauteur: 2.542, source: scan,
+  confiance: 0.99}
+- {id: mur_15, de: [22.691, 9.384], a: [25.011, 10.555], epaisseur: 0.15, hauteur: 2.518, source: scan,
+  confiance: 1.0}
+- {id: mur_16, de: [4.885, 11.568], a: [25.097, 11.57], epaisseur: 0.15, hauteur: 2.539, source: scan,
+  confiance: 1.0}
+- {id: mur_17, de: [-0.014, 13.765], a: [0.032, 13.122], epaisseur: 0.15, hauteur: 2.545, source: scan,
+  confiance: 0.77}
+- {id: mur_18, de: [-0.028, 14.422], a: [8.433, 14.423], epaisseur: 0.15, hauteur: 2.553, source: scan,
+  confiance: 1.0}
+- {id: mur_19, de: [9.578, 14.424], a: [20.438, 14.426], epaisseur: 0.15, hauteur: 2.539, source: scan,
+  confiance: 1.0}
+- {id: mur_20, de: [21.577, 14.426], a: [29.86, 14.428], epaisseur: 0.15, hauteur: 2.542, source: scan,
+  confiance: 1.0}
+- {id: mur_21, de: [0.51, 15.292], a: [3.183, 15.302], epaisseur: 0.15, hauteur: 2.47, source: scan, confiance: 0.87}
+- {id: mur_22, de: [14.998, 19.931], a: [15.004, 15.691], epaisseur: 0.22, hauteur: 2.493, source: scan,
+  confiance: 1.0}
+- {id: mur_23, de: [29.899, 19.982], a: [29.899, 15.832], epaisseur: 0.15, hauteur: 2.547, source: scan,
+  confiance: 0.99}
+- {id: mur_24, de: [0.075, 19.902], a: [29.898, 19.898], epaisseur: 0.15, hauteur: 2.556, source: scan,
+  confiance: 1.0}
+objets:
+- {id: chaise_1, type: boite, centre: [24.584, 1.509], taille: [0.529, 0.078, 0.623], cap: 0.0571, categorie: chaise,
+  source: scan, confiance: 0.44}
+- {id: chaise_2, type: boite, centre: [25.391, 1.581], taille: [0.536, 0.217, 0.971], cap: 0.0264, categorie: chaise,
+  source: scan, confiance: 0.98}
+- {id: table_1, type: boite, centre: [29.186, 6.115], taille: [1.266, 0.881, 0.873], cap: 0.0016, categorie: table,
+  source: scan, confiance: 0.9}
+- {id: banc_1, type: boite, centre: [0.51, 6.995], taille: [1.526, 0.502, 0.558], cap: -1.5645, categorie: banc,
+  source: scan, confiance: 0.57}
+- {id: chaise_3, type: boite, centre: [28.887, 6.957], taille: [0.557, 0.511, 0.983], cap: 0.0064, categorie: chaise,
+  source: scan, confiance: 0.69}
+- {id: poteau_1, type: cylindre, centre: [25.999, 10.0], rayon: 0.222, hauteur: 2.571, categorie: poteau,
+  source: scan, confiance: 0.98}
+- {id: poteau_2, type: cylindre, centre: [29.002, 10.001], rayon: 0.227, hauteur: 2.572, categorie: poteau,
+  source: scan, confiance: 0.98}
+- {id: meuble_1, type: boite, centre: [0.724, 9.999], taille: [2.197, 0.881, 1.176], cap: 1.5527, categorie: meuble,
+  source: scan, confiance: 0.98}
+- {id: poteau_3, type: cylindre, centre: [23.359, 10.197], rayon: 0.167, hauteur: 2.492, categorie: poteau,
+  source: scan, confiance: 0.9}
+- {id: poubelle_1, type: cylindre, centre: [4.501, 14.102], rayon: 0.276, hauteur: 0.889, categorie: poubelle,
+  source: scan, confiance: 0.81}
+- {id: meuble_2, type: boite, centre: [7.51, 18.448], taille: [3.091, 0.165, 0.649], cap: 0.0006, categorie: meuble,
+  source: scan, confiance: 0.83}
+pietons: []
+depart_robot: {x: 2.5, y: 10.0, theta: 0.0}

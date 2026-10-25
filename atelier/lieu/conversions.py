@@ -138,3 +138,48 @@ def quaternion_vers_cap(q):
         raise ValueError("quaternion nul : pas d'orientation")
     x, y, z, w = x / norme, y / norme, z / norme, w / norme
     return math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+
+
+# ---------------------------------------------------------------- poses au sol (section 10 du plan)
+#
+# Une pose au sol est (x, y, theta) : position en mètres, cap en radians. Une pose « a » décrit un
+# repère dans son repère parent. composer_poses(a, b) ramène dans le parent de a une pose b
+# exprimée dans le repère a. Le repère de la carte d'Unitree est décrit, dans le repère map de
+# l'étage, par la pose repere = atelier.lieu.repere_unitree(lieu, etage) :
+#     pose_map = composer_poses(repere, pose_unitree)       (unitree_vers_carte)
+#     pose_unitree = composer_poses(inverser_pose(repere), pose_map)   (carte_vers_unitree)
+# Ces fonctions acceptent un tuple (x, y, theta), un dict {x, y, theta} ou un objet Pose, et
+# renvoient un tuple de flottants, cap dans [-π, π[.
+
+def _pose(p):
+    if isinstance(p, dict):
+        return float(p["x"]), float(p["y"]), float(p["theta"])
+    if hasattr(p, "theta"):
+        return float(p.x), float(p.y), float(p.theta)
+    x, y, theta = p
+    return float(x), float(y), float(theta)
+
+
+def composer_poses(a, b):
+    """a ∘ b : la pose b, exprimée dans le repère a, ramenée dans le repère parent de a."""
+    ax, ay, at = _pose(a)
+    bx, by, bt = _pose(b)
+    c, s = math.cos(at), math.sin(at)
+    return (ax + c * bx - s * by, ay + s * bx + c * by, normaliser_angle(at + bt))
+
+
+def inverser_pose(a):
+    """Pose inverse : composer_poses(a, inverser_pose(a)) vaut (0, 0, 0)."""
+    ax, ay, at = _pose(a)
+    c, s = math.cos(at), math.sin(at)
+    return (-(c * ax + s * ay), -(-s * ax + c * ay), normaliser_angle(-at))
+
+
+def unitree_vers_carte(pose_unitree, repere):
+    """Pose dans le repère de la carte d'Unitree → pose dans le repère map de l'étage."""
+    return composer_poses(repere, pose_unitree)
+
+
+def carte_vers_unitree(pose_carte, repere):
+    """Pose dans le repère map de l'étage → pose dans le repère de la carte d'Unitree (pour 1804)."""
+    return composer_poses(inverser_pose(repere), pose_carte)

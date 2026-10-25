@@ -1,0 +1,45 @@
+# Destinations du guide dans le lycée démo. Format : atelier/lieu/schemas/salles.schema.json.
+# Chaque pose est dans le couloir, devant le passage de la salle, tournée vers elle
+# (-1.5708 : vers le sud ; 1.5708 : vers le nord). Chaque salle a un nœud de même id
+# dans itineraires.yaml. L'accueil a la pose de « accueil » dans lieu.yaml.
+- id: accueil
+  nom: "Accueil"
+  alias: ["accueil", "entrée", "hall"]
+  etage: rdc
+  pose: {x: 2.5, y: 10.0, theta: 0.0}
+  phrase_arrivee: "Nous sommes de retour à l'accueil."
+
+- id: vie_scolaire
+  nom: "Vie scolaire"
+  alias: ["vie scolaire", "cpe", "bureau des surveillants"]
+  etage: rdc
+  pose: {x: 7.0, y: 7.0, theta: -1.5708}
+  phrase_arrivee: "Voici la vie scolaire."
+
+- id: infirmerie
+  nom: "Infirmerie"
+  alias: ["infirmerie", "infirmière"]
+  etage: rdc
+  pose: {x: 15.0, y: 7.0, theta: -1.5708}
+  phrase_arrivee: "Voici l'infirmerie. Frappez avant d'entrer."
+
+- id: cdi
+  nom: "CDI"
+  alias: ["cdi", "bibliothèque", "centre de documentation"]
+  etage: rdc
+  pose: {x: 23.0, y: 7.0, theta: -1.5708}
+  phrase_arrivee: "Voici le CDI, la bibliothèque du lycée."
+
+- id: amphi
+  nom: "Amphithéâtre"
+  alias: ["amphi", "amphithéâtre", "salle de conférence"]
+  etage: rdc
+  pose: {x: 9.0, y: 13.0, theta: 1.5708}
+  phrase_arrivee: "Voici l'amphithéâtre."
+
+- id: b204
+  nom: "Salle B204"
+  alias: ["b204", "labo de physique"]
+  etage: rdc
+  pose: {x: 21.0, y: 13.0, theta: 1.5708}
+  phrase_arrivee: "Voici le labo de physique."
