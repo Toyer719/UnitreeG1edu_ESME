@@ -1,7 +1,7 @@
 """Parcours principal de l'interface dans un vrai navigateur, sans fenêtre (critère 9 du plan) :
 créer un lieu → dessiner (mur, objet, piéton, passage, annuler, refaire) → enregistrer →
 fabriquer la carte → placer une salle → la relier → une zone → lancer la simulation → Y aller
-→ Arrêt → arrêter la simulation → scan avec le faux service.
+→ Arrêt → arrêter la simulation → onglet Scan.
 
 Firefox est piloté par geckodriver, en WebDriver simple (requêtes HTTP), avec -headless.
 Pas de Playwright. Le test est sauté si geckodriver ou Firefox manquent, ou si Firefox ne
@@ -289,12 +289,9 @@ def test_parcours_principal_dans_le_navigateur(sans_ros, serveur, navigateur, li
     nav.attendre("return document.querySelector('[data-role=etat-simu]').textContent.startsWith('Simulation arrêtée')",
                  delai=20, message="simulation arrêtée")
 
-    # Scan : le faux service est coché par défaut
+    # Scan : l'onglet s'ouvre sur le choix du mode (parcours complet : test_serveur_scan_navigateur.py)
     nav.bouton("Scan", ".onglets")
-    assert nav.js("return document.querySelector('.ecran-scan input[type=checkbox]').checked")
-    nav.bouton("Démarrer le scan")
-    nav.attendre("return document.querySelector('.ecran-scan [data-role=etat]').textContent.includes('Scan démarré')")
-    assert "g1-slam scan-debut --faux" in faux_bin.appels()
+    nav.attendre("return document.querySelectorAll('.ecran-scan .scan-mode').length === 2", message="onglet Scan")
     assert "g1-guide stop" in faux_bin.appels()          # Arrêt sans ROS 2 : par la commande du guide
 
     # Aucune erreur JavaScript pendant tout le parcours

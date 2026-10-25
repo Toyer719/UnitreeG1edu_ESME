@@ -330,51 +330,15 @@ def test_guide_cible_inconnue_du_lieu_simule(client):
     client.post("/api/simulation/arreter")
 
 
-# ---------------------------------------------------------------- scan
-
-def test_scan_avec_faux_service(client, lieux, faux_bin):
-    r = client.post("/api/scan/debut", json={"faux": True, "lieu": "demo", "etage": "rdc"})
-    assert r.status_code == 200, r.text
-    assert "réussi" in r.json()["sortie"] and r.json()["faux_service_lance"] is True
-    etat = client.get("/api/scan/etat").json()
-    assert etat["g1_slam"] and etat["faux_service"]["en_cours"]
-    r = client.post("/api/scan/fin", json={"nom": "rdc", "faux": True, "lieu": "demo"})
-    assert r.status_code == 200, r.text
-    dossier = lieux / "demo"
-    assert faux_bin.appels() == [f"g1-slam faux-service --lieu {dossier} --etage rdc", "g1-slam scan-debut --faux",
-                                 f"g1-slam scan-fin --nom rdc --lieu {dossier} --faux"]
-    assert "nom de carte" in _erreur(client.post("/api/scan/fin", json={"nom": "../x", "faux": True}), 400)["detail"]
-    # le faux service lancé par l'Atelier s'arrête à la demande (ou avec le serveur)
-    pid = faux_bin.pids()[0]
-    assert processus_vivant(pid)
-    r = client.post("/api/scan/faux-service/arreter")
-    assert r.status_code == 200 and not r.json()["faux_service"]["en_cours"]
-    assert attendre(lambda: not processus_vivant(pid), 5)
-
-
-def test_scan_vrai_robot_sans_faux_service(client, faux_bin):
-    """Sans --faux, pas de faux service : la commande vise le robot (ici une fausse g1-slam)."""
-    r = client.post("/api/scan/debut", json={})
-    assert r.status_code == 200
-    assert faux_bin.appels() == ["g1-slam scan-debut"]
-    assert client.get("/api/scan/etat").json()["faux_service"] is None
-
-
-def test_scan_erreurs(client, faux_bin, monkeypatch):
-    monkeypatch.setenv("FAUX_ECHEC", "1")
-    d = _erreur(client.post("/api/scan/debut", json={"faux": True}), 502)
-    assert "faux service" in d["detail"] and "DDS" in d["sortie"]
-    d = _erreur(client.post("/api/scan/debut", json={"faux": False}), 502)
-    assert "robot" in d["detail"] and "slam_operate" in d["sortie"]
-    faux_bin.retirer("g1-slam")
-    assert "g1-slam" in _erreur(client.post("/api/scan/fin", json={"nom": "rdc", "faux": True}), 503)["detail"]
+# Scan intégré (vague 2) : atelier/tests/test_serveur_scan*.py
 
 
 # ---------------------------------------------------------------- état, WebSocket, fichiers web
 
 def test_etat_du_serveur(client, lieux):
     e = client.get("/api/etat").json()
-    assert e["commandes"] == {"g1-lieu": False, "g1-monde": True, "g1-guide": True, "g1-slam": True}
+    assert e["commandes"] == {"g1-lieu": False, "g1-monde": True, "g1-guide": True, "g1-slam": True,
+                             "g1-scan": False}
     assert e["ros"]["actif"] is False and e["lieux"] == str(lieux)
 
 

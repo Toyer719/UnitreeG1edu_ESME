@@ -1,0 +1,129 @@
+/* Onglet Scan de l'Atelier G1 : choix du mode, gros boutons « Scan » et « Fin », aperçu en direct,
+   progression du traitement, revue des éléments reconnus. Variables de couleurs : atelier.css. */
+
+.scan-titre { margin: 0; font-size: 1.15rem; }
+/* l'onglet ne se tasse pas sous la hauteur de son contenu : la liste des scans reste en dessous */
+.scan-contenu { display: flex; flex-direction: column; gap: 12px; flex: 1 0 auto; }
+.scan-vue-choix, .scan-vue-traitement, .scan-vue-echec, .scan-vue-interrompu { flex-grow: 0; }
+/* plan et panneau à hauteur d'écran : la longue liste des éléments défile dans son panneau */
+.ecran-scan .espace-deux { flex: 0 0 auto; height: max(520px, calc(100vh - 250px)); grid-template-rows: minmax(0, 1fr); }
+.scan-message { margin: 0; color: var(--texte-doux); min-height: 1.3em; }
+.scan-liste { margin: 4px 0 10px; padding-left: 22px; }
+.scan-liste li { margin: 4px 0; }
+.scan-liste code { background: #eef1f5; padding: 1px 6px; border-radius: 4px; }
+
+/* ------------------------------------------------------------------ 1. choix du mode */
+
+.scan-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+.scan-mode {
+  display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: left;
+  min-height: 96px; padding: 12px 14px; border: 2px solid var(--bord); border-radius: var(--rayon);
+  background: var(--surface); color: var(--texte); font: inherit; cursor: pointer;
+}
+.scan-mode:hover { border-color: var(--principal); }
+.scan-mode.actif { border-color: var(--principal); background: #eef4ff; box-shadow: inset 0 0 0 1px var(--principal); }
+.scan-mode-titre { font-size: 1.2rem; font-weight: 700; }
+.scan-mode-texte { color: var(--texte-doux); font-size: 0.92rem; }
+.scan-consignes { margin-bottom: 8px; }
+.scan-lancer { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+
+.bouton-scan, .bouton-fin {
+  min-width: 220px; min-height: 96px; padding: 0 40px; border: 0; border-radius: 48px;
+  color: #fff; font: inherit; font-size: 2.1rem; font-weight: 800; letter-spacing: 0.06em; cursor: pointer;
+}
+.bouton-scan { background: var(--principal); box-shadow: 0 4px 0 var(--principal-fonce); }
+.bouton-scan:hover:not(:disabled) { background: var(--principal-fonce); }
+.bouton-fin { min-width: 160px; min-height: 72px; font-size: 1.7rem; margin-left: auto; background: var(--danger); box-shadow: 0 4px 0 #8e1b1b; }
+.bouton-scan:active:not(:disabled), .bouton-fin:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
+.bouton-scan:disabled, .bouton-fin:disabled { opacity: 0.6; cursor: wait; }
+
+/* ------------------------------------------------------------------ 2. pendant le scan */
+
+.scan-direct { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.scan-compteurs { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.compteur {
+  display: flex; flex-direction: column; min-width: 120px; padding: 8px 14px;
+  border-radius: var(--rayon); background: var(--surface); box-shadow: var(--ombre);
+}
+.compteur-libelle { color: var(--texte-doux); font-size: 0.85rem; }
+.compteur-valeur { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.compteur-mode .compteur-valeur { font-size: 1.05rem; padding-top: 6px; }
+.nuage3d { background: #10151d; }
+/* la toile 3D hors du flux : sa taille ne peut pas relancer la mise en page (boucle de ResizeObserver) */
+.ecran-scan .vue3d { flex: 1 1 280px; min-height: 260px; }
+.ecran-scan .vue3d canvas { position: absolute; inset: 0; }
+.apercu-image { image-rendering: pixelated; }
+.trajectoire-scan { stroke: var(--robot); stroke-width: 3; stroke-opacity: 0.9; fill: none; stroke-linejoin: round; }
+.scan-vue-direct .fond-mur { fill-opacity: 0.25; }
+.scan-vue-direct .fond-objet { fill-opacity: 0.2; }
+
+.teleop-grille { display: grid; grid-template-columns: repeat(3, 64px); gap: 8px; margin: 6px 0; justify-content: start; }
+.teleop-bouton {
+  width: 64px; height: 64px; border: 1px solid var(--bord); border-radius: var(--rayon);
+  background: var(--surface); color: var(--texte); font-size: 1.8rem; line-height: 1; cursor: pointer;
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.teleop-bouton:hover { border-color: var(--principal); }
+.teleop-bouton.appuye { background: var(--principal); border-color: var(--principal); color: #fff; }
+.teleop-inactif .teleop-bouton { opacity: 0.5; pointer-events: none; }
+
+/* ------------------------------------------------------------------ 3. traitement */
+
+.scan-traitement { max-width: 760px; }
+.progression { height: 22px; border-radius: 11px; background: #e6e9ee; overflow: hidden; margin: 8px 0; }
+.progression-barre { height: 100%; width: 0; background: var(--principal); border-radius: 11px; transition: width 0.4s ease; }
+.progression-texte { margin: 0 0 6px; font-variant-numeric: tabular-nums; }
+.etapes-scan { margin: 10px 0; padding-left: 22px; color: var(--texte-doux); }
+.etape-scan { margin: 6px 0; }
+.etape-scan.fait { color: var(--succes); }
+.etape-scan.fait::after { content: " ✓"; font-weight: 700; }
+.etape-scan.en-cours { color: var(--texte); font-weight: 700; }
+.etape-scan.en-cours::after { content: " …"; }
+
+/* ------------------------------------------------------------------ 4. résultat */
+
+.scan-resultat { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+.scan-resultat .chargement, .scan-contenu.chargement .plan { opacity: 0.6; }
+.reco { cursor: pointer; }
+.legende-scan { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 8px 0; font-size: 0.85rem; color: var(--texte-doux); }
+.legende-element { display: inline-flex; align-items: center; gap: 4px; }
+.pastille-categorie { display: inline-block; flex: 0 0 auto; width: 12px; height: 12px; border-radius: 3px; }
+.groupe-reco { margin: 8px 0; }
+.groupe-reco summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
+.reco-ligne {
+  display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 2px 6px;
+  border-radius: 6px; cursor: pointer;
+}
+.reco-ligne:hover { background: #f2f5f9; }
+.reco-ligne input { width: 22px; height: 22px; flex: 0 0 auto; }
+.reco-ligne.choisi { background: #e3edff; box-shadow: inset 3px 0 0 var(--principal); }
+.reco-ligne.retire .reco-nom { color: var(--texte-doux); text-decoration: line-through; }
+.reco-nom { flex: 1; min-width: 0; }
+.reco-id { color: var(--texte-doux); font-size: 0.85rem; }
+.reco-confiance { font-variant-numeric: tabular-nums; color: var(--texte-doux); font-size: 0.9rem; }
+.badge { padding: 1px 8px; border-radius: 99px; font-size: 0.78rem; white-space: nowrap; }
+.badge-douteux { background: #fff1d6; color: var(--avertissement); }
+.badge-personne { background: #fde4ef; color: #9d174d; }
+
+/* ------------------------------------------------------------------ échec et historique */
+
+.scan-echec { max-width: 760px; }
+.scan-echec .bouton { margin: 8px 8px 0 0; }
+.scan-historique { margin-top: 4px; overflow-x: auto; }
+.scan-sessions .session-suivie { background: #f2f7ff; }
+.etat-session { white-space: nowrap; }
+.etat-termine { color: var(--succes); }
+.etat-echec, .etat-interrompu { color: var(--danger); }
+.etat-en_cours, .etat-arret_en_cours, .etat-traitement { color: var(--principal-fonce); font-weight: 600; }
+
+@media (max-width: 900px) {
+  .ecran-scan .espace-deux { height: auto; grid-template-rows: none; }
+  .ecran-scan .panneau { max-height: 70vh; }
+}
+
+@media (max-width: 700px) {
+  .scan-modes { grid-template-columns: minmax(0, 1fr); }
+  .bouton-scan { width: 100%; }
+  .bouton-fin { margin-left: 0; width: 100%; }
+  .scan-sessions th:nth-child(2), .scan-sessions td:nth-child(2) { display: none; }
+}

@@ -22,7 +22,7 @@ const ECRANS = [
   { id: 'itineraires', texte: 'Itinéraires', module: itineraires },
   { id: 'zones', texte: 'Zones', module: zones },
   { id: 'simulation', texte: 'Simulation', module: simulation },
-  { id: 'scan', texte: 'Scan', module: scan, sansLieu: true },
+  { id: 'scan', texte: 'Scan', module: scan },
 ];
 
 let ecranOuvert = null;     // {id, instance}

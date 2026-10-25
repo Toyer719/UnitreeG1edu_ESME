@@ -33,7 +33,7 @@ from .routes import lieux, monde, plan, scan, simulation
 
 DOSSIER_WEB = Path(__file__).resolve().parent.parent / "web"
 PERIODE_DIRECT = 0.1      # s entre deux messages du WebSocket (10 par seconde)
-COMMANDES = ("g1-lieu", "g1-monde", "g1-guide", "g1-slam")
+COMMANDES = ("g1-lieu", "g1-monde", "g1-guide", "g1-slam", "g1-scan")
 
 
 def _champ(loc):

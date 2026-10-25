@@ -7,7 +7,11 @@
   GET  /api/simulation/etat         processus, simulation en cours, pont ROS 2
   POST /api/guide/aller {cible}     publie l'id sur /guide/aller
   POST /api/guide/stop              publie sur /guide/stop (à défaut : g1-guide stop)
+  POST /api/simulation/teleop {vx, vy, wz}   pilote le robot simulé (flèches de l'onglet Scan) :
+        publie /cmd_vel par le pont ROS 2, avec un homme mort (vitesse nulle après 0,5 s sans consigne)
 """
+import math
+import threading
 import time
 
 from fastapi import APIRouter, Request
@@ -19,8 +23,12 @@ from atelier.lieu import (ErreurLieu, charger_itineraires, charger_monde, charge
 
 from ..communs import ErreurAtelier, dossier_du_lieu, etage_du_lieu, verifier_id
 from ..processus import CommandeAbsente, commande, lancer_et_attendre
+from .scan import scan_robot_simule_actif
 
 routeur = APIRouter(tags=["simulation et guide"])
+
+LIMITES_TELEOP = {"vx": 0.5, "vy": 0.25, "wz": 0.8}     # m/s, m/s, rad/s (contrat 9.7)
+HOMME_MORT_S = 0.5      # s sans consigne : le serveur publie lui-même une vitesse nulle
 
 
 class DemandeSimulation(BaseModel):
@@ -32,6 +40,12 @@ class DemandeSimulation(BaseModel):
 
 class DemandeAller(BaseModel):
     cible: str
+
+
+class DemandeTeleop(BaseModel):
+    vx: float = 0.0          # m/s vers l'avant
+    vy: float = 0.0          # m/s vers la gauche (pas de côté)
+    wz: float = 0.0          # rad/s, sens inverse des aiguilles d'une montre
 
 
 def _etat(request):
@@ -152,3 +166,104 @@ async def stop(request: Request):
     if resultat["code"] != 0:
         raise ErreurAtelier(500, "g1-guide stop a échoué : arrêtez la simulation.", sortie=resultat["sortie"])
     return {"envoye": "stop", "par": "g1-guide stop"}
+
+
+# ---------------------------------------------------------------- téléopération du robot simulé
+
+class Teleop:
+    """Publie les consignes de vitesse sur /cmd_vel (geometry_msgs/Twist) par le nœud du pont ROS 2.
+
+    Homme mort : le VelocityControl de Gazebo garde la dernière consigne reçue. Sans nouvelle consigne
+    non nulle pendant homme_mort secondes, un fil publie donc lui-même une vitesse nulle. L'interface
+    renvoie la consigne toutes les 0,2 s tant qu'une flèche est appuyée, puis {0, 0, 0}."""
+
+    def __init__(self, pont, homme_mort=HOMME_MORT_S):
+        self.pont = pont
+        self.homme_mort = homme_mort
+        self.arrets_auto = 0         # vitesses nulles publiées par l'homme mort
+        self._verrou = threading.Lock()
+        self._pub = None
+        self._noeud = None
+        self._Twist = None
+        self._derniere = None        # instant de la dernière consigne non nulle ; None : robot à l'arrêt
+        self._fil = None
+
+    def _publier(self, vx, vy, wz):
+        # le publieur vit sur le nœud du pont (même paquet) : pas de second participant DDS ;
+        # il est refait si le pont a redémarré
+        noeud = self.pont._noeud
+        if noeud is None or not self.pont.actif:
+            raise RuntimeError(self.pont.erreur or "le pont ROS 2 n'est pas démarré")
+        if self._pub is None or self._noeud is not noeud:
+            from geometry_msgs.msg import Twist
+            self._Twist = Twist
+            self._pub = noeud.create_publisher(Twist, "/cmd_vel", 10)
+            self._noeud = noeud
+        m = self._Twist()
+        m.linear.x, m.linear.y, m.angular.z = float(vx), float(vy), float(wz)
+        self._pub.publish(m)
+        return self._pub.get_subscription_count()
+
+    def envoyer(self, vx, vy, wz):
+        """Publie une consigne. Renvoie le nombre d'abonnés à /cmd_vel (0 : personne n'écoute)."""
+        with self._verrou:
+            ecoute = self._publier(vx, vy, wz)
+            if vx or vy or wz:
+                self._derniere = time.monotonic()
+                if self._fil is None:
+                    self._fil = threading.Thread(target=self._veiller, name="homme mort /cmd_vel", daemon=True)
+                    self._fil.start()
+            else:
+                self._derniere = None
+        return ecoute
+
+    def _veiller(self):
+        while True:
+            time.sleep(0.05)
+            with self._verrou:
+                if self._derniere is not None and time.monotonic() - self._derniere < self.homme_mort:
+                    continue
+                if self._derniere is not None:
+                    self._derniere = None
+                    try:
+                        self._publier(0.0, 0.0, 0.0)
+                        self.arrets_auto += 1
+                    except Exception:      # noqa: BLE001 : pont arrêté entre-temps (le serveur s'arrête)
+                        pass
+                self._fil = None
+                return
+
+
+def _teleop(request):
+    t = getattr(request.app.state, "teleop", None)
+    if t is None:
+        t = request.app.state.teleop = Teleop(_etat(request).pont)
+    return t
+
+
+@routeur.post("/api/simulation/teleop")
+def teleop(demande: DemandeTeleop, request: Request):
+    etat = _etat(request)
+    valeurs = {"vx": demande.vx, "vy": demande.vy, "wz": demande.wz}
+    for nom, v in valeurs.items():
+        if not math.isfinite(v):
+            raise ErreurAtelier(400, f"« {nom} » doit être un nombre fini (m/s ou rad/s), pas {v}.")
+    if not (etat.simulation_en_cours() or scan_robot_simule_actif(request.app)):
+        raise ErreurAtelier(409, "Il n'y a pas de robot simulé à piloter : lancez la simulation (onglet Simulation), "
+                                 "ou un scan en mode simulation ou en répétition sans robot (onglet Scan). Le vrai "
+                                 "robot se pilote à sa télécommande.")
+    if not etat.pont.actif:
+        raise ErreurAtelier(503, "Pas de liaison avec ROS 2 : "
+                            + (etat.pont.erreur or "le pont ROS 2 du serveur n'est pas démarré") + ".")
+    # ramenées aux limites du contrat ; « + 0.0 » évite d'écrire -0.0
+    consigne = {nom: round(max(-LIMITES_TELEOP[nom], min(LIMITES_TELEOP[nom], v)), 3) + 0.0
+                for nom, v in valeurs.items()}
+    try:
+        ecoute = _teleop(request).envoyer(**consigne)
+    except RuntimeError as e:
+        raise ErreurAtelier(503, f"Pas de liaison avec ROS 2 : {e}.") from None
+    reponse = {"envoye": consigne, "ecoute": ecoute}
+    if ecoute == 0:
+        reponse["avertissement"] = ("Personne n'écoute /cmd_vel : le robot simulé n'est peut-être pas encore "
+                                    "apparu dans Gazebo.")
+    return reponse
