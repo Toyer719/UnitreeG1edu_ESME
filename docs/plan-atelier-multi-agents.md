@@ -52,7 +52,7 @@ Tout ce document : formats de fichiers, éditeur 2D et 3D, générateur de monde
 Règles qui s'imposent à tous les agents :
 
 - **Tout doit tourner sans robot et sans écran.** Chaque fonctionnalité a un test automatique qui passe en mode sans fenêtre : `ign gazebo -s -r --headless-rendering`, et pytest.
-- **Chaque outil prend `--lieu DOSSIER`**, et n'écrit que dans ce dossier, sauf les journaux, dans `~/robot-g1/journaux/`.
+- **Chaque outil prend `--lieu DOSSIER`**, et n'écrit que dans ce dossier, sauf les journaux, dans `~/robot-g1/journaux/`. Un id seul (ex. `demo`) désigne `~/robot-g1/lieux/demo` (section 4.1).
 - **Unités** : mètres, radians, angle `theta` mesuré depuis l'axe x, sens inverse des aiguilles d'une montre. Repère `map` : z vers le haut.
 - **Langue** : interface, messages et documentation en français. Noms de fichiers et de champs en français sans accents (`salles.yaml`, `phrase_arrivee`).
 - **Noms de commandes déjà pris**, à ne pas réutiliser : `g1-sim`, `g1-sim-marche`, `g1-sim-demo`, `g1-etat`, `g1-telecommande`, `g1-releve`, `g1-nuage`, `g1-manette`, `g1-manette-virtuelle`, `g1-premiers-pas`, `g1-personnes`, `g1-parler`, `g1-ecouter`. Chaque commande `g1-x` a aussi un alias `gl-x` dans `~/robot-g1/bin`.
@@ -122,6 +122,7 @@ Principe : le serveur ne contient aucune logique robotique. Il appelle les bibli
 │   │   └── launch/simulation.launch.py
 │   └── g1_nav/                    # agent Navigation (ament_python)
 │       ├── g1_nav/routeur.py, guide.py, banc.py, odom_vers_tf.py
+│       ├── g1_nav/moteurs.py (interface Moteur), moteur_nav2.py, moteur_unitree.py
 │       ├── config/nav2_g1_simu.yaml, nav2_g1_reel.yaml
 │       └── launch/navigation.launch.py
 ├── lieux/demo/                    # lieu d'exemple fourni par l'agent Données
@@ -143,7 +144,8 @@ lieux/<id>/
 ├── mondes/<etage>.monde.yaml      # environnement inventé (facultatif)
 ├── mondes/<etage>.sdf             # généré
 ├── cartes/<etage>.pgm + .yaml     # carte 2D Nav2 (générée depuis le monde ou depuis le scan)
-├── cartes/<etage>_interdit.pgm    # masque Keepout (généré depuis zones.yaml)
+├── cartes/<etage>_interdit.pgm + .yaml   # masque Keepout (généré depuis zones.yaml), même taille et origine que la carte
+├── cartes/<etage>_lent.pgm + .yaml       # masque des zones lentes (facultatif, phase 3)
 ├── cartes/<etage>.pcd             # nuage 3D du scan (facultatif)
 ├── salles.yaml
 ├── itineraires.yaml
@@ -220,6 +222,20 @@ free_thresh: 0.196
 ```
 Valeurs des pixels : 0 = occupé, 254 = libre, 205 = inconnu. La ligne 0 de l'image correspond au **y maximal**. Toute conversion passe par `atelier.lieu.conversions`, et nulle part ailleurs.
 
+**Schémas** (figés en phase 0) : `atelier/lieu/schemas/<nom>.schema.json`, en JSON Schema draft-07, pour `lieu`, `monde`, `salles`, `itineraires`, `zones` et `carte` (les `cartes/*.yaml`). Pour chaque champ, ils disent s'il est obligatoire, son type, son unité et ses valeurs possibles. En cas de doute sur un champ, ce sont eux qui font foi. Champs facultatifs, avec leur valeur par défaut : `carte_unitree` (null), `murs`, `objets` et `pietons` (listes vides), `alias` (liste vide), `phrase_arrivee` (vide : le guide annonce le nom de la salle), `nom` d'une zone. Tous les autres champs des exemples ci-dessus sont obligatoires. Le test `atelier/tests/test_contrats.py` vérifie les schémas et le lieu `demo`.
+
+**Règles complémentaires**, que les schémas ne peuvent pas exprimer (à vérifier dans `atelier.lieu`) :
+- **Identifiants** (étages, salles, nœuds, murs, objets, piétons ; un lieu est identifié par le nom de son dossier) : `^[a-z0-9][a-z0-9_-]{0,39}$`. Éviter `yes`, `no`, `on` et `off`, que YAML lit comme des booléens. Uniques dans leur fichier. Dans un monde, ils sont uniques entre murs, objets et piétons, car ils deviennent les noms des modèles Gazebo ; `sol` et `g1_proxy` sont réservés.
+- **Salles et nœuds** : chaque salle de `salles.yaml`, accueil compris, a dans `itineraires.yaml` un nœud de même id, à la même position. La salle `accueil` a la pose `accueil` de `lieu.yaml`. Une cible de `/guide/aller` est un id de salle ou de nœud.
+- **Couloirs** : un couloir relie deux nœuds du même étage par un segment droit dans l'espace libre, de 8 m au plus.
+- **Murs** : boîte de longueur exactement égale au segment `de` → `a` (pas de débordement aux bouts), d'épaisseur centrée sur le segment, posée au sol. Un passage est l'écart entre les bouts de deux murs alignés.
+- **Objets** posés au sol. `boite` : `taille` = [longueur le long du cap, largeur, hauteur]. Encombrement des modèles (longueur × largeur × hauteur, en mètres) : chaise 0,45 × 0,45 × 0,9 ; table 1,2 × 0,8 × 0,75 ; banc 1,5 × 0,4 × 0,45 ; poubelle, cylindre de rayon 0,25 et de 0,8 de haut.
+- **Piétons** : départ à `trajet[0]`. `aller_retour: true` : va-et-vient sur le trajet. `false` : boucle, avec retour direct du dernier point au premier.
+- **Polygones** : au moins 3 sommets, dans l'ordre du contour, sans répéter le premier.
+- **Angles** : de −2π à 2π dans les fichiers, de préférence entre −π et π.
+- **Dossier d'un lieu** : partout, `--lieu X` et `lieu:=X` acceptent un chemin, ou un id seul (ex. `demo`) qui désigne `$ATELIER_LIEUX/demo`. Par défaut, `ATELIER_LIEUX` vaut `~/robot-g1/lieux`. Fonction commune : `atelier.chemin_lieu(X)`. Journaux : `atelier.dossier_journaux()`.
+- **Tests** : ils travaillent sur une copie de `lieux/demo` dans un dossier temporaire, et n'écrivent jamais dans `lieux/demo`.
+
 ### 4.2 ROS 2
 
 | Sujet ou service | Type | Sens | Rôle |
@@ -239,7 +255,7 @@ Valeurs des pixels : 0 = occupé, 254 = libre, 205 = inconnu. La ligne 0 de l'im
 | `g1-atelier [--port 8000]` | lance le serveur et ouvre le navigateur | Interface |
 | `g1-lieu creer ID --nom NOM` / `g1-lieu valider --lieu L` | créer ou vérifier un paquet de lieu | Données |
 | `g1-monde generer --lieu L --etage E` | monde.yaml → .sdf, carte .pgm/.yaml, masque | Monde |
-| `g1-monde simuler --lieu L --etage E [--sans-fenetre]` | Gazebo, robot proxy et piétons | Simulation |
+| `g1-monde simuler --lieu L --etage E [--sans-fenetre]` | Gazebo, robot proxy et piétons : appelle `ros2 launch g1_sim simulation.launch.py` (section 4.5) | Monde |
 | `g1-guide navigation --lieu L --etage E [--simu]` | Nav2, routeur et guide sur la carte du lieu | Navigation |
 | `g1-guide aller ID` / `g1-guide stop` | envoyer le robot (publie sur /guide/*) | Navigation |
 | `g1-banc --lieu L --etage E --trajets 50` | banc de test, résultats en CSV | Navigation |
@@ -261,6 +277,41 @@ REST sous `/api`, en JSON. Chaque route correspond à un fichier du paquet, ou �
 - `POST /api/scan/debut`, `POST /api/scan/fin {nom}` (vrai robot ou faux service)
 - WebSocket `/ws/etat` : environ 10 messages par seconde, `{robot: {x, y, theta}, guide: {...}, pietons: [...], processus: {...}}`
 
+### 4.5 Lancements ROS 2
+
+```
+ros2 launch g1_sim simulation.launch.py lieu:=DOSSIER etage:=ID sans_fenetre:=true|false [monde:=FICHIER.sdf]
+ros2 launch g1_nav navigation.launch.py lieu:=DOSSIER etage:=ID simu:=true|false moteur:=nav2|unitree
+```
+
+| Argument | Défaut | Rôle |
+|---|---|---|
+| `lieu` | obligatoire | dossier du lieu, ou id seul (section 4.1, `atelier.chemin_lieu`) |
+| `etage` | obligatoire | id de l'étage |
+| `sans_fenetre` (g1_sim) | `false` | `true` : `ign gazebo -s -r --headless-rendering`, serveur seul, sans fenêtre |
+| `monde` (g1_sim) | vide | monde .sdf à charger ; vide : `<lieu>/mondes/<etage>.sdf`. Le robot apparaît à `depart_robot` de `<lieu>/mondes/<etage>.monde.yaml` |
+| `simu` (g1_nav) | `false` | `true` : temps simulé (`use_sim_time`) et repère `map → odom` fixe ; `false` : vrai robot, avec `odom_vers_tf.py` |
+| `moteur` (g1_nav) | `nav2` | `nav2` : `MoteurNav2`, Nav2 lancé ; `unitree` : `MoteurUnitree` (commande 1102), Nav2 non lancé |
+
+- g1_nav lit `<lieu>/cartes/<etage>.yaml`, `<lieu>/cartes/<etage>_interdit.yaml`, `<lieu>/salles.yaml` et `<lieu>/itineraires.yaml`.
+- Les commandes `g1-monde simuler` et `g1-guide navigation` ne font que traduire leurs options en ces arguments.
+- Les deux lancements respectent les variables `ROS_DOMAIN_ID` et `IGN_PARTITION` de l'environnement : pendant les tests, chaque agent a les siennes.
+- En phase 0, ces deux fichiers sont des lancements provisoires : ils déclarent les arguments, les affichent et s'arrêtent. Les agents Simulation et Navigation les remplacent.
+
+### 4.6 Interface Moteur
+
+Fichier `ws/src/g1_nav/g1_nav/moteurs.py`. Le guide passe toujours par un `Moteur`, jamais directement par Nav2 ou par `slam_operate`.
+
+| Méthode | Rôle |
+|---|---|
+| `demarrer(poses) -> bool` | `poses` : liste de `(x, y, theta)` dans le repère `map`. La dernière est la destination, les autres sont les nœuds à traverser dans l'ordre. Rend la main tout de suite et remplace un déplacement en cours. Renvoie `False` si le moteur refuse, et `etat()` indique alors `echec`. `ValueError` si `poses` est vide |
+| `annuler()` | arrête le robot au plus vite ; ensuite `etat()` est au repos : une annulation n'est pas un échec |
+| `etat() -> dict` | `{en_cours, arrive, echec, reste_m, progresse}`. Trois booléens, dont un seul vrai au plus ; tous faux : repos. `reste_m` : mètres jusqu'à la dernière pose, `None` si inconnu, `0.0` à l'arrivée. `progresse` : `reste_m` a baissé d'au moins 0,10 m pendant la dernière seconde |
+
+- Les méthodes rendent la main en moins d'une seconde. Elles sont appelées depuis le fil du guide, environ 5 fois par seconde pour `etat()`.
+- Réalisations : `MoteurNav2` dans `moteur_nav2.py` (agent Navigation) ; `MoteurUnitree` dans `moteur_unitree.py` (agent Scan, seul fichier de `g1_nav` qui lui appartient).
+- `moteurs.py` fournit aussi `SuiviProgres`, qui calcule `progresse`, et `MoteurFactice`, un moteur sans ROS pour les tests du guide. Tests : `ws/src/g1_nav/test/test_moteurs.py`.
+
 ---
 
 ## 5. Organisation de l'équipe d'agents
@@ -269,19 +320,19 @@ Sept agents. Chacun possède ses dossiers, et personne n'écrit dans les dossier
 
 | Agent | Possède | Dépend de |
 |---|---|---|
-| 1. Intégrateur | section 4, `tests_e2e/` (avec l'agent 7), `bin/g1-atelier`, revues, fusions | — |
-| 2. Données | `atelier/lieu/`, `lieux/demo/`, `bin/g1-lieu` | contrats |
-| 3. Monde | `atelier/monde/`, `bin/g1-monde` (sous-commande generer) | Données |
-| 4. Simulation | `ws/src/g1_sim/`, sous-commande `g1-monde simuler` | Monde (fichier .sdf) |
-| 5. Navigation | `ws/src/g1_nav/`, `bin/g1-guide`, `bin/g1-banc` | Données, Simulation |
-| 6. Interface | `atelier/serveur/`, `atelier/web/` | Données, Monde ; Simulation et Navigation pour l'intégration |
-| 7. Scan et Testeur | `atelier/scan/`, `bin/g1-slam`, `g1-carte-*`, `g1-salle`, `tests_e2e/` | Données, Simulation |
+| 1. Intégrateur | section 4, `atelier/__init__.py`, `atelier/lieu/schemas/`, `atelier/tests/test_contrats.py`, `ws/src/g1_nav/g1_nav/moteurs.py`, `setup.py`, `pytest.ini`, `.gitignore`, `tests_e2e/` (avec l'agent 7), revues, fusions | — |
+| 2. Données | `atelier/lieu/` (sauf `schemas/`), `lieux/demo/` (écrit par l'intégrateur en phase 0, repris par l'agent Données), `bin/g1-lieu` | contrats |
+| 3. Monde | `atelier/monde/`, `bin/g1-monde` (sous-commandes generer et simuler) | Données ; Simulation pour `simuler` |
+| 4. Simulation | `ws/src/g1_sim/`, dont `launch/simulation.launch.py`, appelé par `g1-monde simuler` | Monde (fichier .sdf) |
+| 5. Navigation | `ws/src/g1_nav/` (sauf `moteurs.py` et `moteur_unitree.py`), `bin/g1-guide`, `bin/g1-banc` | Données, Simulation |
+| 6. Interface | `atelier/serveur/`, `atelier/web/`, `bin/g1-atelier` | Données, Monde ; Simulation et Navigation pour l'intégration |
+| 7. Scan et Testeur | `atelier/scan/`, `ws/src/g1_nav/g1_nav/moteur_unitree.py`, `bin/g1-slam`, `g1-carte-*`, `g1-salle`, `tests_e2e/` | Données, Simulation, Navigation (guide) |
 
 ### Phases
 
 | Phase | Qui | Résultat attendu |
 |---|---|---|
-| 0. Contrats | Intégrateur | Section 4 figée en schémas JSON, arborescence vide créée, lieu `demo` minimal écrit à la main, `git init` et premier commit |
+| 0. Contrats | Intégrateur | Section 4 figée en schémas JSON, arborescence vide créée, lieu `demo` écrit à la main (30 × 20 m, deux couloirs, accueil et cinq salles), `git init` et premier commit |
 | 1. Fondations, en parallèle | 2, 3, 4, 5, 6, 7 | Chaque module fonctionne seul avec ses tests. L'interface travaille avec des réponses factices, la navigation sur un monde écrit à la main |
 | 2. Assemblage | Intégrateur + tous | Depuis l'interface : dessiner un monde → générer → simuler → placer une salle → « Y aller » → le robot arrive |
 | 3. Foule, scan simulé, banc | 4, 5, 7 | Piétons, détours, chaîne de scan simulé, banc de 50 trajets |
@@ -300,12 +351,13 @@ Avant de lancer les agents :
 **Mission** : garant des contrats, de l'arborescence et de l'assemblage.
 
 Tâches :
-1. Phase 0 :
+1. Phase 0, faite le 25/10 (voir `docs/journal-atelier.md`) :
    - écrire `atelier/lieu/schemas/*.json` à partir de la section 4.1 ;
    - créer l'arborescence et les paquets ROS vides : `ros2 pkg create` pour `g1_sim` en ament_cmake et pour `g1_nav` en ament_python ;
-   - écrire un `lieux/demo` minimal : deux couloirs et trois salles ;
+   - écrire l'interface `Moteur` (section 4.6) ;
+   - écrire `lieux/demo` : 30 × 20 m, deux couloirs, l'accueil et cinq salles ;
    - faire le premier commit.
-2. Écrire `bin/g1-atelier`. Il charge `env.sh`, lance `uvicorn atelier.serveur.main:app` avec `.venv-projet`, puis ouvre `http://localhost:8000`.
+2. `bin/g1-atelier` est confié à l'agent Interface (fiche 6).
 3. À chaque fin de phase :
    - fusionner les branches ;
    - lancer `colcon build --symlink-install --packages-select g1_sim g1_nav`, puis tous les tests ;
@@ -328,7 +380,7 @@ Tâches :
    - `monde_vers_pixel(x, y, info_carte)` et `pixel_vers_monde(...)`, en tenant compte de l'axe y inversé de l'image ;
    - `cap_vers_quaternion(theta)` et `quaternion_vers_cap(q)`.
 4. Écrire `bin/g1-lieu creer|valider`.
-5. Écrire `lieux/demo` complet : un monde inventé de 30 × 20 m, deux couloirs parallèles reliés à chaque bout (pour qu'il existe un chemin de secours), cinq salles, l'accueil, le graphe et une zone interdite.
+5. Reprendre `lieux/demo`, écrit par l'intégrateur en phase 0 : un monde inventé de 30 × 20 m, deux couloirs parallèles reliés à chaque bout (pour qu'il existe un chemin de secours), l'accueil et cinq salles dont `b204`, un graphe en boucle, une zone interdite et une zone lente. Le garder valide : `atelier/tests/test_contrats.py` doit continuer de passer.
 
 **Tests** : aller-retour de chaque fichier, erreurs de validation, conversions sur des cas connus, coins de la carte compris.
 
@@ -348,7 +400,9 @@ Tâches :
    - piétons en `<actor>` avec un `<script>` de trajectoire qui suit `trajet` à la `vitesse` donnée, aller-retour si demandé ;
    - plugins de monde : Physics, SceneBroadcaster, UserCommands, Sensors (rendu ogre2).
 3. Écrire `zones.py` : `zones.yaml` → masque Keepout, à la même taille et la même origine que la carte.
-4. Écrire `bin/g1-monde generer`.
+4. Écrire `bin/g1-monde`, avec l'alias `gl-monde` :
+   - `generer` : monde.yaml → .sdf, carte et masque ;
+   - `simuler` : vérifie que `mondes/<etage>.sdf` existe (sinon, propose `generer`), puis appelle `ros2 launch g1_sim simulation.launch.py lieu:=… etage:=… sans_fenetre:=…` (section 4.5).
 5. Bonus, après la phase 3 : écrire `mjcf.py`, une scène MuJoCo qui contient le monde et le G1 de `unitree_rl_gym`. Elle permettra de rejouer le trajet de Nav2 avec la politique de marche de `~/robot-g1/sim/g1_marche.py`.
 
 **Tests** :
@@ -371,10 +425,10 @@ Tâches :
    - portée de 0,1 à 40 m, 10 Hz.
 3. Écrire `config/pont_gz.yaml` pour `ros_gz_bridge` : `/cmd_vel`, `/odom`, `/tf`, `/clock` et `/points` (`ignition.msgs.PointCloudPacked` → `sensor_msgs/msg/PointCloud2`).
 4. Écrire `launch/simulation.launch.py` :
-   - arguments : `lieu`, `etage`, `sans_fenetre` ;
+   - arguments : ceux de la section 4.5 (`lieu`, `etage`, `sans_fenetre`, `monde`) ;
    - lancer Gazebo sur `mondes/<etage>.sdf` et faire apparaître `g1_proxy` à `depart_robot` ;
    - lancer le pont et `robot_state_publisher` (repères base_link → lidar).
-5. Écrire la sous-commande `g1-monde simuler`.
+5. La sous-commande `g1-monde simuler` est écrite par l'agent Monde : elle appelle ce lancement.
 6. Vérifier que les piétons (`<actor>`) sont vus par le LiDAR. Sinon, ajouter à chaque piéton un cylindre qui le suit (plugin de trajectoire), et le noter dans le journal.
 
 **Tests, sans fenêtre** :
@@ -395,13 +449,13 @@ Tâches :
    - filtre Keepout sur le masque ;
    - Collision Monitor : polygone « ralentir » de 1 m à ×0,5, polygone « arrêt » de 0,4 m.
 2. Écrire `nav2_g1_reel.yaml` : mêmes réglages, vitesses plafonnées à 0,4 / 0,2 / 0,6. Il servira sur le robot.
-3. Écrire `launch/navigation.launch.py`. Arguments : `lieu`, `etage`, `simu`. En simulation, il publie un repère fixe `map → odom`. Sur le robot, ce sera `odom_vers_tf.py`, qui relaie `/unitree/slam_relocation/odom`.
+3. Écrire `launch/navigation.launch.py`. Arguments : ceux de la section 4.5 (`lieu`, `etage`, `simu`, `moteur`). En simulation, il publie un repère fixe `map → odom`. Sur le robot, ce sera `odom_vers_tf.py`, qui relaie `/unitree/slam_relocation/odom`.
 4. Écrire `routeur.py`. Il charge `itineraires.yaml`, cherche le plus court chemin avec A*, et peut marquer un couloir bloqué pour 120 s.
 5. Écrire `guide.py` :
    - il écoute `/guide/aller` et `/guide/stop`, et publie `/guide/etat` (section 4.2) ;
    - il envoie la suite de nœuds à Nav2 avec `nav2_simple_commander` (`goThroughPoses`) ;
    - si la distance restante ne baisse pas pendant 3 s, état `bloque` ; pendant 8 s, il annule, marque le couloir bloqué, recalcule l'itinéraire (`detour`) et repart.
-   - Prévoir une interface `Moteur` avec deux réalisations. `MoteurNav2` est à faire maintenant. `MoteurUnitree`, avec la commande 1102 et des tronçons de 8 m au plus, sera fait par l'agent 7.
+   - Passer par l'interface `Moteur` de `g1_nav/moteurs.py` (section 4.6). `MoteurNav2` (`moteur_nav2.py`) est à faire maintenant. `MoteurUnitree` (`moteur_unitree.py`), avec la commande 1102 et des tronçons de 8 m au plus, sera fait par l'agent 7. `MoteurFactice` sert aux tests du guide sans Nav2.
 6. Écrire `banc.py` et `bin/g1-banc` :
    - N trajets entre salles tirées au sort ;
    - un CSV avec une ligne par trajet : départ, arrivée, réussite, durée, nombre d'arrêts, distance minimale aux piétons, détours ;
@@ -442,6 +496,7 @@ Tâches :
    - les boutons disent ce qu'ils font (« Fabriquer la carte », « Y aller ») ;
    - les erreurs disent quoi corriger ;
    - tout est en français ; l'interface reste utilisable sur une tablette.
+4. Écrire `bin/g1-atelier [--port 8000]`, avec l'alias `gl-atelier`. Il charge `env.sh`, lance `uvicorn atelier.serveur.main:app` avec `.venv-projet`, puis ouvre `http://localhost:8000`.
 
 **Tests** :
 - tests de l'API avec `fastapi.testclient` sur une copie du lieu `demo` ;
@@ -459,7 +514,7 @@ Tâches :
    - dans le journal, noter chaque supposition à vérifier.
 2. Écrire `faux_slam.py` : un faux service `slam_operate` sur l'interface `lo`. Il répond aux mêmes commandes avec des JSON plausibles et publie `slam_info` et `slam_key_info`. Pour 1102, il peut piloter le robot proxy de Gazebo en ligne droite, ce qui permet de tester `MoteurUnitree` en simulation.
 3. Écrire `bin/g1-slam` (section 4.3). L'option `--faux` utilise `lo` et le faux service ; sans elle, `eno2` et le vrai robot.
-4. Écrire `MoteurUnitree` pour le guide de l'agent 5 : tronçons de 8 m au plus, le robot s'arrête devant les obstacles, le guide gère pause et détour.
+4. Écrire `MoteurUnitree` pour le guide de l'agent 5, dans `ws/src/g1_nav/g1_nav/moteur_unitree.py`, sur l'interface `Moteur` (section 4.6) : tronçons de 8 m au plus, le robot s'arrête devant les obstacles, le guide gère pause et détour.
 5. Écrire `carte3d.py` et `carte2d.py`.
    - `carte3d.py` assemble un enregistrement (ros2 bag de `/points` et `/odom`, ou de `/unitree/slam_mapping/points` et `/unitree/slam_mapping/odom`) en un nuage `.pcd`, réduit à une grille de 5 cm.
    - `carte2d.py` prend la tranche de 0,1 à 1,5 m, la projette, la nettoie (ouverture morphologique) et écrit `.pgm` et `.yaml`.

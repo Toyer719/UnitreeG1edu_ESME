@@ -1,0 +1,191 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "mondes/<etage>.monde.yaml",
+  "description": "Environnement inventé d'un étage, vu de dessus avec des hauteurs : murs, objets, piétons et départ du robot. Sert à générer le monde Gazebo mondes/<etage>.sdf et la carte 2D cartes/<etage>.pgm. Unités : mètres et radians, repère map (z vers le haut). Tout est posé au sol (z = 0). Les id sont uniques dans tout le monde, murs, objets et piétons confondus : ils deviennent les noms des modèles Gazebo (vérifié par atelier.lieu, pas par ce schéma).",
+  "type": "object",
+  "required": ["version", "emprise", "depart_robot"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "Version du format. Toujours 1.",
+      "const": 1
+    },
+    "emprise": {
+      "description": "Rectangle aligné sur les axes qui contient tout le monde, en mètres : min = [xmin, ymin], max = [xmax, ymax], avec xmax > xmin et ymax > ymin. La carte 2D couvre exactement ce rectangle (plus une marge d'un pixel). Les extrémités des murs, les objets, les trajets des piétons et le départ du robot sont dedans ; seule l'épaisseur d'un mur posé sur le bord peut dépasser.",
+      "type": "object",
+      "required": ["min", "max"],
+      "additionalProperties": false,
+      "properties": {
+        "min": {"$ref": "#/definitions/point"},
+        "max": {"$ref": "#/definitions/point"}
+      }
+    },
+    "murs": {
+      "description": "Facultatif, liste vide par défaut. Murs droits. Un passage (une porte) est l'écart laissé entre les bouts de deux murs alignés : il n'y a pas d'objet porte.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/mur"}
+    },
+    "objets": {
+      "description": "Facultatif, liste vide par défaut. Obstacles fixes posés au sol : boîte, cylindre ou modèle de mobilier.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/objet"}
+    },
+    "pietons": {
+      "description": "Facultatif, liste vide par défaut. Personnes qui marchent : obstacles mobiles, présents dans Gazebo mais jamais sur la carte 2D.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/pieton"}
+    },
+    "depart_robot": {
+      "description": "Pose où le robot apparaît au lancement de la simulation (en général celle de l'accueil).",
+      "$ref": "#/definitions/pose"
+    }
+  },
+  "definitions": {
+    "id": {
+      "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, commence par une lettre ou un chiffre. Éviter yes, no, on, off (lus comme des booléens par YAML), ainsi que sol et g1_proxy (déjà pris dans le monde Gazebo).",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+    },
+    "nombre": {
+      "type": "number"
+    },
+    "point": {
+      "description": "Point au sol [x, y], en mètres.",
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {"type": "number"}
+    },
+    "angle": {
+      "description": "Angle en radians, depuis l'axe x, sens inverse des aiguilles d'une montre, entre -2π et 2π (de préférence entre -π et π). 90° = 1.5708.",
+      "type": "number",
+      "minimum": -6.2832,
+      "maximum": 6.2832
+    },
+    "pose": {
+      "description": "Position x, y en mètres et orientation theta en radians.",
+      "type": "object",
+      "required": ["x", "y", "theta"],
+      "additionalProperties": false,
+      "properties": {
+        "x": {"$ref": "#/definitions/nombre"},
+        "y": {"$ref": "#/definitions/nombre"},
+        "theta": {"$ref": "#/definitions/angle"}
+      }
+    },
+    "mur": {
+      "description": "Mur droit de « de » à « a » : une boîte de longueur exactement égale au segment (sans débordement aux bouts), d'épaisseur centrée sur le segment, posée au sol. Les deux bouts sont distincts.",
+      "type": "object",
+      "required": ["id", "de", "a", "epaisseur", "hauteur"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/id"},
+        "de": {"description": "Premier bout [x, y], en mètres.", "$ref": "#/definitions/point"},
+        "a": {"description": "Second bout [x, y], en mètres.", "$ref": "#/definitions/point"},
+        "epaisseur": {
+          "description": "Épaisseur en mètres, plus de 0 et 1 m au plus. Habituel : 0.15.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "hauteur": {
+          "description": "Hauteur en mètres, plus de 0 et 10 m au plus. Habituel : 2.5. Un mur de moins de 0,1 m n'apparaît pas sur la carte 2D (tranche de 0,1 à 1,5 m).",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        }
+      }
+    },
+    "objet": {
+      "description": "Obstacle fixe posé au sol. Champs selon le type : boite = id, type, centre, taille, cap ; cylindre = id, type, centre, rayon, hauteur ; modele = id, type, modele, centre, cap.",
+      "type": "object",
+      "required": ["id", "type", "centre"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/id"},
+        "type": {
+          "description": "boite (parallélépipède), cylindre (poteau, pot) ou modele (mobilier tout fait).",
+          "type": "string",
+          "enum": ["boite", "cylindre", "modele"]
+        },
+        "centre": {"description": "Centre de l'objet au sol [x, y], en mètres.", "$ref": "#/definitions/point"},
+        "cap": {
+          "description": "Rotation de l'objet autour de l'axe z, en radians (0 : la longueur est le long de l'axe x).",
+          "$ref": "#/definitions/angle"
+        },
+        "taille": {
+          "description": "boite seulement : [longueur le long du cap, largeur, hauteur], en mètres, chacune de plus de 0 et 20 m au plus.",
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {"type": "number", "exclusiveMinimum": 0, "maximum": 20}
+        },
+        "rayon": {
+          "description": "cylindre seulement : rayon en mètres, plus de 0 et 5 m au plus.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 5
+        },
+        "hauteur": {
+          "description": "cylindre seulement : hauteur en mètres, plus de 0 et 10 m au plus.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        },
+        "modele": {
+          "description": "modele seulement : meuble écrit en SDF par l'agent Monde, sans téléchargement. Encombrement indicatif longueur × largeur × hauteur, en mètres, avant rotation par cap : chaise 0,45 × 0,45 × 0,9 ; table 1,2 × 0,8 × 0,75 ; banc 1,5 × 0,4 × 0,45 ; poubelle cylindre de 0,25 de rayon et 0,8 de haut.",
+          "type": "string",
+          "enum": ["chaise", "table", "banc", "poubelle"]
+        }
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "boite"}}, "required": ["type"]},
+          "then": {
+            "required": ["taille", "cap"],
+            "propertyNames": {"enum": ["id", "type", "centre", "taille", "cap"]}
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "cylindre"}}, "required": ["type"]},
+          "then": {
+            "required": ["rayon", "hauteur"],
+            "propertyNames": {"enum": ["id", "type", "centre", "rayon", "hauteur"]}
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "modele"}}, "required": ["type"]},
+          "then": {
+            "required": ["modele", "cap"],
+            "propertyNames": {"enum": ["id", "type", "modele", "centre", "cap"]}
+          }
+        }
+      ]
+    },
+    "pieton": {
+      "description": "Piéton qui marche en boucle pendant toute la simulation. Il part de trajet[0] et suit les points dans l'ordre, en ligne droite entre deux points.",
+      "type": "object",
+      "required": ["id", "trajet", "vitesse", "aller_retour"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/id"},
+        "trajet": {
+          "description": "Points de passage [[x, y], ...], en mètres, au moins 2, dans l'espace libre.",
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/definitions/point"}
+        },
+        "vitesse": {
+          "description": "Vitesse de marche en m/s, plus de 0 et 2 m/s au plus. Habituel : 1.0.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 2
+        },
+        "aller_retour": {
+          "description": "true : il va du premier au dernier point, puis revient en sens inverse, sans fin. false : arrivé au dernier point, il retourne directement au premier, sans fin (boucle).",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

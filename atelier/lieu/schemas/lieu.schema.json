@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "lieu.yaml",
+  "description": "Fiche d'un lieu (bâtiment) : nom, langue, étages et point d'accueil. Fichier lieux/<id>/lieu.yaml ; l'identifiant du lieu est le nom de son dossier. Unités : mètres et radians, repère map (x, y au sol, z vers le haut, theta depuis l'axe x, sens inverse des aiguilles d'une montre).",
+  "type": "object",
+  "required": ["version", "nom", "langue", "etages", "accueil"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "Version du format des fichiers du lieu. Toujours 1.",
+      "const": 1
+    },
+    "nom": {
+      "description": "Nom du lieu affiché à l'utilisateur, accents et espaces permis. Ex. « Lycée démo ».",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "langue": {
+      "description": "Langue de l'accueil, code ISO 639-1 en deux lettres minuscules. Pour l'instant : fr.",
+      "type": "string",
+      "pattern": "^[a-z]{2}$"
+    },
+    "etages": {
+      "description": "Étages du lieu, au moins un. Les id d'étage sont uniques (vérifié par atelier.lieu, pas par ce schéma).",
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/definitions/etage"}
+    },
+    "accueil": {
+      "description": "Pose du robot au point d'accueil, où il attend les visiteurs. etage est l'id d'un étage de la liste etages. La salle « accueil » de salles.yaml et le nœud « accueil » de itineraires.yaml sont à la même position.",
+      "$ref": "#/definitions/pose_etage"
+    },
+    "carte_unitree": {
+      "description": "Facultatif, null par défaut. Nom du nuage .pcd enregistré sur le robot par la commande 1802 de slam_operate (ex. « test1.pcd »), utilisé pour la relocalisation 1804. null tant que le lieu n'a pas été scanné.",
+      "type": ["string", "null"],
+      "pattern": "^[^/]+\\.pcd$"
+    }
+  },
+  "definitions": {
+    "id": {
+      "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, commence par une lettre ou un chiffre. Éviter yes, no, on, off : YAML les lit comme des booléens.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+    },
+    "nombre": {
+      "type": "number"
+    },
+    "angle": {
+      "description": "Angle en radians, depuis l'axe x, sens inverse des aiguilles d'une montre, entre -2π et 2π (de préférence entre -π et π). 90° = 1.5708.",
+      "type": "number",
+      "minimum": -6.2832,
+      "maximum": 6.2832
+    },
+    "etage": {
+      "description": "Un étage du lieu.",
+      "type": "object",
+      "required": ["id", "nom", "source_carte"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Identifiant de l'étage (ex. rdc, etage1). Il nomme ses fichiers : mondes/<id>.monde.yaml, cartes/<id>.pgm...",
+          "$ref": "#/definitions/id"
+        },
+        "nom": {
+          "description": "Nom affiché de l'étage. Ex. « Rez-de-chaussée ».",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "source_carte": {
+          "description": "D'où vient la carte 2D cartes/<id>.pgm : monde = générée depuis l'environnement inventé mondes/<id>.monde.yaml ; scan = fabriquée depuis le scan du robot (cartes/<id>.pcd).",
+          "type": "string",
+          "enum": ["monde", "scan"]
+        }
+      }
+    },
+    "pose_etage": {
+      "description": "Position et orientation au sol sur un étage : x, y en mètres, theta en radians, dans le repère map de l'étage.",
+      "type": "object",
+      "required": ["etage", "x", "y", "theta"],
+      "additionalProperties": false,
+      "properties": {
+        "etage": {"$ref": "#/definitions/id"},
+        "x": {"description": "Position x, en mètres.", "$ref": "#/definitions/nombre"},
+        "y": {"description": "Position y, en mètres.", "$ref": "#/definitions/nombre"},
+        "theta": {"$ref": "#/definitions/angle"}
+      }
+    }
+  }
+}

@@ -12,3 +12,10 @@ enregistrements/
 setup/*.log
 __pycache__/
 journaux/
+# Compilations ROS 2 propres à chaque agent (colcon --build-base build_<paquet> ...)
+ws/build_*/
+ws/install_*/
+ws/log_*/
+# Installations Python en mode éditable et caches de pytest
+*.egg-info/
+.pytest_cache/

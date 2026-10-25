@@ -1,0 +1,69 @@
+# Rez-de-chaussée du lycée démo, inventé (sans scan). Format : atelier/lieu/schemas/monde.schema.json.
+# Unités : mètres et radians. Vue de dessus :
+#
+#  y=20  ┌──────────────────────┬─────────────────────────┐
+#        │        amphi         │          b204           │
+#  14.5  ├──────────── ─────────┴──────────── ────────────┤  passages : x 8,4–9,6 et 20,4–21,6
+#        │            couloir nord (y 11,5 à 14,5)         │
+#  11.5  │       ┌──────────────────────────────┐         │
+#        │ hall  │   bloc fermé (x 5 à 25)       │ o est o │  o : poteaux
+#   8.5  │       └──────────────────────────────┘         │
+#        │            couloir sud (y 5,5 à 8,5)            │
+#   5.5  ├────── ──────────┬───── ───────┬────── ─────────┤  passages : x 6,4–7,6, 14,4–15,6 et 22,4–23,6
+#        │  vie scolaire   │  infirmerie  │      cdi       │
+#   0    └─────────────────┴──────────────┴────────────────┘
+#        x=0               10             20              30
+#
+# Les deux couloirs sont reliés à l'ouest par le hall (accueil) et à l'est : entre l'accueil et
+# chaque salle, il existe toujours deux chemins. Un passage est l'écart entre deux murs alignés.
+version: 1
+emprise: {min: [0.0, 0.0], max: [30.0, 20.0]}
+
+murs:
+  # Murs extérieurs
+  - {id: ext_sud,   de: [0.0, 0.0],   a: [30.0, 0.0],  epaisseur: 0.2, hauteur: 2.5}
+  - {id: ext_est,   de: [30.0, 0.0],  a: [30.0, 20.0], epaisseur: 0.2, hauteur: 2.5}
+  - {id: ext_nord,  de: [30.0, 20.0], a: [0.0, 20.0],  epaisseur: 0.2, hauteur: 2.5}
+  - {id: ext_ouest, de: [0.0, 20.0],  a: [0.0, 0.0],   epaisseur: 0.2, hauteur: 2.5}
+  # Côté sud du couloir sud, avec les passages des trois salles sud
+  - {id: mur_sud_1, de: [0.0, 5.5],  a: [6.4, 5.5],  epaisseur: 0.15, hauteur: 2.5}
+  - {id: mur_sud_2, de: [7.6, 5.5],  a: [14.4, 5.5], epaisseur: 0.15, hauteur: 2.5}
+  - {id: mur_sud_3, de: [15.6, 5.5], a: [22.4, 5.5], epaisseur: 0.15, hauteur: 2.5}
+  - {id: mur_sud_4, de: [23.6, 5.5], a: [30.0, 5.5], epaisseur: 0.15, hauteur: 2.5}
+  # Cloisons entre les salles sud
+  - {id: cloison_1, de: [10.0, 0.0], a: [10.0, 5.5], epaisseur: 0.15, hauteur: 2.5}
+  - {id: cloison_2, de: [20.0, 0.0], a: [20.0, 5.5], epaisseur: 0.15, hauteur: 2.5}
+  # Bloc fermé entre les deux couloirs (sanitaires et locaux techniques, sans passage)
+  - {id: bloc_sud,   de: [5.0, 8.5],   a: [25.0, 8.5],  epaisseur: 0.15, hauteur: 2.5}
+  - {id: bloc_est,   de: [25.0, 8.5],  a: [25.0, 11.5], epaisseur: 0.15, hauteur: 2.5}
+  - {id: bloc_nord,  de: [25.0, 11.5], a: [5.0, 11.5],  epaisseur: 0.15, hauteur: 2.5}
+  - {id: bloc_ouest, de: [5.0, 11.5],  a: [5.0, 8.5],   epaisseur: 0.15, hauteur: 2.5}
+  # Côté nord du couloir nord, avec les passages des deux salles nord
+  - {id: mur_nord_1, de: [0.0, 14.5],  a: [8.4, 14.5],  epaisseur: 0.15, hauteur: 2.5}
+  - {id: mur_nord_2, de: [9.6, 14.5],  a: [20.4, 14.5], epaisseur: 0.15, hauteur: 2.5}
+  - {id: mur_nord_3, de: [21.6, 14.5], a: [30.0, 14.5], epaisseur: 0.15, hauteur: 2.5}
+  # Cloison entre les salles nord
+  - {id: cloison_3, de: [15.0, 14.5], a: [15.0, 20.0], epaisseur: 0.15, hauteur: 2.5}
+
+objets:
+  # Hall d'accueil : banque d'accueil contre le mur ouest, banc, poubelle
+  - {id: banque_accueil, type: boite, centre: [0.7, 10.0], taille: [0.8, 2.0, 1.1], cap: 0.0}
+  - {id: banc_hall, type: modele, modele: banc, centre: [0.5, 7.0], cap: 1.5708}
+  - {id: poubelle_hall, type: modele, modele: poubelle, centre: [4.5, 14.1], cap: 0.0}
+  # Liaison est : deux poteaux, de part et d'autre du passage
+  - {id: poteau_1, type: cylindre, centre: [26.0, 10.0], rayon: 0.2, hauteur: 2.5}
+  - {id: poteau_2, type: cylindre, centre: [29.0, 10.0], rayon: 0.2, hauteur: 2.5}
+  # Dans les salles
+  - {id: table_cdi, type: modele, modele: table, centre: [25.0, 2.5], cap: 0.0}
+  - {id: chaise_cdi_1, type: modele, modele: chaise, centre: [24.6, 1.7], cap: 1.5708}
+  - {id: chaise_cdi_2, type: modele, modele: chaise, centre: [25.4, 1.7], cap: 1.5708}
+  - {id: bureau_amphi, type: boite, centre: [7.5, 18.8], taille: [3.0, 0.8, 0.75], cap: 0.0}
+
+pietons:
+  # Fait le tour du couloir sud : il croise la ligne du robot à chaque bout (x = 4 et x = 24)
+  - {id: pieton_sud, trajet: [[4.0, 7.8], [24.0, 7.8], [24.0, 6.2], [4.0, 6.2]], vitesse: 0.8, aller_retour: false}
+  # Va et vient le long du côté nord du couloir nord
+  - {id: pieton_nord, trajet: [[6.0, 13.8], [26.0, 13.8]], vitesse: 1.0, aller_retour: true}
+
+# Le robot démarre à l'accueil
+depart_robot: {x: 2.5, y: 10.0, theta: 0.0}
