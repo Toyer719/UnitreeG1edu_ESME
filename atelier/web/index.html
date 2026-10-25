@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atelier G1</title>
+  <meta name="description" content="Configuration des lieux du robot d'accueil G1 : monde, carte, salles, itinéraires, zones, simulation.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='4' y='2' width='8' height='12' rx='2' fill='%23e8772e'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <link rel="stylesheet" href="css/atelier.css">
+  <script>
+    // Erreurs JavaScript de la page, gardées pour le test automatique dans le navigateur
+    window.erreursAtelier = [];
+    window.addEventListener('error', function (e) { window.erreursAtelier.push(String(e.message || e)); });
+    window.addEventListener('unhandledrejection', function (e) {
+      window.erreursAtelier.push(String((e.reason && e.reason.message) || e.reason));
+    });
+  </script>
+  <!-- Leaflet 1.9.4 et three.js 0.160.0 copiés dans vendor/ : l'Atelier marche sans Internet -->
+  <script src="vendor/leaflet/leaflet.js"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three/three.module.js",
+        "three/addons/": "./vendor/three/"
+      }
+    }
+  </script>
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header class="entete">
+    <div class="marque">Atelier G1</div>
+    <label class="choix">Lieu <select id="choix-lieu" aria-label="Lieu"></select></label>
+    <label class="choix">Étage <select id="choix-etage" aria-label="Étage"></select></label>
+    <span id="liaison" class="liaison">Connexion…</span>
+  </header>
+  <nav class="onglets" id="onglets" aria-label="Écrans de l'Atelier"></nav>
+  <main id="ecran" class="ecran"></main>
+  <div id="messages" class="messages" aria-live="polite"></div>
+  <noscript>L'Atelier G1 a besoin de JavaScript : activez-le dans le navigateur.</noscript>
+</body>
+</html>
