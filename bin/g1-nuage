@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Afficher le nuage de points du LiDAR dans RViz, quel que soit le programme qui le publie.
+exec /usr/bin/python3 "$HOME/robot-g1/outils/nuage.py" "$@"

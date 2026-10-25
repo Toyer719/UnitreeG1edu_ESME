@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Piloter le vrai G1 à la manette (LB maintenu = homme mort).
+exec env -u PYTHONPATH "$HOME/robot-g1/.venv-sim/bin/python" "$HOME/robot-g1/robot/manette_robot.py" "$@"

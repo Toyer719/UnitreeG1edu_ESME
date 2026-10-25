@@ -1,0 +1,14 @@
+# Environnements Python, dépôts téléchargés et fichiers générés : ils se réinstallent avec setup/
+.venv-*/
+third_party/
+opt/
+modeles/
+ws/build/
+ws/install/
+ws/log/
+ws/src/livox_ros_driver2/
+ws/src/FAST_LIO/
+enregistrements/
+setup/*.log
+__pycache__/
+journaux/

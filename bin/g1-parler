@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Faire parler le PC en français (Piper).
+exec "$HOME/robot-g1/.venv-projet/bin/python" "$HOME/robot-g1/outils/parler.py" "$@"
