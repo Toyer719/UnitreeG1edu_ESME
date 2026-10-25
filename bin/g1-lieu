@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Créer ou vérifier un paquet de lieu de l'Atelier G1 :
+#   g1-lieu creer ID --nom NOM     g1-lieu valider --lieu L     g1-lieu liste
+# Le code vient de la copie de travail qui contient cette commande (worktree compris).
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PY="$RACINE/.venv-projet/bin/python"
+[ -x "$PY" ] || PY="$HOME/robot-g1/.venv-projet/bin/python"
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PY" "$RACINE/atelier/lieu/commande.py" "$@"
