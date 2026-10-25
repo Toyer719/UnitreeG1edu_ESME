@@ -1,0 +1,8 @@
+# Carte 2D au format Nav2. Format : atelier/lieu/schemas/carte.schema.json.
+# Écrit par l'Atelier G1 : les commentaires ajoutés à la main ne sont pas conservés.
+image: rdc.pgm
+resolution: 0.05
+origin: [-0.05, -1.05, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.196

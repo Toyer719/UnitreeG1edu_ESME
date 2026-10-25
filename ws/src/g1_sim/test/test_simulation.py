@@ -12,6 +12,8 @@ Gazebo met 5 à 10 s à démarrer ; compter environ 1 min pour tout le fichier.
 """
 import math
 import time
+import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -23,8 +25,15 @@ from outils_sim import (Ecoute, Simulation, distance_boite, lidar_vers_odom, lie
 MURS = [((5.0, -1.0, 1.25), (10.0, 0.15, 2.5)), ((5.0, 1.0, 1.25), (10.0, 0.15, 2.5)),
         ((0.0, 0.0, 1.25), (0.15, 2.0, 2.5)), ((10.0, 0.0, 1.25), (0.15, 2.0, 2.5))]
 BOITE = ((5.0, 0.0, 0.5), (0.5, 0.5, 1.0))
-DEMI_LONGUEUR_ROBOT = 0.225   # le long de x
-DEMI_LARGEUR_ROBOT = 0.15     # le long de y
+
+# Dimensions du robot lues dans son modèle (collision aux mesures du G1, position du LiDAR)
+_LIEN = ET.parse(Path(__file__).resolve().parent.parent / 'models' / 'g1_proxy' /
+                 'model.sdf').getroot().find('model/link')
+_TAILLE = [float(v) for v in _LIEN.findtext('collision/geometry/box/size').split()]
+_CENTRE = [float(v) for v in _LIEN.findtext('collision/pose').split()]
+DEMI_LONGUEUR_ROBOT = _TAILLE[0] / 2 + _CENTRE[0]   # de base_link à l'avant, le long de x
+DEMI_LARGEUR_ROBOT = _TAILLE[1] / 2 + _CENTRE[1]    # de base_link au côté gauche, le long de y
+POSE_LIDAR = [float(v) for v in _LIEN.findtext("sensor[@type='gpu_lidar']/pose").split()[:3]]
 
 
 @pytest.fixture(scope='module')
@@ -74,12 +83,12 @@ def test_points_plus_de_5_par_seconde(sim):
 
 
 def test_reperes_coherents(sim):
-    """Repères : odom → base_link = /odom, base_link → lidar = 1,2 m, points sur le monde."""
+    """Repères : odom → base_link = /odom, base_link → lidar = le MID-360, points sur le monde."""
     # base_link → lidar, publié par robot_state_publisher
     assert sim.attendre(lambda: ('base_link', 'lidar') in sim.tf_statique, 10.0)
     t = sim.tf_statique[('base_link', 'lidar')].transform
-    assert (t.translation.x, t.translation.y) == pytest.approx((0.0, 0.0), abs=1e-6)
-    assert t.translation.z == pytest.approx(1.2, abs=1e-6)
+    position = (t.translation.x, t.translation.y, t.translation.z)
+    assert position == pytest.approx(tuple(POSE_LIDAR), abs=1e-6)
     assert t.rotation.w == pytest.approx(1.0, abs=1e-6)
 
     # odom → base_link, publié par le plugin d'odométrie (via le pont), identique à /odom
@@ -117,7 +126,7 @@ def test_cmd_vel_avance_de_0_9_m(sim):
 def test_ne_traverse_pas_la_boite(sim):
     """Commande vx = 0,5 m/s pendant 8 s vers la boîte : arrêt contre sa face ouest (x = 4,75)."""
     avant, apres = sim.rouler(vx=0.5, duree=8.0)
-    contact = BOITE[0][0] - BOITE[1][0] / 2 - DEMI_LONGUEUR_ROBOT   # 4,525 m
+    contact = BOITE[0][0] - BOITE[1][0] / 2 - DEMI_LONGUEUR_ROBOT
     print(f'arrêté en x = {apres[0]:.3f} m (contact attendu en {contact:.3f} m)')
     assert apres[0] < contact + 0.03
     assert apres[0] > contact - 0.15
@@ -127,7 +136,7 @@ def test_ne_traverse_pas_la_boite(sim):
 def test_ne_traverse_pas_un_mur(sim):
     """Commande vy = 0,5 m/s pendant 4 s vers le mur nord (y = 1) : arrêt contre le mur."""
     avant, apres = sim.rouler(vy=0.5, duree=4.0)
-    contact = 1.0 - 0.15 / 2 - DEMI_LARGEUR_ROBOT   # 0,775 m
+    contact = 1.0 - 0.15 / 2 - DEMI_LARGEUR_ROBOT
     print(f'arrêté en y = {apres[1]:.3f} m (contact attendu en {contact:.3f} m)')
     assert apres[1] < contact + 0.03
     assert apres[1] > contact - 0.15

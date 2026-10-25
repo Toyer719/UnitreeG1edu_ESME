@@ -1,0 +1,32 @@
+# Destinations du guide. Format : atelier/lieu/schemas/salles.schema.json.
+# Écrit par l'Atelier G1 : les commentaires ajoutés à la main ne sont pas conservés.
+- id: accueil
+  nom: Accueil
+  alias: [accueil]
+  etage: rdc
+  pose: {x: 1, y: 1, theta: 0}
+  phrase_arrivee: ''
+- id: '1'
+  nom: '1'
+  alias: []
+  etage: rdc
+  pose: {x: 18.65, y: 12.95, theta: 0}
+  phrase_arrivee: ''
+- id: '2'
+  nom: '2'
+  alias: []
+  etage: rdc
+  pose: {x: 19.9, y: 5.5, theta: 0}
+  phrase_arrivee: ''
+- id: '3'
+  nom: '3'
+  alias: []
+  etage: rdc
+  pose: {x: 8.2, y: 37.95, theta: 0}
+  phrase_arrivee: ''
+- id: '4'
+  nom: '4'
+  alias: []
+  etage: rdc
+  pose: {x: 1.15, y: 24.4, theta: 0}
+  phrase_arrivee: ''

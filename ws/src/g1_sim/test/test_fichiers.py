@@ -54,15 +54,26 @@ def test_sdf_valide(fichier):
 
 
 def test_taille_et_masse(modele):
-    """Boîte de 0,45 × 0,30 × 1,30 m posée au sol, 35 kg, centre de masse bas."""
+    """Boîte de collision aux dimensions du G1 debout (1,32 × 0,45 × 0,20 m), au sol, 35 kg."""
     lien = modele.find('link')
     assert lien.get('name') == 'base_link'
     taille = [float(v) for v in lien.findtext('collision/geometry/box/size').split()]
-    assert taille == pytest.approx([0.45, 0.30, 1.30])
+    profondeur, largeur, hauteur = taille
+    assert 1.28 < hauteur < 1.34 and 0.40 < largeur < 0.50 and 0.15 < profondeur < 0.25, taille
     pose = [float(v) for v in lien.findtext('collision/pose').split()]
-    assert pose[2] == pytest.approx(0.65)   # le dessous de la boîte est à z = 0
+    assert pose[2] - hauteur / 2 == pytest.approx(0.0, abs=0.005)   # le dessous est au sol
     assert float(lien.findtext('inertial/mass')) == pytest.approx(35.0)
-    assert float(lien.findtext('inertial/pose').split()[2]) < 0.65
+    assert float(lien.findtext('inertial/pose').split()[2]) < hauteur / 2
+
+
+def test_maillages_du_g1(modele):
+    """L'apparence vient des maillages officiels du G1, tous présents et invisibles au LiDAR."""
+    visuels = modele.findall('link/visual')
+    assert len(visuels) >= 30
+    for v in visuels:
+        uri = v.findtext('geometry/mesh/uri')
+        assert uri and (MODELE.parent / uri).is_file(), f'{v.get("name")} : {uri} introuvable'
+        assert v.findtext('visibility_flags') == '2', v.get('name')
 
 
 def test_plugins(modele):
@@ -77,11 +88,12 @@ def test_plugins(modele):
 
 
 def test_lidar(modele):
-    """gpu_lidar à 1,2 m : 360 × 16 points, −7° à +52°, 0,1 à 40 m, 10 Hz, repère lidar."""
+    """gpu_lidar à la place du MID-360 : 360 × 16 points, −7° à +52°, 0,1 à 40 m, 10 Hz."""
     capteur = modele.find("link/sensor[@type='gpu_lidar']")
     assert capteur is not None
-    pose = [float(v) for v in capteur.findtext('pose').split()]
-    assert pose == pytest.approx([0, 0, 1.2, 0, 0, 0])
+    x, y, z, roulis, tangage, lacet = [float(v) for v in capteur.findtext('pose').split()]
+    assert abs(x) < 0.02 and abs(y) < 0.02 and 1.20 < z < 1.28   # dans la tête du G1
+    assert (roulis, tangage, lacet) == pytest.approx((0, 0, 0))
     assert float(capteur.findtext('update_rate')) == 10
     assert capteur.findtext('ignition_frame_id') == 'lidar'
     h = capteur.find('lidar/scan/horizontal')
@@ -181,7 +193,8 @@ def test_urdf(lancement):
     assert joint.find('parent').get('link') == 'base_link'
     assert joint.find('child').get('link') == 'lidar'
     xyz = [float(v) for v in joint.find('origin').get('xyz').split()]
-    assert xyz == pytest.approx([0.0, 0.0, 1.2])
+    capteur = ET.parse(MODELE).getroot().find("model/link/sensor[@type='gpu_lidar']")
+    assert xyz == pytest.approx([float(v) for v in capteur.findtext('pose').split()[:3]])
 
 
 def test_commande_gazebo(lancement):
