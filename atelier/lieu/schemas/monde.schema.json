@@ -73,8 +73,24 @@
         "theta": {"$ref": "#/definitions/angle"}
       }
     },
+    "categorie_objet": {
+      "description": "Facultatif. Ce qu'est l'objet, pour l'affichage, la reconnaissance du scan et son évaluation : table, chaise, banc, poteau, meuble (armoire, bureau plein, banque d'accueil...), poubelle, personne (debout et immobile pendant le scan) ou inconnu. Un objet de catégorie personne n'est jamais dessiné sur la carte 2D (il reste dans le monde Gazebo). Sans ce champ, la catégorie se déduit de la forme : modele → son nom (chaise, table, banc, poubelle), cylindre → poteau, boite → meuble.",
+      "type": "string",
+      "enum": ["table", "chaise", "banc", "poteau", "meuble", "poubelle", "personne", "inconnu"]
+    },
+    "source": {
+      "description": "Facultatif, dessin par défaut. D'où vient l'élément : dessin (posé à la main dans l'éditeur) ou scan (reconnu dans le scan du robot).",
+      "type": "string",
+      "enum": ["dessin", "scan"]
+    },
+    "confiance": {
+      "description": "Facultatif. Confiance de la reconnaissance, de 0 (douteux) à 1 (sûr). Seulement pour un élément venu d'un scan.",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
     "mur": {
-      "description": "Mur droit de « de » à « a » : une boîte de longueur exactement égale au segment (sans débordement aux bouts), d'épaisseur centrée sur le segment, posée au sol. Les deux bouts sont distincts.",
+      "description": "Mur droit de « de » à « a » : une boîte de longueur exactement égale au segment (sans débordement aux bouts), d'épaisseur centrée sur le segment, posée au sol. Les deux bouts sont distincts. Champs facultatifs : source et confiance (élément venu d'un scan).",
       "type": "object",
       "required": ["id", "de", "a", "epaisseur", "hauteur"],
       "additionalProperties": false,
@@ -93,11 +109,13 @@
           "type": "number",
           "exclusiveMinimum": 0,
           "maximum": 10
-        }
+        },
+        "source": {"$ref": "#/definitions/source"},
+        "confiance": {"$ref": "#/definitions/confiance"}
       }
     },
     "objet": {
-      "description": "Obstacle fixe posé au sol. Champs selon le type : boite = id, type, centre, taille, cap ; cylindre = id, type, centre, rayon, hauteur ; modele = id, type, modele, centre, cap.",
+      "description": "Obstacle fixe posé au sol. Champs selon le type : boite = id, type, centre, taille, cap ; cylindre = id, type, centre, rayon, hauteur ; modele = id, type, modele, centre, cap. Champs facultatifs, pour tous les types : categorie, source et confiance.",
       "type": "object",
       "required": ["id", "type", "centre"],
       "additionalProperties": false,
@@ -136,28 +154,31 @@
           "description": "modele seulement : meuble écrit en SDF par l'agent Monde, sans téléchargement. Encombrement indicatif longueur × largeur × hauteur, en mètres, avant rotation par cap : chaise 0,45 × 0,45 × 0,9 ; table 1,2 × 0,8 × 0,75 ; banc 1,5 × 0,4 × 0,45 ; poubelle cylindre de 0,25 de rayon et 0,8 de haut.",
           "type": "string",
           "enum": ["chaise", "table", "banc", "poubelle"]
-        }
+        },
+        "categorie": {"$ref": "#/definitions/categorie_objet"},
+        "source": {"$ref": "#/definitions/source"},
+        "confiance": {"$ref": "#/definitions/confiance"}
       },
       "allOf": [
         {
           "if": {"properties": {"type": {"const": "boite"}}, "required": ["type"]},
           "then": {
             "required": ["taille", "cap"],
-            "propertyNames": {"enum": ["id", "type", "centre", "taille", "cap"]}
+            "propertyNames": {"enum": ["id", "type", "centre", "taille", "cap", "categorie", "source", "confiance"]}
           }
         },
         {
           "if": {"properties": {"type": {"const": "cylindre"}}, "required": ["type"]},
           "then": {
             "required": ["rayon", "hauteur"],
-            "propertyNames": {"enum": ["id", "type", "centre", "rayon", "hauteur"]}
+            "propertyNames": {"enum": ["id", "type", "centre", "rayon", "hauteur", "categorie", "source", "confiance"]}
           }
         },
         {
           "if": {"properties": {"type": {"const": "modele"}}, "required": ["type"]},
           "then": {
             "required": ["modele", "cap"],
-            "propertyNames": {"enum": ["id", "type", "modele", "centre", "cap"]}
+            "propertyNames": {"enum": ["id", "type", "modele", "centre", "cap", "categorie", "source", "confiance"]}
           }
         }
       ]

@@ -25,9 +25,10 @@ from typing import Optional
 from . import geometrie
 
 DOSSIER_SCHEMAS = Path(__file__).resolve().parent / "schemas"
-TYPES_FICHIERS = ("lieu", "monde", "salles", "itineraires", "zones", "carte")
+TYPES_FICHIERS = ("lieu", "monde", "salles", "itineraires", "zones", "carte", "session_scan", "reconnaissance")
 NOMS_FICHIERS = {"lieu": "lieu.yaml", "monde": "monde.yaml", "salles": "salles.yaml",
-                 "itineraires": "itineraires.yaml", "zones": "zones.yaml", "carte": "carte.yaml"}
+                 "itineraires": "itineraires.yaml", "zones": "zones.yaml", "carte": "carte.yaml",
+                 "session_scan": "session.json", "reconnaissance": "reconnaissance.yaml"}
 IDS_RESERVES = ("sol", "g1_proxy")                 # noms de modèles Gazebo déjà pris
 IDS_BOOLEENS = ("yes", "no", "on", "off", "y", "n", "true", "false")
 REGLE_ID = ("lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, "
@@ -38,7 +39,8 @@ INDICE_BOOLEEN = ("YAML lit yes, no, on, off, true et false comme oui ou non : "
 
 @lru_cache(maxsize=None)
 def charger_schema(type_fichier):
-    """Schéma JSON d'un type de fichier : lieu, monde, salles, itineraires, zones ou carte."""
+    """Schéma JSON d'un type de fichier : lieu, monde, salles, itineraires, zones, carte,
+    session_scan (scans/<session>/session.json) ou reconnaissance (scans/<session>/reconnaissance.yaml)."""
     if type_fichier not in TYPES_FICHIERS:
         raise ValueError(f"type de fichier inconnu : {type_fichier} (attendu : {', '.join(TYPES_FICHIERS)})")
     return json.loads((DOSSIER_SCHEMAS / f"{type_fichier}.schema.json").read_text(encoding="utf-8"))
@@ -210,7 +212,7 @@ TYPES_FR = {"number": "un nombre", "integer": "un nombre entier", "string": "un 
             "array": "une liste [ … ]", "object": "un ensemble de champs { … }",
             "boolean": "true ou false", "null": "null"}
 MOTS_ELEMENTS = {"murs": "mur", "objets": "objet", "pietons": "piéton", "etages": "étage",
-                 "interdites": "zone interdite", "lentes": "zone lente"}
+                 "interdites": "zone interdite", "lentes": "zone lente", "passages": "passage"}
 UNITES = {"polygone": "sommet", "trajet": "point", "alias": "alias", "etages": "étage",
           "taille": "valeur", "origin": "valeur", "centre": "coordonnée", "de": "coordonnée",
           "a": "coordonnée", "min": "coordonnée", "max": "coordonnée"}
@@ -365,6 +367,14 @@ def _texte(e, champ, type_fichier):
             return f"{sujet} doit être un nom de fichier .pcd sans dossier (ex. test1.pcd), ou null"
         if n == "^[a-z]{2}$":
             return f"{sujet} doit être un code de langue en deux lettres minuscules (ex. fr), pas {montrer(v)}"
+        if n.startswith("^[0-9]{4}-[0-9]{2}-[0-9]{2}T"):
+            return (f"{sujet} doit être une date et une heure ISO 8601 avec le décalage horaire "
+                    f"(ex. 2026-10-25T17:42:05+01:00), pas {montrer(v)}")
+        if n.startswith("^[0-9]{4}-[0-9]{2}-[0-9]{2}_"):
+            return (f"{sujet} doit être un identifiant de session AAAA-MM-JJ_HHhMM (ex. 2026-10-25_17h42), "
+                    f"pas {montrer(v)}")
+        if n.startswith("^(/[A-Za-z_]"):
+            return f"{sujet} doit être un nom complet de sujet ROS 2 (ex. /points), pas {montrer(v)}"
         return f"{sujet} vaut {montrer(v)}, qui n'a pas la forme attendue ({n})"
     if e.mot_cle == "minLength":
         return f"{sujet} ne doit pas être vide" if n == 1 else f"{sujet} doit faire au moins {n} caractères"
@@ -400,6 +410,9 @@ def _texte(e, champ, type_fichier):
         return f"{sujet} doit être un nombre fini, pas {montrer(v)}"
     if e.mot_cle == "false":
         return f"{sujet} n'est pas permis"
+    if e.mot_cle == "anyOf":
+        return (f"{sujet} vaut {montrer(v)}, qui n'est pas permis ici "
+                f"(voir la description de ce champ dans atelier/lieu/schemas/{type_fichier}.schema.json)")
     return f"{sujet} : valeur refusée par le schéma ({e.mot_cle})"
 
 
@@ -537,14 +550,112 @@ def regles_carte(d, fichier="carte.yaml"):
     return []
 
 
+ETATS_ETAPES = {"en_cours": ("preparation", "enregistrement"), "arret_en_cours": ("arret",),
+                "traitement": ("carte_3d", "carte_2d", "reconnaissance", "monde"), "termine": ("fini",),
+                "echec": ("preparation", "enregistrement", "arret", "carte_3d", "carte_2d", "reconnaissance",
+                          "monde")}
+
+
+def _instant(texte):
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(texte)
+    except (TypeError, ValueError):
+        return None
+
+
+def regles_session_scan(d, fichier="session.json"):
+    messages = []
+    etat, etape = d["etat"], d["etape"]
+    if etape not in ETATS_ETAPES[etat]:
+        messages.append(f"{fichier} : l'étape « {etape} » ne va pas avec l'état « {etat} » ; étapes possibles : "
+                        f"{', '.join(ETATS_ETAPES[etat])}")
+    if etat == "termine" and d["progression"] != 100:
+        messages.append(f"{fichier} : une session terminée a une progression de 100, pas {d['progression']}")
+    if etat == "en_cours" and d["fin"] is not None:
+        messages.append(f"{fichier} : une session en cours n'a pas encore de fin (fin: null)")
+    if etat in ("traitement", "termine") and d["fin"] is None:
+        messages.append(f"{fichier} : l'état « {etat} » suppose un enregistrement fini ; il manque l'heure de fin")
+    debut, fin = _instant(d["debut"]), _instant(d["fin"]) if d["fin"] else None
+    if debut is not None and fin is not None and fin < debut:
+        messages.append(f"{fichier} : la fin ({d['fin']}) est avant le début ({d['debut']})")
+    if d["mode"] == "simu" and d["repetition"]:
+        messages.append(f"{fichier} : repetition ne s'emploie qu'en mode robot (en simu, mettez repetition: false)")
+    if d["explorer"] and not (d["mode"] == "simu" or d["repetition"]):
+        messages.append(f"{fichier} : explorer ne s'emploie qu'avec le robot simulé (mode simu, ou robot en "
+                        "répétition) : le vrai robot se conduit à la télécommande")
+    if d.get("carte_unitree") and d["mode"] != "robot":
+        messages.append(f"{fichier} : carte_unitree n'a de sens qu'en mode robot (mettez null)")
+    if d.get("adoption") and etat != "termine":
+        messages.append(f"{fichier} : seule une session terminée peut avoir été adoptée")
+    return messages
+
+
+def regles_reconnaissance(d, fichier="reconnaissance.yaml"):
+    messages = []
+    elements = [(MOTS_ELEMENTS[cle], e) for cle in ("murs", "passages", "objets") for e in d[cle]]
+    ids = [e["id"] for _, e in elements]
+    for i in _doublons(ids):
+        messages.append(f"{fichier} : l'id « {i} » est utilisé {ids.count(i)} fois ; chaque mur, passage et "
+                        "objet doit avoir un id différent (il devient un nom de modèle Gazebo)")
+    for mot, e in elements:
+        if e["id"] in IDS_RESERVES:
+            messages.append(f"{fichier}, {mot} « {e['id']} » : l'id « {e['id']} » est réservé "
+                            "(déjà pris dans le monde Gazebo) ; choisissez-en un autre")
+    murs = {m["id"]: m for m in d["murs"]}
+    for m in d["murs"]:
+        if (math.isclose(m["de"][0], m["a"][0], abs_tol=1e-9)
+                and math.isclose(m["de"][1], m["a"][1], abs_tol=1e-9)):
+            messages.append(f"{fichier}, mur « {m['id']} » : ses deux bouts sont au même endroit "
+                            f"{_point_texte(m['de'])} ; un mur doit avoir une longueur")
+    for p in d["passages"]:
+        ou = f"{fichier}, passage « {p['id']} »"
+        inconnus = [i for i in p["murs"] if i not in murs]
+        if inconnus:
+            messages.append(f"{ou} : le mur « {inconnus[0]} » n'existe pas dans murs")
+            continue
+        largeur = math.dist(p["de"], p["a"])
+        if not geometrie.PASSAGE_MIN - 1e-6 <= largeur <= geometrie.PASSAGE_MAX + 1e-6:
+            messages.append(f"{ou} : largeur de {nombre(round(largeur, 3))} m ; un passage est un trou de "
+                            f"{nombre(geometrie.PASSAGE_MIN)} à {nombre(geometrie.PASSAGE_MAX)} m")
+        m1, m2 = (murs[i] for i in p["murs"])
+        if not geometrie.murs_alignes(m1["de"], m1["a"], m2["de"], m2["a"]):
+            messages.append(f"{ou} : les murs « {m1['id']} » et « {m2['id']} » ne sont pas alignés ; un passage "
+                            "est un trou entre deux murs alignés")
+            continue
+        trou = geometrie.trou_entre(m1["de"], m1["a"], m2["de"], m2["a"])
+        bouts = {tuple(p["de"]), tuple(p["a"])}
+        if trou is None or not all(min(math.dist(b, q) for b in bouts) <= 0.15 for q in trou[1:]):
+            messages.append(f"{ou} : de et a doivent être les bouts des murs « {m1['id']} » et « {m2['id']} » "
+                            "qui bordent le trou (à 0,15 m près)")
+    (xmin, ymin), (xmax, ymax) = d["emprise"]["min"], d["emprise"]["max"]
+    if xmax <= xmin or ymax <= ymin:
+        messages.append(f"{fichier}, emprise : max doit être plus grand que min, en x comme en y")
+        return messages
+    limites = f"x de {nombre(xmin)} à {nombre(xmax)}, y de {nombre(ymin)} à {nombre(ymax)}"
+
+    def hors(q):
+        return not (xmin - 1e-9 <= q[0] <= xmax + 1e-9 and ymin - 1e-9 <= q[1] <= ymax + 1e-9)
+    points = [(f"mur « {m['id']} », bout {b}", m[b]) for m in d["murs"] for b in ("de", "a")]
+    points += [(f"passage « {p['id']} », bout {b}", p[b]) for p in d["passages"] for b in ("de", "a")]
+    points += [(f"objet « {o['id']} », centre", o["centre"]) for o in d["objets"]]
+    points += [("depart_robot", (d["depart_robot"]["x"], d["depart_robot"]["y"]))]
+    for ou, q in points:
+        if hors(q):
+            messages.append(f"{fichier}, {ou} {_point_texte(q)} : sort de l'emprise ({limites}) ; "
+                            "agrandissez l'emprise")
+    return messages
+
+
 REGLES = {"lieu": regles_lieu, "monde": regles_monde, "salles": regles_salles,
-          "itineraires": regles_itineraires, "zones": regles_zones, "carte": regles_carte}
+          "itineraires": regles_itineraires, "zones": regles_zones, "carte": regles_carte,
+          "session_scan": regles_session_scan, "reconnaissance": regles_reconnaissance}
 
 
 def valider_donnees(type_fichier, donnees, fichier=None):
     """Erreurs d'un fichier (déjà lu), en français : schéma, puis règles propres au fichier.
 
-    type_fichier : lieu, monde, salles, itineraires, zones ou carte.
+    type_fichier : lieu, monde, salles, itineraires, zones, carte, session_scan ou reconnaissance.
     fichier : nom affiché au début de chaque message (par défaut : salles.yaml, monde.yaml...).
     Renvoie une liste vide si tout va bien.
     """

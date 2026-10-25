@@ -4,7 +4,8 @@ On regarde le monde de dessus, dans la tranche de 0,1 à 1,5 m de haut (celle o�
 se cogner) : chaque mur et chaque objet qui coupe cette tranche devient occupé (0). L'intérieur
 de l'emprise est libre (254) ; la marge d'un pixel autour de l'emprise est inconnue (205), sauf
 là où un mur la recouvre. Les piétons ne vont pas sur la carte : ce sont des obstacles mobiles,
-que le LiDAR verra.
+que le LiDAR verra. Un objet de catégorie personne (reconnu dans un scan, section 9.4 du plan)
+n'y va pas non plus : il reste dans le monde Gazebo, mais jamais sur la carte.
 
 Un pixel est occupé dès que l'empreinte au sol de l'objet le recouvre, même en partie ; un
 recouvrement de moins de 1 mm ne compte pas (bords posés sur la grille, angles arrondis comme
@@ -91,9 +92,11 @@ def _marquer(image, zone, valeur):
 
 def obstacles(monde, tranche=TRANCHE):
     """Murs et objets du monde qui coupent la tranche : liste de (id, empreinte), avec empreinte
-    ("polygone", [coins]) ou ("cercle", centre, rayon)."""
+    ("polygone", [coins]) ou ("cercle", centre, rayon). Les personnes (Objet.sur_la_carte faux)
+    n'y sont jamais."""
     liste = [(m.id, ("polygone", m.coins())) for m in monde.murs if coupe_tranche(m.hauteur, tranche)]
-    liste += [(o.id, o.empreinte()) for o in monde.objets if coupe_tranche(o.hauteur_totale(), tranche)]
+    liste += [(o.id, o.empreinte()) for o in monde.objets
+              if o.sur_la_carte and coupe_tranche(o.hauteur_totale(), tranche)]
     return liste
 
 

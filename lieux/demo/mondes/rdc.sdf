@@ -1078,6 +1078,276 @@
         </visual>
       </link>
     </model>
+    <model name="table_est">
+      <static>true</static>
+      <pose>29.2 6.1 0 0 0 0</pose>
+      <link name="lien">
+        <collision name="plateau_collision">
+          <pose>0 0 0.73 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.2 0.8 0.04</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="plateau_visuel">
+          <pose>0 0 0.73 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>1.2 0.8 0.04</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.62 0.45 0.28 1</ambient>
+            <diffuse>0.62 0.45 0.28 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <collision name="pied_1_collision">
+          <pose>0.55 0.35 0.355 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.71</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="pied_1_visuel">
+          <pose>0.55 0.35 0.355 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.71</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.3 0.3 0.32 1</ambient>
+            <diffuse>0.3 0.3 0.32 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <collision name="pied_2_collision">
+          <pose>0.55 -0.35 0.355 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.71</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="pied_2_visuel">
+          <pose>0.55 -0.35 0.355 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.71</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.3 0.3 0.32 1</ambient>
+            <diffuse>0.3 0.3 0.32 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <collision name="pied_3_collision">
+          <pose>-0.55 0.35 0.355 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.71</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="pied_3_visuel">
+          <pose>-0.55 0.35 0.355 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.71</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.3 0.3 0.32 1</ambient>
+            <diffuse>0.3 0.3 0.32 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <collision name="pied_4_collision">
+          <pose>-0.55 -0.35 0.355 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.71</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="pied_4_visuel">
+          <pose>-0.55 -0.35 0.355 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.71</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.3 0.3 0.32 1</ambient>
+            <diffuse>0.3 0.3 0.32 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="chaise_est">
+      <static>true</static>
+      <pose>28.9 6.95 0 0 0 -1.5708</pose>
+      <link name="lien">
+        <collision name="assise_collision">
+          <pose>0 0 0.425 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.45 0.45 0.05</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="assise_visuel">
+          <pose>0 0 0.425 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.45 0.45 0.05</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.2 0.35 0.6 1</ambient>
+            <diffuse>0.2 0.35 0.6 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <collision name="pied_1_collision">
+          <pose>0.205 0.205 0.2 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.04 0.04 0.4</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="pied_1_visuel">
+          <pose>0.205 0.205 0.2 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.04 0.04 0.4</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.3 0.3 0.32 1</ambient>
+            <diffuse>0.3 0.3 0.32 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <collision name="pied_2_collision">
+          <pose>0.205 -0.205 0.2 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.04 0.04 0.4</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="pied_2_visuel">
+          <pose>0.205 -0.205 0.2 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.04 0.04 0.4</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.3 0.3 0.32 1</ambient>
+            <diffuse>0.3 0.3 0.32 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <collision name="pied_3_collision">
+          <pose>-0.205 0.205 0.2 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.04 0.04 0.4</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="pied_3_visuel">
+          <pose>-0.205 0.205 0.2 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.04 0.04 0.4</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.3 0.3 0.32 1</ambient>
+            <diffuse>0.3 0.3 0.32 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <collision name="pied_4_collision">
+          <pose>-0.205 -0.205 0.2 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.04 0.04 0.4</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="pied_4_visuel">
+          <pose>-0.205 -0.205 0.2 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.04 0.04 0.4</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.3 0.3 0.32 1</ambient>
+            <diffuse>0.3 0.3 0.32 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <collision name="dossier_collision">
+          <pose>-0.205 0 0.675 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.04 0.45 0.45</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="dossier_visuel">
+          <pose>-0.205 0 0.675 0 0 0</pose>
+          <geometry>
+            <box>
+              <size>0.04 0.45 0.45</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.2 0.35 0.6 1</ambient>
+            <diffuse>0.2 0.35 0.6 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="personne_b204">
+      <static>true</static>
+      <pose>21 16.5 0.85 0 0 0</pose>
+      <link name="lien">
+        <collision name="cylindre_collision">
+          <geometry>
+            <cylinder>
+              <radius>0.25</radius>
+              <length>1.7</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="cylindre_visuel">
+          <geometry>
+            <cylinder>
+              <radius>0.25</radius>
+              <length>1.7</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.65 0.65 0.68 1</ambient>
+            <diffuse>0.65 0.65 0.68 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+      </link>
+    </model>
     <actor name="pieton_sud">
       <skin>
         <filename>pieton.dae</filename>

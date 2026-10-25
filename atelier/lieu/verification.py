@@ -71,12 +71,15 @@ def _pt(x, y):
 
 def _obstacles(monde):
     """(nom, distance(a, b)) pour chaque mur et objet : distance d'un segment à son empreinte
-    au sol, 0 s'il la touche. Pour un point p : distance(p, p)."""
+    au sol, 0 s'il la touche. Pour un point p : distance(p, p). Une personne (objet hors carte,
+    section 9.4) n'est pas un obstacle fixe : elle n'y est pas."""
     liste = []
     for m in monde.murs:
         liste.append((f"le mur « {m.id} »",
                       lambda a, b, poly=m.coins(): geometrie.dist_segment_polygone(a, b, poly)))
     for o in monde.objets:
+        if not o.sur_la_carte:
+            continue
         forme = o.empreinte()
         if forme[0] == "cercle":
             _, centre, rayon = forme

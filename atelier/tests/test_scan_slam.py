@@ -228,7 +228,10 @@ def test_commande_g1_slam(tmp_path):
 def test_commande_sans_faux_service(tmp_path):
     """Sans faux service, --faux dit quoi faire (et ne touche pas eno2)."""
     env = _env_commande(tmp_path)
-    env["ROS_DOMAIN_ID"] = str(200 + os.getpid() % 30)
+    # domaine sans faux service : surtout pas celui du faux service de ce processus (faux_partage)
+    from atelier.scan.faux_slam import domaine_essai
+    domaine = 200 + os.getpid() % 30
+    env["ROS_DOMAIN_ID"] = str(domaine + 1 if domaine == domaine_essai() else domaine)
     r = subprocess.run([str(RACINE / "bin" / "g1-slam"), "pause", "--faux"], env=env, capture_output=True,
                        text=True, timeout=30)
     assert r.returncode == 1

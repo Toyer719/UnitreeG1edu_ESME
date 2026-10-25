@@ -30,6 +30,14 @@ MODELES_MOBILIER = {
 TYPES_OBJET = ("boite", "cylindre", "modele")
 SOURCES_CARTE = ("monde", "scan")
 
+# Catégories d'objets (section 9.4 du plan) : les mêmes dans monde.yaml (champ facultatif
+# categorie) et dans scans/<session>/reconnaissance.yaml. Une personne n'est jamais dessinée sur
+# la carte 2D. Sans categorie, elle se déduit de la forme (Objet.categorie_effective).
+CATEGORIES_OBJETS = ("table", "chaise", "banc", "poteau", "meuble", "poubelle", "personne", "inconnu")
+CATEGORIES_HORS_CARTE = ("personne",)
+SOURCES_ELEMENT = ("dessin", "scan")      # champ facultatif source d'un mur ou d'un objet
+CATEGORIE_PAR_TYPE = {"boite": "meuble", "cylindre": "poteau"}   # type modele : le nom du modèle
+
 Point = Tuple[float, float]
 
 
@@ -52,6 +60,15 @@ def _point(p) -> Point:
 
 def _liste(p):
     return [_nombre(v) for v in p]
+
+
+def _ajouter_facultatifs(d, element, champs):
+    """Ajoute à d les champs facultatifs de element qui ne valent pas None (dans cet ordre)."""
+    for champ in champs:
+        valeur = getattr(element, champ)
+        if valeur is not None:
+            d[champ] = _nombre(valeur)
+    return d
 
 
 # ---------------------------------------------------------------- lieu.yaml
@@ -268,6 +285,8 @@ class Mur:
     a: Point
     epaisseur: float = 0.15
     hauteur: float = 2.5
+    source: Optional[str] = None         # facultatif : dessin (défaut) ou scan
+    confiance: Optional[float] = None    # facultatif, de 0 à 1 : mur reconnu dans un scan
 
     @property
     def longueur(self):
@@ -287,12 +306,14 @@ class Mur:
         return rectangle(self.centre, self.longueur, self.epaisseur, self.cap)
 
     def vers_dict(self):
-        return {"id": self.id, "de": _liste(self.de), "a": _liste(self.a),
-                "epaisseur": _nombre(self.epaisseur), "hauteur": _nombre(self.hauteur)}
+        d = {"id": self.id, "de": _liste(self.de), "a": _liste(self.a),
+             "epaisseur": _nombre(self.epaisseur), "hauteur": _nombre(self.hauteur)}
+        return _ajouter_facultatifs(d, self, ("source", "confiance"))
 
     @classmethod
     def depuis_dict(cls, d):
-        return cls(d["id"], _point(d["de"]), _point(d["a"]), _nombre(d["epaisseur"]), _nombre(d["hauteur"]))
+        return cls(d["id"], _point(d["de"]), _point(d["a"]), _nombre(d["epaisseur"]), _nombre(d["hauteur"]),
+                   d.get("source"), _nombre(d.get("confiance")))
 
 
 @dataclass
@@ -301,6 +322,10 @@ class Objet:
       boite     centre, taille [longueur le long du cap, largeur, hauteur], cap
       cylindre  centre, rayon, hauteur
       modele    modele (chaise, table, banc, poubelle), centre, cap
+    Champs facultatifs, pour tous les types (None : absent du fichier) :
+      categorie  table, chaise, banc, poteau, meuble, poubelle, personne ou inconnu (CATEGORIES_OBJETS)
+      source     dessin (défaut) ou scan
+      confiance  de 0 à 1, pour un objet reconnu dans un scan
     """
     id: str
     type: str
@@ -310,18 +335,37 @@ class Objet:
     rayon: Optional[float] = None
     hauteur: Optional[float] = None
     modele: Optional[str] = None
+    categorie: Optional[str] = None
+    source: Optional[str] = None
+    confiance: Optional[float] = None
 
     @classmethod
-    def boite(cls, id, centre, taille, cap=0.0):
-        return cls(id, "boite", _point(centre), cap, taille=tuple(taille))
+    def boite(cls, id, centre, taille, cap=0.0, **facultatifs):
+        """facultatifs : categorie, source, confiance."""
+        return cls(id, "boite", _point(centre), cap, taille=tuple(taille), **facultatifs)
 
     @classmethod
-    def cylindre(cls, id, centre, rayon, hauteur):
-        return cls(id, "cylindre", _point(centre), rayon=rayon, hauteur=hauteur)
+    def cylindre(cls, id, centre, rayon, hauteur, **facultatifs):
+        return cls(id, "cylindre", _point(centre), rayon=rayon, hauteur=hauteur, **facultatifs)
 
     @classmethod
-    def meuble(cls, id, modele, centre, cap=0.0):
-        return cls(id, "modele", _point(centre), cap, modele=modele)
+    def meuble(cls, id, modele, centre, cap=0.0, **facultatifs):
+        return cls(id, "modele", _point(centre), cap, modele=modele, **facultatifs)
+
+    @property
+    def categorie_effective(self):
+        """Catégorie de l'objet : son champ categorie, sinon déduite de sa forme
+        (modele → nom du modèle, cylindre → poteau, boite → meuble)."""
+        if self.categorie:
+            return self.categorie
+        if self.type == "modele":
+            return self.modele
+        return CATEGORIE_PAR_TYPE.get(self.type, "inconnu")
+
+    @property
+    def sur_la_carte(self):
+        """Faux pour un objet qui n'est jamais dessiné sur la carte 2D (catégorie personne)."""
+        return self.categorie_effective not in CATEGORIES_HORS_CARTE
 
     def empreinte(self):
         """Forme au sol : ("cercle", centre, rayon) ou ("polygone", [4 coins])."""
@@ -354,13 +398,14 @@ class Objet:
             d["hauteur"] = _nombre(self.hauteur)
         else:
             d["cap"] = _nombre(self.cap)
-        return d
+        return _ajouter_facultatifs(d, self, ("categorie", "source", "confiance"))
 
     @classmethod
     def depuis_dict(cls, d):
         taille = tuple(_nombre(v) for v in d["taille"]) if "taille" in d else None
         return cls(d["id"], d["type"], _point(d["centre"]), _nombre(d.get("cap", 0.0)), taille,
-                   _nombre(d.get("rayon")), _nombre(d.get("hauteur")), d.get("modele"))
+                   _nombre(d.get("rayon")), _nombre(d.get("hauteur")), d.get("modele"),
+                   d.get("categorie"), d.get("source"), _nombre(d.get("confiance")))
 
 
 @dataclass

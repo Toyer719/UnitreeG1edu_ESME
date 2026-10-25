@@ -4,6 +4,8 @@ Plan de construction pour une équipe d'agents. Il s'agit de tout ce qui peut se
 
 Ce document est la référence commune. Chaque agent lit en entier les sections 1 à 5 (but, contraintes, architecture, contrats, organisation), puis sa propre fiche dans la section 6. En cas de doute, les contrats de la section 4 font foi. On ne les modifie qu'en passant par l'agent intégrateur.
 
+Vague 2, le scan intégré : chaque agent lit aussi la section 9 en entier (contrats, fiches et critères de cette vague). Ses contrats font foi au même titre que ceux de la section 4.
+
 ---
 
 ## 1. Le but
@@ -147,6 +149,7 @@ lieux/<id>/
 ├── cartes/<etage>_interdit.pgm + .yaml   # masque Keepout (généré depuis zones.yaml), même taille et origine que la carte
 ├── cartes/<etage>_lent.pgm + .yaml       # masque des zones lentes (facultatif, phase 3)
 ├── cartes/<etage>.pcd             # nuage 3D du scan (facultatif)
+├── scans/<session>/               # sessions du scan intégré (section 9.2), une par scan
 ├── salles.yaml
 ├── itineraires.yaml
 ├── zones.yaml
@@ -264,6 +267,8 @@ Valeurs des pixels : 0 = occupé, 254 = libre, 205 = inconnu. La ligne 0 de l'im
 | `g1-carte-2d --lieu L --etage E` | .pcd → carte .pgm/.yaml | Scan |
 | `g1-salle ajouter NOM [--type salle|noeud] --lieu L` | position actuelle du robot → salles ou itinéraires | Scan |
 
+Vague 2 (section 9.5) : `g1-scan demarrer|arreter|traiter|etat|adopter`, agent Orchestrateur.
+
 Ajouts de la phase 1, acceptés à l'assemblage : `g1-lieu liste` ; `g1-monde simuler … [--monde F.sdf] [--afficher]` ; `g1-guide etat` et `g1-guide aller ID --sans-suivre` ; `g1-banc … [--simu] [--lancer] [--graine N] [--seuil P] [--csv F]` ; `g1-slam etat` et `g1-slam faux-service [--gazebo] [--relocalise]`, `scan-fin --lieu L` (note `carte_unitree`) ; `g1-atelier [--sans-navigateur] [--hote H]`.
 
 ### 4.4 API du serveur
@@ -276,7 +281,7 @@ REST sous `/api`, en JSON. Chaque route correspond à un fichier du paquet, ou �
 - `GET/PUT /api/lieux/{id}/salles`, `…/itineraires`, `…/zones`
 - `POST /api/simulation/demarrer {lieu, etage}`, `POST /api/simulation/arreter`, `GET /api/simulation/etat`
 - `POST /api/guide/aller {cible}`, `POST /api/guide/stop`
-- `POST /api/scan/debut`, `POST /api/scan/fin {nom}` (vrai robot ou faux service)
+- `POST /api/scan/debut`, `POST /api/scan/fin {nom}` (vrai robot ou faux service). **Remplacées en vague 2** par l'API du scan intégré (section 9.7) : `POST /api/scan/demarrer` et `POST /api/scan/arreter`.
 - WebSocket `/ws/etat` : environ 10 messages par seconde, `{robot: {x, y, theta}, guide: {...}, pietons: [...], processus: {...}}`
 
 Précisions et ajouts de la phase 1, acceptés à l'assemblage :
@@ -565,3 +570,317 @@ Tâches :
 3. **Placer les salles en vrai** : amener le robot devant chaque porte, puis `g1-salle ajouter`.
 4. **Pont et relais** sur le Jetson, dans le conteneur Humble : `/cmd_vel` → `/api/sport/request` (7105), et le relais de la relocalisation vers `/odom` et TF.
 5. **Recette en vrai** : niveau 1 (MoteurUnitree), puis niveau 2 (MoteurNav2), avec des volontaires et le même `g1-banc`.
+
+---
+
+## 9. Scan intégré (vague 2)
+
+Contrats figés par l'intégrateur le 25/10/2026, avant le travail en parallèle de quatre agents (9.9). Comme la section 4, cette section fait foi ; on ne la modifie qu'en passant par l'intégrateur. Le code partagé est déjà livré et testé : `atelier.lieu.scans` (sessions, reconnaissance, monde tiré du scan, état du scan), les schémas `session_scan` et `reconnaissance`, les champs facultatifs des objets du monde, et `atelier/tests/outils_scan.py` (sessions d'exemple, sans ROS).
+
+### 9.1 Le but et le déroulé
+
+Dans l'onglet **Scan** de l'Atelier :
+
+1. On choisit le mode : **robot** (le vrai G1, avec sa cartographie Unitree) ou **simu** (le robot proxy de Gazebo scanne le monde de l'étage). En mode robot, la case **Répétition** permet de tout essayer sans robot.
+2. Le bouton **« Scan »** lance la cartographie. Un **aperçu en direct** montre la carte qui se construit, la trajectoire et la position du robot. En simu, on pilote le robot avec les flèches, ou on coche **Explorer** et il parcourt seul les couloirs.
+3. Le bouton **« Fin »** arrête le scan. La suite est automatique : carte 3D, carte 2D, reconnaissance des murs, des passages et des objets, puis un monde au format `monde.yaml`. Une barre de progression suit les étapes.
+4. On relit ce qui a été reconnu : chaque élément a une case **à garder**. Les personnes sont décochées d'office.
+5. **« Adopter »** : la carte du scan devient celle de l'étage ; avec le monde, le monde du scan remplace le monde dessiné, et se modifie dans l'éditeur et se simule dans Gazebo comme les autres.
+
+```
+Navigateur                     Serveur (atelier/serveur)           g1-scan (atelier/scan)
+« Scan »   POST /api/scan/demarrer ──► g1-scan demarrer ──► crée scans/<session>/ et lance, détaché,
+                                                            le processus de la session :
+                                                              robot       : 1801, ros2 bag record /unitree/slam_mapping/*
+                                                              répétition  : faux slam_operate + simulation + relais
+                                                              simu        : simulation (si besoin), ros2 bag record /points /odom
+                                                              tous        : apercu.png/json toutes les 2 s, session.json
+aperçu     GET /api/scan/etat, /api/scan/apercu.png|json   (lus dans le dossier, par atelier.lieu)
+flèches    POST /api/simulation/teleop ──► /cmd_vel (pont ROS 2 du serveur)
+« Fin »    POST /api/scan/arreter ──► g1-scan arreter ──► SIGINT au processus : 1802, fermeture du bag,
+                                                            puis traitement : carte_3d → carte_2d →
+                                                            reconnaissance → monde → rapport.json
+revue      GET/PUT /api/scan/sessions/{s}/reconnaissance  (atelier.lieu.changer_a_garder)
+« Adopter » POST /api/scan/sessions/{s}/adopter ──► g1-scan adopter [--monde]
+```
+
+Tout ce que fait l'interface se fait aussi en ligne de commande avec `g1-scan`.
+
+### 9.2 La session de scan
+
+Chaque scan est une **session** : un dossier `LIEU/scans/AAAA-MM-JJ_HHhMM/`, nommé d'après l'heure locale du début (ex. `2026-10-25_17h42`). Si la minute est déjà prise : `-2`, `-3`… L'identifiant de session est validé partout (`atelier.lieu.verifier_id_session`) : un `{s}` d'URL ne peut pas sortir du dossier `scans/`.
+
+| Fichier | Contenu | Écrit par |
+|---|---|---|
+| `enregistrement/` | ros2 bag du scan (ignoré par Git : `lieux/*/scans/*/enregistrement/`) | processus de la session |
+| `session.json` | état de la session (schéma `session_scan.schema.json`) | `atelier.lieu` seulement (`creer_session`, `maj_session`) |
+| `apercu.png`, `apercu.json` | vue de dessus en direct ; points décimés et trajectoire | processus de la session, toutes les 2 s au plus |
+| `nuage.pcd` | nuage 3D assemblé, grille de 5 cm (`atelier.scan.carte3d`) | `g1-scan traiter` |
+| `carte.pgm`, `carte.yaml` | carte 2D Nav2 (`atelier.scan.carte2d`), `image: carte.pgm` | `g1-scan traiter` |
+| `reconnaissance.yaml` | murs, passages et objets reconnus (schéma `reconnaissance.schema.json`) | `reconnaitre`, puis `changer_a_garder` |
+| `monde_scan.monde.yaml` | monde tiré des éléments gardés (schéma `monde.schema.json`) | `atelier.lieu.ecrire_monde_scan` |
+| `rapport.json` | bilan du traitement | `g1-scan traiter` |
+| `monde_remplace.monde.yaml` | ancien monde de l'étage, gardé à l'adoption avec `--monde` | `g1-scan adopter` |
+| `.session.lock` | verrou des écritures de `session.json` (ignoré par Git) | `atelier.lieu` |
+
+Toutes les coordonnées d'une session sont dans le **repère du nuage** : l'odométrie de l'enregistrement. En simu, c'est le repère du monde Gazebo (la session se compare donc pixel à pixel au monde dessiné). Sur le vrai robot, c'est le repère de la carte Unitree, avec l'origine au départ du scan.
+
+**session.json.** Tous les champs sont obligatoires, sauf les quatre derniers (null par défaut). Exemple complet : `EXEMPLE_SESSION` dans `atelier/tests/test_contrats_scan.py`.
+
+| Champ | Valeurs |
+|---|---|
+| `version`, `id`, `lieu`, `etage`, `nom` | 1 ; id de la session ; nom du dossier du lieu ; id de l'étage ; nom affiché (« Scan rdc du 25/10/2026 à 17h42 » par défaut) |
+| `mode`, `repetition`, `explorer` | `robot` ou `simu` ; répétition sans robot (mode robot seulement) ; exploration automatique (simu, ou robot en répétition) |
+| `debut`, `fin`, `maj` | heures ISO 8601 locales avec décalage, à la seconde (`2026-10-25T17:42:05+01:00`) ; `fin` : null jusqu'à la fermeture de l'enregistrement ; `maj` : dernière écriture, au moins toutes les 5 s pendant l'enregistrement |
+| `etat`, `etape`, `progression`, `message` | voir le tableau ci-dessous ; progression entière de 0 à 100 ; message en français pour l'utilisateur, qui dit quoi faire en cas d'échec |
+| `sujets` | `{nuage, odom, autres}` : robot (répétition comprise) `/unitree/slam_mapping/points` et `/unitree/slam_mapping/odom` ; simu `/points` et `/odom` ; `autres` : `["/tf_static"]` |
+| `statistiques` | `{duree_s, points, distance_m, nuages}` : durée de l'enregistrement, points reçus, distance parcourue (somme des déplacements de l'odométrie), nuages reçus |
+| `processus` | `{pid, debut, hote}` du processus qui travaille pour la session (`atelier.lieu.infos_processus()`), ou null |
+| `journal` | chemin du journal de ce processus, dans `~/robot-g1/journaux/` |
+| `carte_unitree` | mode robot : nom du `.pcd` demandé par 1802, `<etage>_<session>.pcd` |
+| `adoption` | `{quand, monde}` quand la session a été adoptée |
+
+| État | Étapes | Progression | Qui l'écrit |
+|---|---|---|---|
+| `en_cours` | `preparation`, puis `enregistrement` | 0 | `creer_session`, puis le processus de la session |
+| `arret_en_cours` | `arret` (1802, fermeture du bag, arrêt de ce qui a été lancé) | 5 | le processus de la session, dès qu'il reçoit l'arrêt |
+| `traitement` | `carte_3d`, `carte_2d`, `reconnaissance`, `monde` | 10–50, 50–65, 65–90, 90–99 (`progression_etape(etape, fraction)`) | `g1-scan traiter` |
+| `termine` | `fini` | 100 | `g1-scan traiter` |
+| `echec` | l'étape où c'est arrivé | celle de l'étape | celui qui a échoué, ou `g1-scan arreter` pour une session interrompue |
+
+Règles (vérifiées par `atelier.lieu` à chaque écriture, en plus du schéma) : l'étape va avec l'état ; `termine` ⇒ progression 100 ; `traitement` et `termine` ⇒ `fin` renseignée ; `en_cours` ⇒ `fin` null ; `fin` après `debut` ; `repetition` seulement en mode robot ; `explorer` seulement avec le robot simulé ; `carte_unitree` seulement en mode robot ; `adoption` seulement pour une session terminée.
+
+- **Un seul scan actif par lieu** : `creer_session` refuse si une session du lieu est `en_cours`, `arret_en_cours` ou `traitement` et n'est pas interrompue.
+- **Session interrompue** (`session_interrompue`) : active, mais son processus est mort (pid absent, ou repris par un autre processus : on compare l'instant de démarrage lu dans `/proc`), ou, sans processus noté, muette depuis 30 s. Elle ne bloque pas un nouveau scan. `g1-scan arreter` la termine (9.5).
+- **Écritures** : toujours par `ecrire_session` ou `maj_session` (atomique, validée ; `maj_session` prend le verrou `fcntl` de la session pour le lire-modifier-écrire). Personne n'écrit `session.json` à la main.
+
+**apercu.json** (au plus `APERCU_POINTS_MAX` = 20 000 points, `APERCU_TRAJECTOIRE_MAX` = 5 000 poses) :
+
+```json
+{"version": 1, "session": "2026-10-25_17h42", "maj": "2026-10-25T17:43:10+01:00", "repere": "odom",
+ "resolution": 0.05, "bornes": {"xmin": -0.05, "ymin": -0.05, "xmax": 30.05, "ymax": 20.05},
+ "largeur": 602, "hauteur": 402, "sol": 0.0,
+ "points": [[12.31, 5.52, 1.04], ...], "trajectoire": [[2.5, 10.0, 0.0], ...],
+ "robot": {"x": 7.1, "y": 7.0, "theta": 0.02},
+ "statistiques": {"duree_s": 64.0, "points": 368640, "distance_m": 21.4, "nuages": 640}}
+```
+
+- `points` : `[x, y, z]` en mètres, arrondis au centimètre, décimés au hasard parmi les points de la tranche 0,1–1,5 m au-dessus du sol estimé (`sol`, null tant qu'il est inconnu). `trajectoire` : `[x, y, theta]`, un point au moins tous les 0,1 m. `robot` : dernière pose, ou null.
+- `apercu.png` : vue de dessus, même convention qu'une carte (ligne 0 = y maximal), `largeur` × `hauteur` pixels de `resolution` mètres (0,05 m ; 0,1 m si un côté dépasse 2 000 pixels), posée sur `bornes`. Fond gris 205 (inconnu), obstacles vus en noir ; la trajectoire et le robot peuvent y être dessinés en couleur, mais l'interface les dessine aussi elle-même depuis `apercu.json`. Les deux fichiers sont réécrits ensemble, de façon atomique, toutes les 2 s au plus (`PERIODE_APERCU`).
+
+**rapport.json** :
+
+```json
+{"version": 1, "session": "2026-10-25_17h42", "termine": "2026-10-25T17:58:02+01:00", "duree_traitement_s": 95.3,
+ "etapes": [{"etape": "carte_3d", "ok": true, "duree_s": 61.2, "message": "..."}, ...],
+ "nuage": {"fichier": "nuage.pcd", "points": 412345, "nuages": 6152, "retires_mobiles": 2310},
+ "carte": {"fichier": "carte.yaml", "largeur": 602, "hauteur": 402, "resolution": 0.05, "occupes": 15234, "sol": 0.01},
+ "reconnaissance": {"murs": 21, "murs_gardes": 20, "passages": 5, "passages_gardes": 5,
+                    "objets": {"table": 1, "poteau": 2, "personne": 1}, "objets_gardes": {"table": 1, "poteau": 2}},
+ "comparaison": {"reference": "cartes/rdc.yaml", "recouvrement": 0.987, "couverture": 0.66},
+ "avertissements": ["..."]}
+```
+
+`reconnaissance` vaut `atelier.lieu.resume_reconnaissance(...)`, ou null si la reconnaissance a échoué. `comparaison` : `atelier.scan.carte2d.comparer_fichiers(carte de la session, carte de l'étage)` si l'étage a déjà une carte, sinon null.
+
+### 9.3 reconnaissance.yaml et monde_scan.monde.yaml
+
+```yaml
+version: 1
+session: "2026-10-25_17h42"          # ou null hors session
+etage: rdc
+emprise: {min: [0.0, 0.0], max: [30.0, 20.0]}     # contient tous les bouts, centres et depart_robot
+depart_robot: {x: 2.5, y: 10.0, theta: 0.0}       # en général : la pose du robot au début du scan
+sol: 0.01                                          # facultatif : hauteur du sol dans le nuage
+parametres: {tranche: [0.1, 1.5]}                  # facultatif : paramètres utilisés (libres)
+murs:
+  - {id: mur_1, categorie: mur, de: [0.0, 5.5], a: [6.4, 5.5], epaisseur: 0.15, hauteur: 2.5, confiance: 0.95, a_garder: true}
+  - {id: mur_2, categorie: mur, de: [7.6, 5.5], a: [14.4, 5.5], epaisseur: 0.15, hauteur: 2.5, confiance: 0.9, a_garder: true}
+passages:
+  - {id: passage_1, categorie: passage, de: [6.4, 5.5], a: [7.6, 5.5], murs: [mur_1, mur_2], confiance: 0.85, a_garder: true}
+objets:
+  - {id: table_1, categorie: table, forme: boite, centre: [29.2, 6.1], taille: [1.2, 0.8, 0.75], cap: 0.0, confiance: 0.7, a_garder: true}
+  - {id: poteau_1, categorie: poteau, forme: cylindre, centre: [26.0, 10.0], rayon: 0.2, hauteur: 2.5, confiance: 0.92, a_garder: true}
+  - {id: personne_1, categorie: personne, forme: cylindre, centre: [21.0, 16.5], rayon: 0.25, hauteur: 1.7, confiance: 0.6, a_garder: false}
+```
+
+- Chaque élément : `id` (identifiant du contrat 4.1, unique entre murs, passages et objets, ni `sol` ni `g1_proxy`), `categorie`, `confiance` de 0 à 1, `a_garder`, et un champ libre facultatif `infos` (nombre de points, hauteur mesurée…).
+- Un mur : comme dans `monde.yaml` (`de`, `a`, `epaisseur` ≤ 1, `hauteur` ≤ 10), catégorie `mur`.
+- Un passage : `de` et `a` sont les bouts des deux murs qui bordent le trou (à 0,15 m près), `murs` leurs deux ids ; catégorie `passage`.
+- Un objet : sa **forme mesurée**, `boite` (`taille` [longueur le long du cap, largeur, hauteur] et `cap`) ou `cylindre` (`rayon`, `hauteur`) ; jamais `modele`. La catégorie dit ce que c'est.
+- Lire, écrire, valider : `atelier.lieu.lire_reconnaissance`, `ecrire_reconnaissance` (validée, atomique), `valider_reconnaissance`. Squelette : `nouvelle_reconnaissance(etage, emprise, depart_robot, session, sol, parametres)`.
+
+**Le monde tiré du scan** (`atelier.lieu.monde_depuis_reconnaissance`, écrit par `ecrire_monde_scan`) ne contient que ce qui est gardé :
+
+| Élément reconnu | Dans `monde_scan.monde.yaml` |
+|---|---|
+| mur gardé | un mur, avec `source: scan` et sa `confiance` |
+| mur non gardé | rien |
+| passage gardé | rien : le trou entre les deux murs reste ouvert |
+| passage non gardé | le trou est **bouché** : un mur de même id, de `de` à `a`, de l'épaisseur et de la hauteur du plus grand des deux murs |
+| objet gardé | une `boite` ou un `cylindre` (sa forme mesurée), avec `categorie`, `source: scan` et `confiance` |
+| personne gardée | un cylindre de catégorie `personne` : dans le monde Gazebo, jamais sur la carte 2D |
+| objet non gardé | rien |
+
+Pas de piéton ; `emprise` et `depart_robot` de la reconnaissance ; nombres arrondis au millimètre. Le monde obtenu est toujours valide si la reconnaissance l'est (test).
+
+### 9.4 Catégories et règles
+
+| Catégorie | Pour | Déduite d'un objet dessiné sans `categorie` |
+|---|---|---|
+| `mur` | murs (reconnaissance seulement) | — |
+| `passage` | passages, les portes (reconnaissance seulement) | — |
+| `table` | plateau sur pieds, vers 0,7–0,8 m | modèle `table` |
+| `chaise` | assise vers 0,45 m, dossier vers 0,9 m | modèle `chaise` |
+| `banc` | assise longue et basse | modèle `banc` |
+| `poteau` | colonne mince et haute | `cylindre` |
+| `meuble` | bloc plein : armoire, bureau plein, banque d'accueil | `boite` |
+| `poubelle` | petit cylindre bas | modèle `poubelle` |
+| `personne` | personne debout et immobile | — |
+| `inconnu` | obstacle non classé | — |
+
+Les catégories d'objets (`CATEGORIES_OBJETS`) sont les mêmes dans `monde.yaml` et dans `reconnaissance.yaml`. `Objet.categorie_effective` donne la catégorie écrite, sinon celle déduite de la forme.
+
+Règles :
+- **Une personne n'est jamais dessinée sur la carte 2D.** `atelier.monde.carte` ignore les objets de catégorie `personne` (`Objet.sur_la_carte`), `verifier_lieu` aussi ; à l'adoption, les pixels occupés d'une personne sont effacés de la carte du scan, même cochée. Dans la reconnaissance, `a_garder` vaut **faux par défaut** pour une personne (`a_garder_par_defaut`), vrai pour tout le reste.
+- **Un passage est un trou de 0,7 à 1,6 m (bornes comprises) entre les bouts de deux murs alignés** (`PASSAGE_MIN`, `PASSAGE_MAX`, `est_passage`). Deux murs sont alignés si leurs directions diffèrent de 5° au plus, quel que soit leur sens, et si chaque bout de l'un est à 0,10 m au plus de la droite de l'autre (`murs_alignes`). Un trou de moins de 0,7 m n'est pas un passage (le robot n'y passe pas) : la reconnaissance réunit les deux murs en un seul. Un trou de plus de 1,6 m est une ouverture : deux murs, sans passage.
+- **La carte reste celle du scan.** Décocher un mur ou un passage ne change que le monde. À l'adoption, seuls les objets retirés (décochés) et les personnes sont effacés de la carte (`carte_sans_elements_retires` : pixels occupés dont le centre est dans l'empreinte agrandie de 5 cm).
+- **Champs facultatifs du monde** (schéma `monde`, rétrocompatible : un monde existant reste valide) : pour un objet, `categorie`, `source` (`dessin` par défaut, ou `scan`) et `confiance` (0 à 1) ; pour un mur, `source` et `confiance`. Les dataclasses `Mur` et `Objet` les portent (None : absent du fichier).
+
+### 9.5 La commande g1-scan (agent Orchestrateur)
+
+Alias `gl-scan`. Codes de sortie : 0 réussi, 1 échec (message en français qui dit quoi faire), 2 commande mal tapée. Sans `--session`, la session visée est la session active du lieu, sinon la plus récente.
+
+| Commande | Rôle |
+|---|---|
+| `g1-scan demarrer --lieu L --etage E --mode robot\|simu [--repetition] [--explorer] [--nom N] [--json]` | crée la session et lance son processus, détaché ; **rend la main en moins de 3 s**. Dernière ligne : `session: <id>` ; avec `--json`, la sortie de `etat --json` |
+| `g1-scan arreter --lieu L [--session S] [--sans-traitement] [--attendre]` | demande la fin du scan, attend la fermeture de l'enregistrement (30 s au plus), puis rend la main pendant que le traitement continue ; `--attendre` : jusqu'à `termine` (code 0) ou `echec` (code 1) |
+| `g1-scan traiter --lieu L --session S` | carte 3D, carte 2D, reconnaissance, monde et rapport, au premier plan ; sert aussi à refaire le traitement d'une session finie |
+| `g1-scan etat --lieu L [--session S] [--json]` | état lisible ; avec `--json`, seulement le JSON de `atelier.lieu.etat_scan` sur la sortie standard |
+| `g1-scan adopter --lieu L --session S [--monde]` | la session devient la carte de l'étage ; avec `--monde`, son monde aussi |
+
+**demarrer.** Avant de créer quoi que ce soit (sinon code 1) : le lieu et l'étage existent ; aucun scan actif dans le lieu ; en simu, `mondes/<etage>.sdf` existe (sinon : « g1-monde generer ») ; avec `--explorer`, l'étage a au moins deux nœuds reliés dans `itineraires.yaml`. Puis `creer_session`, lancement du processus de la session dans son propre groupe de processus, avec son journal `journaux/scan_<lieu>_<session>.log`, et `processus` et `journal` notés dans `session.json`. Le processus de la session :
+
+- **robot** (vrai G1) : 1801 (`ClientSlam`, eno2, domaine 0, environnement de `setup/robot.sh`), puis `ros2 bag record -o enregistrement/` des sujets de `sujets` (+ `/tf_static`) sur le réseau du robot. Le PC suit le robot au câble.
+- **robot + répétition** : faux service `slam_operate` sur lo (domaine `$ROS_DOMAIN_ID`) ; la simulation de l'étage (déjà lancée, ou lancée par lui) ; un relais qui republie `/points` et `/odom` sous `/unitree/slam_mapping/points` et `/unitree/slam_mapping/odom`, messages inchangés. Puis 1801 au faux service, et le même enregistrement que sur le robot.
+- **simu** : la simulation de l'étage. Si `/odom` et `/points` sont déjà publiés dans le domaine (vérifié en 5 s au plus), il l'utilise telle quelle et ne l'arrêtera pas ; sinon il lance `g1-monde simuler --lieu L --etage E --sans-fenetre` et l'arrêtera à la fin. Puis l'enregistrement de `/points`, `/odom` et `/tf_static`.
+- **explorer** (simu, ou robot en répétition) : le robot fait seul un tour qui passe par tous les couloirs de `itineraires.yaml` de l'étage, en ligne droite de nœud en nœud (`/cmd_vel`, `/odom`, 0,4 m/s au plus, arrêt devant un obstacle à moins de 0,6 m), en partant du nœud le plus proche et en y revenant. À la fin du tour, il s'arrête et **le scan se termine de lui-même**, comme avec « Fin ».
+- **pendant l'enregistrement** : étape `enregistrement` ; `statistiques` et `maj` au moins toutes les 5 s ; `apercu.png` et `apercu.json` toutes les 2 s au plus, à partir des sujets écoutés directement (pas du bag en cours d'écriture).
+- **à l'arrêt** (SIGINT ou SIGTERM reçu, ou fin de l'exploration) : `arret_en_cours`, vitesse nulle sur `/cmd_vel` en simu, 1802 avec `carte_unitree` (mode robot), fermeture propre du bag (`metadata.yaml` présent), arrêt de ce qu'il a lancé, `fin` ; puis le traitement, sauf avec `--sans-traitement` (état `traitement` → `termine`). Tout ce que la session a lancé s'arrête avec elle : aucun processus ne lui survit.
+
+**arreter.** Envoie SIGINT au groupe du processus de la session (vérifié par `processus_vivant`). Si la session est interrompue (processus mort) : avec un enregistrement complet, il lance lui-même le traitement ; sinon il la passe en `echec` (« le scan s'est arrêté sans enregistrement : recommencez »). Sur une session déjà finie : code 0, rien à faire.
+
+**traiter.** Refuse une session `en_cours` ou dont le traitement tourne encore, et une session déjà adoptée (« faites un nouveau scan »). Refaire le traitement d'une session finie remplace sa reconnaissance : les choix « à garder » faits à la main sont perdus. Étapes, avec la progression de 9.2 :
+1. `carte_3d` : `atelier.scan.carte3d.fabriquer_pcd(enregistrement, nuage.pcd, sujets de la session)`. Le LiDAR du robot proxy est à 1,245 m : la position du capteur vient de `/tf_static` enregistré.
+2. `carte_2d` : `atelier.scan.carte2d.fabriquer_carte_lieu(lieu, etage, pcd=nuage.pcd, sortie=carte.yaml)` (avec `sortie`, le lieu n'est pas touché). Emprise : celle du monde de l'étage en simu (comparaison pixel à pixel), celle du nuage en mode robot.
+3. `reconnaissance` : `atelier.scan.reconnaissance.reconnaitre(nuage.pcd, carte.yaml, dossier de la session, parametres)` avec `parametres["depart_robot"]` = première pose de l'odométrie. **Un échec de la reconnaissance ne fait pas échouer la session** : elle se termine avec la carte 2D, un avertissement dans `rapport.json` et dans `message`, sans `reconnaissance.yaml` (adopter sans `--monde` reste possible).
+4. `monde` : vérifie `monde_scan.monde.yaml` (schéma et règles), compare la carte à celle de l'étage s'il en a une, écrit `rapport.json`.
+Un échec de `carte_3d` ou `carte_2d` donne `echec`, avec un message qui dit quoi faire.
+
+**etat --json** : exactement `atelier.lieu.etat_scan(lieu, session)` :
+
+```json
+{"version": 1, "lieu": "demo", "dossier_lieu": "/home/joonho/robot-g1/lieux/demo", "sessions": 3, "actif": true,
+ "session": {"...": "tous les champs de session.json",
+             "dossier": "/home/joonho/robot-g1/lieux/demo/scans/2026-10-25_17h42",
+             "vivant": true, "interrompue": false,
+             "fichiers": {"enregistrement": false, "apercu_png": true, "apercu_json": true, "nuage": false,
+                          "carte": false, "reconnaissance": false, "monde": false, "rapport": false}}}
+```
+
+`session` vaut null si le lieu n'a aucune session. `actif` : la session rendue est active et non interrompue. `vivant` : true, false, ou null si on ne peut pas savoir.
+
+**adopter.** Session `termine` seulement. Écrit `cartes/<etage>.pgm` (la carte de la session passée par `carte_sans_elements_retires`) et `cartes/<etage>.yaml` (`image: <etage>.pgm`), copie `nuage.pcd` en `cartes/<etage>.pcd`, passe l'étage à `source_carte: scan` et, en mode robot, recopie `carte_unitree` dans `lieu.yaml`. Avec `--monde` : l'ancien `mondes/<etage>.monde.yaml` est gardé dans la session (`monde_remplace.monde.yaml`), puis remplacé par `monde_scan.monde.yaml`. Ensuite `atelier.monde.generer(lieu, etage)` : masque Keepout à la taille de la nouvelle carte et, avec `--monde`, le SDF du nouveau monde. Enfin `adoption` dans `session.json`, et le rapport de `valider_lieu` affiché. En mode robot, il prévient que le repère du scan n'est pas celui du monde dessiné : salles, nœuds et zones sont à replacer sur la nouvelle carte.
+
+### 9.6 La reconnaissance (agent Reconnaissance)
+
+```python
+from atelier.scan.reconnaissance import reconnaitre
+resultat = reconnaitre(chemin_pcd, chemin_carte_yaml, dossier_sortie, parametres=None)
+```
+
+- **Entrées** : le nuage `.pcd` de la session (repère de l'odométrie, déjà sans obstacles mobiles), la carte 2D `.yaml` de la session (son `.pgm` à côté), le dossier où écrire (le dossier de la session). `parametres` : dict facultatif ; clés reconnues au moins `depart_robot` (`(x, y, theta)`, par défaut un point libre de la carte près du centre de l'emprise), `session` (par défaut : le nom de `dossier_sortie` s'il a la forme d'une session, sinon null), `etage` (par défaut `"rdc"`), `sol` (par défaut : estimé) ; les autres clés sont des réglages propres à l'algorithme.
+- **Sorties** : `dossier_sortie/reconnaissance.yaml` (par `atelier.lieu.ecrire_reconnaissance`) et `dossier_sortie/monde_scan.monde.yaml` (par `atelier.lieu.ecrire_monde_scan`). Rien d'autre n'est écrit dans le lieu.
+- **Renvoie** `{"fichier": chemin de reconnaissance.yaml, "monde": chemin du monde, "resume": resume_reconnaissance(...), "duree_s": ..., "avertissements": [...]}`.
+- **Erreurs** : `atelier.scan.reconnaissance.ErreurReconnaissance(Exception)`, message en français qui dit quoi faire ; jamais de fichier à moitié écrit.
+- **Contraintes** : sans ROS ni écran ; Python du projet (numpy 1.26, Open3D, opencv-python ; autre paquet : demander à l'intégrateur) ; moins de 60 s sur un scan du lieu demo ; même résultat à chaque appel avec les mêmes entrées (graine fixe). Ids : `mur_N`, `passage_N`, et pour les objets `<categorie>_N` (ex. `table_1`, `personne_1`). Confiance : une estimation honnête entre 0 et 1 ; l'interface signale les éléments sous 0,5. Les règles de 9.4 s'appliquent (passages de 0,7 à 1,6 m, personnes décochées, trous de moins de 0,7 m bouchés).
+- Une commande de mise au point est permise : `python -m atelier.scan.reconnaissance NUAGE.pcd CARTE.yaml DOSSIER`.
+
+### 9.7 L'API du serveur (agent Interface)
+
+REST sous `/api/scan`, en JSON ; erreurs `{detail, erreurs?, sortie?}` en français, comme en 4.4. Le serveur lance `g1-scan` pour démarrer, arrêter et adopter (fausses commandes possibles dans les tests, `$ATELIER_BIN`), et lit directement les fichiers des sessions par `atelier.lieu` pour l'état, l'aperçu, la liste et la reconnaissance (pas de sous-processus à chaque interrogation).
+
+| Route | Corps ou paramètres | Réponse |
+|---|---|---|
+| `POST /api/scan/demarrer` | `{lieu, etage, mode, repetition: false, explorer: false, nom?}` | l'état (format `etat --json`) ; 409 si un scan est actif, ou si la simulation de l'Atelier tourne sur un autre lieu ou étage (« arrêtez la simulation ») ; 503 sans `g1-scan` ; 502 si `g1-scan` échoue, avec sa `sortie` |
+| `POST /api/scan/arreter` | `{lieu, session?}` | l'état, quand l'enregistrement est fermé (le traitement continue) |
+| `GET /api/scan/etat` | `?lieu=L[&session=S]` | `atelier.lieu.etat_scan` ; sans `lieu` : le lieu du dernier scan démarré par le serveur, sinon 400. L'interface l'interroge chaque seconde |
+| `GET /api/scan/apercu.png`, `GET /api/scan/apercu.json` | `?lieu=L[&session=S]` | les fichiers de la session (`Cache-Control: no-store`) ; 404 tant qu'ils n'existent pas |
+| `GET /api/scan/sessions` | `?lieu=L` | liste de `lister_sessions(lieu, avec_illisibles=True)`, chaque session avec `fichiers`, la plus récente d'abord |
+| `GET /api/scan/sessions/{s}/reconnaissance` | `?lieu=L` | `{reconnaissance, resume}` ; 404 si elle n'existe pas encore |
+| `PUT /api/scan/sessions/{s}/reconnaissance` | `?lieu=L`, corps `{"a_garder": {"<id>": true\|false, ...}}` | `changer_a_garder` : `{reconnaissance, monde, resume}` ; 400 pour un id inconnu, 409 si la session n'est pas finie |
+| `GET /api/scan/sessions/{s}/carte.png`, `…/carte.yaml`, `…/monde` | `?lieu=L` | la carte de la session (mêmes formats que la carte d'un étage en 4.4) et `monde_scan.monde.yaml` en JSON, pour la revue en 2D et en 3D |
+| `POST /api/scan/sessions/{s}/adopter` | `?lieu=L`, corps `{monde: bool}` | `g1-scan adopter` : `{adopte: true, monde: bool, sortie}` ; 409 si la session n'est pas `termine` |
+| `POST /api/simulation/teleop` | `{vx, vy, wz}` en m/s et rad/s | publie un `geometry_msgs/Twist` sur `/cmd_vel` par le pont ROS 2 : `{envoye: {vx, vy, wz}, ecoute: n}` |
+
+- **Téléopération** : valeurs ramenées à |vx| ≤ 0,5, |vy| ≤ 0,25, |wz| ≤ 0,8. L'interface renvoie la consigne toutes les 0,2 s tant qu'une flèche est appuyée, puis `{0, 0, 0}`. **Homme mort** : sans consigne depuis 0,5 s, le serveur publie lui-même une vitesse nulle (VelocityControl garde la dernière consigne). Seulement avec le robot simulé : 409 si ni la simulation de l'Atelier ni un scan simu ou en répétition ne tourne ; 503 sans pont ROS 2.
+- **Retirées** : `POST /api/scan/debut`, `POST /api/scan/fin` et `POST /api/scan/faux-service/arreter` (le faux service est maintenant lancé et arrêté par la session en répétition). `GET /api/scan/etat` change de format. `g1-slam` reste une commande à part entière.
+- **Onglet Scan** : choix du mode, cases Répétition et Explorer, gros bouton « Scan », aperçu en direct sur la carte de l'étage (image `apercu.png` posée sur `bornes`, trajectoire, robot, durée, distance, points), flèches à l'écran et au clavier en simu, bouton « Fin », barre de progression avec le `message` de chaque étape, puis la revue (éléments par catégorie, cases à garder, confiance, éléments douteux signalés, carte de la session et vue 3D du monde) et les boutons « Adopter la carte » et « Adopter la carte et le monde ». Historique des sessions du lieu. En mode robot sans répétition, une confirmation rappelle le câble Ethernet.
+
+### 9.8 Le lieu de référence et l'évaluation
+
+**Lieu de référence : `lieux/demo`.** Son `mondes/rdc.monde.yaml` est la vérité terrain : chaque objet y a sa `categorie`, et chaque catégorie y est présente. Trois objets ont été ajoutés pour cela, placés hors du graphe et des trajets des piétons : `table_est` et `chaise_est` au bout est du couloir sud (vus de loin depuis le couloir : le rayon le plus bas du LiDAR, à −7° depuis 1,245 m, ne touche une table de 0,75 m qu'au-delà de 4 m), et `personne_b204`, une personne debout dans b204, vue par le passage (cylindre de 0,25 × 1,7 m, absent de la carte). Les objets dans les salles ne sont vus qu'en partie, par les passages.
+
+| Catégorie | Objets du demo |
+|---|---|
+| table | `table_cdi`, `table_est` |
+| chaise | `chaise_cdi_1`, `chaise_cdi_2`, `chaise_est` |
+| banc, poubelle | `banc_hall`, `poubelle_hall` |
+| poteau | `poteau_1`, `poteau_2` |
+| meuble | `banque_accueil`, `bureau_amphi` |
+| personne | `personne_b204` (debout) ; les piétons `pieton_sud` et `pieton_nord` marchent et sont retirés du nuage |
+| passages | 5, de 1,2 m (`atelier.lieu.passages_du_monde`) |
+
+La vérité terrain au format de la reconnaissance : `atelier.lieu.reconnaissance_depuis_monde(monde, "rdc")` (reconnaissance « parfaite »). L'évaluation compare les deux, élément par élément.
+
+**Évaluation** (`atelier/scan/evaluation.py`, agent Testeur) : `evaluer(reconnaissance, monde_reference, info_carte, image_carte) -> dict`, et `python -m atelier.scan.evaluation --session DOSSIER --reference LIEU [--etage rdc]` qui affiche un bilan en français. Seul ce que le scan a **vu** compte dans les rappels : un pixel occupé de la carte de la session à 0,10 m au plus.
+
+| Mesure | Définition | Objectif sur le demo (scan simu avec `--explorer`) |
+|---|---|---|
+| murs, rappel | part des points des murs vrais vus (un tous les 0,05 m) à 0,15 m au plus d'un mur gardé de même direction (10° près) | ≥ 0,90 |
+| murs, précision | part des points des murs gardés à 0,15 m au plus d'un mur vrai | ≥ 0,90 |
+| passages | un passage vrai, dont les deux bouts sont vus, est trouvé si un passage reconnu a son milieu à 0,30 m au plus et sa largeur à 0,30 m près ; rappel et précision | ≥ 0,8 chacun |
+| objets, détection | objets vrais vus (au moins 3 pixels occupés dans l'empreinte agrandie de 0,10 m), appariés au plus proche reconnu, centres à 0,5 m au plus | ≥ 0,8 |
+| objets, catégorie | part des appariés qui ont la bonne catégorie | ≥ 0,7 |
+| faux objets | objets reconnus gardés, ni appariés ni à 0,3 m d'un mur vrai | ≤ 3 |
+| personnes | `personne_b204` reconnue `personne`, avec `a_garder: false` ; aucun pixel occupé dans son empreinte après adoption | oui |
+
+Ces objectifs sont ceux de la vague. Si une catégorie est hors de portée du LiDAR simulé, le Testeur le montre (chiffres à l'appui) et l'intégrateur ajuste l'objectif dans cette section.
+
+### 9.9 Les agents de la vague 2
+
+| Agent | Possède | Dépend de |
+|---|---|---|
+| Intégrateur | sections 4 et 9, `atelier/lieu/` (dont les schémas), `atelier/tests/test_contrats*.py`, `test_lieu_scans.py`, `outils_scan.py`, `lieux/demo`, `.gitignore`, assemblage | — |
+| A. Orchestrateur | `atelier/scan/` sauf `reconnaissance*` et `evaluation.py` (nouveaux modules du scan intégré, `carte3d`, `carte2d`, `faux_slam`, `slam_client`, `commande`), `bin/g1-scan`, `bin/gl-scan`, `atelier/tests/test_scan_integre*.py` | contrats ; Reconnaissance (appel de `reconnaitre`) |
+| B. Reconnaissance | `atelier/scan/reconnaissance.py` (ou le paquet `atelier/scan/reconnaissance/`), `atelier/tests/test_scan_reconnaissance*.py` | contrats ; Testeur (évaluation) |
+| C. Interface | `atelier/serveur/`, `atelier/web/`, `atelier/tests/test_serveur_*.py` | contrats ; `g1-scan` (fausses commandes en attendant) |
+| D. Testeur | `atelier/scan/evaluation.py`, `atelier/tests/test_scan_evaluation.py`, `tests_e2e/critere_11_*` à `critere_15_*`, `tests_e2e/tout.sh` et `LISEZMOI.md` | tous |
+
+Règles communes : chaque agent n'écrit que dans ce qu'il possède et demande le reste à l'intégrateur ; `atelier/lieu` et les schémas ne changent que par l'intégrateur ; dans chaque shell ROS ou Gazebo, un `ROS_DOMAIN_ID` et une `IGN_PARTITION` propres à l'agent ; Gazebo sans fenêtre ; pas de compilation dans `ws/build` ; jamais rien sur eno2 (le vrai mode robot n'est essayé qu'en répétition) ; tous les processus lancés sont arrêtés à la fin (vérifier avec `ps`) ; tests réels, sans écran ni robot ; une section dans `docs/journal-atelier.md`. Pour travailler sans attendre les autres : `atelier.tests.outils_scan.creer_session_exemple(copie_du_lieu, etat)` crée une session complète et conforme (en_cours, traitement, termine ou echec), sans ROS.
+
+**A. Orchestrateur.** 1) `g1-scan` et ses cinq sous-commandes (9.5), avec l'aide en français. 2) Le processus de la session : enregistrement, aperçu en direct, 1801 et 1802, répétition (faux service, simulation, relais), exploration. 3) Le traitement et l'adoption. 4) `carte3d` : position du LiDAR par défaut à mettre à jour (robot proxy : 1,245 m). Tests : cycle complet en simu sur une copie du demo (`demarrer --explorer`, puis `termine`), répétition du mode robot (1801 puis 1802 reçus par le faux service, sujets `/unitree/slam_mapping/*` enregistrés), `arreter` d'une session interrompue, `adopter` avec et sans `--monde` (lieu valide ensuite), aucun processus restant. En attendant la reconnaissance : une fausse `reconnaitre` dans les tests.
+
+**B. Reconnaissance.** `reconnaitre` (9.6) : sol, tranche, murs (segments droits, épaisseur et hauteur), passages (9.4), objets (regroupement, forme mesurée, catégorie par la hauteur, la taille et le profil vertical), personnes, confiance. Tests : nuages synthétiques (une pièce, une porte de 0,9 m, un trou de 0,5 m, une table, une chaise, un poteau, une personne), puis un scan simulé du demo évalué avec l'évaluation du Testeur (objectifs de 9.8). Pour avoir un scan du demo avant `g1-scan` : l'enregistrement du critère 7 (`tests_e2e/critere_07_scan_simule.sh`), puis `g1-carte-3d` et `g1-carte-2d --sortie`.
+
+**C. Interface.** Routes de 9.7, onglet Scan, téléopération (pont ROS 2 avec homme mort), revue et adoption ; mise à jour du parcours navigateur et de la liste de vérifications à la main. Tests : API avec de fausses commandes `g1-scan` et des sessions d'exemple ; téléopération avec un faux `/cmd_vel` (consignes ramenées aux limites, zéro après 0,5 s) ; syntaxe des modules JS ; parcours dans Firefox sans fenêtre si présent.
+
+**D. Testeur.** `evaluation.py` (9.8 ; une reconnaissance parfaite donne 1 partout, une reconnaissance abîmée fait baisser la bonne mesure) ; critères de recette 11 à 15 (9.10) dans `tests_e2e/`, avec `tout.sh` qui affiche « N / 15 » ; vérifier que les critères 1 à 10 passent toujours.
+
+### 9.10 Critères de recette de la vague 2, sans robot et sans fenêtre
+
+11. **Scan simulé intégré** : sur une copie du demo, `g1-scan demarrer --mode simu --explorer` rend la main en moins de 3 s ; l'aperçu se met à jour pendant le tour ; la session finit `termine` toute seule, en moins de 20 min ; la carte de la session recouvre la carte du monde à au moins 80 % ; `monde_scan.monde.yaml` est valide.
+12. **Répétition du mode robot** : `g1-scan demarrer --mode robot --repetition`, téléopération ou exploration, puis `g1-scan arreter --attendre` : le faux service a reçu 1801 puis 1802 (avec `carte_unitree`), le bag contient `/unitree/slam_mapping/points` et `/unitree/slam_mapping/odom`, la session finit `termine`.
+13. **Reconnaissance** : sur le scan du critère 11, l'évaluation atteint les objectifs de 9.8 ; aucune personne n'est cochée d'office.
+14. **Adoption** : `g1-scan adopter --monde` ; `g1-lieu valider` ne signale aucune erreur ; l'étage est en `source_carte: scan` ; le masque a la taille de la nouvelle carte ; `g1-monde simuler --sans-fenetre` démarre sur le monde adopté et `/points` est publié ; l'ancien monde est dans la session.
+15. **Interface** : depuis l'API (et dans Firefox si présent) : Scan → aperçu → Fin → progression jusqu'à « termine » → décocher un élément → Adopter ; la téléopération déplace le robot simulé et s'arrête seule quand on lâche. Aucun processus ne reste après l'arrêt du serveur.

@@ -91,7 +91,7 @@ def test_verification_du_lieu(client):
 
 def test_monde_aller_retour(client, lieux):
     monde = client.get(RDC + "/monde").json()
-    assert len(monde["murs"]) == 18 and len(monde["objets"]) == 9 and len(monde["pietons"]) == 2
+    assert len(monde["murs"]) == 18 and len(monde["objets"]) == 12 and len(monde["pietons"]) == 2
     monde["murs"].append({"id": "nouveau_mur", "de": [1.0, 2.0], "a": [3.5, 2.0], "epaisseur": 0.15, "hauteur": 2.5})
     monde["objets"].append({"id": "table_9", "type": "modele", "modele": "table", "centre": [3.0, 3.0], "cap": 0.5})
     monde["pietons"].append({"id": "pieton_3", "trajet": [[1, 1], [4, 1]], "vitesse": 0.7, "aller_retour": False})

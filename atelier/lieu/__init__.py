@@ -42,17 +42,25 @@ Point = tuple (x, y) en mètres ; angles en radians.
     Zone(etage, polygone, nom="", vitesse_max=None)  vitesse_max : None pour une zone interdite
     Monde(emprise, depart_robot, murs=[], objets=[], pietons=[], version=1)  .ids(), .element(id)
     Emprise(xmin, ymin, xmax, ymax)                  .taille_x, .taille_y, .contient(x, y)
-    Mur(id, de, a, epaisseur=0.15, hauteur=2.5)      .longueur, .cap, .centre, .coins()
-    Objet(id, type, centre, cap=0.0, taille=None, rayon=None, hauteur=None, modele=None)
-        Objet.boite(id, centre, taille, cap), Objet.cylindre(id, centre, rayon, hauteur),
-        Objet.meuble(id, modele, centre, cap) ; .empreinte() -> ("cercle", centre, rayon)
-        ou ("polygone", [4 coins]) ; .hauteur_totale()
+    Mur(id, de, a, epaisseur=0.15, hauteur=2.5, source=None, confiance=None)
+        .longueur, .cap, .centre, .coins()
+    Objet(id, type, centre, cap=0.0, taille=None, rayon=None, hauteur=None, modele=None,
+          categorie=None, source=None, confiance=None)
+        Objet.boite(id, centre, taille, cap, **facultatifs), Objet.cylindre(id, centre, rayon, hauteur, ...),
+        Objet.meuble(id, modele, centre, cap, ...) ; .empreinte() -> ("cercle", centre, rayon)
+        ou ("polygone", [4 coins]) ; .hauteur_totale() ; .categorie_effective (categorie, sinon
+        déduite : modele → son nom, cylindre → poteau, boite → meuble) ; .sur_la_carte (faux pour
+        une personne)
+        Champs facultatifs (section 9 du plan), absents du fichier quand ils valent None :
+        categorie (CATEGORIES_OBJETS), source (« dessin » par défaut, ou « scan »), confiance (0 à 1).
     Pieton(id, trajet, vitesse=1.0, aller_retour=True)
     InfoCarte(image, resolution=0.05, origin=(x, y, 0.0), negate=0, occupied_thresh=0.65,
               free_thresh=0.196, largeur=None, hauteur=None, chemin=None, autres={})
         largeur, hauteur : taille de l'image en pixels (lue dans le .pgm) ; .chemin_image
     MODELES_MOBILIER   encombrement de chaise, table, banc (longueur, largeur, hauteur)
                        et poubelle (rayon, hauteur), en mètres
+    CATEGORIES_OBJETS  table, chaise, banc, poteau, meuble, poubelle, personne, inconnu
+    CATEGORIES_HORS_CARTE  (personne,) : jamais dessinée sur la carte 2D
 
 Lire et enregistrer (fichiers.py)
 ---------------------------------
@@ -110,6 +118,34 @@ Les fonctions acceptent des nombres ou des tableaux numpy.
     quaternion_vers_cap(q) -> theta dans ]-π, π]       q : tuple, dict ou geometry_msgs/Quaternion
     normaliser_angle(theta) -> angle dans [-π, π[
 
+Sessions de scan intégré (scans.py, section 9 du plan) : LIEU/scans/<session>/
+--------------------------------------------------------------------------------
+Identifiant de session : AAAA-MM-JJ_HHhMM (suffixe -2, -3... si la minute est prise). Fichiers :
+FICHIERS_SESSION (session.json, apercu.png/json, nuage.pcd, carte.pgm/yaml, reconnaissance.yaml,
+monde_scan.monde.yaml, rapport.json, enregistrement/). Écritures atomiques, et verrou entre processus.
+
+    creer_session(lieu, etage, mode, nom=None, repetition=False, explorer=False) -> dict
+        dossier et session.json (etat en_cours, etape preparation) ; ErreurLieu si un autre scan du
+        lieu est actif. mode : robot ou simu.
+    lire_session(lieu, session) -> dict ; ecrire_session(lieu, donnees) ; maj_session(lieu, session, **champs)
+    lister_sessions(lieu) -> [dict] (plus récente d'abord) ; session_active(lieu) ; derniere_session(lieu)
+    dossier_scans(lieu), dossier_session(lieu, session), chemin_session(lieu, session, quoi="session")
+    infos_processus(pid=None) -> {pid, debut, hote} ; processus_vivant(session) ; session_interrompue(session)
+    progression_etape(etape, fraction=0.0) -> 0..100 (PLAGES_PROGRESSION)
+    etat_scan(lieu, session=None) -> dict    sortie de « g1-scan etat --json » et de GET /api/scan/etat
+    nouvelle_reconnaissance(etage, emprise, depart_robot, session=None, sol=None, parametres=None) -> dict
+    lire_reconnaissance(chemin) / ecrire_reconnaissance(chemin, donnees) ; valider_reconnaissance(donnees)
+    a_garder_par_defaut(categorie) ; resume_reconnaissance(donnees)
+    monde_depuis_reconnaissance(donnees) -> Monde ; ecrire_monde_scan(chemin, donnees) -> Monde
+    reconnaissance_depuis_monde(monde, etage, session=None) -> dict   vérité terrain d'un monde dessiné
+    passages_du_monde(monde) -> [{de, a, murs, largeur}]
+    changer_a_garder(lieu, session, {id: bool}) -> {reconnaissance, monde, resume}
+    carte_sans_elements_retires(info, image, donnees) -> image   (objets retirés et personnes effacés)
+    Constantes : MODES, ETATS, ETATS_ACTIFS, ETAPES, SUJETS_PAR_MODE, APERCU_POINTS_MAX, PERIODE_APERCU...
+
+Géométrie des passages (geometrie.py) : PASSAGE_MIN (0,7 m), PASSAGE_MAX (1,6 m), murs_alignes,
+trou_entre, est_passage.
+
 Constantes : COULOIR_MAX (8 m), RAYON_ROBOT (0,35 m), DOSSIER_SCHEMAS, TYPES_FICHIERS.
 Commande : g1-lieu creer ID --nom NOM ; g1-lieu valider --lieu L ; g1-lieu liste.
 """
@@ -123,8 +159,20 @@ from .fichiers import (ErreurLieu, charger_carte, charger_fiche, charger_fichier
                        enregistrer_carte, enregistrer_fiche, enregistrer_fichier, enregistrer_info_carte,
                        enregistrer_itineraires, enregistrer_lieu, enregistrer_monde, enregistrer_salles,
                        enregistrer_zones, lire_pgm, lister_lieux, taille_pgm)
-from .modeles import (MODELES_MOBILIER, Couloir, Emprise, Etage, InfoCarte, Itineraires, Lieu, Monde, Mur,
-                      Noeud, Objet, Pieton, Pose, PoseEtage, Salle, Zone, Zones)
+from .geometrie import PASSAGE_MAX, PASSAGE_MIN, est_passage, murs_alignes, trou_entre
+from .modeles import (CATEGORIES_HORS_CARTE, CATEGORIES_OBJETS, MODELES_MOBILIER, SOURCES_ELEMENT, Couloir,
+                      Emprise, Etage, InfoCarte, Itineraires, Lieu, Monde, Mur, Noeud, Objet, Pieton, Pose,
+                      PoseEtage, Salle, Zone, Zones)
+from .scans import (APERCU_POINTS_MAX, APERCU_TRAJECTOIRE_MAX, ETAPES, ETAPES_TRAITEMENT, ETATS, ETATS_ACTIFS,
+                    FICHIERS_SESSION, MODES, PERIODE_APERCU, PERIODE_SESSION, PLAGES_PROGRESSION,
+                    SUJETS_AUTRES, SUJETS_PAR_MODE, a_garder_par_defaut, carte_sans_elements_retires,
+                    changer_a_garder, chemin_session, creer_session, derniere_session, dossier_scans,
+                    dossier_session, ecrire_monde_scan, ecrire_reconnaissance, ecrire_session, etat_scan,
+                    fichiers_presents, infos_processus, lire_reconnaissance, lire_session, lister_sessions,
+                    maj_session, monde_depuis_reconnaissance, nouvelle_reconnaissance, passages_du_monde,
+                    processus_vivant, progression_etape, reconnaissance_depuis_monde, resume_reconnaissance,
+                    session_active, session_interrompue,
+                    valider_reconnaissance, verifier_id_session, verrou_session)
 from .validation import DOSSIER_SCHEMAS, TYPES_FICHIERS, valider_donnees
 from .verification import COULOIR_MAX, RAYON_ROBOT, Rapport, valider_lieu, verifier_lieu
 
@@ -141,4 +189,19 @@ __all__ = ["bornes_carte", "cap_vers_quaternion", "centres_pixels", "dans_image"
            "Couloir", "Emprise", "Etage", "InfoCarte", "Itineraires", "Lieu", "Monde", "Mur", "Noeud",
            "Objet", "Pieton", "Pose", "PoseEtage", "Salle", "Zone", "Zones", "DOSSIER_SCHEMAS",
            "TYPES_FICHIERS", "valider_donnees", "COULOIR_MAX", "RAYON_ROBOT", "Rapport",
-           "valider_lieu", "verifier_lieu"]
+           "valider_lieu", "verifier_lieu",
+           # géométrie des passages
+           "PASSAGE_MAX", "PASSAGE_MIN", "est_passage", "murs_alignes", "trou_entre",
+           # catégories et sources des éléments
+           "CATEGORIES_HORS_CARTE", "CATEGORIES_OBJETS", "SOURCES_ELEMENT",
+           # sessions de scan intégré
+           "APERCU_POINTS_MAX", "APERCU_TRAJECTOIRE_MAX", "ETAPES", "ETAPES_TRAITEMENT", "ETATS", "ETATS_ACTIFS",
+           "FICHIERS_SESSION", "MODES", "PERIODE_APERCU", "PERIODE_SESSION", "PLAGES_PROGRESSION",
+           "SUJETS_AUTRES", "SUJETS_PAR_MODE", "a_garder_par_defaut", "carte_sans_elements_retires",
+           "changer_a_garder", "chemin_session", "creer_session", "derniere_session", "dossier_scans",
+           "dossier_session", "ecrire_monde_scan", "ecrire_reconnaissance", "ecrire_session", "etat_scan",
+           "fichiers_presents", "infos_processus", "lire_reconnaissance", "lire_session", "lister_sessions",
+           "maj_session", "monde_depuis_reconnaissance", "nouvelle_reconnaissance", "passages_du_monde",
+           "processus_vivant", "progression_etape", "reconnaissance_depuis_monde", "resume_reconnaissance",
+           "session_active", "session_interrompue",
+           "valider_reconnaissance", "verifier_id_session", "verrou_session"]

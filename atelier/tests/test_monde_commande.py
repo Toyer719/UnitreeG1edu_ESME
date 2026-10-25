@@ -37,7 +37,7 @@ def test_generer(copie):
     for chemin in ("mondes/rdc.sdf", "mondes/pieton.dae", "cartes/rdc.pgm", "cartes/rdc.yaml",
                    "cartes/rdc_interdit.pgm", "cartes/rdc_interdit.yaml"):
         assert (copie / chemin).is_file(), chemin
-    assert "18 murs, 9 objets, 2 piétons" in resultat.stdout
+    assert "18 murs, 12 objets, 2 piétons" in resultat.stdout
     assert "602 × 402 pixels de 0,05 m" in resultat.stdout
     assert "g1-monde simuler --lieu" in resultat.stdout
     assert L.valider_lieu(copie).erreurs == []

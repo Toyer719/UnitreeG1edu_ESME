@@ -110,3 +110,41 @@ Le plan de référence est `docs/plan-atelier-multi-agents.md` ; ses contrats (s
 - **Parcours principal sur `lieux/demo`**, sans fenêtre (domaine 30) : `g1-monde generer` (fichiers identiques octet pour octet), `g1-monde simuler --sans-fenetre` (prête en 3 s), `g1-guide navigation --simu` (Nav2 actif en 8 s), `g1-atelier`, puis `POST /api/guide/aller b204` : arrivé en 55 s à 0,07 m. Boîte en (12 ; 13), puis `POST /api/guide/aller accueil` : `en_route → bloque → detour → arrive` en 156 s, à 0,05 m.
 - **Recette** : `tests_e2e/tout.sh` complet : **10 / 10** (critère 4 en 64 s, 5 en 187 s, 6 : 20 / 20 trajets avec 5 piétons en 18 min, 7 : recouvrement de 98,7 %, 8 : MoteurUnitree jusqu'à b204). Journaux : `journaux/e2e_2026-10-25_16h31/`.
 - **Reste** : le guide accepte `/guide/aller` avant que Nav2 soit actif et répond `echec` (l'interface grise « Y aller », mais pas `g1-guide aller`) ; zones lentes non branchées (masque `_lent`, phase 3) ; piétons sans collision physique ; licence des paquets (TODO) ; toutes les suppositions « à vérifier sur le robot » (slam_operate, MID-360, `/unitree/slam_relocation/odom`, réglages réels) ; vérifications à la main de l'interface sur tablette ; mode avec fenêtre de Gazebo jamais essayé.
+
+## Intégrateur (vague 2, contrats du scan intégré), 25/10/2026
+
+- **Contrats figés** : section 9 du plan (déroulé, session de scan, `reconnaissance.yaml`, catégories et règles, `g1-scan`, interface de `reconnaitre`, API du serveur, lieu de référence et évaluation, fiches des quatre agents, critères 11 à 15). Renvois ajoutés en 4.1 (`scans/<session>/`), 4.3 (`g1-scan`) et 4.4 (`/api/scan/debut` et `/fin` remplacées).
+- **Code partagé livré** :
+  - `atelier/lieu/scans.py`, exporté par `atelier.lieu` : créer, lire, écrire et lister les sessions (écriture atomique, verrou `fcntl` entre processus), processus vivant ou session interrompue, `etat_scan` (la sortie de `g1-scan etat --json` et de `GET /api/scan/etat`), progression des étapes ; lire, écrire et valider `reconnaissance.yaml` ; `monde_depuis_reconnaissance`, `ecrire_monde_scan`, `changer_a_garder`, `carte_sans_elements_retires` ; `reconnaissance_depuis_monde` et `passages_du_monde` (la vérité terrain d'un monde dessiné, au format de la reconnaissance).
+  - Schémas `session_scan.schema.json` et `reconnaissance.schema.json`. Ce sont deux nouveaux types de fichiers pour le validateur maison, avec leurs règles (étape et état, heures, passages de 0,7 à 1,6 m entre murs alignés, ids, emprise). Les dates, ids de session et sujets ont des messages lisibles.
+  - Géométrie des passages dans `geometrie.py` : `murs_alignes` (5°, 0,10 m), `trou_entre`, `est_passage`.
+  - Champs facultatifs du monde : `categorie`, `source` et `confiance` pour un objet ; `source` et `confiance` pour un mur. Ils sont portés par les dataclasses, avec `Objet.categorie_effective` et `Objet.sur_la_carte`. `atelier.monde.carte` et `verifier_lieu` ignorent les personnes.
+  - `atelier/tests/outils_scan.py` : `creer_session_exemple(copie, etat)` crée une session complète et conforme (en_cours, traitement, termine ou echec) en 0,1 s, sans ROS. Elle permet aux agents Interface et Testeur de commencer sans attendre `g1-scan`.
+- **Décisions** :
+  - `session.json` est en JSON, et seul `atelier.lieu` l'écrit.
+  - Un processus est identifié par son pid et son instant de démarrage dans `/proc` (un pid repris n'est pas pris pour le bon). Une session active, sans processus connu et muette depuis 30 s, est interrompue.
+  - Un objet reconnu garde sa forme mesurée (boîte ou cylindre, jamais `modele`) ; sa catégorie porte le sens.
+  - Un passage décoché est bouché par un mur de même id, sans fusionner les deux murs.
+  - Une personne gardée devient un cylindre de catégorie `personne` : elle est dans le monde Gazebo, jamais sur la carte.
+  - La carte reste celle du scan : à l'adoption, seuls les objets décochés et les personnes en sont effacés.
+  - Le serveur lit les sessions par `atelier.lieu`, sans sous-processus à chaque seconde, et lance `g1-scan` pour démarrer, arrêter et adopter.
+  - La répétition passe par un relais `/points` → `/unitree/slam_mapping/*` de l'Orchestrateur : `g1_sim` ne change pas.
+  - L'exploration fait le tour du graphe des itinéraires, puis termine le scan d'elle-même.
+  - Le quatrième agent est le Testeur (évaluation et critères 11 à 15).
+- **Écarts à la demande** : `source` et `confiance` sont aussi permis sur les murs (le monde tiré du scan en a besoin), pas seulement sur les objets. Le lieu demo reçoit une table, une chaise et une **personne debout** plutôt qu'un poteau : deux poteaux y étaient déjà visibles, et il manquait une personne immobile pour la catégorie `personne`.
+- **Lieu demo** (référence de l'évaluation) :
+  - `table_est` et `chaise_est` au bout est du couloir sud, `personne_b204` dans b204 (vue par le passage, loin de l'accueil pour ne pas gêner le test des points du LiDAR de `g1_sim`) ;
+  - catégorie écrite sur les 12 objets ;
+  - `g1-monde generer` relancé : 484 pixels de la carte changent, tous au bout est du couloir sud, et la personne n'y est pas ; `g1-lieu valider` : aucune erreur.
+  - Tests mis à jour : nombre d'objets (9 → 12) dans `test_lieu_fichiers`, `test_serveur_api` et `test_monde_commande` ; message des champs permis d'une boîte dans `test_lieu_validation`.
+- **Correction** : `test_scan_slam.py::test_commande_sans_faux_service` échouait au hasard. Son domaine (200 + pid % 30) pouvait tomber sur celui du faux service du même processus (150 + pid % 80) : ce soir, les deux valaient 210. Il prend maintenant un autre domaine dans ce cas.
+- **.gitignore** : `lieux/*/scans/*/enregistrement/` et `lieux/*/scans/*/.session.lock`.
+- **Tests** (domaine 50, partition `scan_50`) :
+  - nouveaux : `atelier/tests/test_contrats_scan.py` (60 tests : schémas draft-07, exemples du contrat, refus du schéma et des règles, accord avec jsonschema sur 600 variantes, champs facultatifs du monde, catégories, lieu de référence, règle des passages) et `test_lieu_scans.py` (37 tests : cycle d'une session, verrou entre 4 processus, processus mort ou pid repris, `etat_scan`, reconnaissance, monde tiré du scan, passage bouché, personne hors carte, `changer_a_garder`, sessions d'exemple) ;
+  - `atelier/tests` : 505 réussis en 2 min 21 ; `ws/src/g1_sim/test` (avec Gazebo, sur une copie du nouveau demo) : 26 réussis ; `ws/src/g1_nav/test` : 90 réussis, 4 sautés ;
+  - `tests_e2e/tout.sh 4 5 7`, à cause des objets ajoutés au demo : **3 / 3**. Critère 4 en 62 s ; critère 5 en 186 s (`bloque → detour → arrive`) ; critère 7 : recouvrement de 98,9 %. Journaux : `journaux/e2e_2026-10-25_18h22/`. Les critères 1 à 3, 6 et 8 à 10 n'ont pas été relancés.
+- **Reste et risques** :
+  - les objectifs de l'évaluation (9.8) n'ont encore été mesurés sur aucun scan : à confirmer avec le premier scan simulé, et à ajuster si une catégorie est hors de portée du LiDAR (rayon le plus bas à −7° : une table n'est touchée qu'au-delà de 4 m, un banc au-delà de 6,5 m) ;
+  - `CAPTEUR_DEFAUT` de `carte3d` vaut encore 1,2 m (le robot proxy est à 1,245 m) : c'est à l'Orchestrateur, et `/tf_static` enregistré suffit ;
+  - `copier_lieu` copie aussi `scans/`, enregistrements compris : si l'on scanne `lieux/demo` depuis l'interface, les tests qui copient le demo ralentiront (prévoir une option dans `copier_lieu` si besoin) ;
+  - le README sera mis à jour à l'assemblage de la vague 2, quand `g1-scan` existera.

@@ -81,3 +81,64 @@ def rectangle(centre, longueur, largeur, cap):
     return [(centre[0] + c * u - s * v, centre[1] + s * u + c * v)
             for u, v in ((longueur / 2, largeur / 2), (-longueur / 2, largeur / 2),
                          (-longueur / 2, -largeur / 2), (longueur / 2, -largeur / 2))]
+
+
+# ---------------------------------------------------------------- murs alignés et passages (section 9.4)
+
+PASSAGE_MIN = 0.7                        # m : un passage (une porte) est un trou de 0,7 à 1,6 m
+PASSAGE_MAX = 1.6                        # m   entre les bouts de deux murs alignés
+ALIGNEMENT_ANGLE = math.radians(5.0)     # rad : écart de direction maximal de deux murs alignés
+ALIGNEMENT_ECART = 0.10                  # m : écart maximal d'un bout d'un mur à la droite de l'autre
+
+
+def dist_point_droite(p, a, b):
+    """Distance du point p à la droite (a, b) ; à a si a et b sont confondus."""
+    dx, dy = b[0] - a[0], b[1] - a[1]
+    longueur = math.hypot(dx, dy)
+    if longueur == 0:
+        return math.hypot(p[0] - a[0], p[1] - a[1])
+    return abs(dx * (p[1] - a[1]) - dy * (p[0] - a[0])) / longueur
+
+
+def murs_alignes(de1, a1, de2, a2, angle_max=ALIGNEMENT_ANGLE, ecart_max=ALIGNEMENT_ECART):
+    """Vrai si les segments [de1, a1] et [de2, a2] sont sur une même droite : directions égales à
+    angle_max près (quel que soit le sens), et chaque bout de l'un à moins de ecart_max de la
+    droite de l'autre."""
+    c1 = math.atan2(a1[1] - de1[1], a1[0] - de1[0])
+    c2 = math.atan2(a2[1] - de2[1], a2[0] - de2[0])
+    ecart = abs((c1 - c2 + math.pi / 2) % math.pi - math.pi / 2)
+    if ecart > angle_max:
+        return False
+    return (all(dist_point_droite(p, de1, a1) <= ecart_max for p in (de2, a2))
+            and all(dist_point_droite(p, de2, a2) <= ecart_max for p in (de1, a1)))
+
+
+def trou_entre(de1, a1, de2, a2):
+    """Trou entre deux murs alignés : (largeur, p, q), p bout du premier et q bout du second qui
+    bordent le trou. None si les deux murs se chevauchent ou se touchent le long de leur droite."""
+    dx, dy = a1[0] - de1[0], a1[1] - de1[1]
+    longueur = math.hypot(dx, dy)
+    if longueur == 0:
+        return None
+    ux, uy = dx / longueur, dy / longueur
+
+    def abscisse(p):
+        return (p[0] - de1[0]) * ux + (p[1] - de1[1]) * uy
+    i1 = sorted(((abscisse(p), tuple(p)) for p in (de1, a1)))
+    i2 = sorted(((abscisse(p), tuple(p)) for p in (de2, a2)))
+    if i2[0][0] >= i1[1][0]:             # le second mur est après le premier
+        p, q = i1[1][1], i2[0][1]
+    elif i1[0][0] >= i2[1][0]:           # le second mur est avant le premier
+        p, q = i1[0][1], i2[1][1]
+    else:
+        return None
+    largeur = math.hypot(q[0] - p[0], q[1] - p[1])
+    return (largeur, p, q) if largeur > 0 else None
+
+
+def est_passage(de1, a1, de2, a2, tolerance=1e-6):
+    """Vrai si les deux murs sont alignés et laissent entre eux un trou de PASSAGE_MIN à PASSAGE_MAX."""
+    if not murs_alignes(de1, a1, de2, a2):
+        return False
+    trou = trou_entre(de1, a1, de2, a2)
+    return trou is not None and PASSAGE_MIN - tolerance <= trou[0] <= PASSAGE_MAX + tolerance

@@ -72,7 +72,7 @@ MESSAGES = {
                         "monde.yaml, mur « ext_est » : epaisseur vaut 0 : il faut plus de 0"),
     "boîte avec un rayon": ("monde", lambda d: d["objets"][0].update(rayon=0.3),
                             "monde.yaml, objet « banque_accueil » : champ « rayon » non permis quand type vaut boite ; "
-                            "champs permis : id, type, centre, taille, cap"),
+                            "champs permis : id, type, centre, taille, cap, categorie, source, confiance"),
     "cylindre sans rayon": ("monde", lambda d: d["objets"][3].pop("rayon"),
                             "monde.yaml, objet « poteau_1 » : il manque rayon (obligatoire quand type vaut cylindre)"),
     "modèle inconnu": ("monde", lambda d: d["objets"][1].update(modele="armoire"),

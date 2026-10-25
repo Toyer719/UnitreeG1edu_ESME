@@ -16,6 +16,9 @@
 #
 # Les deux couloirs sont reliés à l'ouest par le hall (accueil) et à l'est : entre l'accueil et
 # chaque salle, il existe toujours deux chemins. Un passage est l'écart entre deux murs alignés.
+#
+# Ce monde sert aussi de vérité terrain pour évaluer la reconnaissance du scan (section 9.8 du
+# plan) : chaque objet a sa catégorie, et chaque catégorie est présente (personne comprise).
 version: 1
 emprise: {min: [0.0, 0.0], max: [30.0, 20.0]}
 
@@ -47,17 +50,24 @@ murs:
 
 objets:
   # Hall d'accueil : banque d'accueil contre le mur ouest, banc, poubelle
-  - {id: banque_accueil, type: boite, centre: [0.7, 10.0], taille: [0.8, 2.0, 1.1], cap: 0.0}
-  - {id: banc_hall, type: modele, modele: banc, centre: [0.5, 7.0], cap: 1.5708}
-  - {id: poubelle_hall, type: modele, modele: poubelle, centre: [4.5, 14.1], cap: 0.0}
+  - {id: banque_accueil, type: boite, centre: [0.7, 10.0], taille: [0.8, 2.0, 1.1], cap: 0.0, categorie: meuble}
+  - {id: banc_hall, type: modele, modele: banc, centre: [0.5, 7.0], cap: 1.5708, categorie: banc}
+  - {id: poubelle_hall, type: modele, modele: poubelle, centre: [4.5, 14.1], cap: 0.0, categorie: poubelle}
   # Liaison est : deux poteaux, de part et d'autre du passage
-  - {id: poteau_1, type: cylindre, centre: [26.0, 10.0], rayon: 0.2, hauteur: 2.5}
-  - {id: poteau_2, type: cylindre, centre: [29.0, 10.0], rayon: 0.2, hauteur: 2.5}
+  - {id: poteau_1, type: cylindre, centre: [26.0, 10.0], rayon: 0.2, hauteur: 2.5, categorie: poteau}
+  - {id: poteau_2, type: cylindre, centre: [29.0, 10.0], rayon: 0.2, hauteur: 2.5, categorie: poteau}
   # Dans les salles
-  - {id: table_cdi, type: modele, modele: table, centre: [25.0, 2.5], cap: 0.0}
-  - {id: chaise_cdi_1, type: modele, modele: chaise, centre: [24.6, 1.7], cap: 1.5708}
-  - {id: chaise_cdi_2, type: modele, modele: chaise, centre: [25.4, 1.7], cap: 1.5708}
-  - {id: bureau_amphi, type: boite, centre: [7.5, 18.8], taille: [3.0, 0.8, 0.75], cap: 0.0}
+  - {id: table_cdi, type: modele, modele: table, centre: [25.0, 2.5], cap: 0.0, categorie: table}
+  - {id: chaise_cdi_1, type: modele, modele: chaise, centre: [24.6, 1.7], cap: 1.5708, categorie: chaise}
+  - {id: chaise_cdi_2, type: modele, modele: chaise, centre: [25.4, 1.7], cap: 1.5708, categorie: chaise}
+  - {id: bureau_amphi, type: boite, centre: [7.5, 18.8], taille: [3.0, 0.8, 0.75], cap: 0.0, categorie: meuble}
+  # Pour la reconnaissance du scan (section 9.8 du plan), vus depuis les couloirs : une table et
+  # une chaise au bout est du couloir sud (vues de loin, à plus de 4 m pour la table, car le rayon le
+  # plus bas du LiDAR est à -7°), et une personne debout dans b204, vue par le passage. Une personne
+  # n'est jamais dessinée sur la carte 2D.
+  - {id: table_est, type: modele, modele: table, centre: [29.2, 6.1], cap: 0.0, categorie: table}
+  - {id: chaise_est, type: modele, modele: chaise, centre: [28.9, 6.95], cap: -1.5708, categorie: chaise}
+  - {id: personne_b204, type: cylindre, centre: [21.0, 16.5], rayon: 0.25, hauteur: 1.7, categorie: personne}
 
 pietons:
   # Fait le tour du couloir sud : il croise la ligne du robot à chaque bout (x = 4 et x = 24)

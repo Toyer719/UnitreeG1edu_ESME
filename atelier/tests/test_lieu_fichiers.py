@@ -39,7 +39,7 @@ def test_charger_le_demo(demo):
     assert len(lieu.itineraires.noeuds) == 13 and len(lieu.itineraires.couloirs) == 13
     assert len(lieu.zones.interdites) == 1 and len(lieu.zones.lentes) == 1
     monde = lieu.mondes["rdc"]
-    assert (len(monde.murs), len(monde.objets), len(monde.pietons)) == (18, 9, 2)
+    assert (len(monde.murs), len(monde.objets), len(monde.pietons)) == (18, 12, 2)
 
 
 def test_charger_par_id(demo, monkeypatch):
