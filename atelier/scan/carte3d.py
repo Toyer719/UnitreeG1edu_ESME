@@ -9,7 +9,7 @@ fusionnés et réduits (un point par case de 5 cm, avec Open3D).
 Repère du nuage :
   - s'il est déjà celui de l'odométrie (ex. « odom », « map ») : utilisé tel quel ;
   - sinon, c'est celui du capteur : position du robot (odométrie) puis position du LiDAR sur
-    le robot, lue dans /tf_static s'il a été enregistré, sinon --capteur (défaut : 0 0 1,2).
+    le robot, lue dans /tf_static s'il a été enregistré, sinon --capteur (défaut : -0,004 0 1,245).
 
 Les obstacles mobiles (piétons) sont retirés : une colonne de la carte que les rayons presque
 horizontaux du LiDAR traversent bien plus souvent qu'ils ne s'y arrêtent n'est pas un mur.
@@ -26,7 +26,7 @@ import numpy as np
 
 SUJETS_NUAGE = ("/unitree/slam_mapping/points", "/points")
 SUJETS_ODOM = ("/unitree/slam_mapping/odom", "/odom")
-CAPTEUR_DEFAUT = (0.0, 0.0, 1.2)     # LiDAR du robot proxy : 1,2 m au-dessus de base_link
+CAPTEUR_DEFAUT = (-0.004, 0.0, 1.245)   # LiDAR du robot proxy (model.sdf de g1_sim) : 1,245 m au-dessus de base_link
 REPERES_MONDE = ("odom", "map", "world", "camera_init")
 ECART_TEMPS_MAX = 0.25               # s, écart maximal entre un nuage et l'odométrie la plus proche
 
@@ -224,7 +224,7 @@ def position_capteur(liens, repere_capteur, repere_robot, capteur=None):
         repere = parent
     t = np.eye(4)
     t[:3, 3] = capteur if capteur is not None else CAPTEUR_DEFAUT
-    return t, "option --capteur" if capteur is not None else "défaut (0 0 1,2 : robot proxy)"
+    return t, "option --capteur" if capteur is not None else "défaut (-0,004 0 1,245 : robot proxy)"
 
 
 # Types des champs de PointCloud2 (sensor_msgs/PointField) → types numpy

@@ -11,7 +11,6 @@ Lancé par les scripts de bin/ : python -m atelier.scan.commande slam|carte-3d|c
 Code de sortie : 0 si tout va bien, 1 en cas d'échec, 2 si la commande est mal tapée.
 """
 import argparse
-import math
 import signal
 import sys
 import time
@@ -311,7 +310,7 @@ def principal_carte3d(argv):
     p.add_argument("--grille", type=float, default=0.05, help="taille de la grille, en m (défaut 0,05)")
     p.add_argument("--capteur", type=float, nargs=3, metavar=("X", "Y", "Z"),
                    help="position du LiDAR sur le robot, si l'enregistrement n'a pas /tf_static "
-                        "(défaut : 0 0 1,2, le robot proxy)")
+                        "(défaut : -0,004 0 1,245, le robot proxy)")
     p.add_argument("--portee", type=float, default=20.0, help="ignore les points plus loin, en m (défaut 20)")
     p.add_argument("--sortie", help="fichier .pcd à écrire (défaut : cartes/<etage>.pcd du lieu)")
     args = p.parse_args(argv)

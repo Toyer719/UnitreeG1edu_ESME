@@ -37,7 +37,7 @@ from tf2_msgs.msg import TFMessage  # noqa: E402
 
 DOSSIER_PAQUET = Path(__file__).resolve().parent.parent
 MONDE_COULOIR = DOSSIER_PAQUET / 'worlds' / 'couloir.sdf'
-HAUTEUR_LIDAR = 1.2
+HAUTEUR_LIDAR = 1.245          # m, LiDAR du model.sdf de g1_proxy
 
 
 def journal_dossier():

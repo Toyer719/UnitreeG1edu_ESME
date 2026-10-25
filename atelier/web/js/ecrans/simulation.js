@@ -16,6 +16,7 @@ const NOMS_PROCESSUS = {
   simulation: 'Simulation (Gazebo)',
   navigation: 'Navigation (guide)',
   faux_slam: 'Faux service du scan',
+  scan: 'Scan',
 };
 
 const ETATS_GUIDE = {

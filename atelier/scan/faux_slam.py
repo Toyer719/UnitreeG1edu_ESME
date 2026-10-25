@@ -73,7 +73,7 @@ class DeplacementGazebo:
     0,15 et 1,5 m du sol. Le LiDAR est à HAUTEUR_LIDAR au-dessus du sol (modèle g1_proxy).
     """
 
-    HAUTEUR_LIDAR = 1.2
+    HAUTEUR_LIDAR = 1.245      # m, comme le LiDAR du model.sdf de g1_proxy
     DISTANCE_ARRET = 0.75      # m, du centre du robot au bord de la zone surveillée
     DEMI_LARGEUR = 0.3         # m
 

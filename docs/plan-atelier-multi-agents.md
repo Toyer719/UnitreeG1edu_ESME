@@ -286,7 +286,7 @@ REST sous `/api`, en JSON. Chaque route correspond à un fichier du paquet, ou �
 
 Précisions et ajouts de la phase 1, acceptés à l'assemblage :
 - `GET …/carte.yaml` renvoie du JSON : les champs du fichier, plus `largeur` et `hauteur` (pixels), `bornes` `{xmin, ymin, xmax, ymax}` en mètres et `modifiee`.
-- Routes ajoutées : `GET /api/etat`, `PUT /api/lieux/{id}` (lieu.yaml), `GET /api/lieux/{id}/verification`, `PUT …/salles?synchroniser=true` (crée ou déplace le nœud de même id, recopie l'accueil dans lieu.yaml), `GET /api/scan/etat`, `POST /api/scan/faux-service/arreter`.
+- Routes ajoutées : `GET /api/etat`, `PUT /api/lieux/{id}` (lieu.yaml), `GET /api/lieux/{id}/verification`, `PUT …/salles?synchroniser=true` (crée ou déplace le nœud de même id, recopie l'accueil dans lieu.yaml), `GET /api/scan/etat` (nouveau format en vague 2), `POST /api/scan/faux-service/arreter` (retirée en vague 2, section 9.7).
 - Champs facultatifs : `fenetre` (false) et `navigation` (true) de `simulation/demarrer` ; `faux`, `lieu` et `etage` du scan.
 - Chaque PUT renvoie `{enregistre: [...], rapport: {ok, erreurs, avertissements}}` ; une erreur est toujours `{detail, erreurs?, sortie?}`, en français.
 - `/ws/etat` contient aussi `simulation`, `temps_sim` et `ros {actif, erreur, nav2}`.
@@ -509,7 +509,7 @@ Tâches :
      - robot et piétons en direct sur la carte et dans la vue 3D ;
      - liste des salles avec « Y aller » ; gros bouton « Arrêt » ;
      - affichage de l'état du guide.
-   - **Scan** : boutons Démarrer / Terminer reliés à `g1-slam`, à tester avec le faux service.
+   - **Scan** : boutons Démarrer / Terminer reliés à `g1-slam`, à tester avec le faux service (vague 1 ; remplacé en vague 2 par l'onglet du scan intégré, section 9.7).
 3. Règles d'écriture de l'interface :
    - les boutons disent ce qu'ils font (« Fabriquer la carte », « Y aller ») ;
    - les erreurs disent quoi corriger ;
@@ -575,7 +575,7 @@ Tâches :
 
 ## 9. Scan intégré (vague 2)
 
-Contrats figés par l'intégrateur le 25/10/2026, avant le travail en parallèle de quatre agents (9.9). Comme la section 4, cette section fait foi ; on ne la modifie qu'en passant par l'intégrateur. Le code partagé est déjà livré et testé : `atelier.lieu.scans` (sessions, reconnaissance, monde tiré du scan, état du scan), les schémas `session_scan` et `reconnaissance`, les champs facultatifs des objets du monde, et `atelier/tests/outils_scan.py` (sessions d'exemple, sans ROS).
+Contrats figés par l'intégrateur le 25/10/2026, avant le travail en parallèle de quatre agents (9.9), puis complétés à l'assemblage du même jour (paragraphes « Précisions de l'assemblage » de 9.5 à 9.10). Comme la section 4, cette section fait foi ; on ne la modifie qu'en passant par l'intégrateur. Le code partagé est déjà livré et testé : `atelier.lieu.scans` (sessions, reconnaissance, monde tiré du scan, état du scan), les schémas `session_scan` et `reconnaissance`, les champs facultatifs des objets du monde, et `atelier/tests/outils_scan.py` (sessions d'exemple, sans ROS).
 
 ### 9.1 Le but et le déroulé
 
@@ -622,6 +622,7 @@ Chaque scan est une **session** : un dossier `LIEU/scans/AAAA-MM-JJ_HHhMM/`, nom
 | `rapport.json` | bilan du traitement | `g1-scan traiter` |
 | `monde_remplace.monde.yaml` | ancien monde de l'étage, gardé à l'adoption avec `--monde` | `g1-scan adopter` |
 | `.session.lock` | verrou des écritures de `session.json` (ignoré par Git) | `atelier.lieu` |
+| `.processus.json` | programmes lancés par la session (pid, groupe, journal), pour nettoyer une session interrompue (ignoré par Git) | processus de la session |
 
 Toutes les coordonnées d'une session sont dans le **repère du nuage** : l'odométrie de l'enregistrement. En simu, c'est le repère du monde Gazebo (la session se compare donc pixel à pixel au monde dessiné). Sur le vrai robot, c'est le repère de la carte Unitree, avec l'origine au départ du scan.
 
@@ -792,6 +793,16 @@ Un échec de `carte_3d` ou `carte_2d` donne `echec`, avec un message qui dit quo
 
 **adopter.** Session `termine` seulement. Écrit `cartes/<etage>.pgm` (la carte de la session passée par `carte_sans_elements_retires`) et `cartes/<etage>.yaml` (`image: <etage>.pgm`), copie `nuage.pcd` en `cartes/<etage>.pcd`, passe l'étage à `source_carte: scan` et, en mode robot, recopie `carte_unitree` dans `lieu.yaml`. Avec `--monde` : l'ancien `mondes/<etage>.monde.yaml` est gardé dans la session (`monde_remplace.monde.yaml`), puis remplacé par `monde_scan.monde.yaml`. Ensuite `atelier.monde.generer(lieu, etage)` : masque Keepout à la taille de la nouvelle carte et, avec `--monde`, le SDF du nouveau monde. Enfin `adoption` dans `session.json`, et le rapport de `valider_lieu` affiché. En mode robot, il prévient que le repère du scan n'est pas celui du monde dessiné : salles, nœuds et zones sont à replacer sur la nouvelle carte.
 
+**Précisions de l'assemblage** (écarts acceptés, 25/10) :
+- `demarrer --pilote direct|guide` (ou `G1_SCAN_PILOTE`) : exploration en ligne droite par `/cmd_vel` (défaut, ci-dessus) ou par le guide (`/guide/aller` de nœud en nœud ; `g1-guide navigation --simu` est lancé s'il ne tourne pas). Le tour suit chaque couloir au moins une fois (circuit du postier chinois) ; un couloir bloqué 30 s est abandonné.
+- `arreter --sans-traitement` envoie SIGUSR1 (et non SIGINT) : la session reste `arret_en_cours` avec sa `fin` ; `g1-scan traiter` ou `arreter` la finit. `arreter` sans aucune session dans le lieu : code 0, « rien à arrêter ».
+- En plus des fichiers de 9.2 : `.processus.json`, un journal par programme (`journaux/scan_<lieu>_<session>.<nom>.log`) et le champ `repere` de `rapport.json` (`{nuage, odom, robot, deja_dans_le_monde, capteur, premiere_pose}`) : si le `frame_id` du nuage est celui de l'odométrie (ou `odom`, `map`, `world`, `camera_init`), les points sont pris tels quels, sinon ils sont placés par l'odométrie et `/tf_static`.
+- Mode robot : `sujets.autres` contient aussi `/state_estimator/odom_pelvis` et `/slam_info`. Sans câble, le message commence par « Robot non détecté », comme dans l'interface. Avec `G1_SLAM_FAUX=1` (essais), le vrai robot est toujours refusé.
+- Position du LiDAR par défaut (`carte3d.CAPTEUR_DEFAUT`, `faux_slam`) : (−0,004 ; 0 ; 1,245) m, celle du `model.sdf` de `g1_proxy` ; `/tf_static` enregistré reste prioritaire.
+- Variables : `G1_SCAN_BIN` (fausses commandes des tests), `ATELIER_RECONNAISSANCE=module:fonction` (fausse reconnaissance des tests), `G1_INTERFACE` (port du robot, eno2 par défaut), `G1_SCAN_PILOTE`.
+- Tous les programmes de la session ont `OPENBLAS_NUM_THREADS=1` (sinon numpy occupe tous les cœurs en attente active, au détriment de Gazebo) et reçoivent SIGTERM si le processus de la session meurt.
+- Un bag de simulation pèse environ 100 Mo par minute de scan (`/points` à 10 Hz) ; il reste dans `scans/<session>/enregistrement/`, ignoré par Git.
+
 ### 9.6 La reconnaissance (agent Reconnaissance)
 
 ```python
@@ -805,6 +816,8 @@ resultat = reconnaitre(chemin_pcd, chemin_carte_yaml, dossier_sortie, parametres
 - **Erreurs** : `atelier.scan.reconnaissance.ErreurReconnaissance(Exception)`, message en français qui dit quoi faire ; jamais de fichier à moitié écrit.
 - **Contraintes** : sans ROS ni écran ; Python du projet (numpy 1.26, Open3D, opencv-python ; autre paquet : demander à l'intégrateur) ; moins de 60 s sur un scan du lieu demo ; même résultat à chaque appel avec les mêmes entrées (graine fixe). Ids : `mur_N`, `passage_N`, et pour les objets `<categorie>_N` (ex. `table_1`, `personne_1`). Confiance : une estimation honnête entre 0 et 1 ; l'interface signale les éléments sous 0,5. Les règles de 9.4 s'appliquent (passages de 0,7 à 1,6 m, personnes décochées, trous de moins de 0,7 m bouchés).
 - Une commande de mise au point est permise : `python -m atelier.scan.reconnaissance NUAGE.pcd CARTE.yaml DOSSIER`.
+
+**Précisions de l'assemblage** : le sol et le plafond sont trouvés par un RANSAC numpy à graine fixe (celui d'Open3D, parallèle, ne rendait pas deux fois le même plan) ; Open3D sert au DBSCAN, aux voisinages et aux fichiers. `reconnaitre` accepte en plus `progression=` (fonction appelée avec la fraction et l'étape) et `depart_robot` en dict ; chaque élément a un champ `infos` (mesures, scores des catégories). Les 71 réglages sont dans `PARAMETRES` ; la commande de mise au point accepte `--depart X Y THETA` et `--parametre cle=valeur`. Durée sur le demo : 1 à 2 s.
 
 ### 9.7 L'API du serveur (agent Interface)
 
@@ -826,6 +839,12 @@ REST sous `/api/scan`, en JSON ; erreurs `{detail, erreurs?, sortie?}` en franç
 - **Téléopération** : valeurs ramenées à |vx| ≤ 0,5, |vy| ≤ 0,25, |wz| ≤ 0,8. L'interface renvoie la consigne toutes les 0,2 s tant qu'une flèche est appuyée, puis `{0, 0, 0}`. **Homme mort** : sans consigne depuis 0,5 s, le serveur publie lui-même une vitesse nulle (VelocityControl garde la dernière consigne). Seulement avec le robot simulé : 409 si ni la simulation de l'Atelier ni un scan simu ou en répétition ne tourne ; 503 sans pont ROS 2.
 - **Retirées** : `POST /api/scan/debut`, `POST /api/scan/fin` et `POST /api/scan/faux-service/arreter` (le faux service est maintenant lancé et arrêté par la session en répétition). `GET /api/scan/etat` change de format. `g1-slam` reste une commande à part entière.
 - **Onglet Scan** : choix du mode, cases Répétition et Explorer, gros bouton « Scan », aperçu en direct sur la carte de l'étage (image `apercu.png` posée sur `bornes`, trajectoire, robot, durée, distance, points), flèches à l'écran et au clavier en simu, bouton « Fin », barre de progression avec le `message` de chaque étape, puis la revue (éléments par catégorie, cases à garder, confiance, éléments douteux signalés, carte de la session et vue 3D du monde) et les boutons « Adopter la carte » et « Adopter la carte et le monde ». Historique des sessions du lieu. En mode robot sans répétition, une confirmation rappelle le câble Ethernet.
+
+**Précisions de l'assemblage** :
+- Route ajoutée : `GET /api/scan/sessions/{s}/rapport` (`rapport.json`). Champs ajoutés aux réponses : `sortie` (demarrer, arreter), `interrompue` (chaque session listée), `session`, `etage`, `avertissements` et `rapport` (adopter), `avertissement` (teleop, quand personne n'écoute `/cmd_vel`).
+- Le scan démarré par le serveur est un de ses processus (rôle « scan », dans « Ce qui tourne ») ; quand le serveur s'arrête, il demande la fin de l'enregistrement (`g1-scan arreter`).
+- Mode robot sans répétition : le serveur lit seulement `/sys/class/net/<interface>/carrier` (`ATELIER_INTERFACE_ROBOT`, eno2 par défaut) ; sans câble, 409 « Robot non détecté : branchez le câble Ethernet… ». La téléopération est refusée avec le vrai robot (409) : il se pilote à la télécommande. Le 409 « simulation sur un autre lieu ou étage » vaut dans les deux modes.
+- Les deux boutons d'adoption s'appellent « Utiliser cette carte pour l'étage » (Adopter la carte) et « Ouvrir dans l'éditeur du monde » (Adopter la carte et le monde, puis l'onglet Monde s'ouvre sur le monde du scan). Les deux demandent une confirmation qui dit ce qui sera remplacé.
 
 ### 9.8 Le lieu de référence et l'évaluation
 
@@ -857,15 +876,19 @@ La vérité terrain au format de la reconnaissance : `atelier.lieu.reconnaissanc
 
 Ces objectifs sont ceux de la vague. Si une catégorie est hors de portée du LiDAR simulé, le Testeur le montre (chiffres à l'appui) et l'intégrateur ajuste l'objectif dans cette section.
 
+**Précisions de l'assemblage** : `evaluation.py` a été écrit par l'agent Reconnaissance (et non par le Testeur), avec en plus des mesures plus strictes (murs retrouvés à 0,2 m et 5°, objets à 0,3 m avec la bonne catégorie), un mur « vu » à 0,10 m plus sa demi-épaisseur de son axe, et une personne vraie non vue qui fait échouer la mesure « personnes ». Il fabrique aussi des nuages synthétiques par lancer de rayons (`nuage_synthetique`). Tous les objectifs ont été atteints sur le scan simulé d'un tour complet (murs 99,5 % / 95,7 %, passages 5 sur 5, objets 11 sur 11 de la bonne catégorie, 1 faux objet, personne reconnue et décochée) : ils ne changent pas. Sur un scan arrêté à 80 % du tour, les passages sont juste à l'objectif (4 sur 5). La précision des murs (96–97 %) est limitée par des murs fantômes en diagonale, dus aux traînées de recalage pendant les rotations du robot proxy.
+
 ### 9.9 Les agents de la vague 2
 
 | Agent | Possède | Dépend de |
 |---|---|---|
 | Intégrateur | sections 4 et 9, `atelier/lieu/` (dont les schémas), `atelier/tests/test_contrats*.py`, `test_lieu_scans.py`, `outils_scan.py`, `lieux/demo`, `.gitignore`, assemblage | — |
-| A. Orchestrateur | `atelier/scan/` sauf `reconnaissance*` et `evaluation.py` (nouveaux modules du scan intégré, `carte3d`, `carte2d`, `faux_slam`, `slam_client`, `commande`), `bin/g1-scan`, `bin/gl-scan`, `atelier/tests/test_scan_integre*.py` | contrats ; Reconnaissance (appel de `reconnaitre`) |
-| B. Reconnaissance | `atelier/scan/reconnaissance.py` (ou le paquet `atelier/scan/reconnaissance/`), `atelier/tests/test_scan_reconnaissance*.py` | contrats ; Testeur (évaluation) |
-| C. Interface | `atelier/serveur/`, `atelier/web/`, `atelier/tests/test_serveur_*.py` | contrats ; `g1-scan` (fausses commandes en attendant) |
-| D. Testeur | `atelier/scan/evaluation.py`, `atelier/tests/test_scan_evaluation.py`, `tests_e2e/critere_11_*` à `critere_15_*`, `tests_e2e/tout.sh` et `LISEZMOI.md` | tous |
+| A. Orchestrateur | `atelier/scan/` sauf `reconnaissance*` et `evaluation.py` (nouveaux modules du scan intégré `session.py`, `apercu.py`, `exploration.py`, `repetition.py`, et `carte3d`, `carte2d`, `faux_slam`, `slam_client`, `commande`), `bin/g1-scan`, `bin/gl-scan`, `atelier/tests/test_scan_session*.py` | contrats ; Reconnaissance (appel de `reconnaitre`) |
+| B. Reconnaissance | `atelier/scan/reconnaissance.py` et `atelier/scan/evaluation.py`, `atelier/tests/test_reconnaissance*.py` | contrats |
+| C. Interface | `atelier/serveur/`, `atelier/web/` (dont `js/ecrans/scan.js`, `js/teleop.js`, `js/nuage3d.js`, `css/scan.css`), `atelier/tests/test_serveur_*.py` | contrats ; `g1-scan` (fausses commandes en attendant) |
+| D. Testeur | `tests_e2e/critere_11_*` à `critere_15_*`, `tests_e2e/outils_scan_e2e.py`, `tests_e2e/tout.sh` et `LISEZMOI.md` | tous |
+
+Ce tableau donne les fichiers tels qu'ils ont été livrés (noms des tests et attribution d'`evaluation.py` corrigés à l'assemblage).
 
 Règles communes : chaque agent n'écrit que dans ce qu'il possède et demande le reste à l'intégrateur ; `atelier/lieu` et les schémas ne changent que par l'intégrateur ; dans chaque shell ROS ou Gazebo, un `ROS_DOMAIN_ID` et une `IGN_PARTITION` propres à l'agent ; Gazebo sans fenêtre ; pas de compilation dans `ws/build` ; jamais rien sur eno2 (le vrai mode robot n'est essayé qu'en répétition) ; tous les processus lancés sont arrêtés à la fin (vérifier avec `ps`) ; tests réels, sans écran ni robot ; une section dans `docs/journal-atelier.md`. Pour travailler sans attendre les autres : `atelier.tests.outils_scan.creer_session_exemple(copie_du_lieu, etat)` crée une session complète et conforme (en_cours, traitement, termine ou echec), sans ROS.
 
@@ -879,8 +902,12 @@ Règles communes : chaque agent n'écrit que dans ce qu'il possède et demande l
 
 ### 9.10 Critères de recette de la vague 2, sans robot et sans fenêtre
 
-11. **Scan simulé intégré** : sur une copie du demo, `g1-scan demarrer --mode simu --explorer` rend la main en moins de 3 s ; l'aperçu se met à jour pendant le tour ; la session finit `termine` toute seule, en moins de 20 min ; la carte de la session recouvre la carte du monde à au moins 80 % ; `monde_scan.monde.yaml` est valide.
-12. **Répétition du mode robot** : `g1-scan demarrer --mode robot --repetition`, téléopération ou exploration, puis `g1-scan arreter --attendre` : le faux service a reçu 1801 puis 1802 (avec `carte_unitree`), le bag contient `/unitree/slam_mapping/points` et `/unitree/slam_mapping/odom`, la session finit `termine`.
-13. **Reconnaissance** : sur le scan du critère 11, l'évaluation atteint les objectifs de 9.8 ; aucune personne n'est cochée d'office.
-14. **Adoption** : `g1-scan adopter --monde` ; `g1-lieu valider` ne signale aucune erreur ; l'étage est en `source_carte: scan` ; le masque a la taille de la nouvelle carte ; `g1-monde simuler --sans-fenetre` démarre sur le monde adopté et `/points` est publié ; l'ancien monde est dans la session.
-15. **Interface** : depuis l'API (et dans Firefox si présent) : Scan → aperçu → Fin → progression jusqu'à « termine » → décocher un élément → Adopter ; la téléopération déplace le robot simulé et s'arrête seule quand on lâche. Aucun processus ne reste après l'arrêt du serveur.
+Numérotation fixée à l'assemblage : celle des scripts `tests_e2e/critere_11_*` à `critere_15_*`, lancés par `tests_e2e/tout.sh`, qui affiche « N / 15 ». Elle remplace celle du premier jet de cette section (11 g1-scan, 12 répétition, 13 reconnaissance, 14 adoption, 15 interface) ; tout son contenu est couvert, comme indiqué entre parenthèses.
+
+11. **Scan simulé intégré, par l'API** (`critere_11_scan_simu_api.sh`) : sur une copie du demo, `POST /api/scan/demarrer` en mode simu avec exploration rend la main en moins de 3 s ; l'aperçu (`apercu.json` et `.png`) se met à jour pendant le tour ; « Fin » (`POST /api/scan/arreter`) après 80 % des couloirs ; la session finit `termine` ; la carte de la session recouvre la carte du monde à au moins 90 % ; `reconnaissance.yaml` et `monde_scan.monde.yaml` sont valides ; aucun processus ne reste. Avec `E2E_FIN_AUTO=1`, pas de « Fin » : l'exploration termine le scan d'elle-même (premier jet, n° 11).
+12. **Reconnaissance** (`critere_12_reconnaissance.sh`) : sur la session du critère 11 (sinon sur un nuage fabriqué), l'évaluation de 9.8 donne murs ≥ 0,90, passages ≥ 0,8, objets de la bonne catégorie ≥ 0,7, et aucune personne cochée ; les autres objectifs de 9.8 sont affichés, et bloquants avec `E2E_STRICT=1` (premier jet, n° 13).
+13. **Monde du scan** (`critere_13_monde_du_scan.sh`) : dans la revue, un objet est décoché (`PUT …/reconnaissance`) ; « Adopter la carte et le monde » par l'API ; la carte de l'étage est celle de la session sans les éléments retirés, le masque a sa taille, `source_carte: scan`, l'ancien monde est dans la session, l'objet décoché n'est pas dans le monde adopté ; `g1-lieu valider` ne signale aucune erreur ; `g1-monde generer` ne touche pas à la carte du scan ; la simulation démarre sur le monde adopté, et le robot va de l'accueil à une salle placée par l'API, à moins de 0,3 m (premier jet, n° 14 et une partie du 15).
+14. **Répétition du mode robot** (`critere_14_repetition_robot.sh`) : `g1-scan demarrer --mode robot --repetition --explorer` rend la main en moins de 3 s ; puis `g1-scan arreter --attendre` : le faux service a reçu 1801 puis 1802 (avec `carte_unitree`), le bag contient `/unitree/slam_mapping/points` et `/unitree/slam_mapping/odom`, la session finit `termine`, aucun processus ne reste (premier jet, n° 12).
+15. **Robustesse et interface** (`critere_15_robustesse.sh`) : « Fin » sans scan, « Scan » deux fois, mode robot sans robot (« Robot non détecté »), demandes absurdes : refus clairs en français, jamais d'erreur 500 ; pendant un scan simulé, les flèches (`POST /api/simulation/teleop`) font avancer le robot, qui s'arrête seul quand on lâche ; « Fin » pendant la préparation ; puis le parcours de l'onglet Scan dans Firefox sans fenêtre (`atelier/tests/test_serveur_scan_navigateur.py`). Aucun processus ne reste (premier jet, n° 15).
+
+Les critères 1 à 10 (section 7) doivent toujours passer.

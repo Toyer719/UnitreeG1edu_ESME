@@ -17,5 +17,17 @@ Modules (tout s'importe depuis le module, ex. from atelier.scan.carte2d import f
   salle         position du robot (/odom) → salle ou nœud : lire_position(), ajouter(...).
   commande      lignes de commande g1-slam, g1-carte-3d, g1-carte-2d et g1-salle.
 
+Scan intégré (vague 2, section 9 du plan) :
+
+  session       la commande g1-scan (demarrer, arreter, traiter, etat, adopter), le processus de la
+                session (enregistrement, 1801/1802, répétition), le traitement et l'adoption.
+  apercu        nœud de l'aperçu en direct : apercu.png et apercu.json toutes les 2 s.
+  exploration   tour automatique de tous les couloirs (pilote direct par /cmd_vel, ou guide).
+  repetition    relais /points et /odom → /unitree/slam_mapping/* (répétition), attente de sujets.
+  reconnaissance  reconnaitre(nuage, carte, dossier) : murs, passages et objets → reconnaissance.yaml
+                et monde_scan.monde.yaml.
+  evaluation    comparaison d'une reconnaissance à la vérité terrain (objectifs de 9.8), nuages
+                synthétiques.
+
 Le moteur du guide sur le vrai robot (commande 1102) est dans ws/src/g1_nav/g1_nav/moteur_unitree.py.
 """

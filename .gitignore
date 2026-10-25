@@ -20,6 +20,8 @@ ws/log_*/
 *.egg-info/
 .pytest_cache/
 # Scans intégrés (section 9 du plan) : les enregistrements ros2 bag sont lourds et restent sur le PC ;
-# le verrou de session.json n'a de sens que pendant le scan
+# le verrou de session.json et la liste des programmes lancés (.processus.json) n'ont de sens
+# que pendant le scan
 lieux/*/scans/*/enregistrement/
 lieux/*/scans/*/.session.lock
+lieux/*/scans/*/.processus.json

@@ -24,7 +24,7 @@ Toutes les commandes s'utilisent dans un terminal ouvert après l'installation (
 | `g1-personnes` | Détecter et suivre les personnes (webcam ou caméra) | non |
 | `g1-parler "texte"` | Voix française hors ligne (Piper) | non |
 | `g1-ecouter` | Reconnaissance vocale en français (Vosk, faster-whisper) | non |
-| `g1-atelier` | Atelier G1 : décrire un lieu, fabriquer la carte, essayer le guide dans Gazebo (section ci-dessous) | non |
+| `g1-atelier` | Atelier G1 : décrire ou scanner un lieu, fabriquer la carte, essayer le guide dans Gazebo (section ci-dessous) | non (oui pour scanner un vrai bâtiment) |
 
 Le calendrier jour par jour, avec toutes les commandes de chaque étape, est sur la page du
 projet : https://claude.ai/artifact/3sjPDb9CYcwJGrTZ8vgxNP
@@ -39,8 +39,9 @@ tapez `source ~/.bashrc` ou ouvrez-en un nouveau.
 
 L'Atelier G1 sert à décrire un bâtiment (murs, portes, meubles, piétons), à en tirer la carte
 de navigation, à placer les salles et les itinéraires, puis à essayer le guide dans Gazebo,
-**sans robot**. Le même lieu servira ensuite au vrai G1 : seule la carte (scan au lieu du
-monde dessiné) et le moteur de déplacement changent.
+**sans robot**. Il sait aussi **scanner** un étage avec le LiDAR, en simulation ou avec le vrai
+G1 (section « Scanner un lieu »). Le même lieu servira ensuite au vrai G1 : seule la carte (scan
+au lieu du monde dessiné) et le moteur de déplacement changent.
 Plan : `docs/plan-atelier-multi-agents.md`. Décisions et état : `docs/journal-atelier.md`.
 
 ### Le plus simple : l'interface web
@@ -53,7 +54,8 @@ Les onglets se suivent de gauche à droite : **Lieux** (créer ou choisir un lie
 **Monde** (dessiner murs, passages, meubles et piétons, vue 3D), **Carte**
 (« Fabriquer la carte »), **Salles**, **Itinéraires** (nœuds et couloirs de 8 m au plus),
 **Zones** (interdites en rouge, lentes en orange), **Simulation** (« Lancer la simulation »,
-puis « Y aller » ; gros bouton ARRÊT) et **Scan** (à essayer avec le faux service).
+puis « Y aller » ; gros bouton ARRÊT) et **Scan** (boutons « Scan » et « Fin », section
+« Scanner un lieu » ci-dessous).
 Ctrl+C dans le terminal arrête le serveur, et avec lui la simulation et la navigation.
 
 ### Les mêmes étapes en ligne de commande
@@ -77,7 +79,7 @@ Sans `--sans-fenetre`, Gazebo s'ouvre dans une fenêtre. `--lieu` accepte un id 
 | `g1-atelier [--port 8000] [--sans-navigateur] [--hote 0.0.0.0]` | Le logiciel web (`--hote 0.0.0.0` : depuis une tablette du réseau) |
 | `g1-lieu creer ID --nom "Nom"`, `g1-lieu valider --lieu L`, `g1-lieu liste` | Créer, vérifier, lister les lieux |
 | `g1-monde generer --lieu L --etage E` | Monde Gazebo `.sdf`, carte `.pgm`/`.yaml` et masque, depuis le monde dessiné |
-| `g1-monde simuler --lieu L --etage E [--sans-fenetre]` | Gazebo avec le robot proxy (LiDAR à 1,2 m) et les piétons |
+| `g1-monde simuler --lieu L --etage E [--sans-fenetre]` | Gazebo avec le robot proxy (taille du G1, LiDAR à 1,245 m) et les piétons |
 | `g1-guide navigation --lieu L --etage E --simu` | Nav2, routeur et guide (sans `--simu` : vrai robot) |
 | `g1-guide aller ID`, `g1-guide stop`, `g1-guide etat` | Envoyer le robot vers une salle, l'arrêter, voir l'état du guide |
 | `g1-banc --lieu L --etage E --trajets 20 --lancer` | Banc de test : trajets tirés au sort, résultats en CSV dans `journaux/` |
@@ -85,8 +87,82 @@ Sans `--sans-fenetre`, Gazebo s'ouvre dans une fenêtre. `--lieu` accepte un id 
 | `g1-carte-3d --lieu L --etage E --enregistrement DOSSIER` | Enregistrement ros2 bag → nuage 3D `.pcd` |
 | `g1-carte-2d --lieu L --etage E` | Nuage 3D → carte 2D de navigation |
 | `g1-salle ajouter "Nom" --lieu L` | Ajoute une salle à la position actuelle du robot |
+| `g1-scan demarrer\|arreter\|etat\|traiter\|adopter --lieu L …` | Le scan intégré, comme les boutons « Scan » et « Fin » de l'onglet Scan (section suivante) |
 
 Chaque commande a un alias `gl-…` et accepte `--help`.
+
+### Scanner un lieu
+
+Le scan fabrique la carte 2D d'un étage, et un monde 3D modifiable, à partir de ce que voit le
+LiDAR du robot. Tout se fait dans l'onglet **Scan** de l'Atelier : un bouton **Scan** pour
+commencer, un bouton **Fin** pour arrêter, et le reste est automatique.
+
+**En simulation** (sans robot, pour essayer ou pour préparer) : le robot simulé de Gazebo, à la
+taille du G1, scanne le monde dessiné de l'étage.
+
+1. Onglet **Carte** : « Fabriquer la carte », si ce n'est pas déjà fait (le robot simulé a besoin
+   du monde Gazebo de l'étage).
+2. Onglet **Scan** : choisissez **Simulation**. Cochez **Exploration automatique** pour que le
+   robot fasse seul le tour des couloirs de l'onglet Itinéraires ; sinon, conduisez-le avec les
+   flèches de l'écran ou du clavier (il s'arrête dès qu'on lâche).
+3. Cliquez sur **Scan**. Après 10 à 20 s (démarrage de Gazebo), l'aperçu se remplit en direct :
+   murs vus d'en haut, trajet du robot, nuage de points en 3D, durée et distance.
+4. Cliquez sur **Fin** quand tout l'étage a été vu. Avec l'exploration, le scan s'arrête de
+   lui-même à la fin du tour (environ 3 min pour le lieu `demo`).
+5. Une barre suit la suite, automatique : carte 3D, carte 2D, reconnaissance, monde (10 à 30 s).
+6. La revue montre ce qui a été reconnu : murs, passages (les portes) et objets (tables, chaises,
+   bancs, poubelles, poteaux, meubles, personnes), chacun avec une case **garder**. Les personnes
+   sont décochées d'office : elles ne vont jamais sur la carte. Décochez ce qui est faux.
+7. Choisissez :
+   - **Utiliser cette carte pour l'étage** : la carte du scan remplace celle de l'étage ;
+   - **Ouvrir dans l'éditeur du monde** : la carte **et** le monde du scan remplacent ceux de
+     l'étage (l'ancien monde est gardé dans le dossier du scan), puis l'onglet **Monde** s'ouvre.
+     On y modifie le monde du scan comme un monde dessiné, et l'onglet **Simulation** le lance
+     dans Gazebo pour essayer le guide.
+
+**Avec le vrai robot** : le PC suit le robot au câble. Les données du scan n'arrivent au PC que par
+le câble Ethernet, pas par le Wi-Fi. Il faut deux personnes : l'une pilote le robot à la
+télécommande, l'autre marche derrière avec le PC portable, relié au robot par un câble de 2 à 3 m.
+
+1. Robot allumé et debout en mode marche, dans une zone dégagée ; dans l'appli Unitree, les
+   services `unitree_slam` et `lidar_driver` sont activés.
+2. Branchez le câble, puis dans un terminal : `source ~/robot-g1/setup/robot.sh` (doit dire « le
+   robot répond »).
+3. `g1-atelier`, onglet **Scan** : choisissez **Robot**, cliquez sur **Scan** et confirmez. Le PC
+   demande au robot de commencer sa cartographie (commande 1801) et enregistre ce que le robot
+   publie (`/unitree/slam_mapping/points` et `/unitree/slam_mapping/odom`). Sans câble, l'Atelier
+   répond « Robot non détecté » et ne lance rien.
+4. Promenez le robot lentement dans tout l'étage, câble lâche, sans couper les virages. Les flèches
+   de l'écran ne servent pas avec le vrai robot : il se pilote à la télécommande, qui reste
+   l'arrêt d'urgence.
+5. Revenez près du point de départ, puis **Fin** : le robot enregistre sa propre carte (commande
+   1802, fichier `<etage>_<session>.pcd` sur le robot) et le PC fabrique la carte 2D et le monde,
+   comme en simulation.
+6. Revue et adoption, comme en simulation. Le repère du scan du robot (origine au point de départ)
+   n'est pas celui du monde dessiné : replacez ensuite les salles, les itinéraires et les zones sur
+   la nouvelle carte.
+
+Pour s'entraîner sans robot, cochez **Répétition sans robot** en mode Robot : tout le déroulé du
+mode robot est joué avec un faux service de cartographie et le robot simulé.
+
+**Attention** : le mode robot n'a encore jamais été essayé sur le vrai G1, seulement en
+répétition. Au premier vrai scan, vérifiez la carte (elle ne doit être ni dédoublée ni tournée) et
+lisez les avertissements du rapport.
+
+Les mêmes étapes en ligne de commande :
+
+```bash
+g1-scan demarrer --lieu demo --etage rdc --mode simu --explorer   # « Scan » : rend la main tout de suite
+g1-scan etat --lieu demo                                          # où en est le scan
+g1-scan arreter --lieu demo --attendre                            # « Fin », puis attend la carte et le monde
+g1-scan adopter --lieu demo --session 2026-10-25_17h42 --monde    # adopte la carte et le monde du scan
+```
+
+Vrai robot : `--mode robot` (câble branché et `source ~/robot-g1/setup/robot.sh` fait) ;
+répétition sans robot : `--mode robot --repetition`. Chaque scan est rangé dans
+`lieux/<id>/scans/<date>_<heure>/` (enregistrement, aperçu, nuage 3D, carte, reconnaissance,
+monde, `rapport.json`). L'enregistrement pèse environ 100 Mo par minute de scan ; il n'est pas
+sauvegardé par Git : effacez le dossier `enregistrement/` quand le scan est adopté.
 
 ### Les fichiers d'un lieu
 
@@ -99,7 +175,8 @@ lieux/<id>/
 ├── cartes/<etage>_interdit.pgm + .yaml   masque des zones interdites (généré)
 ├── salles.yaml                        salles : nom, alias, position devant la porte, phrase d'arrivée
 ├── itineraires.yaml                   nœuds et couloirs du guide
-└── zones.yaml                         zones interdites et lentes
+├── zones.yaml                         zones interdites et lentes
+└── scans/<date>_<heure>/              un dossier par scan (session.json, carte, reconnaissance, monde…)
 ```
 
 Les formats exacts sont dans `atelier/lieu/schemas/` et dans la section 4 du plan.
@@ -107,10 +184,10 @@ Les formats exacts sont dans `atelier/lieu/schemas/` et dans la section 4 du pla
 ### Tester
 
 ```bash
-cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q    # bibliothèques, serveur, interface : 2 à 3 min
+cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q    # bibliothèques, scan, serveur, interface : 4 min environ
 cd ~/robot-g1/ws && colcon test --packages-select g1_sim g1_nav && colcon test-result --all   # paquets ROS 2 : 1 min
-~/robot-g1/tests_e2e/tout.sh            # les 10 critères de recette, sans fenêtre : environ 45 min
-~/robot-g1/tests_e2e/tout.sh 1 2 3 4    # seulement certains critères
+~/robot-g1/tests_e2e/tout.sh            # les 15 critères de recette, sans fenêtre : environ 1 h
+~/robot-g1/tests_e2e/tout.sh 1 2 3 4    # seulement certains critères (11 à 15 : le scan intégré)
 ```
 
 Tous les tests tournent sans robot et sans écran, sur des copies de `lieux/demo` dans des

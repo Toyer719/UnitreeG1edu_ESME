@@ -77,12 +77,13 @@ function pieton() {
   return g;
 }
 
-// Robot proxy du contrat : boîte de 0,45 × 0,30 × 1,30 m, avec un nez qui montre l'avant
+// Robot proxy de g1_sim, à la taille du G1 debout : 0,208 m d'avant en arrière, 0,477 m de large,
+// 1,315 m de haut (comme nuage3d.js), avec un nez qui montre l'avant
 function robot() {
   const g = new THREE.Group();
-  g.add(pave(0.45, 0.30, 1.30, COULEURS.robot));
+  g.add(pave(0.208, 0.477, 1.315, COULEURS.robot));
   const nez = pave(0.12, 0.10, 0.10, COULEURS.nez, 1.05);
-  nez.position.x = 0.26;
+  nez.position.x = 0.16;
   g.add(nez);
   return g;
 }
