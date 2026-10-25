@@ -1,0 +1,13 @@
+# Description du monde de test couloir.sdf, au format monde.yaml de l'Atelier (section 4.1 du plan).
+# Seul depart_robot sert au lancement ; le reste décrit le monde pour les tests.
+version: 1
+emprise: {min: [-0.5, -1.5], max: [10.5, 1.5]}
+murs:
+  - {id: mur_sud,   de: [0.0, -1.0],  a: [10.0, -1.0], epaisseur: 0.15, hauteur: 2.5}
+  - {id: mur_nord,  de: [0.0, 1.0],   a: [10.0, 1.0],  epaisseur: 0.15, hauteur: 2.5}
+  - {id: mur_ouest, de: [0.0, -1.0],  a: [0.0, 1.0],   epaisseur: 0.15, hauteur: 2.5}
+  - {id: mur_est,   de: [10.0, -1.0], a: [10.0, 1.0],  epaisseur: 0.15, hauteur: 2.5}
+objets:
+  - {id: boite, type: boite, centre: [5.0, 0.0], taille: [0.5, 0.5, 1.0], cap: 0.0}
+pietons: []
+depart_robot: {x: 1.0, y: 0.0, theta: 0.0}

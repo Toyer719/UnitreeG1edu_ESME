@@ -1,0 +1,127 @@
+<?xml version="1.0"?>
+<!--
+  Robot proxy de l'Atelier G1 : une boîte de la taille du Unitree G1, qui se déplace comme lui
+  (vx, vy et wz, sans marcher) et porte un LiDAR à la hauteur de la tête (le MID-360 du G1).
+
+  Repères :
+    base_link  au sol, au centre de la boîte ; x vers l'avant, z vers le haut
+    lidar      1,2 m au-dessus de base_link (repère des points de /points)
+
+  Sujets Gazebo (reliés à ROS 2 par config/pont_gz.yaml) :
+    /model/g1_proxy/cmd_vel    consigne de vitesse, dans le repère du robot
+    /model/g1_proxy/odometry   odométrie odom → base_link (odom = repère du monde Gazebo)
+    /model/g1_proxy/tf         la même chose, en transformation
+    /model/g1_proxy/lidar/points   nuage de points du LiDAR
+
+  Le monde doit charger le système Sensors (rendu ogre2) pour que le LiDAR fonctionne.
+-->
+<sdf version="1.9">
+  <model name="g1_proxy">
+    <!-- base_link est le seul maillon : le pied de la boîte est à l'origine du modèle -->
+    <link name="base_link">
+      <!-- 35 kg, centre de masse bas (0,4 m) pour que la boîte ne bascule pas -->
+      <inertial>
+        <pose>0 0 0.4 0 0 0</pose>
+        <mass>35.0</mass>
+        <inertia>
+          <ixx>5.19</ixx>
+          <iyy>5.52</iyy>
+          <izz>0.85</izz>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyz>0</iyz>
+        </inertia>
+      </inertial>
+
+      <!-- Boîte de 0,45 m (avant) × 0,30 m (côté) × 1,30 m (hauteur), posée au sol -->
+      <collision name="corps">
+        <pose>0 0 0.65 0 0 0</pose>
+        <geometry>
+          <box><size>0.45 0.30 1.30</size></box>
+        </geometry>
+        <surface>
+          <!-- Frottement faible : la vitesse est imposée, le sol ne doit pas la freiner -->
+          <friction>
+            <ode><mu>0.01</mu><mu2>0.01</mu2></ode>
+          </friction>
+        </surface>
+      </collision>
+
+      <!-- Le corps n'est pas visible pour son propre LiDAR (masque de visibilité 0x2) -->
+      <visual name="corps_visuel">
+        <pose>0 0 0.65 0 0 0</pose>
+        <geometry>
+          <box><size>0.45 0.30 1.30</size></box>
+        </geometry>
+        <material>
+          <ambient>0.15 0.35 0.75 1</ambient>
+          <diffuse>0.15 0.35 0.75 1</diffuse>
+        </material>
+        <visibility_flags>2</visibility_flags>
+      </visual>
+
+      <!-- Petit repère blanc à l'avant, pour voir le cap du robot -->
+      <visual name="avant">
+        <pose>0.2 0 1.15 0 0 0</pose>
+        <geometry>
+          <box><size>0.06 0.20 0.10</size></box>
+        </geometry>
+        <material>
+          <ambient>1 1 1 1</ambient>
+          <diffuse>1 1 1 1</diffuse>
+        </material>
+        <visibility_flags>2</visibility_flags>
+      </visual>
+
+      <!-- LiDAR à 1,2 m : 360 points sur 360° et 16 lignes de −7° à +52°, comme le MID-360 -->
+      <sensor name="lidar" type="gpu_lidar">
+        <pose>0 0 1.2 0 0 0</pose>
+        <topic>/model/g1_proxy/lidar</topic>
+        <ignition_frame_id>lidar</ignition_frame_id>
+        <update_rate>10</update_rate>
+        <always_on>true</always_on>
+        <visualize>false</visualize>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>360</samples>
+              <resolution>1</resolution>
+              <min_angle>-3.14159265</min_angle>
+              <max_angle>3.12413936</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>16</samples>
+              <resolution>1</resolution>
+              <min_angle>-0.12217305</min_angle>
+              <max_angle>0.90757121</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>0.1</min>
+            <max>40.0</max>
+            <resolution>0.01</resolution>
+          </range>
+          <!-- Ne voit que ce qui n'a pas le drapeau 0x2 : tout sauf le robot lui-même -->
+          <visibility_mask>4294967293</visibility_mask>
+        </lidar>
+      </sensor>
+    </link>
+
+    <!-- Suit /model/g1_proxy/cmd_vel : vx et vy dans le repère du robot, wz autour de z -->
+    <plugin filename="ignition-gazebo-velocity-control-system"
+            name="ignition::gazebo::systems::VelocityControl">
+      <topic>/model/g1_proxy/cmd_vel</topic>
+    </plugin>
+
+    <!-- Odométrie parfaite dans le plan (x, y, cap) : odom → base_link, 50 Hz -->
+    <plugin filename="ignition-gazebo-odometry-publisher-system"
+            name="ignition::gazebo::systems::OdometryPublisher">
+      <odom_frame>odom</odom_frame>
+      <robot_base_frame>base_link</robot_base_frame>
+      <dimensions>2</dimensions>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <odom_topic>/model/g1_proxy/odometry</odom_topic>
+      <tf_topic>/model/g1_proxy/tf</tf_topic>
+    </plugin>
+  </model>
+</sdf>
