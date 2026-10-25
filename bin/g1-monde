@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Monde Gazebo, carte 2D et simulation d'un étage d'un lieu de l'Atelier G1 :
+#   g1-monde generer --lieu L --etage E
+#   g1-monde simuler --lieu L --etage E [--sans-fenetre]
+# Le code vient de la copie de travail qui contient cette commande (worktree compris).
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PY="$RACINE/.venv-projet/bin/python"
+[ -x "$PY" ] || PY="$HOME/robot-g1/.venv-projet/bin/python"
+# simuler a besoin de ROS 2 : on charge l'environnement du projet s'il ne l'est pas déjà
+if [ "$1" = "simuler" ] && [ -z "$ROS_DISTRO" ] && [ -f "$HOME/robot-g1/setup/env.sh" ]; then
+  source "$HOME/robot-g1/setup/env.sh"
+fi
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PY" "$RACINE/atelier/monde/commande.py" "$@"
