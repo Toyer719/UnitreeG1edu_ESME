@@ -276,7 +276,7 @@ Vague 3 (section 10) : sujets du pont (`/api/sport/*`, `/pont/etat`, `/pont/arre
 
 Vague 2 (section 9.5) : `g1-scan demarrer|arreter|traiter|etat|adopter`, agent Orchestrateur.
 
-Vague 3 (section 10) : `g1-jetson construire|envoyer|lieu|demarrer|arreter|etat|journal|verifier` (agent Jetson) ; `g1-monde simuler … --jumeau` (agent Pont et faux G1) ; `g1-guide navigation … --localisation simu|unitree|amcl|externe --pont auto|oui|non` et `g1-slam faux-service --jumeau --lieu L --etage E` (agent Repérage).
+Vague 3 (section 10) : `g1-jetson construire|envoyer|lieu|demarrer|arreter|etat|journal|verifier` (agent Jetson) ; `g1-monde simuler … --jumeau` (agent Pont et faux G1) ; `g1-guide navigation … --localisation simu|unitree|amcl|externe --pont auto|oui|non` et `g1-slam faux-service --jumeau --lieu L --etage E` (agent Repérage). Ajouts acceptés à l'assemblage (10.12) : `g1-jetson tester-local|shell`, `construire --contexte|--incomplet`, `demarrer --vitesse-max` ; `g1-guide navigation … --vitesse-max`.
 
 Ajouts de la phase 1, acceptés à l'assemblage : `g1-lieu liste` ; `g1-monde simuler … [--monde F.sdf] [--afficher]` ; `g1-guide etat` et `g1-guide aller ID --sans-suivre` ; `g1-banc … [--simu] [--lancer] [--graine N] [--seuil P] [--csv F]` ; `g1-slam etat` et `g1-slam faux-service [--gazebo] [--relocalise]`, `scan-fin --lieu L` (note `carte_unitree`) ; `g1-atelier [--sans-navigateur] [--hote H]`.
 
@@ -323,7 +323,7 @@ ros2 launch g1_nav navigation.launch.py lieu:=DOSSIER etage:=ID simu:=true|false
 - Les deux lancements respectent les variables `ROS_DOMAIN_ID` et `IGN_PARTITION` de l'environnement : pendant les tests, chaque agent a les siennes.
 - Le monde Gazebo porte le nom de l'étage (`<world name="rdc">`) : sujets `/world/rdc/…`.
 - `moteur:=factice` (ajout de la phase 1) : `MoteurFactice`, sans Gazebo ni Nav2, pour les essais.
-- Vague 3 (section 10) : `jumeau:=true|false` pour g1_sim (10.4, défaut `false` : rien ne change) ; `localisation:=simu|unitree|amcl|externe` et `pont:=auto|true|false` pour g1_nav (10.7). `simu:=false` lance le relais `odom_vers_tf` de la section 10.5, qui remplace celui de la vague 1.
+- Vague 3 (section 10) : `jumeau:=true|false` pour g1_sim (10.4, défaut `false` : rien ne change) ; `localisation:=simu|unitree|amcl|externe` et `pont:=auto|true|false` pour g1_nav (10.7), plus `nuage:=SUJET` et `vitesse_max:=M_PAR_S` (ajouts acceptés à l'assemblage, 10.12). `simu:=false` lance le relais `odom_vers_tf` de la section 10.5, qui remplace celui de la vague 1.
 - Si `cartes/<etage>_interdit.yaml` manque, g1_nav crée un masque tout libre dans `/tmp` et le signale ; si la carte manque, il s'arrête et propose `g1-monde generer`.
 - Les deux lancements sont complets depuis la phase 1 (agents Simulation et Navigation). Ils sont compilés dans `ws/install` : `cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_sim g1_nav`.
 
@@ -1066,7 +1066,7 @@ SIGTERM (`docker stop`) devient SIGINT pour `ros2 launch`, avec 15 s pour s'arr�
 
 | Commande | Rôle |
 |---|---|
-| `g1-jetson construire [--arch arm64\|amd64] [--sans-cache]` | construit `g1-jetson:<arch>` (`arm64` par défaut : par émulation, 30 à 60 min la première fois ; `amd64` pour les essais sur le PC) |
+| `g1-jetson construire [--arch arm64\|amd64] [--sans-cache]` | construit `g1-jetson:<arch>` (`arm64` par défaut : par émulation, 4 min la première fois sur le PC du projet, 30 s ensuite ; `amd64` pour les essais sur le PC) |
 | `g1-jetson envoyer` | robot : `docker save g1-jetson:arm64 \| gzip`, copie par scp, puis `docker load` sur le Jetson |
 | `g1-jetson lieu --lieu L` | robot : copie le dossier du lieu, sans `scans/`, dans `~/robot-g1/lieux/<id>` du Jetson |
 | `g1-jetson demarrer --lieu L --etage E [--local] [--localisation unitree\|amcl] [--veille] [--wifi IFACE --pair IP]` | lance le conteneur (sur le robot, le lieu est d'abord copié) ; rend la main quand il tourne (30 s au plus) |
@@ -1107,7 +1107,7 @@ Paquet `ws/src/g1_bridge` (ament_python), exécutable `pont` (`g1_bridge.pont:ma
 6. **Repérage exigé** (paramètre `exiger_reperage`, vrai par défaut) : le mouvement n'est permis que si le dernier `/reperage/etat` date de moins de 1 s et a `repere` vrai. Sinon `/cmd_vel` est ignoré, et un arrêt part si le robot bougeait. `exiger_reperage:=false` ne sert qu'aux essais au portique (10.9).
 7. **Robot muet** : si les requêtes envoyées n'ont reçu aucune réponse depuis 1 s, l'état passe à `robot_muet`. Le pont continue d'envoyer la consigne fraîche ; le robot, lui, s'arrête seul à la fin de `duration`. On revient à la normale dès qu'une réponse arrive, et le mouvement ne reprend qu'avec un `/cmd_vel` frais.
 8. **Refus** : si une réponse a `status.code` ≠ 0, l'état passe à `refus`, avec le code et un message, par exemple « Le robot refuse de marcher (code 7301) : mettez-le en mode marche avec la télécommande ».
-9. **Au lancement** : un arrêt, qui vérifie le lien (état `demarrage` jusqu'à la réponse, `robot_muet` après 1 s sans réponse). **À la sortie** (Ctrl+C, SIGTERM) : un arrêt, envoyé avant de quitter.
+9. **Au lancement** : un arrêt, qui vérifie le lien (état `demarrage` jusqu'à la réponse, `robot_muet` après 1 s sans réponse). **À la sortie** (Ctrl+C, SIGTERM) : un arrêt, envoyé avant de quitter. Précision de l'assemblage : un arrêt publié avant que DDS ait découvert le service `sport` serait perdu ; l'arrêt de vérification part donc dès qu'un abonné à `/api/sport/request` est vu (tout de suite s'il l'est déjà), puis encore 2 fois au plus à 0,3 s d'écart tant qu'aucune réponse n'arrive. Une nouvelle vérification se fait quand un nouvel abonné apparaît alors que le robot n'a jamais répondu ou est muet (service relancé). Rien de continu au repos.
 10. Tous les délais du pont comptent en temps mural monotone, jamais en temps simulé. Le pont ne publie jamais sur `/cmd_vel` ni sur un sujet de Gazebo.
 
 `config/pont.yaml` : `vx_max` 0,4, `vy_max` 0,25, `wz_max` 0,6, `duree_consigne` 0,5, `duree_arret` 1,0, `delai_cmd_vel` 0,3, `frequence` 10,0, `garde_stop` 1,0, `exiger_reperage` true, `delai_reperage` 1,0, `delai_muet` 1,0, `sujet_requete` `/api/sport/request`, `sujet_reponse` `/api/sport/response`. Un test vérifie qu'ils valent les constantes de `atelier.lieu.robot`. Les autres sujets du pont et du repérage (`/cmd_vel`, `/pont/etat`, `/reperage/*`, `/guide/*`) gardent la QoS par défaut de ROS 2 (fiable, volatile, profondeur 10).
@@ -1208,7 +1208,9 @@ ros2 launch g1_nav navigation.launch.py lieu:=DOSSIER etage:=ID simu:=true|false
 | Argument | Défaut | Rôle |
 |---|---|---|
 | `localisation` | vide : `simu` si `simu:=true`, `unitree` sinon | 10.5 |
-| `pont` | `auto` : vrai sauf avec `localisation:=simu` | lance `g1_bridge` (`pont_g1`, `config/pont.yaml`). Si le paquet manque alors qu'il le faut, le lancement s'arrête avec un message |
+| `pont` | `auto` : vrai avec `moteur:=nav2`, sauf avec `localisation:=simu` | lance `g1_bridge` (`pont_g1`, `config/pont.yaml`). Si le paquet manque alors qu'il le faut, le lancement s'arrête avec un message |
+| `nuage` (ajout) | vide | sujet du nuage donné au relais (vide : `/unitree/slam_relocation/points` ; `amcl` en répétition : `/g1_jumeau/points`) |
+| `vitesse_max` (ajout) | vide | premiers essais : vitesse maximale en m/s (au plus 0,4) ; les plafonds du pont baissent dans la même proportion (0,2 donne 0,2 / 0,125 / 0,3). Vide : ceux du contrat. Repris par `g1-guide navigation --vitesse-max`, `g1-jetson demarrer --vitesse-max` et la variable `G1_VITESSE_MAX` (transmise par l'Atelier au conteneur) |
 
 - Réglages de Nav2 : `nav2_g1_simu.yaml` avec `localisation:=simu`, `nav2_g1_reel.yaml` sinon, même en répétition (vitesses du robot) ; `use_sim_time` = `simu`.
 - Avec `unitree` : `odom_vers_tf`, avec ses paramètres lus dans le lieu (`repere_unitree`, `carte_pour_reperage(lieu, repetition)` ; `repetition` = `simu:=true`) ; sur le robot (`simu:=false`), en plus, le TF statique base_link → lidar.
@@ -1242,7 +1244,7 @@ En répétition, la vérité terrain des tests est `/g1_jumeau/odom` (repère du
 
 ### 10.9 Ce qui reste à vérifier sur le robot (séance d'environ 1 h 30)
 
-Aucune simulation ne garantit que le vrai robot comprend ces formats de messages (ils viennent d'un projet tiers), ni comment il réagit vraiment. Liste de la séance, robot au portique et télécommande en main :
+Aucune simulation ne garantit que le vrai robot comprend ces formats de messages (ils viennent d'un projet tiers), ni comment il réagit vraiment. Liste de la séance, robot au portique et télécommande en main (déroulé pas à pas, avec les commandes : `docs/seance-robot.md` ; il fait le pont en premier, puis le conteneur, puis le repérage, puis un premier trajet court) :
 
 **Installation (≈ 30 min)**
 1. `ssh-copy-id unitree@192.168.123.164`, puis `g1-jetson verifier` : Docker, aarch64, place libre, mémoire, interface 192.168.123.164.
@@ -1313,3 +1315,42 @@ Règles communes (celles de la section 9.9, plus) :
 ### 10.11 Critères de recette de la vague 3
 
 Les critères 16 à 20 sont dans la section 7, avec les dix premiers. `tests_e2e/tout.sh` les lance (scripts `critere_16_*` à `critere_20_*`) et affiche « N / 20 ». Les critères 1 à 15 doivent toujours passer.
+
+Scripts et outils livrés : `critere_16_conteneur.sh` (outils : `critere_16_outils.py`), `critere_17_pont.sh` (`outils_pont_e2e.py`), `critere_18_reperage.sh` (`critere_18_outils.py`), `critere_19_niveau2.sh` (`critere_19_outils.py`) et `critere_20_securite.sh` (`critere_20_outils.py`), ces deux derniers écrits à l'assemblage. Résultats : journal, section « Intégrateur (assemblage de la vague 3) ».
+
+### 10.12 Précisions de l'assemblage (vague 3)
+
+Acceptées par l'intégrateur le 26/10/2026. Elles complètent les sections 10.2 à 10.11 et font foi comme elles.
+
+**Compilation.** `g1_sim`, `g1_nav`, `g1_bridge` et `g1_jumeau` sont compilés dans `ws/install` (`colcon build --symlink-install --packages-select g1_sim g1_nav g1_bridge g1_jumeau`), vus par `setup/env.sh`. Les dossiers `ws/build_*`, `ws/install_*` et `ws/log_*` des agents sont retirés ; `tests_e2e/commun.sh` les charge encore en repli, pour une copie de travail. Après une modification de `g1_nav` ou `g1_bridge`, l'image du Jetson se refait (`g1-jetson construire --arch amd64`, puis `g1-jetson construire`, 30 s chacune).
+
+**Conteneur (10.2).**
+- L'image de base est désignée par l'empreinte de son manifeste (`--build-arg BASE=ros:humble-ros-base-jammy@sha256:…`) : avec le magasin containerd de Docker 29, le nom seul désigne les deux architectures, et le constructeur classique prenait l'amd64 malgré `--platform linux/arm64`.
+- Nav2 est installé composant par composant : tout `ros-humble-navigation2` sauf `nav2_rviz_plugins` (RViz, Qt) et `nav2_waypoint_follower` (OpenCV). L'image passe de 0,74 à 0,47 Go compressés.
+- `docker run` reçoit aussi `--log-opt max-size=20m --log-opt max-file=5`, et `--runtime R` avec `G1_JETSON_RUNTIME=R`. En mode `navigation`, les arguments donnés après le nom de l'image s'ajoutent à `ros2 launch`.
+- Sous-commandes et options en plus du tableau : `tester-local`, `shell`, `construire --contexte DOSSIER` (plan B : construire sur le Jetson) et `--incomplet`, `demarrer --vitesse-max` ; variables `G1_JETSON_ARCH`, `G1_JETSON_RUNTIME`, `G1_JETSON_CPUS_CONSTRUCTION`, `G1_VITESSE_MAX`.
+- `verifier` lance un conteneur jetable (`G1_LANCEMENT=commande`), pas un conteneur en veille ; `etat` lit `/g1_jetson/etat` par `docker exec`, avec en secours le fichier `/tmp/g1_jetson_etat.json`. `demarrer` attend 3 s de plus après la ligne de démarrage, pour rendre une erreur précoce avec son message ; `verifier` demande 4 Go libres.
+- Sous qemu-user, `IP_MULTICAST_IF` n'est pas émulé : l'essai de l'image arm64 sur le PC passe en unicast sur `lo`. Le Jetson, natif, n'est pas concerné.
+- Mesures : première construction arm64 en 4 min sur le PC du projet (et non 30 à 60 min), 0,45 Go compressés, 1,5 Go une fois chargée.
+
+**Pont (10.3).**
+- Règle 9 : vérification du lien à l'apparition de l'abonné, écrite en 10.3.
+- « Vitesse mesurée de 0,42 m/s au plus » (critère 17) se lit composante par composante, dans le repère du robot : la norme vaut √(0,4² + 0,25²) = 0,47 m/s avec les plafonds du contrat.
+- La consigne reste fraîche 0,3 s après le dernier `/cmd_vel` : 3 s de `/cmd_vel` à 0,3 m/s font 0,98 m. Un départ et un arrêt partent tout de suite, sans attendre le pas de 100 ms.
+- Les plafonds peuvent être abaissés par les paramètres `vx_max`, `vy_max`, `wz_max` (jamais relevés) ; `navigation.launch.py vitesse_max:=V` le fait dans la même proportion (10.7).
+
+**Faux G1 (10.4).** L'argument `jumeau` est déclaré au premier niveau de `simulation.launch.py`, comme les quatre du contrat 4.5 (le premier jet le cachait dans un `GroupAction`) ; les tests des arguments de `g1_sim` et de `g1_jumeau` le comptent. Le faux G1 écoute les requêtes et répond en fiable (le client C++ d'Unitree écoute en fiable) ; toute api autre que 7105 reçoit 3203.
+
+**Repérage (10.5 à 10.8).**
+- `perdu` après 3 s sans relocalisation (`DELAI_PERDU_S`).
+- `amcl` : pendant le repérage, le relais demande à AMCL des mises à jour sans mouvement (`/request_nomotion_update`, 4 Hz), car le pont refuse de bouger un robot non repéré et AMCL ne converge pas sans cela.
+- `pont:=auto` ne lance le pont qu'avec `moteur:=nav2` : sans Nav2, personne ne publie `/cmd_vel`.
+- La répétition lancée par l'Atelier passe `--bruit 0.01` au faux slam_operate (1 cm), pour éprouver la correction ; le défaut de `g1-slam faux-service` reste 0.
+- Ajouts : champs `correction` et `relocalisations` de `/reperage/etat` ; `GET /api/robot/etat?lieu=&etage=` donne la marque quand rien ne tourne ; `ecoute` et `avertissement` dans la réponse de `/api/robot/arret` ; dans `/ws/etat`, `robot` vaut null en répétition et en mode robot tant que le robot n'est pas repéré ; le guide ne compte pas comme « bloqué » le temps où le repérage est perdu.
+- Avec `localisation:=unitree`, Nav2 n'est actif qu'après le repérage (la carte des coûts globale attend `map → base_link`) : le guide attend (`attente`, « La navigation démarre… »), puis part seul.
+
+**Tests (10.10, 10.11).** Noms gardés : `atelier/tests/test_robot_*.py` (au lieu de `test_serveur_robot*.py` et `test_scan_faux_slam_ros*.py`) ; `tests_e2e/critere_16_outils.py` et `critere_18_outils.py` (au lieu de `outils_jetson_e2e.py` et `outils_reperage_e2e.py`). Le critère 19 avec `E2E_CONTENEUR=1` fait passer la navigation de la répétition par un `g1-guide` de test qui démarre le conteneur (`g1-jetson demarrer --local`, `G1_SIMU=true`) et l'arrête avec la répétition : l'Atelier n'a pas de mode « répétition dans le conteneur ». Le critère 20 retrouve le faux G1 et le pont parmi les processus lancés avec ses lieux, les arrête (SIGTERM, SIGKILL) puis les relance lui-même (`ros2 run`), et les arrête à la fin ; son témoin juge chaque instant hors d'une fenêtre de mouvement permis (fenêtre fermée à l'instant où le robot doit être arrêté).
+
+**Réseau du robot.** `setup/robot.sh` exporte `ROS_DOMAIN_ID=0` (le robot publie sur le domaine 0 ; l'Atelier en mode robot l'exige).
+
+**Séance avec le robot.** Le déroulé pas à pas est dans `docs/seance-robot.md`. Il reprend la liste de 10.9 dans cet ordre : le pont au portique, à vitesse réduite (plafonds 0,1 m/s, format 7105, arrêt seul quand le pont meurt, télécommande prioritaire), puis le conteneur, puis le repérage 1804 (avec un petit scan de la zone s'il n'y en a pas), puis un premier trajet court de 3 m à 0,2 m/s (`G1_VITESSE_MAX=0.2`).

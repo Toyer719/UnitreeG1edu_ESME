@@ -55,7 +55,7 @@ livox() {
 }
 
 ws() {
-  etape "Espace de travail ROS 2 : pilote Livox, FAST-LIO2, g1_sim et g1_nav (Atelier G1)"
+  etape "Espace de travail ROS 2 : pilote Livox, FAST-LIO2, g1_sim, g1_nav, g1_bridge et g1_jumeau (Atelier G1)"
   mkdir -p "$R/ws/src"
   cloner https://github.com/Livox-SDK/livox_ros_driver2.git "$R/ws/src/livox_ros_driver2"
   cloner https://github.com/hku-mars/FAST_LIO.git "$R/ws/src/FAST_LIO" ROS2

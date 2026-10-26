@@ -19,6 +19,8 @@ if ! nmcli connection up robot-g1 >/dev/null 2>&1; then
   return 1
 fi
 
+# Le robot publie sur le domaine DDS 0 (les tests de l'Atelier utilisent d'autres domaines)
+export ROS_DOMAIN_ID=0
 export CYCLONEDDS_URI="<CycloneDDS><Domain><General><Interfaces><NetworkInterface name=\"$IFACE_ROBOT\" priority=\"default\" multicast=\"default\"/></Interfaces></General></Domain></CycloneDDS>"
 
 if ping -c 2 -W 1 "$IP_JETSON" >/dev/null 2>&1; then

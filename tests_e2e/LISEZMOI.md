@@ -28,12 +28,25 @@ et `tout.sh` qui les lance tous et affiche un bilan (agents Intégrateur et Test
 | `critere_13_monde_du_scan.sh` | revue : un objet décoché (`PUT …/reconnaissance`), absent du monde adopté ; adoption avec le monde (API) ; `g1-lieu valider` ; `g1-monde generer` ; simulation sur le monde du scan et parcours du critère 4 jusqu'à une salle | 3 à 5 min (+ le 11 s'il n'a pas de session) |
 | `critere_14_repetition_robot.sh` | `g1-scan demarrer --mode robot --repetition` (moins de 3 s), puis `arreter --attendre` : 1801 puis 1802 reçus par le faux service, `/unitree/slam_mapping/*` enregistrés, `termine` | 3 à 6 min |
 | `critere_15_robustesse.sh` | « Fin » sans scan, « Scan » deux fois, flèches pendant un scan simulé (le robot avance, puis s'arrête seul quand on lâche), « Fin » pendant la préparation, mode robot sans robot (« Robot non détecté »), demandes absurdes : refus clairs, jamais d'erreur 500 ; puis le parcours de l'onglet Scan dans Firefox sans fenêtre (`test_serveur_scan_navigateur.py`) | 2 à 3 min |
+| `critere_16_conteneur.sh` | conteneur `g1-jetson` sur le PC : image amd64 (réutilisée si à jour), `demarrer --local`, l'hôte voit `pont_g1`, `odom_vers_tf`, `guide`, `bt_navigator`, `map_server` et les états du pont et du repérage, verrou en moins de 3 s, arrêt propre (le pont envoie son arrêt), « réseau du robot introuvable » sans 192.168.123.x, jamais de ssh | 15 à 20 s (+ 0,5 min si l'image est à refaire) |
+| `critere_17_pont.sh` | Gazebo `--jumeau`, navigation `--localisation externe --pont oui` et relais simple : aucun lien direct `/cmd_vel` → Gazebo ; `g1-guide aller hall_sud` par le pont et le faux G1 ; 7105 au bon format, 10 par seconde ; 0,9 m en 3 s puis arrêt ; plafonds, NaN, `/guide/stop`, `/pont/arret` | 1 min |
+| `critere_18_reperage.sh` | répétition par l'Atelier : non repéré avant, « Repérer le robot » (1804 en (0, 0, 0), `repetition.pcd`), TF à moins de 0,1 m de la vérité malgré la dérive, perte puis reprise ; repère d'Unitree tourné (refus à la marque, puis repérage converti) | 1 min |
+| `critere_19_niveau2.sh` | niveau 2 complet depuis l'Atelier : « Y aller » refusé avant le repérage, repérage, Nav2 actif, accueil → b204 à moins de 0,3 m en moins de 180 s, tout par le pont (7105 comptés, seul `pont_g1` écoute `/cmd_vel`), boîte dans le couloir nord puis b204 → accueil : `bloque → detour → arrive` ; aucun processus restant | 4 à 5 min |
+| `critere_20_securite.sh` | sécurité sur la vraie chaîne de répétition, avec un témoin (jamais plus de 5 cm hors d'une consigne permise) : pont sans repérage, guide avant le repérage, consignes absurdes (NaN, infini, 1e9) par `/cmd_vel` et par les flèches, faux G1 muet, relocalisation perdue, ARRÊT et verrou pendant « Y aller », faux G1 arrêté (SIGTERM) puis relancé, pont tué (SIGKILL) puis relancé, demandes absurdes à l'API (français, jamais d'erreur 500) | 1 min 30 |
 
-Critères 16 à 20 (vague 3, le vrai robot en répétition) : définis dans la section 7 du plan ; leurs scripts
-(`critere_16_conteneur.sh`, `critere_17_pont.sh`, `critere_18_reperage.sh`, `critere_19_niveau2.sh`,
-`critere_20_securite.sh`) sont écrits par les agents Jetson, Pont et faux G1, et Repérage (section 10.10).
-Tant qu'un script n'existe pas, `tout.sh` le dit « absent ». En répétition, la vérité terrain est
-`/g1_jumeau/odom` (et non `/odom`, l'odométrie du relais).
+Critères 16 à 20 (vague 3, le vrai robot en répétition, section 10 du plan) : en répétition, la vérité terrain
+est `/g1_jumeau/odom` (et non `/odom`, l'odométrie du relais). Options :
+- `E2E_ARM64=1` (critère 16) : construit aussi l'image arm64 du Jetson sous émulation, vérifie l'image et fait
+  tourner sa navigation sur le PC (2 min de plus) ;
+- `E2E_NIVEAU2=1` (critère 16) : niveau 2 en répétition avec la navigation dans le conteneur, jusqu'à b204 ;
+- `E2E_CONTENEUR=1` (critère 19) : le même parcours que le critère 19, la navigation tournant dans le conteneur
+  (`g1-jetson demarrer --local`, `G1_SIMU=true`) : l'Atelier lance alors un `g1-guide` de test qui démarre le
+  conteneur et l'arrête avec la répétition ;
+- `E2E_PONT_REPLI=1` (critère 17) : montage de repli, si `navigation.launch.py` ne connaît pas
+  `localisation:=externe`.
+Outils : `critere_16_outils.py` (faux service sport minimal, observation depuis l'hôte), `outils_pont_e2e.py`
+(relais simple, témoin du pont, mesures), `critere_18_outils.py`, `critere_19_outils.py` et
+`critere_20_outils.py` (témoin des mouvements permis, pannes, relances).
 
 Codes de sortie : 0 réussi, 1 échoué, 77 pas encore possible (une commande, une route ou un module manque).
 
