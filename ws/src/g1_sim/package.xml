@@ -17,15 +17,18 @@
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>
+  <!-- Nœud pietons (piétons crédibles, vague 4) : rclpy, messages, service set_pose de Gazebo -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>ros_gz_interfaces</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
 
   <test_depend>ament_cmake_pytest</test_depend>
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
-  <test_depend>geometry_msgs</test_depend>
-  <test_depend>nav_msgs</test_depend>
-  <test_depend>python3-numpy</test_depend>
   <test_depend>python3-pytest</test_depend>
-  <test_depend>rclpy</test_depend>
   <test_depend>sensor_msgs</test_depend>
   <test_depend>sensor_msgs_py</test_depend>
   <test_depend>tf2_msgs</test_depend>

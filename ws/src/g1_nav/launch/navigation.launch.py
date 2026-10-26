@@ -3,7 +3,7 @@ Navigation du guide sur la carte d'un étage d'un lieu (contrats : sections 4.5 
 
   ros2 launch g1_nav navigation.launch.py lieu:=DOSSIER etage:=ID simu:=true|false
       moteur:=nav2|unitree|factice [localisation:=simu|unitree|amcl|externe]
-      [pont:=auto|true|false] [nuage:=SUJET] [vitesse_max:=M_PAR_S]
+      [pont:=auto|true|false] [nuage:=SUJET] [vitesse_max:=M_PAR_S] [personnes:=true|false]
 
 Ce que lance ce fichier :
   - map_server sur <lieu>/cartes/<etage>.yaml (repère map) ;
@@ -23,19 +23,24 @@ Ce que lance ce fichier :
     marche 7105 du robot, avec ses sécurités (section 10.3) ; vitesse_max:=0.2 (m/s, premiers
     essais) abaisse ses plafonds dans la même proportion (0,2 ; 0,125 ; 0,3), vide : ceux du
     contrat (0,4 ; 0,25 ; 0,6) ;
-  - le guide (g1_nav/guide.py) : /guide/aller, /guide/stop, /guide/etat.
+  - le guide (g1_nav/guide.py) : /guide/aller, /guide/stop, /guide/etat, /guide/evenement ;
+  - personnes:=true (défaut, vague 4, section 11.4) : le détecteur de personnes au LiDAR
+    (g1_nav/personnes.py, /points → /personnes/lidar), qui sert au guide pour accompagner le
+    visiteur et attendre un passant qui bouche le passage ; personnes:=false : ni l'un ni l'autre.
 
 use_sim_time vaut simu. Les variables ROS_DOMAIN_ID et IGN_PARTITION de l'environnement sont
 respectées.
 """
 import math
 import os
+import sys
 import tempfile
 from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction, SetEnvironmentVariable
+from launch.actions import (DeclareLaunchArgument, ExecuteProcess, LogInfo, OpaqueFunction,
+                            SetEnvironmentVariable)
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
@@ -258,6 +263,45 @@ def plafonds_pont(texte):
             'wz_max': round(LIMITES_PONT['wz'] * part, 3)}
 
 
+def _valeur_parametre(valeur):
+    """Valeur d'un paramètre ROS en ligne de commande (-p nom:=valeur)."""
+    if isinstance(valeur, bool):
+        return 'true' if valeur else 'false'
+    return str(valeur)
+
+
+def noeud_g1_nav(executable, module, nom, parametres):
+    """
+    Nœud de g1_nav (vague 4 : detecteur_personnes, faux_visiteur).
+
+    Si l'exécutable n'est pas encore installé (g1_nav compilé avant son ajout : ws/install d'avant
+    la vague 4), il est lancé par python3 -m, avec les mêmes paramètres.
+    """
+    from ament_index_python.packages import get_package_prefix, PackageNotFoundError
+    try:
+        installe = (Path(get_package_prefix('g1_nav')) / 'lib' / 'g1_nav' / executable).is_file()
+    except PackageNotFoundError:
+        installe = False
+    if installe:
+        return Node(package='g1_nav', executable=executable, name=nom, output='screen',
+                    parameters=[parametres])
+    commande = [sys.executable, '-m', module, '--ros-args', '-r', f'__node:={nom}']
+    for cle, valeur in parametres.items():
+        commande += ['-p', f'{cle}:={_valeur_parametre(valeur)}']
+    return ExecuteProcess(cmd=commande, name=nom, output='screen')
+
+
+def vitesse_max_nav2(reglages):
+    """vx_max du contrôleur de Nav2 (FollowPath) dans le fichier de réglages, ou 0 si illisible."""
+    import yaml
+    try:
+        with open(reglages, encoding='utf-8') as f:
+            d = yaml.safe_load(f)
+        return float(d['controller_server']['ros__parameters']['FollowPath']['vx_max'])
+    except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError):
+        return 0.0
+
+
 def noeud_pont(simu, plafonds=None):
     """Le pont /cmd_vel → /api/sport/request (paquet g1_bridge, section 10.3)."""
     dossier = partage('g1_bridge')
@@ -285,6 +329,7 @@ def _lancer(context):
     pont = choisir_pont(LaunchConfiguration('pont').perform(context), localisation, moteur)
     nuage = LaunchConfiguration('nuage').perform(context).strip()
     plafonds = plafonds_pont(LaunchConfiguration('vitesse_max').perform(context))
+    personnes = LaunchConfiguration('personnes', default='true').perform(context) != 'false'
 
     partage_g1_nav = Path(get_package_share_directory('g1_nav'))
     nom_reglages = 'nav2_g1_simu.yaml' if localisation == 'simu' else 'nav2_g1_reel.yaml'
@@ -335,10 +380,24 @@ def _lancer(context):
         actions += noeuds_nav2(reglages, simu,
                                str(fichier_config(partage_g1_nav, 'naviguer_par_poses.xml')))
 
+    # Vague 4 (section 11.4) : le détecteur de personnes au LiDAR, pour le guide
+    parametres_guide = {'lieu': str(dossier), 'etage': etage, 'moteur': moteur,
+                        'use_sim_time': simu}
+    if moteur == 'nav2':     # le ralenti pour le visiteur se calcule sur la vitesse réelle
+        parametres_guide['vitesse_max_nav2'] = vitesse_max_nav2(reglages)
+    if personnes:
+        actions.append(noeud_g1_nav('detecteur_personnes', 'g1_nav.personnes',
+                                    'detecteur_personnes',
+                                    {'lieu': str(dossier), 'etage': etage, 'use_sim_time': simu}))
+    else:
+        actions.append(LogInfo(msg='g1_nav : personnes:=false : pas de détecteur de personnes ; '
+                                   'le guide n\'accompagne pas le visiteur et n\'attend pas les '
+                                   'passants'))
+        parametres_guide.update(accompagnement=False, passants=False)
+
     # Pas de name= : il renommerait aussi le nœud de nav2_simple_commander du même processus
     actions.append(Node(package='g1_nav', executable='guide', output='screen',
-                        parameters=[{'lieu': str(dossier), 'etage': etage, 'moteur': moteur,
-                                     'use_sim_time': simu}]))
+                        parameters=[parametres_guide]))
     return actions
 
 
@@ -371,6 +430,10 @@ def generate_launch_description():
             'nuage', default_value='',
             description='Sujet du nuage donné au relais (vide : /unitree/slam_relocation/points ; '
                         'amcl en répétition : /g1_jumeau/points).'),
+        DeclareLaunchArgument(
+            'personnes', default_value='true', choices=['true', 'false'],
+            description='Détecteur de personnes au LiDAR (/personnes/lidar), pour que le guide '
+                        'accompagne le visiteur et attende un passant qui bouche le passage.'),
         DeclareLaunchArgument(
             'vitesse_max', default_value='',
             description='Vitesse maximale en m/s pour les premiers essais (ex. 0.2) : les '

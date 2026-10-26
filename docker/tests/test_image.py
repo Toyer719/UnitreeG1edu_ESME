@@ -88,6 +88,8 @@ def attendre_journal(nom, texte, delai):
     ({'G1_LANCEMENT': 'veille', 'G1_INTERFACES': 'auto'}, 'réseau du robot introuvable'),
     ({'G1_LANCEMENT': 'veille', 'G1_INTERFACES': 'eth7'}, 'eth7 introuvable'),
     ({'G1_LANCEMENT': 'veille', 'G1_INTERFACES': 'lo', 'G1_PAIRS': 'x.y'}, 'n\'est pas une adresse IP'),
+    ({'G1_LANCEMENT': 'veille', 'G1_PILOTAGE': '2'}, 'G1_PILOTAGE=2'),
+    ({'G1_LANCEMENT': 'veille', 'G1_PILOTAGE': '1', 'G1_PILOTAGE_PORT': '80'}, 'G1_PILOTAGE_PORT=80'),
 ])
 def test_refus_au_demarrage(conteneurs, lieux, env, message):
     """Réglage faux : code 1 tout de suite, message en français, rien n'est lancé."""
@@ -165,6 +167,47 @@ def test_navigation_arretee_par_sigint(conteneurs, lieux):
     assert duree < 20, texte[-2000:]
     assert 'SIGINT à ros2 launch' in texte and 'g1-jetson : arrêté' in texte
     assert 'ne s\'est pas arrêté' not in texte
+    code = subprocess.run(['docker', 'inspect', '-f', '{{.State.ExitCode}}', nom],
+                          capture_output=True, text=True).stdout.strip()
+    assert code == '0'
+
+
+LIRE_ETAT = """
+import json, sys, urllib.request, urllib.error
+requete = urllib.request.Request('http://127.0.0.1:%s/etat', headers=json.loads(sys.argv[1]))
+try:
+    with urllib.request.urlopen(requete, timeout=5) as r:
+        print(r.status, r.read().decode())
+except urllib.error.HTTPError as e:
+    print(e.code, e.read().decode())
+"""
+
+
+def test_pilotage_dans_le_conteneur(conteneurs):
+    """G1_PILOTAGE=1 (vague 4) : le nœud pilotage répond sur son port, exige le jeton, et s'arrête
+    proprement avec docker stop (StopMove, main rendue au guide)."""
+    nom = conteneurs()
+    port = '18093'
+    r = lancer(nom, {'G1_LANCEMENT': 'veille', 'G1_INTERFACES': 'defaut', 'G1_PILOTAGE': '1',
+                     'G1_PILOTAGE_PORT': port, 'G1_PILOTAGE_JETON': 'jeton-essai'}, detache=True)
+    assert r.returncode == 0, r.stderr
+    assert attendre_journal(nom, 'pilotage port ' + port + ' avec jeton', 20), journal(nom)[-2000:]
+    assert attendre_journal(nom, 'pilotage prêt', 30), journal(nom)[-2000:]
+
+    def etat(entetes):
+        sortie = subprocess.run(['docker', 'exec', nom, 'python3', '-c', LIRE_ETAT % port, json.dumps(entetes)],
+                                capture_output=True, text=True, timeout=30)
+        code, _, corps = sortie.stdout.strip().partition(' ')
+        return int(code), json.loads(corps)
+    code, corps = etat({})
+    assert code == 401 and 'Jeton' in corps['detail']
+    code, corps = etat({'X-Jeton': 'jeton-essai'})
+    assert code == 200 and corps['maitre'] == 'guide' and corps['robot_repond'] is False
+    debut = time.monotonic()
+    subprocess.run(['docker', 'stop', nom], capture_output=True, timeout=40)
+    assert time.monotonic() - debut < 12
+    texte = journal(nom)
+    assert 'arrêt du nœud pilotage' in texte and 'pilotage arrêté' in texte and 'g1-jetson : arrêté' in texte
     code = subprocess.run(['docker', 'inspect', '-f', '{{.State.ExitCode}}', nom],
                           capture_output=True, text=True).stdout.strip()
     assert code == '0'

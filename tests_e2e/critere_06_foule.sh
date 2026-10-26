@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Critère 6, foule : 5 piétons et 20 trajets avec g1-banc donnent au moins 90 % de réussite,
-# et un CSV est produit.
+# et un CSV est produit. Vague 4 (section 11.3 du plan) : les piétons sont crédibles par défaut (un
+# corps que le robot ne traverse pas, et ils s'écartent de lui) ; le CSV a les colonnes de la
+# vague 4 (contacts, distance bord à bord...), affichées ici sans seuil (seuils : critère 25).
 source "$(dirname "$0")/commun.sh"
 exiger_commande g1-monde g1-guide g1-banc
 exiger_paquet_ros g1_sim g1_nav
@@ -22,5 +24,6 @@ CODE=${PIPESTATUS[0]}
 CSV="$TRAVAIL/banc.csv"; [ -s "$CSV" ] || CSV=""
 [ -n "$CSV" ] || echoue "aucun CSV produit par g1-banc"
 dire "CSV : $CSV ($(($(wc -l < "$CSV") - 1)) trajets)"
+"$PY" "$E2E/outils_passants_e2e.py" verifier "$CSV" --colonnes || echoue "colonnes du CSV de g1-banc"
 [ "$CODE" -eq 0 ] || echoue "g1-banc : moins de 90 % de réussite, ou erreur (code $CODE)"
 reussi "20 trajets, au moins 90 % de réussite"

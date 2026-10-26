@@ -26,6 +26,7 @@ ou `g1-guide navigation ... --pont oui`.
 | Robot muet | aucune réponse depuis 1 s : état `robot_muet` |
 | Refus | réponse de code non nul : état `refus`, avec le code et un message |
 | Lancement et sortie | un arrêt (vérification du lien au lancement, dès que le service est vu) |
+| `/mouvement/maitre` « pilotage » (vague 4) | état `pilotage` : `/cmd_vel` ignoré, un arrêt s'il bougeait ; « guide » (ou aucun message) : comme avant, reprise seulement avec un `/cmd_vel` neuf |
 
 L'arrêt est `{"velocity": [0.0, 0.0, 0.0], "duration": 1.0}` (StopMove du SDK). La requête est
 remplie exactement comme `LocoClient::SetVelocity` (C++) et `LocoClient.SetVelocity` (SDK Python) :

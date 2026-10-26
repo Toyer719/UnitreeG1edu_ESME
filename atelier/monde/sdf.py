@@ -7,13 +7,23 @@ Contenu du monde :
   - un modèle statique par mur : boîte de la longueur exacte du segment, tournée selon le mur ;
   - un modèle statique par objet : boîte, cylindre, ou meuble simple (chaise, table, banc,
     poubelle) écrit ici en SDF, sans rien télécharger ;
-  - un <actor> par piéton, qui suit son trajet (voir pietons.py).
+  - un <actor> par piéton, qui suit son trajet (voir pietons.py) : départ (depart_s, le
+    delay_start du script), pauses et répétition (repeter, le loop du script) compris.
 Les modèles portent l'id du mur, de l'objet ou du piéton. Le robot n'y est pas : g1_sim le fait
 apparaître à depart_robot. Le monde Gazebo porte le nom de l'étage (ex. « rdc »).
+
+Piétons crédibles (vague 4, section 11.3 du plan) : le fichier .sdf du lieu garde les <actor> de la
+vague 1. Au lancement (g1_sim, pietons:=corps, le défaut), sdf_simulation() en tire le monde
+simulé, écrit dans un dossier temporaire : chaque piéton qui a un corps (corps: true, le défaut)
+y devient un modèle solide (modele_corps : cylindre de rayon_m et 1,7 m de haut, que le LiDAR voit
+et que le robot ne traverse pas), déplacé par le nœud pietons de g1_sim (plugin VelocityControl,
+position vraie par OdometryPublisher) ; les autres restent des <actor>.
 """
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from atelier.lieu import MODELES_MOBILIER, charger_monde, chemin_sdf, ecrire_atomique
+from atelier.lieu.passants import reglages_pieton
 
 from .pietons import NOM_ANIMATION, NOM_MAILLAGE, points_de_passage, texte_maillage
 
@@ -182,8 +192,9 @@ def _ajouter_pieton(monde_sdf, pieton):
     _sous(animation, "filename", NOM_MAILLAGE)
     _sous(animation, "interpolate_x", "false")
     script = _sous(acteur, "script")
-    _sous(script, "loop", "true")
-    _sous(script, "delay_start", "0")
+    reglages = reglages_pieton(pieton)
+    _sous(script, "loop", "true" if reglages["repeter"] else "false")
+    _sous(script, "delay_start", _nombre(reglages["depart_s"]))
     _sous(script, "auto_start", "true")
     trajectoire = _sous(script, "trajectory", id="0", type=NOM_ANIMATION, tension="0")
     for t, x, y, cap in points_de_passage(pieton):
@@ -243,3 +254,129 @@ def ecrire_sdf(lieu, etage, monde=None):
         ecrire_atomique(chemin.parent / NOM_MAILLAGE, texte_maillage())
     ecrire_atomique(chemin, texte_sdf(monde, nom=etage, source=f"{etage}.monde.yaml"))
     return chemin
+
+
+# ---------------------------------------------------------------- piétons-corps (vague 4)
+
+MODES_PIETONS = ("corps", "acteurs")
+HAUTEUR_CORPS = 1.7            # m, comme la silhouette
+MASSE_CORPS = 70.0             # kg (le robot proxy en pèse 35 : un piéton le pousse plus qu'il n'est poussé)
+SOL_CORPS = 0.02               # m : le corps flotte au-dessus du sol (VelocityControl tient z), sans frottement
+FREQUENCE_ODOMETRIE_CORPS = 30  # Hz : position vraie de chaque corps
+COULEUR_CORPS = (0.85, 0.35, 0.2)
+
+
+def sujets_gazebo_corps(ident):
+    """Sujets Gazebo d'un piéton-corps : consigne de vitesse (VelocityControl) et odométrie."""
+    return {"cmd_vel": f"/model/{ident}/cmd_vel", "odometrie": f"/model/{ident}/odometry"}
+
+
+def sujets_ros_corps(ident):
+    """Sujets ROS 2 d'un piéton-corps, reliés par le pont des piétons de g1_sim (usage interne)."""
+    return {"cmd_vel": f"/pietons/corps/{ident}/cmd_vel", "odometrie": f"/pietons/corps/{ident}/odom"}
+
+
+def pietons_avec_corps(monde, mode="corps"):
+    """Piétons du monde qui deviennent des corps dans Gazebo (corps: true, le défaut), dans l'ordre
+    du monde ; aucun avec mode « acteurs » (les <actor> de la vague 1)."""
+    if mode not in MODES_PIETONS:
+        raise ValueError(f"pietons:={mode} inconnu : {', '.join(MODES_PIETONS)}")
+    if mode == "acteurs":
+        return []
+    return [p for p in monde.pietons if reglages_pieton(p)["corps"]]
+
+
+def masque_collision(rang):
+    """Masque de collision du rang-ième corps : un bit à lui (bits 1 à 15), pour que les corps ne
+    se cognent pas entre eux mais cognent le robot, les murs et les objets (masque 0xffff par défaut).
+    Au-delà de 15 corps, les bits reviennent : deux corps de même bit se cognent."""
+    return 1 << (1 + rang % 15)
+
+
+def modele_corps(parent, pieton, rang=0):
+    """Ajoute à parent (<world>) le modèle solide d'un piéton : cylindre de rayon_m et 1,7 m de haut,
+    vu par le LiDAR (pas de drapeau de visibilité), avec VelocityControl et OdometryPublisher."""
+    rayon = float(reglages_pieton(pieton)["rayon_m"])
+    sujets = sujets_gazebo_corps(pieton.id)
+    x, y = pieton.trajet[0]
+    modele = _sous(parent, "model", name=pieton.id)
+    _pose(modele, x, y, SOL_CORPS, 0.0)
+    lien = _sous(modele, "link", name="corps")
+    inertie = _sous(lien, "inertial")
+    _pose(inertie, 0, 0, 0.3)                # centre de masse bas : le corps ne bascule pas
+    _sous(inertie, "mass", _nombre(MASSE_CORPS))
+    matrice = _sous(inertie, "inertia")
+    for cle, valeur in (("ixx", 200.0), ("iyy", 200.0), ("izz", MASSE_CORPS * rayon ** 2 / 2),
+                        ("ixy", 0), ("ixz", 0), ("iyz", 0)):
+        _sous(matrice, cle, _nombre(valeur))
+    for balise in ("collision", "visual"):
+        element = _sous(lien, balise, name="corps_collision" if balise == "collision" else "corps_visuel")
+        _pose(element, 0, 0, HAUTEUR_CORPS / 2)
+        cylindre = _sous(_sous(element, "geometry"), "cylinder")
+        _sous(cylindre, "radius", _nombre(rayon))
+        _sous(cylindre, "length", _nombre(HAUTEUR_CORPS))
+        if balise == "collision":
+            surface = _sous(element, "surface")
+            _sous(_sous(surface, "contact"), "collide_bitmask", f"0x{masque_collision(rang):04x}")
+            ode = _sous(_sous(surface, "friction"), "ode")
+            _sous(ode, "mu", "0.01")
+            _sous(ode, "mu2", "0.01")
+        else:
+            m = _sous(element, "material")
+            _sous(m, "ambient", _nombres(*COULEUR_CORPS, 1))
+            _sous(m, "diffuse", _nombres(*COULEUR_CORPS, 1))
+    vitesse = _sous(modele, "plugin", filename="ignition-gazebo-velocity-control-system",
+                    name="ignition::gazebo::systems::VelocityControl")
+    _sous(vitesse, "topic", sujets["cmd_vel"])
+    odometrie = _sous(modele, "plugin", filename="ignition-gazebo-odometry-publisher-system",
+                      name="ignition::gazebo::systems::OdometryPublisher")
+    for cle, valeur in (("odom_frame", "map"), ("robot_base_frame", pieton.id), ("dimensions", "2"),
+                        ("odom_publish_frequency", str(FREQUENCE_ODOMETRIE_CORPS)),
+                        ("odom_topic", sujets["odometrie"]), ("tf_topic", f"/model/{pieton.id}/tf")):
+        _sous(odometrie, cle, valeur)
+    return modele
+
+
+def sdf_simulation(texte, monde, dossier_maillage, mode="corps"):
+    """Monde simulé par g1_sim, à partir du texte du .sdf du lieu (avec ses <actor> de la vague 1).
+
+    mode « corps » : l'<actor> de chaque piéton qui a un corps est remplacé par modele_corps (ajouté
+    même si le .sdf n'avait pas son <actor>) ; « acteurs » : rien ne change. Les chemins relatifs
+    des maillages des <actor> restants deviennent absolus (dossier_maillage : le dossier du .sdf du
+    lieu), car le monde simulé est écrit ailleurs. Renvoie (texte, ids des piétons-corps)."""
+    corps = pietons_avec_corps(monde, mode)
+    ids = [p.id for p in corps]
+    racine = ET.fromstring(texte)
+    monde_sdf = racine.find("world")
+    if monde_sdf is None:
+        raise ValueError("le .sdf ne contient pas de <world>")
+    for acteur in list(monde_sdf.findall("actor")):
+        if acteur.get("name") in ids:
+            monde_sdf.remove(acteur)
+            continue
+        for chemin in ("skin/filename", "animation/filename"):
+            element = acteur.find(chemin)
+            if element is not None and element.text and not Path(element.text.strip()).is_absolute():
+                element.text = str(Path(dossier_maillage) / element.text.strip())
+    for rang, pieton in enumerate(corps):
+        modele_corps(monde_sdf, pieton, rang)
+    ET.indent(racine, space="  ")
+    entete = ('<?xml version="1.0" ?>\n'
+              "<!-- Monde simulé par g1_sim (piétons crédibles) : écrit au lancement, ne pas modifier. -->\n")
+    return entete + ET.tostring(racine, encoding="unicode") + "\n", ids
+
+
+def texte_pont_pietons(ids):
+    """Réglages de ros_gz_bridge (config_file) pour les piétons-corps : consigne de vitesse (ROS → Gazebo)
+    et odométrie (Gazebo → ROS) de chacun. Le service set_pose du monde (réinitialisation de la scène)
+    se donne en argument du pont : f"/world/{nom}/set_pose@ros_gz_interfaces/srv/SetEntityPose"."""
+    lignes = ["# Pont des piétons-corps de g1_sim, écrit au lancement (atelier.monde.sdf.texte_pont_pietons)."]
+    for ident in ids:
+        gz, ros = sujets_gazebo_corps(ident), sujets_ros_corps(ident)
+        lignes += [f'- ros_topic_name: "{ros["cmd_vel"]}"', f'  gz_topic_name: "{gz["cmd_vel"]}"',
+                   '  ros_type_name: "geometry_msgs/msg/Twist"', '  gz_type_name: "ignition.msgs.Twist"',
+                   "  direction: ROS_TO_GZ",
+                   f'- ros_topic_name: "{ros["odometrie"]}"', f'  gz_topic_name: "{gz["odometrie"]}"',
+                   '  ros_type_name: "nav_msgs/msg/Odometry"', '  gz_type_name: "ignition.msgs.Odometry"',
+                   "  direction: GZ_TO_ROS"]
+    return "\n".join(lignes) + "\n"

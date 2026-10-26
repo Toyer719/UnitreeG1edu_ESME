@@ -6,16 +6,20 @@
 #   Robot      : emprise circulaire de 0,35 m ; vx 0,4 m/s, vy 0,2 m/s, wz 0,6 rad/s au plus
 #   Planif.    : Smac 2D, sur la carte du lieu (static_layer) et le masque des zones interdites
 #   Contrôleur : MPPI, motion_model Omni (le G1 se déplace aussi sur le côté)
-#   Obstacles  : voxel_layer alimentée par /points (relais de /unitree/slam_relocation/points),
-#                dans la carte de coûts locale ; inflation de 0,4 m (1 m sur la carte
-#                globale, pour rester au milieu des couloirs)
-#   Sécurité   : Collision Monitor, ralentit à ×0,5 sous 1 m, s'arrête sous 0,4 m
+#   Obstacles  : voxel_layer alimentée par /points (relais de /unitree/slam_relocation/points)
+#                dans la carte de coûts locale, de 0,15 à 1,9 m (obstacles bas compris) ; personnes
+#                (1,125 à 1,9 m) aussi dans la carte globale ; inflation de 0,9 m en local
+#                (distance aux personnes), 1 m sur la carte globale
+#   Sécurité   : Collision Monitor, ralentit à ×0,5 sous 1 m (près des personnes), s'arrête sous 0,4 m
 #
 # Chaîne des vitesses : controller_server → cmd_vel_nav → velocity_smoother → cmd_vel_smoothed
 #                       → collision_monitor → cmd_vel → pont vers /api/sport/request (7105)
-# Les obstacles vus par le LiDAR ne sont que dans la carte locale : le chemin global suit les
-# couloirs de la carte, MPPI contourne ce qui gêne, et si un couloir est coupé, le robot reste
-# devant : c'est le guide qui choisit alors un autre couloir (détour).
+# Vague 4 (section 11.3 du plan, agent Passants) : les personnes vues sont aussi dans la carte
+# globale : le chemin passe à côté d'elles (MPPI seul restait bloqué devant un passant au milieu
+# du couloir). Si un couloir est coupé (groupe, boîte), le calcul du chemin échoue : l'arbre vide
+# la carte globale et recalcule à travers, le robot avance jusque devant l'obstacle, et c'est le
+# guide qui attend le passant ou choisit un autre couloir (détour). Réglages essayés et mesurés :
+# docs/journal-atelier.md (section Passants) ; à revoir sur le vrai robot, avec de vraies personnes.
 
 bt_navigator:
   ros__parameters:
@@ -203,20 +207,24 @@ local_costmap:
       global_frame: odom
       robot_base_frame: base_link
       rolling_window: true
-      width: 5
-      height: 5
+      # 7 × 7 m (5 × 5 jusqu'à la vague 3) : un passant qui arrive en face est vu 3,5 m avant
+      width: 7
+      height: 7
       resolution: 0.05
       robot_radius: 0.35
       plugins: ["voxel_layer", "inflation_layer"]
       # Pas de filtre Keepout ici : la carte locale est vidée chaque seconde, et chaque vidage
       # rechargerait le masque. Le chemin global, qui contourne les zones interdites, suffit.
-      # Obstacles vus par le LiDAR (MID-360 à 1,2 m), en 3D, de 1,125 à 1,9 m de haut.
-      # Pourquoi pas plus bas : un voxel n'est effacé que si un rayon le traverse. Le LiDAR
-      # ne voit pas plus bas que −7° : près du robot, aucun rayon ne passe sous ~1 m, et ce
-      # qu'un piéton y laisse en passant resterait marqué (faux obstacles). À partir de
-      # 1,125 m, le rayon à +0,9° efface tout sur 3 m. Les meubles bas sont sur la carte ;
-      # le Collision Monitor (sans mémoire) regarde, lui, dès 0,1 m.
-      # Sur le vrai robot, à revoir selon le montage du MID-360 (tête inclinée vers le sol).
+      # Obstacles vus par le LiDAR (MID-360 à 1,245 m), en 3D, de 0,15 à 1,9 m de haut (vague 4 :
+      # obstacles bas, enfant, valise, fauteuil ; de 1,125 m seulement jusqu'à la vague 3).
+      # Deux sources marquent (points : 1,125 à 1,9 m ; points_bas : 0,15 à 1,125 m), une seule
+      # efface (effacement) : chaque rayon, sol compris, vide les voxels qu'il traverse. Près du
+      # robot, aucun rayon ne passe sous ~1 m (le LiDAR ne voit pas sous −7°) : ce qui y a été
+      # marqué de loin reste au plus 1 s, jusqu'au vidage de la carte locale par l'arbre. Le sol
+      # (sous 0,15 m) ne marque jamais. Les points fantômes qui gênaient la vague 1 venaient en
+      # partie des coutures du gpu_lidar de Gazebo, corrigées dans g1_sim (vague 4).
+      # Sur le vrai robot, à revoir selon le montage du MID-360 (tête inclinée vers le sol) et le
+      # roulis de la marche (sol vu au-dessus de 0,15 m ?).
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -227,22 +235,41 @@ local_costmap:
         z_voxels: 16
         max_obstacle_height: 2.0
         mark_threshold: 0
-        observation_sources: points
+        observation_sources: points points_bas effacement
         points:
           topic: /points
           data_type: "PointCloud2"
           marking: True
-          clearing: True
+          clearing: False
           min_obstacle_height: 1.125
           max_obstacle_height: 1.9
           obstacle_min_range: 0.0
           obstacle_max_range: 5.0
+        points_bas:
+          topic: /points
+          data_type: "PointCloud2"
+          marking: True
+          clearing: False
+          min_obstacle_height: 0.15
+          max_obstacle_height: 1.125
+          obstacle_min_range: 0.0
+          obstacle_max_range: 5.0
+        effacement:
+          topic: /points
+          data_type: "PointCloud2"
+          marking: False
+          clearing: True
+          min_obstacle_height: -0.5
+          max_obstacle_height: 2.5
           raytrace_min_range: 0.0
           raytrace_max_range: 6.0
+      # Vague 4 : distance aux personnes. Coût élevé jusqu'à 0,46 m d'un obstacle (0,20 m bord à
+      # bord d'un passant), qui décroît jusqu'à 0,9 m : MPPI passe au milieu d'un passage de
+      # 1,18 m (à 0,59 m des deux bords), loin des personnes quand il a la place.
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        inflation_radius: 0.4
-        cost_scaling_factor: 3.0
+        inflation_radius: 0.9
+        cost_scaling_factor: 4.0
       always_send_full_costmap: True
 
 global_costmap:
@@ -256,13 +283,45 @@ global_costmap:
       robot_radius: 0.35
       resolution: 0.05
       track_unknown_space: true
-      plugins: ["static_layer", "inflation_layer"]
+      plugins: ["static_layer", "voxel_layer", "inflation_layer"]
       filters: ["keepout_filter"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
-      # Inflation plus large que dans la carte locale (0,4 m) : le chemin global passe au
-      # milieu des couloirs de 3 m, loin du cercle « ralentir » (1 m) du Collision Monitor
+      # Vague 4 : les personnes vues, de 1,125 à 1,9 m seulement (tranche que les rayons balaient
+      # partout autour du robot) : cette carte n'est pas vidée chaque seconde, et un voxel bas
+      # vu de loin n'y serait jamais effacé. À 5 m au plus.
+      voxel_layer:
+        plugin: "nav2_costmap_2d::VoxelLayer"
+        enabled: True
+        footprint_clearing_enabled: True
+        publish_voxel_map: False
+        origin_z: 0.0
+        z_resolution: 0.125
+        z_voxels: 16
+        max_obstacle_height: 2.0
+        mark_threshold: 0
+        observation_sources: personnes effacement
+        personnes:
+          topic: /points
+          data_type: "PointCloud2"
+          marking: True
+          clearing: False
+          min_obstacle_height: 1.125
+          max_obstacle_height: 1.9
+          obstacle_min_range: 0.0
+          obstacle_max_range: 5.0
+        effacement:
+          topic: /points
+          data_type: "PointCloud2"
+          marking: False
+          clearing: True
+          min_obstacle_height: -0.5
+          max_obstacle_height: 2.5
+          raytrace_min_range: 0.0
+          raytrace_max_range: 6.0
+      # Inflation de 1 m : le chemin global passe au milieu des couloirs de 3 m, loin du cercle
+      # « ralentir » (1 m) du Collision Monitor, et à distance des personnes vues (voxel_layer)
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 1.0
@@ -369,7 +428,10 @@ velocity_smoother:
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
 
-# Dernier filtre avant le robot, avec les points du LiDAR : ralentir sous 1 m, s'arrêter sous 0,4 m
+# Dernier filtre avant le robot, avec les points du LiDAR (dès 0,1 m de haut) : ralentir à ×0,5 sous
+# 1 m (près des personnes, des murs, des portes), s'arrêter sous 0,4 m. Vague 4 : un polygone de plus,
+# « ralentir si quelqu'un est devant à moins de 1,6 m », a été essayé et retiré : face à un passant
+# qui coupe la route, le robot restait plus longtemps devant lui (plus d'arrêts, un échec sur cinq).
 collision_monitor:
   ros__parameters:
     use_sim_time: False

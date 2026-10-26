@@ -171,6 +171,32 @@ L'arrêt prend 5 secondes environ, et 20 secondes au plus. Le conteneur ne redé
 seul : après un redémarrage du robot, relancez `g1-jetson demarrer`. On ne relance pas une
 navigation sans un humain.
 
+### 6 bis. Le pilotage par le Wi-Fi (onglet Pilotage, vague 4)
+
+Avec le robot, `g1-jetson demarrer` lance aussi le **nœud pilotage** dans le conteneur
+(`G1_PILOTAGE=1` par défaut ; `G1_PILOTAGE=0 g1-jetson demarrer …` s'en passe). C'est lui qui
+reçoit les ordres de l'onglet Pilotage de l'Atelier : postures, joystick, gestes, voix, LED,
+danses du robot et chorégraphies. Il écoute le port 8010 (`G1_PILOTAGE_PORT`) sur toutes les
+interfaces du Jetson, et exige un **jeton** : la première fois, `g1-jetson demarrer` le crée dans
+`~/robot-g1/opt/jetson/jeton_pilotage` (sur le PC, jamais dans Git), et l'Atelier le relit dans ce
+fichier. Sans le bon jeton, le nœud répond 401.
+
+L'Atelier joint le nœud à l'adresse `G1_PILOTAGE_URL` : au câble
+`G1_PILOTAGE_URL=http://192.168.123.164:8010 g1-atelier`, par le Wi-Fi
+`G1_PILOTAGE_URL=http://<adresse Wi-Fi du Jetson>:8010 g1-atelier`. Ce n'est pas DDS : une simple
+connexion HTTP et WebSocket, qui ne demande aucun réglage réseau de plus. Si le Wi-Fi ou la page se
+coupent, le nœud arrête le robot lui-même 0,5 s après le dernier ordre (homme mort).
+
+La ligne de démarrage le dit : « pilotage port 8010 avec jeton ». Vérifier depuis le PC :
+
+```bash
+curl -s -H "X-Jeton: $(cat ~/robot-g1/opt/jetson/jeton_pilotage)" http://192.168.123.164:8010/etat
+g1-pilotage etat        # avec G1_PILOTAGE_URL et G1_PILOTAGE_JETON exportés
+```
+
+À l'arrêt du conteneur, le nœud pilotage s'arrête en premier : bras rendus au contrôleur
+d'Unitree en 1 s, StopMove, et le guide reprend la main.
+
 **En cas de problème pendant une marche : la télécommande d'abord.** Ensuite, « Bloquer le robot »
 dans l'Atelier, ou depuis un terminal :
 `ros2 topic pub --once --qos-durability transient_local --qos-reliability reliable /pont/arret std_msgs/msg/Bool "{data: true}"`.
@@ -203,6 +229,9 @@ journal de Docker est limité à 5 fichiers de 20 Mo.
    l'utilisateur 1000. Ce n'est pas le vrai Jetson.
 8. **L'horloge** : l'écart entre le PC1 du robot et le Jetson n'est pas mesurable depuis le PC.
    Le relais horodate lui-même ses messages, pour ne pas en dépendre.
+9. **Le pilotage par le Wi-Fi** (vague 4) : le port 8010 du Jetson est-il joignable depuis le PC
+   par le Wi-Fi (pare-feu, isolement des clients du point d'accès) ? Latence du joystick par le
+   Wi-Fi, et arrêt seul 0,5 s après une coupure (Wi-Fi coupé exprès, page fermée).
 
 ## Plan B : si l'image ne passe pas
 
@@ -233,7 +262,8 @@ journal de Docker est limité à 5 fichiers de 20 Mo.
 |---|---|
 | Base | `ros:humble-ros-base-jammy` (Ubuntu 22.04), désignée par l'empreinte de l'architecture |
 | Paquets apt | CycloneDDS, les composants de Nav2 (sans RViz : ni `nav2_rviz_plugins`, ni `nav2_waypoint_follower`), `pointcloud_to_laserscan`, numpy, PyYAML, iproute2 |
-| Compilés dans `/opt/g1/install` | `unitree_api`, `g1_nav`, `g1_bridge` |
+| Paquets apt (vague 4) | `python3-tornado` (API HTTP et WebSocket du nœud pilotage) |
+| Compilés dans `/opt/g1/install` | `unitree_api`, `unitree_hg` (rt/arm_sdk, /lowstate), `g1_nav`, `g1_bridge`, `g1_pilotage` |
 | Python dans `/opt/g1/python` | `atelier/__init__.py`, `atelier/lieu/`, `atelier/scan/slam_client.py` |
 | Version | `/opt/g1/VERSION` : date, commit, empreinte ; dans `/g1_jetson/etat` (1 Hz) |
 | Lancement | réseau de l'hôte, `--init`, aucun redémarrage automatique, utilisateur `unitree`, lieux en lecture seule, pas de `--privileged` |

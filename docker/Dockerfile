@@ -10,8 +10,9 @@
 #   Dockerfile            ce fichier
 #   docker/               demarrer.sh, env.sh, reseau.py, presence.py, cyclonedds.xml.modele
 #   unitree_api/          messages Unitree (third_party/unitree_ros2/.../unitree/unitree_api)
+#   unitree_hg/           messages du G1 (rt/arm_sdk, /lowstate), pour le nœud pilotage (vague 4)
 #   python/atelier/       atelier/__init__.py, atelier/lieu/, atelier/scan/{__init__,slam_client}.py
-#   ws/g1_nav/, ws/g1_bridge/   copiés de ws/src au moment de la construction
+#   ws/g1_nav/, ws/g1_bridge/, ws/g1_pilotage/   copiés de ws/src au moment de la construction
 #   VERSION               date de construction, commit Git, empreinte du contexte
 #
 # Les couches vont de la plus stable à la plus changeante. Une modification de g1_nav ou de
@@ -51,8 +52,8 @@ RUN apt-get update \
       python3-numpy python3-yaml iproute2 \
  && rm -rf /var/lib/apt/lists/*
 
-# 2. Messages Unitree : unitree_api seul (unitree_go et unitree_hg ne servent pas ici et
-#    rallongeraient beaucoup la construction sous émulation).
+# 2. Messages Unitree : unitree_api (unitree_go ne sert pas ici et rallongerait beaucoup la
+#    construction sous émulation ; unitree_hg vient dans la couche suivante, pour garder celle-ci).
 COPY unitree_api /opt/g1/src/unitree_api
 RUN source /opt/ros/humble/setup.bash \
  && cd /opt/g1 \
@@ -60,6 +61,22 @@ RUN source /opt/ros/humble/setup.bash \
       --build-base /tmp/g1_build --install-base /opt/g1/install \
       --cmake-args -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release \
  && rm -rf /tmp/g1_build /tmp/colcon_log
+
+# 2b. Messages du G1 (vague 4, section 11.5 du plan) : unitree_hg, pour rt/arm_sdk et /lowstate
+#     (chorégraphies du nœud pilotage)
+COPY unitree_hg /opt/g1/src/unitree_hg
+RUN source /opt/ros/humble/setup.bash \
+ && source /opt/g1/install/local_setup.bash \
+ && cd /opt/g1 \
+ && colcon --log-base /tmp/colcon_log build --base-paths src/unitree_hg \
+      --build-base /tmp/g1_build --install-base /opt/g1/install \
+      --cmake-args -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release \
+ && rm -rf /tmp/g1_build /tmp/colcon_log
+
+# 2c. API HTTP et WebSocket du nœud pilotage (vague 4) : tornado, paquet du système
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3-tornado \
+ && rm -rf /var/lib/apt/lists/*
 
 # 3. Scripts du conteneur
 COPY docker/demarrer.sh docker/env.sh docker/reseau.py docker/presence.py docker/cyclonedds.xml.modele /opt/g1/
@@ -74,7 +91,7 @@ COPY python /opt/g1/python
 RUN ln -s /journaux /opt/g1/python/journaux \
  && python3 -c "import sys; sys.path.insert(0, '/opt/g1/python'); import atelier.lieu, atelier.scan.slam_client"
 
-# 5. Paquets du projet, copiés de ws/src au moment de la construction : g1_nav, g1_bridge
+# 5. Paquets du projet, copiés de ws/src au moment de la construction : g1_nav, g1_bridge, g1_pilotage
 COPY ws /opt/g1/src/ws
 RUN source /opt/ros/humble/setup.bash \
  && source /opt/g1/install/local_setup.bash \
@@ -95,7 +112,9 @@ ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     G1_INTERFACES=auto \
     G1_LANCEMENT=navigation \
     G1_LOCALISATION=unitree \
-    G1_SIMU=false
+    G1_SIMU=false \
+    G1_PILOTAGE=0 \
+    G1_PILOTAGE_PORT=8010
 
 # 6. Version : date de construction, commit Git et empreinte du contexte (toujours la dernière couche)
 ARG G1_EMPREINTE=inconnue

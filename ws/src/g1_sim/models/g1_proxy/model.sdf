@@ -501,11 +501,15 @@
         <visualize>false</visualize>
         <lidar>
           <scan>
+            <!-- Un point tous les 1°, décalés d'un demi-degré (de -179,5° à +179,5°) : le gpu_lidar
+                 de Fortress assemble 4 caméras, et un rayon pile sur leurs coutures (±45°, ±135°)
+                 rendait une distance fausse de 10 à 90 % (des points fantômes en plein couloir,
+                 vus par la couche voxel de Nav2). Vague 4, agent Passants. -->
             <horizontal>
               <samples>360</samples>
               <resolution>1</resolution>
-              <min_angle>-3.14159265</min_angle>
-              <max_angle>3.12413936</max_angle>
+              <min_angle>-3.13286601</min_angle>
+              <max_angle>3.13286601</max_angle>
             </horizontal>
             <vertical>
               <samples>16</samples>

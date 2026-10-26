@@ -63,11 +63,12 @@ def lieu_couloir(dossier):
 class Simulation:
     """Lance « ros2 launch g1_sim simulation.launch.py ... sans_fenetre:=true » et l'arrête."""
 
-    def __init__(self, lieu, etage='rdc', monde=None, nom='simulation'):
+    def __init__(self, lieu, etage='rdc', monde=None, nom='simulation', arguments=()):
         self.commande = ['ros2', 'launch', 'g1_sim', 'simulation.launch.py', f'lieu:={lieu}',
                          f'etage:={etage}', 'sans_fenetre:=true']
         if monde:
             self.commande.append(f'monde:={monde}')
+        self.commande += list(arguments)          # ex. pietons:=acteurs
         self.journal = journal_dossier() / f'{nom}_{time.strftime("%Y%m%d_%H%M%S")}.log'
         self.processus = None
 

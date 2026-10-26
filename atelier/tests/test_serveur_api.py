@@ -141,12 +141,17 @@ def test_salles_synchronisees_avec_noeuds_et_accueil(client, lieux):
     salles[0]["pose"] = {"x": 3.0, "y": 10.0, "theta": 0.3}          # l'accueil bouge
     r = client.put(DEMO + "/salles?synchroniser=true", json=salles)
     assert r.status_code == 200, r.text
-    assert r.json()["enregistre"] == ["salles.yaml", "itineraires.yaml", "lieu.yaml"]
+    # vague 4 (section 11.2) : le point principal (implicite : la salle accueil) recopie aussi sa pose
+    # dans depart_robot du monde de son étage
+    assert r.json()["enregistre"] == ["salles.yaml", "itineraires.yaml", "lieu.yaml", "mondes/rdc.monde.yaml"]
     itin = charger_itineraires(lieux / "demo")
     assert (itin.noeuds["labo"].x, itin.noeuds["labo"].y) == (12.0, 13.0)
     assert (itin.noeuds["accueil"].x, itin.noeuds["accueil"].y) == (3.0, 10.0)
     accueil = charger_fiche(lieux / "demo").accueil
     assert (accueil.x, accueil.y, accueil.theta) == (3.0, 10.0, 0.3)
+    depart = charger_monde(lieux / "demo", "rdc").depart_robot
+    assert (depart.x, depart.y, depart.theta) == (3.0, 10.0, 0.3)
+    assert "etiquettes" not in (lieux / "demo" / "salles.yaml").read_text(encoding="utf-8")   # reste implicite
     assert not any("labo" in m and "nœud" in m for m in r.json()["rapport"]["erreurs"])
     # rien à changer : seul salles.yaml est écrit
     r = client.put(DEMO + "/salles?synchroniser=true", json=salles)

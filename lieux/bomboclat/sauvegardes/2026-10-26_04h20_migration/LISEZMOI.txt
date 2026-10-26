@@ -1,0 +1,13 @@
+Sauvegarde du lieu « bomboclat », faite le 26/10/2026 à 04h20 (raison : migration).
+Elle contient ces fichiers tels qu'ils étaient avant, octet pour octet :
+  lieu.yaml
+  salles.yaml
+  itineraires.yaml
+  mondes/rdc.monde.yaml
+
+Pour revenir en arrière, depuis le dossier du lieu (ex. cd ~/robot-g1/lieux/bomboclat) :
+  cp -p sauvegardes/2026-10-26_04h20_migration/lieu.yaml lieu.yaml
+  cp -p sauvegardes/2026-10-26_04h20_migration/salles.yaml salles.yaml
+  cp -p sauvegardes/2026-10-26_04h20_migration/itineraires.yaml itineraires.yaml
+  cp -p sauvegardes/2026-10-26_04h20_migration/mondes/rdc.monde.yaml mondes/rdc.monde.yaml
+puis vérifiez : g1-lieu valider --lieu bomboclat

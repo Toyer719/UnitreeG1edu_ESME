@@ -469,3 +469,101 @@ def lister_choregraphies(dossier=None):
     """Contrat. Chemins des fichiers .choregraphie.yaml du dossier (défaut ~/robot-g1/choregraphies)."""
     racine = Path(dossier or DOSSIER_CHOREGRAPHIES)
     return sorted(racine.glob(f"*{SUFFIXE_CHOREGRAPHIE}")) if racine.is_dir() else []
+
+
+# ---------------------------------------------------------------- outils de l'agent Pilotage (hors contrat)
+# Partagés par le nœud pilotage (g1_pilotage), le faux G1 (g1_jumeau), le serveur et l'onglet Pilotage.
+
+ACTIVITES = ("repos", "marche", "posture", "geste", "danse", "choregraphie", "arret")
+MAITRES = ("guide", "pilotage")
+DUREE_DANSE_INCONNUE_S = 60.0       # danse sans durée dans la liste du robot : fin attendue au plus tard
+ARRET_BRAS_S = 1.0                  # ARRÊT pendant une chorégraphie : poids d'arm_sdk ramené à 0 en 1 s
+INDICES_JAMBES = tuple(range(12))   # jamais écrites par le pilotage
+TEXTES_CONFIRMATION = {
+    "portique": ("Le robot va s'affaisser (amortir) ou relâcher ses moteurs (couple nul) : il doit être tenu "
+                 "au portique. Cochez « robot au portique », puis confirmez une seconde fois dans les 10 s."),
+    "zone_libre": ("Les pieds du robot vont bouger : dégagez une zone libre de 2 à 3 m autour de lui, gardez "
+                   "la télécommande en main (c'est l'arrêt d'urgence), puis confirmez."),
+}
+
+
+def limites_marche(vitesse_max=None):
+    """Plafonds de la marche (vx, vy, wz). vitesse_max (m/s, G1_VITESSE_MAX) les baisse dans la même
+    proportion, comme le pont (navigation.launch.py vitesse_max:=) ; jamais au-dessus du contrat.
+    ValueError pour une valeur absurde (non finie, nulle, négative ou plus que 0,4)."""
+    if vitesse_max in (None, ""):
+        return dict(LIMITES_MARCHE)
+    try:
+        v = float(vitesse_max)
+    except (TypeError, ValueError):
+        raise ValueError(f"vitesse maximale illisible : {vitesse_max!r} (ex. 0.2)") from None
+    if not math.isfinite(v) or v <= 0 or v > LIMITES_MARCHE["vx"] + 1e-9:
+        raise ValueError(f"vitesse maximale {vitesse_max} : il faut plus de 0 et au plus {LIMITES_MARCHE['vx']} m/s")
+    k = v / LIMITES_MARCHE["vx"]
+    return {axe: round(m * k, 6) for axe, m in LIMITES_MARCHE.items()}
+
+
+def plafonner_marche(vx, vy, wz, limites=None):
+    """(vx, vy, wz) ramenés sous les plafonds, avec leur signe ; une valeur non finie ou illisible
+    donne un arrêt (0, 0, 0), comme le pont."""
+    limites = limites or LIMITES_MARCHE
+    sortie = []
+    for v, axe in zip((vx, vy, wz), ("vx", "vy", "wz")):
+        if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+            return (0.0, 0.0, 0.0)
+        sortie.append(max(-limites[axe], min(limites[axe], float(v))))
+    return tuple(sortie)
+
+
+def lire_fsm(texte):
+    """fsm_id de la réponse de 7001 GetFsmId ({"data": n}, comme le SDK) ; None si illisible."""
+    d = _lire(texte)
+    if d is None:
+        return None
+    v = d.get("data")
+    return v if isinstance(v, int) and not isinstance(v, bool) else None
+
+
+def danses_pour_l_interface(liste):
+    """Liste des danses lue dans le robot ({n: {nom, duree_s}}) → [{id, nom, duree_s, interdite, essayee,
+    remarque}], dans l'ordre des numéros. Les interdites restent dans la liste (grisées par l'onglet)."""
+    sortie = []
+    for n in sorted(liste):
+        info = liste[n]
+        interdite = danse_interdite(n)
+        if interdite:
+            remarque = "interdite : le robot peut se coucher par terre" if n in (401, 402) else "interdite (inconnue)"
+        elif n in DANSES_ESSAYEES:
+            remarque = f"essayée par la communauté : {DANSES_ESSAYEES[n]}"
+        elif n in DANSES_NON_ESSAYEES:
+            remarque = f"jamais essayée : {DANSES_NON_ESSAYEES[n]} (au portique d'abord)"
+        else:
+            remarque = "inconnue de la communauté : au portique d'abord"
+        sortie.append({"id": int(n), "nom": info.get("nom", ""), "duree_s": info.get("duree_s"),
+                       "interdite": interdite, "essayee": n in DANSES_ESSAYEES, "remarque": remarque})
+    return sortie
+
+
+def evenements_choregraphie(d):
+    """Événements ponctuels d'une chorégraphie, triés par temps : [(t, genre, donnees)], genre parmi
+    pas_debut, pas_fin, geste, led, parole. Les poses des bras se suivent à part (poses_bras)."""
+    evenements = []
+    for p in d.get("pas") or []:
+        evenements.append((p["t"], "pas_debut", p))
+        evenements.append((p["t"] + p["duree_s"], "pas_fin", p))
+    for g in d.get("gestes") or []:
+        evenements.append((g["t"], "geste", g))
+    for e in d.get("led") or []:
+        evenements.append((e["t"], "led", e))
+    for e in d.get("paroles") or []:
+        evenements.append((e["t"], "parole", e))
+    ordre = {"pas_fin": 0, "pas_debut": 1, "geste": 2, "led": 3, "parole": 4}
+    return sorted(evenements, key=lambda e: (e[0], ordre[e[1]]))
+
+
+def pas_en_cours(d, t):
+    """Le pas de la chorégraphie actif à l'instant t (dict), ou None."""
+    for p in d.get("pas") or []:
+        if p["t"] <= t < p["t"] + p["duree_s"]:
+            return p
+    return None

@@ -9,6 +9,10 @@ reste_m se calcule avec le retour de Nav2 : de la position du robot (current_pos
 dernière pose, en ligne droite par les poses que Nav2 n'a pas encore passées
 (number_of_poses_remaining ; une pose est passée à 1,5 m, voir config/naviguer_par_poses.xml).
 
+Vague 4 (section 11.4) : tourner(angle) fait tourner le robot sur place (action Spin du
+behavior_server de Nav2), pour qu'il se mette dans le sens de la flèche du point principal au
+retour : la tolérance de cap de Nav2 (0,4 rad) est plus large que celle du retour (10°).
+
 Il faut que rclpy soit initialisé avant de créer le moteur : MoteurNav2 crée son propre
 nœud (BasicNavigator), qu'il fait tourner lui-même dans ses méthodes.
 """
@@ -21,6 +25,9 @@ from g1_nav.moteurs import etat_repos, Moteur, SuiviProgres, verifier_poses
 DELAI_SERVEUR_S = 0.5
 DELAI_ANNULATION_S = 0.5
 DELAI_ETAT_S = 0.3        # réponse de /bt_navigator/get_state (pret)
+# Rotation sur place (Spin) : temps alloué, en secondes, pour un angle donné (rad), au moins
+DUREE_ROTATION_MIN_S = 6.0
+VITESSE_ROTATION_PRUDENTE = 0.3     # rad/s : min_rotational_vel du behavior_server
 
 
 class MoteurNav2(Moteur):
@@ -45,6 +52,7 @@ class MoteurNav2(Moteur):
         self._etat = etat_repos()
         self._poses = []
         self._en_tache = False
+        self._tourne = False          # la tâche en cours est une rotation sur place (Spin)
         self._client_etat = None
 
     def pret(self):
@@ -80,8 +88,35 @@ class MoteurNav2(Moteur):
             return self._refuser()
         self._poses = poses
         self._en_tache = True
+        self._tourne = False
         self._suivi.effacer()
         self._etat = dict(etat_repos(), en_cours=True)
+        return True
+
+    def tourner(self, angle):
+        """
+        Fait tourner le robot sur place de angle radians, par l'action Spin de Nav2.
+
+        angle positif : sens inverse des aiguilles d'une montre. Rend la main tout de suite ;
+        etat() dit ensuite en_cours, puis arrive (rotation faite) ou echec. Renvoie False si Nav2
+        refuse.
+        """
+        angle = float(angle)
+        if not math.isfinite(angle):
+            raise ValueError(f'angle de rotation invalide : {angle}')
+        client = getattr(self.nav, 'spin_client', None)
+        if client is None or not client.wait_for_server(timeout_sec=DELAI_SERVEUR_S):
+            self.nav.error('Nav2 ne répond pas (spin) : est-il lancé ?')
+            return self._refuser()
+        self.nav.feedback = None
+        duree = max(DUREE_ROTATION_MIN_S, 2.0 * abs(angle) / VITESSE_ROTATION_PRUDENTE)
+        if not self.nav.spin(spin_dist=angle, time_allowance=int(math.ceil(duree))):
+            return self._refuser()
+        self._poses = []
+        self._en_tache = True
+        self._tourne = True
+        self._suivi.effacer()
+        self._etat = dict(etat_repos(), en_cours=True, reste_m=0.0)
         return True
 
     def annuler(self):
@@ -94,6 +129,7 @@ class MoteurNav2(Moteur):
                 self._attendre(self.nav.result_future, DELAI_ANNULATION_S)
         self.nav.result_future = None
         self._en_tache = False
+        self._tourne = False
         self._etat = etat_repos()
 
     def etat(self):
@@ -107,6 +143,8 @@ class MoteurNav2(Moteur):
             else:
                 self._etat = dict(etat_repos(), echec=True)
             return dict(self._etat)
+        if self._tourne:              # le retour de Spin n'a pas de position : rien à mesurer
+            return dict(self._etat)
         reste = self._reste(self.nav.getFeedback())
         self._suivi.noter(reste)
         self._etat.update(reste_m=reste, progresse=self._suivi.progresse())
@@ -116,6 +154,7 @@ class MoteurNav2(Moteur):
 
     def _refuser(self):
         self._en_tache = False
+        self._tourne = False
         self._etat = dict(etat_repos(), echec=True)
         return False
 

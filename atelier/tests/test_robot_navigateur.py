@@ -1,7 +1,10 @@
 """Onglet Simulation en répétition, dans Firefox sans fenêtre (section 10.8 du plan) :
-« Répétition sans robot » → « Lancer la répétition » → marque au sol et panneau « Repérage » →
+« Répétition sans robot » → « Lancer la répétition » → point principal et panneau « Repérage » →
 « Y aller » grisé → « Repérer le robot » → repéré → « Y aller » permis → « Le robot n'est pas sur
-la marque » (clic puis glissé sur la carte) → « Bloquer le robot » / « Débloquer » → arrêt.
+le point principal » (clic puis glissé sur la carte) → « Bloquer le robot » / « Débloquer » → arrêt.
+Vague 4 (section 11.2) : le robot se pose sur le point principal (l'étoile, ici la salle accueil du
+demo), dont la pose part dans la demande de repérage ; sans point principal sur l'étage, la marque
+au sol de la vague 3 revient (croix).
 
 Serveur : bin/g1-atelier, avec les fausses commandes g1-* et le pont ROS 2 du serveur ; le faux
 relais odom_vers_tf de test_robot_serveur_ros répond aux demandes de repérage et dit Nav2 actif.
@@ -71,8 +74,13 @@ def test_reperage_dans_l_onglet_simulation(serveur, navigateur, relais, faux_bin
     nav.bouton("Répétition sans robot", ".modes-simulation")
     nav.attendre("return !document.querySelector('[data-role=reperage]').hidden", message="panneau Repérage")
     assert nav.js("return document.querySelector('[data-role=lancer]').textContent") == "Lancer la répétition"
-    assert "marque au sol" in nav.js("return document.querySelector('[data-role=reperage]').textContent")
-    nav.attendre("return document.querySelector('.ecran-simulation .marque-sol')", message="marque au sol dessinée")
+    texte = nav.js("return document.querySelector('[data-role=consigne-reperage]').textContent")
+    assert texte == ("Posez le robot sur le point principal « Accueil » (étoile sur la carte), tourné dans le sens "
+                     "de la flèche."), texte
+    nav.attendre("return document.querySelector('.ecran-simulation path.marque-principal')",
+                 message="point principal entouré sur la carte")
+    assert nav.js("return document.querySelectorAll('.ecran-simulation .leaflet-marker-icon.salle.principal').length") == 1
+    assert nav.js("return document.querySelector('.ecran-simulation .marque-sol')") is None
     nav.bouton("Lancer la répétition")
     nav.attendre("return document.querySelector('[data-role=etat-simu]').textContent.includes('Répétition en cours')",
                  delai=20, message="répétition en cours")
@@ -91,12 +99,13 @@ def test_reperage_dans_l_onglet_simulation(serveur, navigateur, relais, faux_bin
     nav.attendre("return document.querySelector('[data-role=etat-reperage]').textContent.startsWith('Repéré')",
                  delai=20, message="repéré")
     assert "précision 2 cm" in nav.js("return document.querySelector('[data-role=etat-reperage]').textContent")
-    assert set(relais.demandes[-1]) == {"id"}
+    d = relais.demandes[-1]
+    assert (d["x"], d["y"], d["theta"]) == (2.5, 10.0, 0.0), d       # la pose du point principal
     nav.attendre("return Array.from(document.querySelectorAll('.liste-salles button')).some((b) => !b.disabled)",
                  message="Y aller permis")
     nav.attendre("return document.querySelector('.ecran-simulation .robot-direct')", message="robot sur la carte")
-    # le robot n'est pas sur la marque : clic puis glissé vers la droite de l'écran (l'est, cap 0)
-    nav.bouton("Le robot n'est pas sur la marque", "[data-role=reperage]")
+    # le robot n'est pas sur le point principal : clic puis glissé vers la droite de l'écran (l'est, cap 0)
+    nav.bouton("Le robot n'est pas sur le point principal", "[data-role=reperage]")
     assert nav.js("return document.querySelector('[data-role=aide-position]').hidden") is False
     nombre = len(relais.demandes)
     nav.geste("simulation", [[0.3, 0.5], [0.35, 0.5], [0.4, 0.5]])

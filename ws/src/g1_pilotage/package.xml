@@ -12,11 +12,16 @@
   <depend>geometry_msgs</depend>
   <depend>unitree_api</depend>
   <depend>unitree_hg</depend>
+  <!-- API HTTP et WebSocket du nœud (dans le conteneur : python3-tornado) -->
+  <exec_depend>python3-tornado</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
   <test_depend>ament_pep257</test_depend>
   <test_depend>python3-pytest</test_depend>
+  <!-- Faux robot des tests de l'API (g1_jumeau.robot), s'il est là -->
+  <test_depend>g1_jumeau</test_depend>
 
   <export>
     <build_type>ament_python</build_type>

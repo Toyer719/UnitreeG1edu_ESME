@@ -1,0 +1,21 @@
+# Scène des passants (section 11.3 du plan, critère 25). Format : atelier/lieu/schemas/scene.schema.json.
+version: 1
+id: groupe_reste
+nom: "Groupe qui bouche le couloir nord et reste"
+description: >-
+  Les trois passants de groupe_couloir, en travers du couloir nord en x = 15,5, restent 600 s. Le
+  guide doit attendre (attente_passage) delai_passant_s (20 s), puis prendre le détour par le
+  couloir sud : un détour raisonnable, 75 m au plus en tout, en moins de 300 s.
+lieu: demo
+etage: rdc
+pietons:
+  - {id: groupe_nord, trajet: [[15.5, 14.0], [16.0, 14.0]], vitesse: 1.0, aller_retour: true, reaction: aucune,
+     pauses: [{point: 0, duree_s: 600.0}]}
+  - {id: groupe_milieu, trajet: [[15.5, 13.0], [16.0, 13.0]], vitesse: 1.0, aller_retour: true, reaction: aucune,
+     pauses: [{point: 0, duree_s: 600.0}]}
+  - {id: groupe_sud, trajet: [[15.5, 12.0], [16.0, 12.0]], vitesse: 1.0, aller_retour: true, reaction: aucune,
+     pauses: [{point: 0, duree_s: 600.0}]}
+trajets: [[accueil, b204]]
+essais: 2
+reglages_guide: {retour_auto: false, delai_passant_s: 20}
+mesures: {reussite_min: 1.0, contacts_robot_max: 0, duree_max_s: 300, longueur_max_m: 75}

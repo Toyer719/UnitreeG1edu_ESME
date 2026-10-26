@@ -41,7 +41,8 @@ class Routeur:
 
         noeuds   : {id: (x, y)} en mètres, dans le repère map ;
         couloirs : liste de paires (a, b), parcourues dans les deux sens ;
-        salles   : {id: {'pose': (x, y, theta), 'alias': [...]}}, facultatif ;
+        salles   : {id: {'pose': (x, y, theta), 'alias': [...], 'nom': ...,
+                   'phrase_arrivee': ...}}, facultatif ;
         horloge  : fonction qui donne le temps en secondes (fausse horloge des tests).
         """
         self.noeuds = {i: (float(x), float(y)) for i, (x, y) in noeuds.items()}
@@ -65,7 +66,8 @@ class Routeur:
         couloirs = [(c.a, c.b) for c in itineraires.couloirs
                     if c.a in noeuds and c.b in noeuds]
         salles = {s.id: {'pose': (s.pose.x, s.pose.y, s.pose.theta),
-                         'alias': list(s.alias), 'nom': s.nom}
+                         'alias': list(s.alias), 'nom': s.nom,
+                         'phrase_arrivee': s.phrase_arrivee}
                   for s in charger_salles(dossier) if s.etage == etage}
         return cls(noeuds, couloirs, salles, horloge)
 

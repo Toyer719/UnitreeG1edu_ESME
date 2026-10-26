@@ -2,6 +2,7 @@
 Tests de la simulation sans fenêtre, dans le couloir de test (worlds/couloir.sdf).
 
   - /points publie plus de 5 messages par seconde, dans le repère lidar, sans voir le robot ;
+  - aucun point fantôme (coutures des caméras du gpu_lidar, vague 4) ;
   - les repères odom, base_link et lidar sont cohérents avec le monde (odom = monde = map) ;
   - /cmd_vel vx = 0,3 pendant 3 s fait avancer /odom d'environ 0,9 m ;
   - le robot ne traverse ni la boîte ni un mur.
@@ -110,6 +111,26 @@ def test_reperes_coherents(sim):
     # La boîte est vue là où elle est : des points sur sa face ouest (x = 4,75)
     face_ouest = (np.abs(p[:, 0] - 4.75) < 0.05) & (np.abs(p[:, 1]) < 0.25) & (p[:, 2] < 1.0)
     assert face_ouest.sum() >= 3
+
+
+def test_aucun_point_fantome(sim):
+    """
+    Vague 4 : aucun point du LiDAR en l'air, hors des surfaces (pire point de 5 nuages).
+
+    Avant le décalage d'un demi-degré des rayons (model.sdf), les rayons pile sur les coutures des
+    caméras du gpu_lidar (±45°, ±135°) rendaient des distances fausses de 10 à 90 % : des points
+    au milieu du couloir, que la couche voxel de Nav2 prenait pour des obstacles.
+    """
+    x, y, theta, _ = sim.pose()
+    pires = []
+    debut = time.monotonic()
+    time.sleep(0.6)
+    for nuage in sim.nuages_depuis(debut)[:5]:
+        p = lidar_vers_odom(points_xyz(nuage), x, y, theta, hauteur=POSE_LIDAR[2])
+        distances = [np.abs(p[:, 2])] + [distance_boite(p, c, s) for c, s in MURS + [BOITE]]
+        pires.append(float(np.max(np.min(np.stack(distances), axis=0))))
+    print(f'pire écart d\'un point à la surface la plus proche : {max(pires):.3f} m')
+    assert pires and max(pires) < 0.08
 
 
 def test_cmd_vel_avance_de_0_9_m(sim):

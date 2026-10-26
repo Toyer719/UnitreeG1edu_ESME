@@ -1,0 +1,23 @@
+# Scène des passants (section 11.3 du plan, critère 25). Format : atelier/lieu/schemas/scene.schema.json.
+version: 1
+id: groupe_couloir
+nom: "Groupe qui bouche le couloir nord, puis s'en va"
+description: >-
+  Trois passants discutent côte à côte en travers du couloir nord, en x = 15,5 (y = 12,0 ; 13,0 ;
+  14,0) : le couloir est bouché. Ils ne voient pas le robot (reaction: aucune). Ils partent vers
+  l'est environ 15 s après que le robot est arrivé devant eux (pause de 50 s depuis le départ du
+  robot, qui met 35 s environ à les atteindre), l'un après l'autre, et entrent dans la salle b204
+  (un seul parcours). Le guide doit attendre (attente_passage) sans prendre de détour, puis passer.
+lieu: demo
+etage: rdc
+pietons:
+  - {id: groupe_nord, trajet: [[15.5, 14.0], [21.0, 14.0], [21.0, 15.2], [23.5, 17.5]], vitesse: 1.0,
+     aller_retour: false, repeter: false, reaction: aucune, pauses: [{point: 0, duree_s: 50.0}]}
+  - {id: groupe_milieu, trajet: [[15.5, 13.0], [21.0, 13.0], [21.0, 15.2], [18.5, 17.5]], vitesse: 1.0,
+     aller_retour: false, repeter: false, reaction: aucune, pauses: [{point: 0, duree_s: 51.5}]}
+  - {id: groupe_sud, trajet: [[15.5, 12.0], [21.0, 12.0], [21.0, 15.2], [25.5, 15.5]], vitesse: 1.0,
+     aller_retour: false, repeter: false, reaction: aucune, pauses: [{point: 0, duree_s: 53.0}]}
+trajets: [[accueil, b204]]
+essais: 3
+reglages_guide: {retour_auto: false, delai_passant_s: 20}
+mesures: {reussite_min: 1.0, contacts_robot_max: 0, detours_max: 0, duree_max_s: 180}

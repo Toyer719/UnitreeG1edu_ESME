@@ -205,16 +205,93 @@ def test_commande_gazebo(lancement):
 
 
 def test_arguments_du_contrat(lancement):
-    """Les arguments de la section 4.5 (jumeau : vague 3), avec leurs valeurs par défaut."""
+    """Les arguments de la section 4.5 (jumeau : vague 3 ; pietons : vague 4), et leurs défauts."""
     from launch.actions import DeclareLaunchArgument
     arguments = {a.name: a for a in lancement.generate_launch_description().entities
                  if isinstance(a, DeclareLaunchArgument)}
-    assert set(arguments) == {'lieu', 'etage', 'sans_fenetre', 'monde', 'jumeau'}
+    assert set(arguments) == {'lieu', 'etage', 'sans_fenetre', 'monde', 'jumeau', 'pietons'}
     assert arguments['lieu'].default_value is None
     assert arguments['etage'].default_value is None
     assert arguments['sans_fenetre'].default_value[0].text == 'false'
     assert arguments['monde'].default_value[0].text == ''
     assert arguments['jumeau'].default_value[0].text == 'false'
+    assert arguments['pietons'].default_value[0].text == 'corps'
+    assert arguments['pietons'].choices == ['corps', 'acteurs']
+
+
+# ---------------------------------------------------------------- piétons crédibles (vague 4)
+
+def _lieu_avec_pietons(tmp_path, pietons):
+    lieu_api = pytest.importorskip('atelier.lieu')
+    monde_api = pytest.importorskip('atelier.monde')
+    dossier = tmp_path / 'lieu'
+    lieu_api.enregistrer_lieu(lieu_api.creer_lieu(dossier, 'Essai'))
+    monde = lieu_api.charger_monde(dossier, 'rdc')
+    monde.pietons = [lieu_api.Pieton.depuis_dict(p) for p in pietons]
+    lieu_api.enregistrer_monde(dossier, 'rdc', monde)
+    monde_api.generer(dossier, 'rdc')
+    return dossier
+
+
+PIETONS_ESSAI = [{'id': 'a', 'trajet': [[3, 3], [6, 3]], 'vitesse': 1.0, 'aller_retour': True},
+                 {'id': 'b', 'trajet': [[3, 5], [6, 5]], 'vitesse': 1.0, 'aller_retour': True,
+                  'corps': False}]
+
+
+def test_pietons_corps_monde_simule(lancement, tmp_path):
+    """pietons:=corps : monde simulé (corps de « a », <actor> de « b »), pont et nœud pietons."""
+    from launch.actions import ExecuteProcess, RegisterEventHandler
+    from launch_ros.actions import Node
+    dossier = _lieu_avec_pietons(tmp_path, PIETONS_ESSAI)
+    sdf = dossier / 'mondes' / 'rdc.sdf'
+    simule, actions, message = lancement.preparer_pietons(
+        sdf, dossier / 'mondes' / 'rdc.monde.yaml', 'rdc', 'corps', False)
+    try:
+        assert simule != sdf and simule.name == 'rdc.sdf' and simule.is_file()
+        monde = ET.parse(simule).getroot().find('world')
+        assert monde.find("model[@name='a']") is not None
+        assert monde.find("actor[@name='a']") is None
+        acteur = monde.find("actor[@name='b']")
+        assert Path(acteur.findtext('skin/filename')) == dossier / 'mondes' / 'pieton.dae'
+        noeuds = [a for a in actions if isinstance(a, (Node, ExecuteProcess))]
+        assert len(noeuds) == 2 and any(isinstance(a, RegisterEventHandler) for a in actions)
+        pont = yaml.safe_load((simule.parent / 'pont_pietons.yaml').read_text())
+        assert {e['gz_topic_name'] for e in pont} == {'/model/a/cmd_vel', '/model/a/odometry'}
+        assert '1 piéton(s)-corps (a), 1 <actor>' in message
+        if shutil.which('ign'):
+            resultat = subprocess.run(['ign', 'sdf', '-k', str(simule)], capture_output=True,
+                                      text=True)
+            sortie = resultat.stdout + resultat.stderr
+            assert resultat.returncode == 0 and 'Valid' in resultat.stdout, sortie
+    finally:
+        shutil.rmtree(simule.parent, ignore_errors=True)
+    # jumeau : la vérité du robot vient de /g1_jumeau/odom (sinon /odom)
+    parametres = lancement.parametres_pietons('m.monde.yaml', 'rdc', ['a', 'c'], True)
+    assert parametres == {'monde': 'm.monde.yaml', 'monde_gz': 'rdc', 'corps': 'a,c',
+                          'sujet_robot': '/g1_jumeau/odom'}
+    assert lancement.parametres_pietons('m', 'rdc', [], False)['sujet_robot'] == '/odom'
+
+
+def test_pietons_acteurs_ou_sans_pieton(lancement, tmp_path):
+    """pietons:=acteurs, ou un monde sans piéton : le .sdf du lieu tel quel, sans nœud."""
+    dossier = _lieu_avec_pietons(tmp_path, PIETONS_ESSAI)
+    sdf = dossier / 'mondes' / 'rdc.sdf'
+    monde_yaml = dossier / 'mondes' / 'rdc.monde.yaml'
+    assert lancement.preparer_pietons(sdf, monde_yaml, 'rdc', 'acteurs', False)[:2] == (sdf, [])
+    assert lancement.preparer_pietons(sdf, None, 'rdc', 'corps', False)[:2] == (sdf, [])
+    vide = _lieu_avec_pietons(tmp_path / 'vide', [])
+    sdf_vide = vide / 'mondes' / 'rdc.sdf'
+    assert lancement.preparer_pietons(sdf_vide, vide / 'mondes' / 'rdc.monde.yaml', 'rdc',
+                                      'corps', False)[:2] == (sdf_vide, [])
+
+
+def test_noeud_pietons_installe():
+    """Le script du nœud est installé sous le nom pietons (lib/g1_sim), et il est exécutable."""
+    cmake = (PAQUET / 'CMakeLists.txt').read_text()
+    assert 'install(PROGRAMS scripts/pietons.py' in cmake and 'RENAME pietons' in cmake
+    script = PAQUET / 'scripts' / 'pietons.py'
+    assert script.stat().st_mode & 0o111
+    assert script.read_text().startswith('#!/usr/bin/env python3')
 
 
 @pytest.mark.skipif(shutil.which('ros2') is None, reason='ROS 2 non chargé')

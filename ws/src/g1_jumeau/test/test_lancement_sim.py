@@ -46,7 +46,8 @@ def test_argument_jumeau_faux_par_defaut(lancement):
     from launch.actions import DeclareLaunchArgument
     entites = lancement.generate_launch_description().entities
     arguments = {a.name: a for a in entites if isinstance(a, DeclareLaunchArgument)}
-    assert set(arguments) == {'lieu', 'etage', 'sans_fenetre', 'monde', 'jumeau'}  # contrat 4.5
+    # contrat 4.5 ; vague 4 (11.3) : pietons, de l'agent Passants
+    assert set(arguments) - {'pietons'} == {'lieu', 'etage', 'sans_fenetre', 'monde', 'jumeau'}
     assert arguments['jumeau'].default_value[0].text == 'false'
     assert arguments['jumeau'].choices == ['true', 'false']
 
@@ -98,7 +99,8 @@ def _actions(lancement, tmp_path, jumeau):
     contexte = LaunchContext()
     contexte.launch_configurations.update({
         'lieu': str(tmp_path), 'etage': 'rdc', 'sans_fenetre': 'true', 'monde': '',
-        'jumeau': 'true' if jumeau else 'false'})
+        'jumeau': 'true' if jumeau else 'false',
+        'pietons': 'acteurs'})            # vague 4 : les <actor> d'avant, sans nœud pietons
     return contexte, lancement._lancer(contexte)
 
 
@@ -122,7 +124,9 @@ def test_actions_sans_jumeau_inchangees(lancement, tmp_path):
     assert _noeuds(actions) == [('ros_gz_sim', 'create'), ('ros_gz_bridge', 'parameter_bridge'),
                                 ('robot_state_publisher', 'robot_state_publisher')]
     assert _config_du_pont(contexte, actions).name == 'pont_gz.yaml'
-    assert len(actions) == 8      # 2 messages, Gazebo, 3 nœuds, 2 surveillances (comme avant)
+    from launch.actions import LogInfo
+    # Gazebo, 3 nœuds, 2 surveillances (comme avant) ; les messages (LogInfo) peuvent varier
+    assert len([a for a in actions if not isinstance(a, LogInfo)]) == 6
 
 
 def test_actions_avec_jumeau(lancement, tmp_path):

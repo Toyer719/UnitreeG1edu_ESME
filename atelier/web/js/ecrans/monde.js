@@ -1,8 +1,15 @@
 // Écran Monde : dessiner l'environnement inventé d'un étage, vu de dessus, avec sa vue 3D.
 // Murs (cliquer-glisser, accrochés à une grille de 0,25 m), passages, objets, piétons et
 // départ du robot. Annuler, refaire, enregistrer (PUT …/monde).
+//
+// Vague 4 (section 11.2 du plan) : sur l'étage du point principal, le départ du robot EST le point
+// principal (l'accueil). Il est affiché « = point principal », sans poignée : on ne le fait pas
+// glisser en mode Choisir, et ses valeurs se lisent sans se modifier dans le panneau. L'outil
+// « Départ du robot » le place encore, mais alors le point principal le suit : à l'enregistrement
+// du monde, PUT …/principal {x, y, theta} déplace aussi la salle, son nœud et l'accueil de
+// lieu.yaml. Si le fichier avait un autre départ, il est remis sur le point principal à l'ouverture.
 
-import { api, urlEtage } from '../api.js';
+import { api, urlEtage, urlLieu } from '../api.js';
 import { contexte, rechargerLieu } from '../contexte.js';
 import * as F from '../formulaire.js';
 import * as G from '../geometrie.js';
@@ -10,6 +17,7 @@ import { Historique } from '../historique.js';
 import { afficherErreur, afficherMessage, afficherRapport } from '../messages.js';
 import { creerPlan, ll, lls, metresParPixel, suivrePointeur } from '../plan.js';
 import { Vue3D } from '../vue3d.js';
+import { etiquetteSalle } from './salles.js';
 
 const L = window.L;
 const IDS_RESERVES = ['sol', 'g1_proxy'];
@@ -22,6 +30,9 @@ const OUTILS = [
   { id: 'pieton', texte: 'Piéton', aide: "Cliquez les points du trajet du piéton, l'un après l'autre, puis « Terminer le trajet » (ou touche Entrée)." },
   { id: 'depart', texte: 'Départ du robot', aide: "Cliquez là où le robot démarre la simulation ; glissez pour l'orienter." },
 ];
+const AIDE_DEPART_PRINCIPAL = "Le robot démarre au point principal « {nom} » (l'accueil) : cliquez pour le déplacer, glissez "
+  + "pour l'orienter. À l'enregistrement du monde, le point principal suit (sa salle, son nœud et l'accueil).";
+const EGAL = 1e-6;
 
 const MODELES = [
   { id: 'table', texte: 'Table' }, { id: 'chaise', texte: 'Chaise' }, { id: 'banc', texte: 'Banc' },
@@ -56,6 +67,7 @@ export function ouvrir(racine) {
     monde: null, outil: 'choisir', choisi: null, modifie: false, trace: null,
     pas: 0.25, accrocher: true, epaisseur: 0.15, hauteur: 2.5, largeurPassage: 1.0, modele: 'table',
     vitesse: 1.0, allerRetour: true, emprisePrecedente: '',
+    principal: null,        // point principal du lieu s'il est sur cet étage {salle, nom, x, y, theta}, sinon null
   };
   const hist = new Historique();
 
@@ -122,6 +134,22 @@ export function ouvrir(racine) {
     rafraichir();
   }
 
+  // Le départ du robot de cet étage est-il le point principal ?
+  function departPrincipal() {
+    return !!etat.principal;
+  }
+
+  function departDiffere() {
+    const d = etat.monde.depart_robot;
+    const p = etat.principal;
+    return !!p && (Math.abs(d.x - p.x) > EGAL || Math.abs(d.y - p.y) > EGAL || Math.abs(d.theta - p.theta) > EGAL);
+  }
+
+  function aideOutil(id) {
+    if (id === 'depart' && departPrincipal()) return AIDE_DEPART_PRINCIPAL.replace('{nom}', etat.principal.nom);
+    return OUTILS.find((o) => o.id === id).aide;
+  }
+
   function element(choix) {
     if (!choix || !etat.monde) return null;
     const m = etat.monde;
@@ -177,10 +205,15 @@ export function ouvrir(racine) {
       L.circle(ll(pts[0][0], pts[0][1]), { radius: 0.25, className: 'pieton' + sel, interactive: false }).addTo(calqueElements);
     });
     const d = m.depart_robot;
-    const selD = choisi.genre === 'depart' ? ' choisi' : '';
-    L.polygon(lls(G.rectangle([d.x, d.y], 0.45, 0.30, d.theta)), { className: 'robot' + selD, interactive: false }).addTo(calqueElements);
+    const selD = (choisi.genre === 'depart' ? ' choisi' : '') + (departPrincipal() ? ' principal' : '');
+    const robot = L.polygon(lls(G.rectangle([d.x, d.y], 0.45, 0.30, d.theta)), { className: 'robot' + selD, interactive: false })
+      .addTo(calqueElements);
     L.polyline(lls([[d.x, d.y], [d.x + 0.5 * Math.cos(d.theta), d.y + 0.5 * Math.sin(d.theta)]]),
       { className: 'robot-cap' + selD, interactive: false }).addTo(calqueElements);
+    if (departPrincipal()) {
+      robot.bindTooltip(etiquetteSalle('= point principal « ' + etat.principal.nom + ' »', true),
+        { permanent: true, direction: 'right', offset: [10, 0], className: 'etiquette depart-principal' });
+    }
   }
 
   function dessinerTrace(p) {
@@ -330,6 +363,7 @@ export function ouvrir(racine) {
         etat.choisi = choix;
         rafraichir();
         if (!choix) return false;            // fond : Leaflet fait glisser la vue
+        if (choix.genre === 'depart' && departPrincipal()) return true;    // pas de poignée : il ne glisse pas
         etat.trace = { genre: 'deplacement', choix: choix, depart: p, original: copie(element(choix)), avant: copie(etat.monde), bouge: false };
         return true;
       }
@@ -438,7 +472,7 @@ export function ouvrir(racine) {
     if (id === 'choisir') carte.dragging.enable();
     else carte.dragging.disable();
     plan.cadre.classList.toggle('dessin', id !== 'choisir');
-    $('aide').textContent = OUTILS.find((o) => o.id === id).aide;
+    $('aide').textContent = aideOutil(id);
     dessinerTrace(null);
     majOptions();
   }
@@ -556,6 +590,14 @@ export function ouvrir(racine) {
       F.champNombre(zone, 'Vitesse', e.vitesse, { pas: 0.1, min: 0.1, max: 3, unite: 'm/s' }, (v) => changer(() => { element(c).vitesse = v; }));
       F.caseACocher(zone, 'Va-et-vient (sinon : boucle, retour direct au départ)', e.aller_retour, (v) => changer(() => { element(c).aller_retour = v; }));
       F.valeur(zone, 'Trajet', e.trajet.length + ' points, départ en [' + G.nb(e.trajet[0][0]) + ' ; ' + G.nb(e.trajet[0][1]) + ']');
+    } else if (c.genre === 'depart' && departPrincipal()) {
+      F.titre(zone, 'Départ du robot = point principal « ' + etat.principal.nom + ' »');
+      F.valeur(zone, 'x', G.nb(e.x, 2) + ' m');
+      F.valeur(zone, 'y', G.nb(e.y, 2) + ' m');
+      F.valeur(zone, 'Orientation', G.nb(G.degres(e.theta), 1) + ' °');
+      F.paragraphe(zone, 'Le robot démarre la simulation au point principal du lieu (l\'accueil), tourné dans le sens de sa '
+        + 'flèche : il se place et s\'oriente dans l\'onglet Salles. L\'outil « Départ du robot » le déplace aussi : '
+        + 'à l\'enregistrement du monde, le point principal suit.', 'panneau-note note-principal');
     } else if (c.genre === 'depart') {
       F.titre(zone, 'Départ du robot');
       F.champNombre(zone, 'x', e.x, { pas: pas(), unite: 'm' }, (v) => changer((mm) => { mm.depart_robot.x = v; }));
@@ -610,8 +652,27 @@ export function ouvrir(racine) {
       const r = await api.ecrire(urlEtage(lieu, etage) + '/monde', etat.monde);
       etat.modifie = false;
       majBoutons();
-      afficherRapport(r.rapport, 'Monde enregistré (' + r.enregistre.join(', ') + '). Pour le voir dans la carte et la simulation : onglet Carte, « Fabriquer la carte ».');
+      let rapport = r.rapport;
+      let suite = '';
+      if (departDiffere()) {
+        // le départ a été déplacé avec l'outil : le point principal le suit (salle, nœud, accueil)
+        const d = etat.monde.depart_robot;
+        try {
+          const rp = await api.ecrire(urlLieu(lieu) + '/principal', { x: d.x, y: d.y, theta: d.theta });
+          etat.principal = Object.assign({}, etat.principal, { x: rp.principal.x, y: rp.principal.y, theta: rp.principal.theta });
+          rapport = rp.rapport;
+          suite = ' Le point principal « ' + etat.principal.nom + ' » a suivi le départ du robot (salle, nœud et accueil).';
+          if (rp.avertissement) afficherMessage(rp.avertissement, 'avertissement');
+        } catch (e) {
+          afficherErreur(e);
+          afficherMessage('Le monde est enregistré, mais le point principal n\'a pas suivi le départ du robot : '
+            + 'déplacez-le dans l\'onglet Salles.', 'avertissement');
+        }
+      }
+      afficherRapport(rapport, 'Monde enregistré (' + r.enregistre.join(', ') + ').' + suite
+        + ' Pour le voir dans la carte et la simulation : onglet Carte, « Fabriquer la carte ».');
       rechargerLieu().catch(() => {});
+      rafraichir();
     } catch (e) {
       afficherErreur(e);
     } finally {
@@ -642,7 +703,18 @@ export function ouvrir(racine) {
     }
   });
 
+  // Le point principal du lieu, s'il est sur cet étage (son départ du robot est alors lui)
+  async function chargerPrincipal() {
+    try {
+      const p = await api.lire(urlLieu(lieu) + '/principal');
+      etat.principal = p && p.etage === etage ? { salle: p.salle, nom: p.nom, x: p.x, y: p.y, theta: p.theta } : null;
+    } catch (e) {
+      etat.principal = null;          // pas de point principal (ou lieu illisible) : le départ reste libre
+    }
+  }
+
   async function charger() {
+    await chargerPrincipal();
     try {
       etat.monde = await api.lire(urlEtage(lieu, etage) + '/monde');
     } catch (e) {
@@ -657,6 +729,16 @@ export function ouvrir(racine) {
         + 'Modifiez-le, puis « Enregistrer le monde ».', 'info');
     }
     ['murs', 'objets', 'pietons'].forEach((k) => { etat.monde[k] = etat.monde[k] || []; });
+    if (departDiffere()) {
+      // le départ du robot de l'étage du point principal est le point principal (section 11.2)
+      const d = etat.monde.depart_robot;
+      const p = etat.principal;
+      etat.monde.depart_robot = { x: p.x, y: p.y, theta: p.theta };
+      etat.modifie = true;
+      afficherMessage('Le départ du robot (' + G.nb(d.x, 2) + ' ; ' + G.nb(d.y, 2) + ') n\'était pas sur le point principal « '
+        + p.nom + ' » : il y est remis, car le robot démarre toujours à l\'accueil. Enregistrez le monde pour le garder, '
+        + 'ou déplacez le point principal dans l\'onglet Salles.', 'avertissement');
+    }
     const em = etat.monde.emprise;
     plan.cadrer(em.min[0], em.min[1], em.max[0], em.max[1]);
     vue.cadrer(em);

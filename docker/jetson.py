@@ -80,7 +80,12 @@ LIGNE_DEMARRAGE = 'g1-jetson : domaine'
 # Fichiers de l'image (le contexte de construction n'est jamais le dépôt entier)
 FICHIERS_DOCKER = ['demarrer.sh', 'env.sh', 'reseau.py', 'presence.py', 'cyclonedds.xml.modele']
 UNITREE_API = RACINE / 'third_party' / 'unitree_ros2' / 'cyclonedds_ws' / 'src' / 'unitree' / 'unitree_api'
-PAQUETS_WS = ['g1_nav', 'g1_bridge']
+UNITREE_HG = UNITREE_API.parent / 'unitree_hg'          # vague 4 : rt/arm_sdk et /lowstate (pilotage)
+PAQUETS_WS = ['g1_nav', 'g1_bridge', 'g1_pilotage']
+# Pilotage (vague 4, section 11.5 du plan) : nœud lancé dans le conteneur avec G1_PILOTAGE=1 (défaut
+# avec le robot), joint par l'Atelier sur le Wi-Fi avec un jeton partagé
+FICHIER_JETON = RACINE / 'opt' / 'jetson' / 'jeton_pilotage'
+PORT_PILOTAGE = '8010'
 PYTHON_ATELIER = ['atelier/__init__.py', 'atelier/lieu', 'atelier/scan/__init__.py',
                   'atelier/scan/slam_client.py']
 IGNORES = shutil.ignore_patterns('__pycache__', '*.pyc', '.pytest_cache', 'test', 'tests',
@@ -308,6 +313,11 @@ def assembler_contexte(destination, racine=RACINE, incomplet=False):
         raise Erreur(f'messages Unitree introuvables ({source_api}) : relancez '
                      'setup/installer_utilisateur.sh (dépôt unitree_ros2)')
     shutil.copytree(source_api, destination / 'unitree_api', ignore=IGNORES)
+    source_hg = racine / UNITREE_HG.relative_to(RACINE)
+    if not (source_hg / 'package.xml').is_file():
+        raise Erreur(f'messages du G1 introuvables ({source_hg}) : relancez '
+                     'setup/installer_utilisateur.sh (dépôt unitree_ros2)')
+    shutil.copytree(source_hg, destination / 'unitree_hg', ignore=IGNORES)
     for chemin in PYTHON_ATELIER:
         source = racine / chemin
         cible = destination / 'python' / chemin
@@ -320,7 +330,7 @@ def assembler_contexte(destination, racine=RACINE, incomplet=False):
     manquants = [p for p in PAQUETS_WS if p not in trouves]
     if manquants and not incomplet:
         raise Erreur(f'paquet {", ".join(manquants)} absent de ws/src : l\'image doit contenir '
-                     'g1_nav et g1_bridge. Attendez qu\'il soit écrit, ou --incomplet '
+                     'g1_nav, g1_bridge et g1_pilotage. Attendez qu\'il soit écrit, ou --incomplet '
                      '(mise au point seulement : sans g1_bridge, le robot ne peut pas marcher)')
     (destination / 'ws').mkdir()
     for paquet, source in trouves.items():
@@ -361,7 +371,7 @@ def commit_git(racine=RACINE):
 def texte_version(arch, empreinte, paquets, commit, date=None):
     date = date or datetime.datetime.now().astimezone().isoformat(timespec='seconds')
     return (f'date={date}\ncommit={commit}\nempreinte={empreinte}\narch={arch}\n'
-            f'image={IMAGE}:{arch}\npaquets={" ".join(["unitree_api"] + paquets)}\n')
+            f'image={IMAGE}:{arch}\npaquets={" ".join(["unitree_api", "unitree_hg"] + paquets)}\n')
 
 
 def _descripteur_base(arch):
@@ -428,9 +438,10 @@ def empreinte_image(cible, arch):
 SCRIPT_VERIFICATION_IMAGE = (
     'source /opt/g1/env.sh >/dev/null && '
     'echo "arch=$(uname -m)" && echo "rmw=$RMW_IMPLEMENTATION" && '
-    'for p in g1_nav g1_bridge unitree_api nav2_bt_navigator rmw_cyclonedds_cpp; do '
+    'for p in g1_nav g1_bridge g1_pilotage unitree_api unitree_hg nav2_bt_navigator rmw_cyclonedds_cpp; do '
     'echo "paquet_$p=$(ros2 pkg prefix $p 2>/dev/null || echo absent)"; done && '
     'python3 -c "import atelier.lieu, atelier.scan.slam_client; print(\'python=ok\')" && '
+    'python3 -c "import tornado, atelier.lieu.pilotage; print(\'pilotage=ok\')" && '
     'echo "version=$(tr \'\\n\' \' \' < /opt/g1/VERSION)"')
 
 
@@ -454,6 +465,12 @@ def verifier_image(executeur, arch, image=None):
             problemes.append(f'paquet {paquet} absent')
     if resultats.get('python') != 'ok':
         problemes.append('import atelier.lieu, atelier.scan.slam_client impossible')
+    if 'paquet_g1_pilotage' in resultats and resultats['paquet_g1_pilotage'] != 'absent':
+        # image de la vague 4 : le pilotage aussi (une image plus ancienne n'a pas ces lignes)
+        if resultats.get('paquet_unitree_hg', 'absent') == 'absent':
+            problemes.append('paquet unitree_hg absent (pilotage des bras)')
+        if resultats.get('pilotage') != 'ok':
+            problemes.append('import tornado, atelier.lieu.pilotage impossible (nœud pilotage)')
     if r.returncode != 0 or problemes:
         detail = '; '.join(problemes) or (r.stderr or '').strip()[-300:]
         raise Erreur(f'l\'image {image} ne passe pas ses vérifications : {detail}')
@@ -748,11 +765,59 @@ def environnement_conteneur(args, local, ident):
             raise Erreur(f'G1_SIMU={simu} : true ou false')
         env.append(('G1_SIMU', simu))
     vitesse = (getattr(args, 'vitesse_max', None) or os.environ.get('G1_VITESSE_MAX') or '').strip()
-    if vitesse and not args.veille:
+    if vitesse:             # navigation (pont) et pilotage (joystick, pas des chorégraphies), même en veille
         env.append(('G1_VITESSE_MAX', lire_vitesse_max(vitesse)))
     if os.environ.get('G1_CYCLONEDDS_URI'):
         env.append(('G1_CYCLONEDDS_URI', os.environ['G1_CYCLONEDDS_URI']))
+    env += environnement_pilotage(local)
     return env
+
+
+def environnement_pilotage(local):
+    """Variables du nœud pilotage (vague 4) : G1_PILOTAGE (1 par défaut avec le robot, 0 sur le PC),
+    G1_PILOTAGE_PORT et le jeton G1_PILOTAGE_JETON (exigé sur le Wi-Fi : sans lui, le nœud n'accepte
+    que le Jetson lui-même)."""
+    pilotage = os.environ.get('G1_PILOTAGE') or ('0' if local else '1')
+    if pilotage not in ('0', '1'):
+        raise Erreur(f'G1_PILOTAGE={pilotage} : 1 (nœud pilotage lancé dans le conteneur) ou 0')
+    env = [('G1_PILOTAGE', pilotage)]
+    if pilotage == '0':
+        return env
+    port = os.environ.get('G1_PILOTAGE_PORT') or PORT_PILOTAGE
+    if not re.fullmatch(r'\d{4,5}', port) or not 1024 <= int(port) <= 65535:
+        raise Erreur(f'G1_PILOTAGE_PORT={port} : un port de 1024 à 65535 (8010 par défaut)')
+    env.append(('G1_PILOTAGE_PORT', port))
+    jeton = lire_jeton_pilotage()
+    if jeton:
+        env.append(('G1_PILOTAGE_JETON', jeton))      # sans jeton : le nœud n'accepte que 127.0.0.1
+    return env
+
+
+def lire_jeton_pilotage():
+    """Jeton partagé du pilotage : $G1_PILOTAGE_JETON, sinon le fichier opt/jetson/jeton_pilotage."""
+    if os.environ.get('G1_PILOTAGE_JETON'):
+        return os.environ['G1_PILOTAGE_JETON'].strip()
+    fichier = Path(os.environ.get('G1_PILOTAGE_JETON_FICHIER') or FICHIER_JETON)
+    try:
+        return fichier.read_text(encoding='utf-8').strip()
+    except OSError:
+        return ''
+
+
+def creer_jeton_pilotage(executeur):
+    """Crée le jeton du pilotage (robot) s'il n'existe pas ; l'Atelier le relit dans le même fichier."""
+    if lire_jeton_pilotage() or (os.environ.get('G1_PILOTAGE') or '1') == '0':
+        return
+    fichier = Path(os.environ.get('G1_PILOTAGE_JETON_FICHIER') or FICHIER_JETON)
+    if executeur.a_blanc:
+        executeur.montrer(f'(jeton du pilotage créé dans {fichier})')
+        os.environ['G1_PILOTAGE_JETON'] = 'jeton-du-pilotage'
+        return
+    import secrets
+    fichier.parent.mkdir(parents=True, exist_ok=True)
+    fichier.write_text(secrets.token_urlsafe(24) + '\n', encoding='utf-8')
+    fichier.chmod(0o600)
+    dire(f'jeton du pilotage créé : {fichier} (l\'Atelier le lit pour joindre le nœud pilotage par le Wi-Fi)')
 
 
 def lire_vitesse_max(texte):
@@ -790,6 +855,8 @@ def demarrer(args, executeur):
     if args.pair and not args.wifi:
         raise Erreur('--pair va avec --wifi IFACE (l\'interface Wi-Fi du Jetson)')
     cible = Cible(local=local, executeur=executeur)
+    if not local:
+        creer_jeton_pilotage(executeur)
     nom = nom_conteneur(local)
     arch = arch_conteneur(local)
     image = f'{IMAGE}:{arch}'

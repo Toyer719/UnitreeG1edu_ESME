@@ -45,11 +45,13 @@ def dossier(tmp_path):
 
 
 def actions(module, lieu, etage='rdc', simu='true', moteur='nav2', localisation='', pont='auto',
-            nuage='', vitesse_max=''):
+            nuage='', vitesse_max='', personnes=None):
     contexte = LaunchContext()
     contexte.launch_configurations.update(
         {'lieu': str(lieu), 'etage': etage, 'simu': simu, 'moteur': moteur,
          'localisation': localisation, 'pont': pont, 'nuage': nuage, 'vitesse_max': vitesse_max})
+    if personnes is not None:
+        contexte.launch_configurations['personnes'] = personnes
     return module._lancer(contexte)
 
 
@@ -85,7 +87,9 @@ def test_arguments_du_contrat(lancement):
     # sections 4.5 et 10.7 ; nuage et vitesse_max : ajouts (source du nuage du relais, premiers
     # essais à vitesse réduite)
     assert set(arguments) == {'lieu', 'etage', 'simu', 'moteur', 'localisation', 'pont', 'nuage',
-                              'vitesse_max'}
+                              'vitesse_max', 'personnes'}
+    # vague 4 (section 11.4 du plan) : détecteur de personnes au LiDAR, lancé par défaut
+    assert texte(arguments['personnes'].default_value) == 'true'
     assert texte(arguments['vitesse_max'].default_value) == ''
     assert texte(arguments['simu'].default_value) == 'false'
     assert texte(arguments['moteur'].default_value) == 'nav2'
@@ -292,3 +296,42 @@ def test_vitesse_reduite_refusee(lancement, dossier, valeur):
     """Jamais au-delà des plafonds du contrat, jamais nulle, négative ou illisible."""
     with pytest.raises(lancement.ErreurNavigation, match='vitesse_max'):
         actions(lancement, dossier, localisation='unitree', vitesse_max=valeur)
+
+
+def detecteur(liste):
+    """
+    Renvoie le détecteur de personnes et ses paramètres en texte, ou (None, None).
+
+    Un Node, ou un ExecuteProcess (python3 -m) si g1_nav a été compilé avant son ajout.
+    """
+    from launch.actions import ExecuteProcess
+    for a in liste:
+        if isinstance(a, Node):
+            if a._Node__node_name == 'detecteur_personnes':
+                return a, {k: v if isinstance(v, (bool, int, float)) else texte(v)
+                           for k, v in parametres(a).items()}
+        elif isinstance(a, ExecuteProcess) and a.name and texte(a.name) == 'detecteur_personnes':
+            cmd = [texte(c) for c in a.cmd]
+            assert 'g1_nav.personnes' in cmd and '__node:=detecteur_personnes' in cmd
+            p = dict(cmd[i + 1].split(':=', 1) for i, c in enumerate(cmd) if c == '-p')
+            return a, p
+    return None, None
+
+
+def test_detecteur_de_personnes(lancement, dossier):
+    """Vague 4 (section 11.4) : personnes:=true par défaut, avec le lieu pour la carte."""
+    liste = actions(lancement, dossier, simu='true', moteur='nav2')
+    action, p = detecteur(liste)
+    assert action is not None, 'detecteur_personnes manque'
+    assert str(p['lieu']) == str(dossier) and p['etage'] == 'rdc'
+    guide = parametres(noeuds(liste)['guide'])
+    assert 'accompagnement' not in guide and 'passants' not in guide
+    assert guide['vitesse_max_nav2'] == pytest.approx(0.5)      # vx_max de nav2_g1_simu.yaml
+    # personnes:=false : ni détecteur, ni accompagnement, ni attente des passants
+    liste = actions(lancement, dossier, simu='true', moteur='nav2', personnes='false')
+    assert detecteur(liste) == (None, None)
+    guide = parametres(noeuds(liste)['guide'])
+    assert guide['accompagnement'] is False and guide['passants'] is False
+    # Aussi sur le vrai robot
+    action, p = detecteur(actions(lancement, dossier, simu='false', moteur='nav2'))
+    assert action is not None

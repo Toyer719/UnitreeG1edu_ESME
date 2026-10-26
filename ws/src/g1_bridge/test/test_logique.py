@@ -369,6 +369,58 @@ def test_verrou_prioritaire_sur_tout():
     assert conforme(pont)['etat'] == 'arret_verrouille'
 
 
+# ---------------------------------------------------------------- maître des mouvements (vague 4)
+
+def test_pilotage_arrete_le_robot_et_ignore_cmd_vel():
+    pont, h = pret()
+    faire_tourner(pont, h, 0.5, cmd_vel=(0.3, 0, 0))
+    (arret,) = pont.sur_maitre('pilotage')
+    assert vitesses(arret) == (0.0, 0.0, 0.0) and arret.duree == 1.0
+    pont.sur_reponse(arret.identifiant, 0)
+    assert faire_tourner(pont, h, 2.0, cmd_vel=(0.3, 0, 0)) == []        # /cmd_vel ignoré
+    etat = conforme(pont)
+    assert etat['etat'] == 'pilotage' and not etat['mouvement_permis']
+    assert pont.maitre == 'pilotage'
+    assert 'onglet Pilotage' in etat['message']
+
+
+def test_pilotage_au_repos_n_envoie_rien():
+    pont, h = pret()
+    assert pont.sur_maitre('pilotage') == [] and conforme(pont)['etat'] == 'pilotage'
+    assert pont.sur_maitre('pilotage') == []
+
+
+def test_main_rendue_reprise_seulement_avec_un_cmd_vel_neuf():
+    pont, h = pret()
+    faire_tourner(pont, h, 0.5, cmd_vel=(0.3, 0, 0))
+    (arret,) = pont.sur_maitre('pilotage')
+    pont.sur_reponse(arret.identifiant, 0)
+    faire_tourner(pont, h, 0.5, cmd_vel=(0.3, 0, 0))
+    assert pont.sur_maitre('guide') == []
+    assert faire_tourner(pont, h, 1.0) == [] and conforme(pont)['etat'] == 'pret'
+    envois = faire_tourner(pont, h, 0.3, cmd_vel=(0.2, 0, 0))
+    assert envois and vitesses(envois[0][1]) == (0.2, 0.0, 0.0)
+
+
+def test_verrou_et_robot_muet_passent_avant_le_pilotage():
+    pont, h = pret()
+    pont.sur_maitre('pilotage')
+    pont.sur_verrou(True)
+    assert conforme(pont)['etat'] == 'arret_verrouille'
+    pont.sur_verrou(False)
+    assert conforme(pont)['etat'] == 'pilotage'
+    pont.sur_guide_stop()                              # l'arrêt reste toujours permis
+    h.avancer(1.5)
+    assert conforme(pont)['etat'] == 'robot_muet'       # l'arrêt n'a pas eu de réponse
+
+
+def test_maitre_inconnu_refuse():
+    pont, h = pret()
+    with pytest.raises(ValueError, match='guide ou pilotage'):
+        pont.sur_maitre('robot')
+    assert pont.maitre == 'guide'
+
+
 # ---------------------------------------------------------------- repérage exigé
 
 def test_sans_reperage_cmd_vel_ignore():
@@ -507,6 +559,8 @@ def test_etats_toujours_conformes_au_hasard():
             envois += [(h.t, e) for e in pont.sur_guide_stop()]
         elif choix < 0.66:
             envois += [(h.t, e) for e in pont.sur_verrou(aleatoire.random() < 0.5)]
+        elif choix < 0.68:
+            envois += [(h.t, e) for e in pont.sur_maitre(aleatoire.choice(['guide', 'pilotage']))]
         envois += [(h.t, e) for e in pont.pas()]
         for _, e in envois[-3:]:
             if aleatoire.random() < 0.9:

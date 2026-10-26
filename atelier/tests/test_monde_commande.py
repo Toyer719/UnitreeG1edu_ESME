@@ -92,6 +92,10 @@ def test_simuler_traduit_les_options(copie):
         f"ros2 launch g1_sim simulation.launch.py lieu:={copie} etage:=rdc sans_fenetre:=true")
     resultat = g1_monde("simuler", "--lieu", copie, "--etage", "rdc", "--afficher")
     assert resultat.stdout.strip().endswith("sans_fenetre:=false")
+    # vague 4 (section 11.3) : piétons crédibles (défaut de g1_sim) ou <actor> de la vague 1
+    resultat = g1_monde("simuler", "--lieu", copie, "--etage", "rdc", "--pietons", "acteurs", "--afficher")
+    assert resultat.stdout.strip().endswith("sans_fenetre:=false pietons:=acteurs")
+    assert g1_monde("simuler", "--lieu", copie, "--etage", "rdc", "--pietons", "fantomes").returncode == 2
 
 
 @pytest.mark.skipif(not os.path.isdir("/opt/ros/humble"), reason="ROS 2 Humble absent")

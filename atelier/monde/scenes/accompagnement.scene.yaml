@@ -1,0 +1,28 @@
+# Scène de l'accompagnement du visiteur (vague 4, section 11.4 du plan ; critère 26).
+# Format : atelier/lieu/schemas/scene.schema.json. Fichier de l'agent Comportement du guide.
+# Le visiteur est un piéton « pilote: externe » (corps solide, vu par le LiDAR), 1 m derrière le
+# robot posé sur le point principal du demo (accueil, (2,5 ; 10), tourné vers l'est). Le faux
+# visiteur (ros2 run g1_nav faux_visiteur) le conduit : suivre, trainer, partir, arreter.
+# Les piétons du monde sont retirés (ajouter: false) : seul le visiteur marche.
+version: 1
+id: accompagnement
+nom: "Accompagnement d'un visiteur"
+description: >-
+  Le guide emmène le visiteur de l'accueil à b204 en le suivant au LiDAR : il ralentit quand le
+  visiteur traîne, l'attend à plus de 3,5 m, repart quand il revient, et abandonne (puis rentre au
+  point principal) s'il s'en va.
+lieu: demo
+etage: rdc
+ajouter: false
+pietons:
+  - id: visiteur
+    trajet: [[1.5, 10.0], [1.4, 10.0]]
+    vitesse: 1.0
+    aller_retour: false
+    pilote: externe
+    reaction: aucune
+trajets:
+  - [accueil, b204]
+essais: 1
+visiteur: visiteur
+reglages_guide: {delai_visiteur_s: 10, delai_avant_retour_s: 5}

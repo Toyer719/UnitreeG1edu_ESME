@@ -2,11 +2,18 @@ cmake_minimum_required(VERSION 3.8)
 project(g1_sim)
 
 # Simulation Gazebo Fortress de l'Atelier G1 : pas de code compilé, seulement des fichiers
-# installés dans share/g1_sim (modèle du robot proxy, mondes de test, réglages du pont, lancement).
+# installés dans share/g1_sim (modèle du robot proxy, mondes de test, réglages du pont, lancement),
+# et le nœud Python pietons dans lib/g1_sim.
 find_package(ament_cmake REQUIRED)
 
 install(DIRECTORY models worlds config launch
   DESTINATION share/${PROJECT_NAME})
+
+# Vague 4 (section 11.3 du plan) : le nœud pietons, qui conduit les piétons crédibles (Python,
+# logique dans atelier.monde.foule)
+install(PROGRAMS scripts/pietons.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME pietons)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

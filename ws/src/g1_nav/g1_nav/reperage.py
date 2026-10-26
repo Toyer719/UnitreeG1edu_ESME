@@ -14,7 +14,8 @@ repere est la pose de l'origine de la carte d'Unitree dans map (atelier.lieu.rep
 Toutes les poses sont au sol : (x, y, cap), en mètres et en radians.
 
 Le repérage (localisation unitree), à chaque demande {id, x?, y?, theta?} :
-  1. pose annoncée P (map) : celle de la demande, sinon la marque au sol ; U = P dans le repère
+  1. pose annoncée P (map) : celle de la demande (l'Atelier envoie le point principal, vague 4),
+     sinon la marque au sol (origine de la carte d'Unitree) ; U = P dans le repère
      d'Unitree. Sans carte enregistrée sur le robot : echec ;
   2. commande 1804 avec U et la carte (formats de atelier.scan.slam_client) ;
   3. réponse attendue DELAI_REPONSE_S au plus ; refusée : echec ;
@@ -50,24 +51,24 @@ SIGMA_INITIALE_M = 0.25
 SIGMA_INITIALE_RAD = 0.2
 
 MESSAGES = {
-    'non_repere': 'Robot non repéré : posez-le sur la marque au sol (croix sur la carte), '
-                  'tourné dans le sens de la flèche, puis cliquez sur « Repérer le robot ».',
+    'non_repere': 'Robot non repéré : posez-le sur le point principal (l\'étoile sur la carte), '
+                  'tourné dans le sens de sa flèche, puis cliquez sur « Repérer le robot ».',
     'sans_carte': 'Ce lieu n\'a pas de carte enregistrée sur le robot : faites d\'abord un scan '
                   'avec le robot (onglet Scan).',
     'muet': 'Le service de cartographie du robot ne répond pas : vérifiez que unitree_slam est '
             'activé dans l\'appli Unitree.',
-    'pas_trouve': 'Le robot n\'a pas réussi à se repérer : vérifiez qu\'il est sur la marque, '
-                  'tourné dans le bon sens, puis recommencez.',
+    'pas_trouve': 'Le robot n\'a pas réussi à se repérer : vérifiez qu\'il est sur le point '
+                  'principal, tourné dans le sens de sa flèche, puis recommencez.',
     'sans_odometrie': 'Le robot ne donne pas son odométrie locale '
                       '(/state_estimator/odom_pelvis) : vérifiez qu\'il est allumé et relié, '
                       'puis recommencez.',
     'en_cours_amcl': 'Repérage en cours avec la carte et le LiDAR : ne bougez pas le robot.',
     'pas_trouve_amcl': 'Le robot n\'a pas réussi à se repérer avec la carte et le LiDAR : '
-                       'vérifiez qu\'il est sur la marque, tourné dans le bon sens, puis '
-                       'recommencez.',
+                       'vérifiez qu\'il est sur le point principal, tourné dans le sens de sa '
+                       'flèche, puis recommencez.',
     'perdu_amcl': 'Repérage perdu : la carte et le LiDAR ne suffisent plus à situer le robot ; '
-                  'il est arrêté. Ramenez-le sur la marque, puis cliquez sur « Repérer le '
-                  'robot ».',
+                  'il est arrêté. Ramenez-le sur le point principal, puis cliquez sur « Repérer '
+                  'le robot ».',
 }
 
 
@@ -300,8 +301,8 @@ class Reperage(_Machine):
             if self.ecart[0] > self.ecart_max_m or self.ecart[1] > self.ecart_max_rad:
                 self._echouer(f'Le robot s\'est repéré à {self.ecart[0]:.1f} m (et '
                               f'{math.degrees(self.ecart[1]):.0f}°) de la position annoncée : '
-                              'vérifiez qu\'il est bien sur la marque, tourné dans le sens de la '
-                              'flèche, puis recommencez.')
+                              'vérifiez qu\'il est bien à l\'endroit annoncé (le point '
+                              'principal), tourné dans le sens de la flèche, puis recommencez.')
                 return
             self.sauts = 0
             self._accepter(correction, covariance, maintenant)

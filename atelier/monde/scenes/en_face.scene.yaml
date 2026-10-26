@@ -1,0 +1,18 @@
+# Scène des passants (section 11.3 du plan, critère 24). Format : atelier/lieu/schemas/scene.schema.json.
+version: 1
+id: en_face
+nom: "Passant qui arrive en face, dans le couloir nord"
+description: >-
+  Un passant remonte le couloir nord vers l'ouest, sur la ligne du robot (y = 13), à 1,0 m/s, sans
+  voir le robot (reaction: aucune, pire cas). Il part de l'est du couloir 8 s après le robot, le
+  croise vers le milieu du couloir, puis s'arrête dans le coin nord-ouest du hall, loin du trajet du
+  robot (un seul parcours). Le robot doit s'écarter : aucun contact dont il est la cause.
+lieu: demo
+etage: rdc
+pietons:
+  - {id: passant, trajet: [[27.0, 13.0], [3.5, 13.0], [1.0, 13.6]], vitesse: 1.0, aller_retour: false,
+     reaction: aucune, depart_s: 8.0, repeter: false}
+trajets: [[accueil, b204]]
+essais: 5
+reglages_guide: {retour_auto: false}
+mesures: {reussite_min: 0.8, contacts_robot_max: 0, duree_max_s: 180}

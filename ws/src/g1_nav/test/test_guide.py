@@ -54,6 +54,11 @@ class Banc:
         return self.guide.etat()
 
 
+def v1(etat):
+    """Les quatre champs de la vague 1 (contrat 4.2), sans les champs ajoutés ensuite."""
+    return {k: etat[k] for k in ('etat', 'cible', 'reste_m', 'itineraire')}
+
+
 def boite_couloir_nord(guide, moteur):
     """Une boîte en x = 12 dans le couloir nord : le robot s'arrête devant, à x = 11,5."""
     x, y, _ = moteur.position
@@ -67,8 +72,11 @@ def dossier(tmp_path):
 
 def test_accueil_vers_b204_par_le_nord(dossier):
     banc = Banc(dossier)
-    assert banc.guide.etat() == {'etat': 'attente', 'cible': None, 'reste_m': None,
-                                 'itineraire': []}
+    assert v1(banc.guide.etat()) == {'etat': 'attente', 'cible': None, 'reste_m': None,
+                                     'itineraire': []}
+    # Champs de la vague 4 (section 11.4), toujours présents
+    assert banc.guide.etat()['version'] == 1 and banc.guide.etat()['mission'] is None
+    assert banc.guide.etat()['accompagner'] is False and banc.guide.etat()['visiteur'] is None
     assert banc.guide.aller('b204')
     etat = banc.guide.etat()
     assert etat['etat'] == 'en_route' and etat['cible'] == 'b204'
@@ -145,8 +153,9 @@ def test_stop(dossier):
     banc.guide.aller('cdi')
     banc.tourner(3.0, jusqu_a=())
     banc.guide.stop()
-    assert banc.guide.etat() == {'etat': 'attente', 'cible': None, 'reste_m': None,
-                                 'itineraire': []}
+    assert v1(banc.guide.etat()) == {'etat': 'attente', 'cible': None, 'reste_m': None,
+                                     'itineraire': []}
+    assert banc.guide.etat()['mission'] is None
     position = banc.moteur.position
     banc.tourner(3.0)
     assert banc.moteur.position == position
@@ -224,8 +233,10 @@ def test_trop_de_detours(dossier):
 
 def test_position_inconnue_depart_a_l_accueil(dossier):
     banc = Banc(dossier, position_connue=False)
-    assert banc.guide.aller('amphi')
-    assert banc.guide.etat()['itineraire'] == ['accueil', 'hall_nord', 'amphi']
+    # b204 : le détour par le sud reste raisonnable (amphi, à 9,5 m, ferait faire 59 m : refusé)
+    assert banc.guide.aller('b204')
+    assert banc.guide.etat()['itineraire'] == ['accueil', 'hall_nord', 'amphi', 'couloir_nord_1',
+                                               'b204']
     assert any('position du robot inconnue' in m for m in banc.messages)
     # Sans position, le couloir à éviter vient de la distance restante
     banc.tourner(7.0, jusqu_a=())        # 3,4 m faits : le robot a passé hall_nord
@@ -358,8 +369,8 @@ def test_stop_pendant_l_attente(dossier):
     banc = banc_avec_preparation(dossier, prep)
     banc.guide.aller('b204')
     banc.guide.stop()
-    assert banc.guide.etat() == {'etat': 'attente', 'cible': None, 'reste_m': None,
-                                 'itineraire': []}
+    assert v1(banc.guide.etat()) == {'etat': 'attente', 'cible': None, 'reste_m': None,
+                                     'itineraire': []}
     prep.verdict = None
     banc.tourner(5.0, jusqu_a=())
     assert not banc.moteur.etat()['en_cours'] and banc.guide.etat()['cible'] is None
@@ -374,19 +385,23 @@ def test_cible_inconnue_sans_attendre(dossier):
 
 
 def test_reperage_perdu_en_route_n_est_pas_un_obstacle(dossier):
-    """Le pont arrête le robot (repérage perdu) : ni bloque, ni détour ; reprise ensuite."""
+    """
+    Repérage perdu en route (vague 4) : état perdu, robot arrêté, ni bloque ni détour.
+
+    Reprise quand le robot sait de nouveau où il est, puis arrivée.
+    """
     banc = Banc(dossier)
     perdu = []
     banc.guide.suspension = lambda: perdu[0] if perdu else None
     banc.guide.aller('b204')
     banc.tourner(5.0, jusqu_a=())
-    perdu.append('Repérage perdu : le robot est arrêté.')
-    banc.tourner(20.0, obstacle=lambda g, m: True, jusqu_a=('echec', 'detour'))
+    perdu.append('repérage perdu')
+    banc.tourner(20.0, jusqu_a=('echec', 'detour'))
     etat = banc.guide.etat()
-    assert etat['etat'] == 'en_route'
-    assert etat['message'] == 'Repérage perdu : le robot est arrêté.'
+    assert etat['etat'] == 'perdu' and etat['message'].startswith('Robot perdu (repérage perdu)')
+    assert not banc.moteur.etat()['en_cours']
     assert 'bloque' not in banc.etats() and banc.guide.detours == 0
-    assert banc.changements[-1]['message'].startswith('Repérage perdu')
     perdu.clear()
-    etat = banc.tourner(60.0, obstacle=lambda g, m: False)      # le pont laisse repartir
+    etat = banc.tourner(60.0)
     assert etat['etat'] == 'arrive' and 'message' not in etat and banc.guide.detours == 0
+    assert banc.etats() == ['en_route', 'perdu', 'en_route', 'arrive']

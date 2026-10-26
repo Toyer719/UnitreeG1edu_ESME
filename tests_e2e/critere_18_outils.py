@@ -3,13 +3,15 @@
 
   critere_18_outils.py variante-a --api URL --lieu ID
       repère d'Unitree figé de la répétition (départ du robot) : avant le repérage (non repéré,
-      pas de map → odom, « Y aller » refusé), « Repérer le robot » à la marque (1804 avec la pose
+      pas de map → odom, « Y aller » refusé), « Repérer le robot » sans pose, depuis le point
+      principal (vague 4, section 11.2 : sa pose part dans /reperage/demander ; 1804 avec la pose
       (0, 0, 0) et repetition.pcd), map → base_link contre la vérité terrain, 2 m puis un quart de
       tour par /cmd_vel (donc par le pont et le faux G1) malgré la dérive, puis la relocalisation
       coupée (/faux_slam/panne muet) : perdu, puis repéré quand elle reprend
   critere_18_outils.py variante-b --api URL --lieu ID
-      repère d'Unitree tourné (3 ; 9 ; 0,5) : repérage à la marque refusé (502, sans map → odom),
-      puis réussi en donnant la pose du robot (2,5 ; 10 ; 0), avec la pose convertie dans 1804
+      repère d'Unitree tourné (3 ; 9 ; 0,5) : repérage refusé avec une pose fausse donnée exprès,
+      l'origine d'Unitree (502, sans map → odom) ; puis « Repérer le robot » sans pose réussit, car le
+      robot est bien sur le point principal (2,5 ; 10 ; 0), avec la pose convertie dans 1804
   critere_18_outils.py restes --lieux DOSSIER
       aucun processus lancé avec ces lieux ne doit rester (code 1 sinon, avec la liste)
 
@@ -32,7 +34,7 @@ RACINE = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RACINE))
 sys.path.insert(0, str(RACINE / "ws" / "src" / "g1_nav"))
 
-MARQUE = (2.5, 10.0, 0.0)
+MARQUE = (2.5, 10.0, 0.0)          # le point principal du demo (la salle accueil), où le robot apparaît
 REPERE_B = (3.0, 9.0, 0.5)
 TOLERANCE_M = 0.1
 TOLERANCE_RAD = 0.05
@@ -47,8 +49,11 @@ def verifier(condition, message):
         raise Echec(message)
 
 
+PREFIXE = "critère 18"      # le critère 21 réutilise ces outils sous son nom
+
+
 def dire(texte):
-    print(f"[critère 18] {texte}", flush=True)
+    print(f"[{PREFIXE}] {texte}", flush=True)
 
 
 def ecart(a, b):
@@ -84,7 +89,8 @@ def francais(reponse):
 class Ecoute:
     """/reperage/etat (validé), /g1_jumeau/odom (vérité), TF, requêtes slam_operate ; /cmd_vel."""
 
-    def __init__(self):
+    def __init__(self, avant_fil=None):
+        """avant_fil : fonction appelée avec l'écoute avant le démarrage du fil (abonnements en plus)."""
         import rclpy
         import tf2_ros
         from geometry_msgs.msg import Twist
@@ -109,6 +115,8 @@ class Ecoute:
         self.noeud.create_subscription(Request, "/api/slam_operate/request", self._sur_requete, 10)
         self.pub_vitesse = self.noeud.create_publisher(Twist, "/cmd_vel", 10)
         self.pub_panne = self.noeud.create_publisher(String, "/faux_slam/panne", 10)
+        if avant_fil is not None:
+            avant_fil(self)
         self.executeur = SingleThreadedExecutor(context=self.contexte)
         self.executeur.add_node(self.noeud)
         self._fin = threading.Event()
@@ -243,12 +251,13 @@ def variante_a(args):
         # avant le repérage
         _, e = appel(args.api, "GET", "/api/robot/etat")
         verifier(not e["repere"] and e["etat"] == "non_repere", f"avant le repérage, l'état devrait être non repéré : {e}")
-        verifier(e["marque"] == {"x": 2.5, "y": 10.0, "theta": 0.0}, f"marque au sol : {e['marque']}")
+        verifier(e["marque"] == {"x": 2.5, "y": 10.0, "theta": 0.0}, f"pose de repérage : {e['marque']}")
+        verifier((e["principal"] or {}).get("salle") == "accueil", f"point principal : {e['principal']}")
         verifier(ecoute.tf("map", "odom") is None, "TF map → odom publié avant le repérage")
         code, r = appel(args.api, "POST", "/api/guide/aller", {"cible": "b204"})
         verifier(code == 409 and francais(r), f"« Y aller » avant le repérage : {code} {r} (409 attendu)")
         dire(f"avant le repérage : non repéré, pas de map → odom, « Y aller » refusé ({r['detail'][:60]}…)")
-        # repérage à la marque
+        # repérage sans pose : depuis le point principal (vague 4), qui est aussi l'origine du repère figé
         avant = len(ecoute.requetes)
         code, r, duree = reperer(args.api, {"lieu": args.lieu, "etage": "rdc"})
         verifier(code == 200, f"POST /api/robot/reperer : {code} {r}")
@@ -260,7 +269,7 @@ def variante_a(args):
                  f"1804 : pose ({d['x']}, {d['y']}, q_z {d['q_z']}) au lieu de (0, 0, 0)")
         verifier(d["address"].endswith("repetition.pcd"), f"1804 : address {d['address']}")
         dire(f"1804 reçue par le faux service : pose (0, 0, 0), address {d['address']}")
-        verifier_tf_et_verite(ecoute, "à la marque")
+        verifier_tf_et_verite(ecoute, "au point principal")
         correction_avant = ecoute.tf("map", "odom")
         # 2 m tout droit (vers x = 4,5), puis un quart de tour à gauche, par /cmd_vel → pont → faux G1
         depart = ecoute.verite
@@ -308,17 +317,19 @@ def variante_b(args):
         demarrer(args.api, args.lieu)
         attendre_relais(args.api, ecoute, args.lieu)
         _, e = appel(args.api, "GET", "/api/robot/etat")
-        verifier(e["marque"] == {"x": 3.0, "y": 9.0, "theta": 0.5}, f"marque au sol : {e['marque']}")
-        # à la marque : le robot (au départ, (2,5 ; 10 ; 0)) n'y est pas
-        code, r, _ = reperer(args.api, {"lieu": args.lieu, "etage": "rdc"})
-        verifier(code == 502 and francais(r), f"repérage à la marque : {code} {r} (502 attendu)")
-        dire(f"repérage à la marque refusé (502) : {r['detail']}")
+        # vague 4 (section 11.2) : la pose de repérage par défaut est le point principal, pas l'origine d'Unitree
+        verifier(e["marque"] == {"x": 2.5, "y": 10.0, "theta": 0.0}, f"pose de repérage : {e['marque']}")
+        # une pose fausse donnée exprès (l'origine d'Unitree, à 1,1 m du robot) : refusée
+        code, r, _ = reperer(args.api, {"lieu": args.lieu, "etage": "rdc", "x": REPERE_B[0], "y": REPERE_B[1],
+                                        "cap": REPERE_B[2]})
+        verifier(code == 502 and francais(r), f"repérage à une pose fausse : {code} {r} (502 attendu)")
+        dire(f"repérage à une pose fausse refusé (502) : {r['detail']}")
         time.sleep(1.0)
         verifier(ecoute.tf("map", "odom") is None, "map → odom publié après un repérage refusé")
-        # en donnant la pose du robot
+        # sans pose : le robot est bien sur le point principal (2,5 ; 10 ; 0)
         avant = len(ecoute.requetes)
-        code, r, duree = reperer(args.api, {"lieu": args.lieu, "etage": "rdc", "x": 2.5, "y": 10.0, "cap": 0.0})
-        verifier(code == 200 and r["repere"], f"repérage à (2,5 ; 10 ; 0) : {code} {r}")
+        code, r, duree = reperer(args.api, {"lieu": args.lieu, "etage": "rdc"})
+        verifier(code == 200 and r["repere"], f"repérage depuis le point principal : {code} {r}")
         d = requete_1804(ecoute, avant)
         u = carte_vers_unitree(MARQUE, REPERE_B)
         cap = quaternion_vers_cap((d["q_x"], d["q_y"], d["q_z"], d["q_w"]))

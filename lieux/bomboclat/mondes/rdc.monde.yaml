@@ -92,4 +92,4 @@ pietons:
   aller_retour: true}
 - {id: pieton_5, trajet: [[2.75, 3], [5.25, 7.25], [9.25, 4], [10.75, 3], [15.5, 3], [19.25, 5.75], [
       22.25, 3.75], [23.75, 6.5], [26.5, 4.5]], vitesse: 1, aller_retour: true}
-depart_robot: {x: 36, y: 25.25, theta: 1.8326}
+depart_robot: {x: 1, y: 1, theta: 0}

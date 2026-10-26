@@ -1,0 +1,17 @@
+# Scène des passants (section 11.3 du plan, critère 23). Format : atelier/lieu/schemas/scene.schema.json.
+version: 1
+id: immobile_couloir
+nom: "Passant immobile au milieu du couloir nord"
+description: >-
+  Un passant reste debout au milieu du couloir nord, en (12,0 ; 13,0), et ne voit pas le robot
+  (reaction: aucune). Il reste 1,18 m libre de chaque côté : le robot doit passer à côté de lui,
+  sans détour ni contact, en gardant au moins 0,20 m bord à bord (0,71 m de centre à centre).
+lieu: demo
+etage: rdc
+pietons:
+  - {id: passant, trajet: [[12.0, 13.0], [12.5, 13.0]], vitesse: 1.0, aller_retour: true, reaction: aucune,
+     pauses: [{point: 0, duree_s: 3600}]}
+trajets: [[accueil, b204]]
+essais: 5
+reglages_guide: {retour_auto: false}
+mesures: {reussite_min: 1.0, distance_bord_min_m: 0.2, contacts_robot_max: 0, detours_max: 0, duree_max_s: 180}

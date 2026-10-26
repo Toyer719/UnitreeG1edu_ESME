@@ -45,7 +45,9 @@ def faux(tmp_path):
     env = {k: v for k, v in os.environ.items()
            if k not in ('G1_SIMU', 'G1_INTERFACES', 'G1_CYCLONEDDS_URI', 'G1_JETSON', 'G1_JETSON_NOM')}
     env.update(PATH=f'{bin_}:/usr/bin:/bin', JOURNAL_APPELS=str(journal), ATELIER_LIEUX=str(lieux),
-               ROS_DOMAIN_ID='61', G1_SLAM_FAUX='1')
+               ROS_DOMAIN_ID='61', G1_SLAM_FAUX='1', G1_PILOTAGE_JETON_FICHIER=str(tmp_path / 'jeton_pilotage'))
+    for cle in ('G1_PILOTAGE', 'G1_PILOTAGE_PORT', 'G1_PILOTAGE_JETON'):
+        env.pop(cle, None)
 
     class Faux:
         dossier = tmp_path
@@ -68,8 +70,12 @@ def faux(tmp_path):
 
 # --- Commandes produites -------------------------------------------------------------------
 
-def test_docker_run_du_contrat():
-    """La commande de lancement sur le robot, dans l'ordre de la section 10.2."""
+def test_docker_run_du_contrat(monkeypatch):
+    """La commande de lancement sur le robot, dans l'ordre de la section 10.2 (et 11.5 : pilotage)."""
+    for cle in ('G1_PILOTAGE', 'G1_PILOTAGE_PORT', 'G1_VITESSE_MAX', 'G1_SIMU', 'G1_INTERFACES'):
+        monkeypatch.delenv(cle, raising=False)
+    monkeypatch.setenv('G1_PILOTAGE_JETON', 'jeton-test')
+
     class Args:
         veille = False
         etage = 'rdc'
@@ -79,7 +85,8 @@ def test_docker_run_du_contrat():
 
     env = jetson.environnement_conteneur(Args, local=False, ident='demo')
     assert env == [('ROS_DOMAIN_ID', '0'), ('G1_INTERFACES', 'auto'), ('G1_LIEU', 'demo'),
-                   ('G1_ETAGE', 'rdc'), ('G1_LANCEMENT', 'navigation')]
+                   ('G1_ETAGE', 'rdc'), ('G1_LANCEMENT', 'navigation'), ('G1_PILOTAGE', '1'),
+                   ('G1_PILOTAGE_PORT', '8010'), ('G1_PILOTAGE_JETON', 'jeton-test')]
     cmd = jetson.arguments_run('g1-jetson', 'g1-jetson:arm64', jetson.Brut('"$(id -u):$(id -g)"'),
                                jetson.Brut('"$HOME/robot-g1/lieux:/lieux:ro"'),
                                jetson.Brut('"$HOME/robot-g1/journaux/jetson:/journaux"'), env)
@@ -88,7 +95,8 @@ def test_docker_run_du_contrat():
         'docker run -d --name g1-jetson --network host --init --restart no --stop-timeout 20 '
         '--user "$(id -u):$(id -g)" --cpus 4 --memory 4g ')
     assert ('-e ROS_DOMAIN_ID=0 -e G1_INTERFACES=auto -e G1_LIEU=demo -e G1_ETAGE=rdc '
-            '-e G1_LANCEMENT=navigation -v "$HOME/robot-g1/lieux:/lieux:ro" '
+            '-e G1_LANCEMENT=navigation -e G1_PILOTAGE=1 -e G1_PILOTAGE_PORT=8010 '
+            '-e G1_PILOTAGE_JETON=jeton-test -v "$HOME/robot-g1/lieux:/lieux:ro" '
             '-v "$HOME/robot-g1/journaux/jetson:/journaux" g1-jetson:arm64') in texte
     assert '--privileged' not in texte and '--rm' not in texte and '--runtime' not in texte
     avec_runc = jetson.arguments_run('g1-jetson', 'g1-jetson:arm64', '1000:1000', 'l:/lieux:ro', 'j:/journaux',
@@ -175,10 +183,12 @@ def test_hote_du_jetson(monkeypatch):
 def test_contexte_de_construction(tmp_path):
     a = tmp_path / 'a'
     paquets = jetson.assembler_contexte(a)
-    assert paquets == ['g1_bridge', 'g1_nav']
+    assert paquets == ['g1_bridge', 'g1_nav', 'g1_pilotage']
     for chemin in ['Dockerfile', 'docker/demarrer.sh', 'docker/env.sh', 'docker/reseau.py',
                    'docker/presence.py', 'docker/cyclonedds.xml.modele', 'unitree_api/package.xml',
-                   'unitree_api/msg/Request.msg', 'python/atelier/__init__.py',
+                   'unitree_api/msg/Request.msg', 'unitree_hg/package.xml', 'unitree_hg/msg/LowCmd.msg',
+                   'ws/g1_pilotage/package.xml', 'python/atelier/lieu/pilotage.py',
+                   'python/atelier/__init__.py',
                    'python/atelier/lieu/robot.py', 'python/atelier/lieu/schemas/etat_pont.schema.json',
                    'python/atelier/scan/__init__.py', 'python/atelier/scan/slam_client.py',
                    'ws/g1_nav/package.xml', 'ws/g1_bridge/package.xml']:
@@ -207,12 +217,13 @@ def test_contexte_sans_pont(tmp_path):
     racine = tmp_path / 'depot'
     shutil.copytree(RACINE / 'docker', racine / 'docker', ignore=shutil.ignore_patterns('tests', '__pycache__'))
     shutil.copytree(jetson.UNITREE_API, racine / jetson.UNITREE_API.relative_to(RACINE))
+    shutil.copytree(jetson.UNITREE_HG, racine / jetson.UNITREE_HG.relative_to(RACINE))
     shutil.copytree(RACINE / 'atelier' / 'lieu', racine / 'atelier' / 'lieu')
     (racine / 'atelier' / 'scan').mkdir()
     for f in ['atelier/__init__.py', 'atelier/scan/__init__.py', 'atelier/scan/slam_client.py']:
         shutil.copy2(RACINE / f, racine / f)
     shutil.copytree(RACINE / 'ws' / 'src' / 'g1_nav', racine / 'ws' / 'src' / 'g1_nav')
-    with pytest.raises(jetson.Erreur, match='g1_bridge absent'):
+    with pytest.raises(jetson.Erreur, match='g1_bridge.* absent'):
         jetson.assembler_contexte(tmp_path / 'c1', racine=racine)
     assert jetson.assembler_contexte(tmp_path / 'c2', racine=racine, incomplet=True) == ['g1_nav']
 
@@ -222,7 +233,8 @@ def test_version_et_commande_de_construction(tmp_path):
                                  date='2026-10-25T23:00:00+01:00')
     champs = presence.lire_version(_ecrire(tmp_path / 'VERSION', texte))
     assert champs == {'date': '2026-10-25T23:00:00+01:00', 'commit': '3f2c1ab', 'empreinte': 'abc',
-                      'arch': 'arm64', 'image': 'g1-jetson:arm64', 'paquets': 'unitree_api g1_bridge g1_nav'}
+                      'arch': 'arm64', 'image': 'g1-jetson:arm64',
+                      'paquets': 'unitree_api unitree_hg g1_bridge g1_nav'}
     assert presence.texte_version(champs) == '2026-10-25T23:00:00+01:00 3f2c1ab'
     cmd = jetson.commande_build('arm64', '/tmp/ctx', 'abc', sans_cache=True,
                                 base='ros:humble-ros-base-jammy@sha256:0123')
@@ -285,6 +297,8 @@ def test_demarrer_robot_a_blanc(faux):
     ligne_run = [x for x in sortie.splitlines() if 'docker run -d' in x][0]
     assert '--name g1-jetson --network host --init --restart no --stop-timeout 20' in ligne_run
     assert '-e ROS_DOMAIN_ID=0 -e G1_INTERFACES=auto -e G1_LIEU=essai -e G1_ETAGE=rdc' in ligne_run
+    assert '-e G1_PILOTAGE=1 -e G1_PILOTAGE_PORT=8010 -e G1_PILOTAGE_JETON=' in ligne_run
+    assert 'jeton du pilotage créé' in sortie and not (faux.dossier / 'jeton_pilotage').exists()
     assert 'g1-jetson:arm64' in ligne_run
 
 
@@ -296,10 +310,39 @@ def test_demarrer_local_a_blanc(faux):
     assert '--name g1-jetson-e2e-61' in ligne and 'ssh' not in ligne
     assert f'--user {os.getuid()}:{os.getgid()}' in ligne
     assert '-e ROS_DOMAIN_ID=61 -e G1_INTERFACES=defaut -e G1_LIEU=essai' in ligne
-    assert '-e G1_SIMU=true' in ligne
+    assert '-e G1_SIMU=true' in ligne and '-e G1_PILOTAGE=0' in ligne and 'JETON' not in ligne
     assert f'-v {faux.lieu.parent}:/lieux:ro' in ligne and 'jetson_local:/journaux' in ligne
     assert ligne.rstrip().endswith('g1-jetson:amd64')
     assert faux.appels_robot() == []
+    r = faux.lancer('demarrer', '--local', '--lieu', str(faux.lieu), '--etage', 'rdc', '--dry-run',
+                    G1_PILOTAGE='1', G1_PILOTAGE_PORT='18010', G1_PILOTAGE_JETON='abc')
+    ligne = [x for x in r.stdout.splitlines() if 'docker run -d' in x][0]
+    assert '-e G1_PILOTAGE=1 -e G1_PILOTAGE_PORT=18010 -e G1_PILOTAGE_JETON=abc' in ligne
+
+
+def test_variables_du_pilotage(monkeypatch, tmp_path):
+    """G1_PILOTAGE : 1 avec le robot, 0 sur le PC ; port vérifié ; jeton créé une fois (0600)."""
+    for cle in ('G1_PILOTAGE', 'G1_PILOTAGE_PORT', 'G1_PILOTAGE_JETON'):
+        monkeypatch.delenv(cle, raising=False)
+    fichier = tmp_path / 'opt' / 'jeton_pilotage'
+    monkeypatch.setenv('G1_PILOTAGE_JETON_FICHIER', str(fichier))
+    assert jetson.environnement_pilotage(local=True) == [('G1_PILOTAGE', '0')]
+    sans = jetson.environnement_pilotage(local=False)        # sans jeton : 127.0.0.1 seulement
+    assert sans == [('G1_PILOTAGE', '1'), ('G1_PILOTAGE_PORT', '8010')]
+    jetson.creer_jeton_pilotage(jetson.Executeur())
+    jeton = fichier.read_text().strip()
+    assert len(jeton) >= 24 and oct(fichier.stat().st_mode & 0o777) == '0o600'
+    jetson.creer_jeton_pilotage(jetson.Executeur())                 # déjà là : gardé
+    assert fichier.read_text().strip() == jeton
+    assert jetson.environnement_pilotage(local=False) == [('G1_PILOTAGE', '1'), ('G1_PILOTAGE_PORT', '8010'),
+                                                          ('G1_PILOTAGE_JETON', jeton)]
+    for cle, valeur, message in (('G1_PILOTAGE', '2', 'G1_PILOTAGE=2'), ('G1_PILOTAGE_PORT', '80', 'port'),
+                                 ('G1_PILOTAGE_PORT', '8010; rm', 'port')):
+        monkeypatch.setenv('G1_PILOTAGE', '1')
+        monkeypatch.setenv(cle, valeur)
+        with pytest.raises(jetson.Erreur, match=message):
+            jetson.environnement_pilotage(local=True)
+        monkeypatch.delenv('G1_PILOTAGE_PORT', raising=False)
 
 
 def test_tester_local_a_blanc(faux):

@@ -10,8 +10,12 @@
 #                    [arguments donnés après l'image]
 #        veille      le nœud de présence seul
 #        commande    la commande donnée après le nom de l'image (mise au point)
+#      et, avec G1_PILOTAGE=1 (navigation ou veille ; vague 4, section 11.5 du plan), le nœud
+#      pilotage : ros2 run g1_pilotage pilote --port $G1_PILOTAGE_PORT (API HTTP et WebSocket de
+#      l'onglet Pilotage, jeton G1_PILOTAGE_JETON)
 # docker stop (SIGTERM, relayé par --init) devient SIGINT pour ros2 launch, avec 15 s pour
-# s'arrêter proprement : le pont envoie un arrêt au robot en quittant.
+# s'arrêter proprement : le pont envoie un arrêt au robot en quittant. Le nœud pilotage s'arrête
+# d'abord (SIGINT, 5 s) : bras rendus au contrôleur d'Unitree en 1 s, StopMove, main au guide.
 # Codes de sortie : 0 arrêt demandé ; 1 réglage faux ou réseau du robot introuvable ;
 # sinon celui de ce qui a été lancé.
 # Pas de set -u : les scripts de ROS 2 ne le supportent pas.
@@ -30,6 +34,9 @@ export G1_LANCEMENT="${G1_LANCEMENT:-navigation}"
 export G1_LOCALISATION="${G1_LOCALISATION:-unitree}"
 export G1_SIMU="${G1_SIMU:-false}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+export G1_PILOTAGE="${G1_PILOTAGE:-0}"
+export G1_PILOTAGE_PORT="${G1_PILOTAGE_PORT:-8010}"
+DELAI_ARRET_PILOTAGE_S=5
 
 case "$G1_LANCEMENT" in
   navigation|veille|commande) ;;
@@ -59,6 +66,15 @@ if [ "$G1_LANCEMENT" = navigation ]; then
   # Premiers essais : vitesse maximale réduite (m/s), les plafonds du pont baissent d'autant
   if [ -n "$G1_VITESSE_MAX" ] && ! [[ "$G1_VITESSE_MAX" =~ ^0?\.[0-9]+$ ]]; then
     refuser "G1_VITESSE_MAX=$G1_VITESSE_MAX : une vitesse en m/s, plus petite que 1 (ex. 0.2)"
+  fi
+fi
+case "$G1_PILOTAGE" in
+  0|1) ;;
+  *) refuser "G1_PILOTAGE=$G1_PILOTAGE : 1 (nœud pilotage lancé) ou 0" ;;
+esac
+if [ "$G1_PILOTAGE" = 1 ]; then
+  if ! [[ "$G1_PILOTAGE_PORT" =~ ^[0-9]{4,5}$ ]] || [ "$G1_PILOTAGE_PORT" -lt 1024 ] || [ "$G1_PILOTAGE_PORT" -gt 65535 ]; then
+    refuser "G1_PILOTAGE_PORT=$G1_PILOTAGE_PORT : un port de 1024 à 65535 (8010 par défaut)"
   fi
 fi
 if [ "$G1_LANCEMENT" = commande ] && [ $# -eq 0 ]; then
@@ -97,6 +113,7 @@ VERSION=$(sed -n 's/^\(date\|commit\)=//p' "$G1/VERSION" 2>/dev/null | paste -sd
 dire "domaine $ROS_DOMAIN_ID, interfaces $TEXTE_INTERFACES," \
      "lieu ${G1_LIEU:-aucun}${G1_ETAGE:+ (étage $G1_ETAGE)}, lancement $G1_LANCEMENT" \
      "(localisation $G1_LOCALISATION, simu $G1_SIMU${G1_VITESSE_MAX:+, vitesse max $G1_VITESSE_MAX m/s})," \
+     "pilotage $([ "$G1_PILOTAGE" = 1 ] && [ "$G1_LANCEMENT" != commande ] && echo "port $G1_PILOTAGE_PORT${G1_PILOTAGE_JETON:+ avec jeton}" || echo non)," \
      "version ${VERSION:-inconnue}, $(uname -m)"
 
 # Contrôle des tâches : sans lui, bash fait ignorer SIGINT aux programmes lancés en arrière-plan,
@@ -123,6 +140,10 @@ arreter_processus() {
 
 arreter() {
   trap '' TERM INT
+  if [ -n "$PID_PILOTAGE" ]; then
+    dire "arrêt du nœud pilotage (bras rendus, StopMove, main au guide)"
+    arreter_processus "$PID_PILOTAGE" INT "$DELAI_ARRET_PILOTAGE_S" || kill -KILL "$PID_PILOTAGE" 2>/dev/null
+  fi
   dire "arrêt demandé : SIGINT à $NOM_PRINCIPAL ($DELAI_ARRET_S s au plus)"
   if ! arreter_processus "$PID_PRINCIPAL" INT "$DELAI_ARRET_S"; then
     dire "$NOM_PRINCIPAL ne s'est pas arrêté en $DELAI_ARRET_S s : SIGTERM, puis SIGKILL"
@@ -137,6 +158,14 @@ trap arreter TERM INT
 # --- 4. Le nœud de présence ---------------------------------------------------------------
 python3 "$G1/presence.py" &
 PID_PRESENCE=$!
+
+# --- 4 bis. Le nœud pilotage (vague 4) -----------------------------------------------------
+PID_PILOTAGE=""
+if [ "$G1_PILOTAGE" = 1 ] && [ "$G1_LANCEMENT" != commande ]; then
+  # l'exécutable lui-même (pas « ros2 run ») : SIGINT lui arrive directement, il arrête proprement
+  "$(ros2 pkg prefix g1_pilotage)/lib/g1_pilotage/pilote" --port "$G1_PILOTAGE_PORT" &
+  PID_PILOTAGE=$!
+fi
 
 # --- 5. Ce que demande G1_LANCEMENT -------------------------------------------------------
 case "$G1_LANCEMENT" in
@@ -163,5 +192,6 @@ wait "$PID_PRINCIPAL"
 CODE=$?
 trap '' TERM INT
 dire "$NOM_PRINCIPAL s'est arrêté seul (code $CODE)"
+[ -n "$PID_PILOTAGE" ] && { arreter_processus "$PID_PILOTAGE" INT "$DELAI_ARRET_PILOTAGE_S" || kill -KILL "$PID_PILOTAGE" 2>/dev/null; }
 [ "$PID_PRESENCE" != "$PID_PRINCIPAL" ] && { arreter_processus "$PID_PRESENCE" INT 3 || kill -KILL "$PID_PRESENCE" 2>/dev/null; }
 exit "$CODE"

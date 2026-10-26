@@ -83,3 +83,47 @@ def test_commande_mal_tapee(tmp_path, arguments):
     code, sortie = lancer(tmp_path, *arguments)
     assert code == 2 and "erreur :" in sortie and "--help" in sortie
     assert "required" not in sortie and "invalid choice" not in sortie
+
+
+# ---------------------------------------------------------------- g1-lieu migrer (vague 4, section 11.2)
+
+def _empreintes(dossier):
+    import hashlib
+    return {str(f.relative_to(dossier)): hashlib.sha256(f.read_bytes()).hexdigest()
+            for f in sorted(dossier.rglob("*")) if f.is_file()}
+
+
+def test_migrer_puis_valider(tmp_path):
+    copie = L.copier_lieu(DEMO, tmp_path / "essai")
+    avant = _empreintes(copie)
+    code, sortie = lancer(tmp_path, "migrer", "--lieu", "essai", "--a-blanc")
+    assert code == 0 and "Changements prévus (1) :" in sortie and "Essai à blanc" in sortie, sortie
+    assert "salles.yaml, salle « accueil », etiquettes : aucune → [principal]" in sortie
+    assert _empreintes(copie) == avant
+    code, sortie = lancer(tmp_path, "migrer", "--lieu", "essai")
+    assert code == 0 and "Lieu migré" in sortie and "sauvegarde des fichiers d'avant :" in sortie, sortie
+    sauvegardes = list((copie / "sauvegardes").iterdir())
+    assert len(sauvegardes) == 1
+    for nom in ("lieu.yaml", "salles.yaml", "itineraires.yaml", "mondes/rdc.monde.yaml"):
+        assert (sauvegardes[0] / nom).read_bytes() == (DEMO / nom).read_bytes(), nom
+    assert L.charger_salles(copie)[0].etiquettes == ["principal"]
+    code, sortie = lancer(tmp_path, "valider", "--lieu", "essai")
+    assert code == 0 and "Aucune erreur." in sortie, sortie
+    # second passage : rien ne change
+    avant = _empreintes(copie)
+    code, sortie = lancer(tmp_path, "migrer", "--lieu", "essai")
+    assert code == 0 and "Rien à changer" in sortie and _empreintes(copie) == avant
+
+
+def test_migrer_refuse_la_reference(tmp_path):
+    avant = _empreintes(DEMO)
+    code, sortie = lancer(tmp_path, "migrer", "--lieu", str(DEMO))
+    assert code == 1 and "Migration refusée" in sortie and "référence des tests" in sortie
+    assert _empreintes(DEMO) == avant
+    code, sortie = lancer(tmp_path, "migrer", "--lieu", "absent")
+    assert code == 1 and "n'existe pas" in sortie
+
+
+def test_migrer_mal_tape(tmp_path):
+    code, sortie = lancer(tmp_path, "migrer")
+    assert code == 2 and "il manque : --lieu" in sortie

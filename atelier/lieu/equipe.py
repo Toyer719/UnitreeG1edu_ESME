@@ -8,13 +8,27 @@ L'Atelier leur prépare :
   - des sujets ROS 2 entre les parties (SUJETS_EQUIPE) : ce que dit le visiteur, les visiteurs vus
     par la caméra, la personnalité active, les phrases à dire, et la demande de guidage.
 
+En plus du contrat (agent Équipe) :
+  - normaliser(texte) : la forme sans majuscules, accents ni ponctuation qui sert à comparer les
+    phrases du visiteur aux motifs de dialogues.yaml (le chatbot est dans atelier/equipe/) ;
+  - verifier_equipe(lieu) : ce que les schémas ne voient pas, entre les trois fichiers et avec
+    salles.yaml (personnalité inconnue d'une règle, motif jamais utilisé, caméra mal placée…) ;
+  - les messages des sujets : message_robot_dire, message_personnalite_active, personnalite_active ;
+  - PREREGLAGES_CAMERA : les réglages de départ de la See3CAM_11CUG.
+
+Ce module ne dépend que de la bibliothèque standard et d'atelier.lieu : il tourne aussi dans le
+conteneur du Jetson (Python du système, sans jsonschema).
+
 Fichier de l'agent Équipe (vague 4). Les fonctions et valeurs marquées « contrat » sont livrées et
 testées par l'intégrateur (atelier/tests/test_contrats_vague4.py) : elles gardent leur nom, leurs
 arguments et leur comportement.
 """
+import re
+import unicodedata
+from datetime import datetime
 from pathlib import Path
 
-from .fichiers import ErreurLieu, charger_fichier, dossier_lieu, ecrire_yaml, lire_yaml
+from .fichiers import ErreurLieu, charger_fichier, charger_salles, dossier_lieu, ecrire_yaml, lire_yaml
 from .validation import valider_donnees
 
 # ---------------------------------------------------------------- valeurs du contrat
@@ -87,6 +101,298 @@ def enregistrer_equipe(lieu, quoi, donnees):
     return chemin
 
 
+# ---------------------------------------------------------------- agent Équipe : valeurs
+
+# Repères des motifs de dialogues.yaml et des réponses (schéma dialogues)
+REPERE_SALLE = "{salle}"            # motif : une salle du lieu (id, nom ou alias de salles.yaml)
+REPERE_JOKER = "{*}"                # motif : n'importe quels mots (aucun compris)
+REPERES_MOTIF = (REPERE_SALLE, REPERE_JOKER)
+REPERES_REPONSE = ("{nom_salle}", "{salle}")     # réponse d'une règle guider : nom et id de la salle
+REPERES_PHRASE = ("{nom}",)                       # phrases d'une personnalité : nom de la salle visée
+_REPERE = re.compile(r"\{[^{}]*\}")
+
+SOURCES_DIRE = ("guide", "dialogue", "personnalite", "choregraphie", "atelier", "autre")     # schéma robot_dire
+
+# Réglages de départ d'une caméra connue (onglet Caméra, « Préréglage »). La See3CAM_11CUG d'e-con
+# Systems est une caméra couleur USB 3 (UVC) de 1,3 mégapixel, à objectif interchangeable (M12) :
+# son champ de vision dépend de l'objectif monté, et ses modes d'image sont à lire sur la caméra
+# (v4l2-ctl -d /dev/videoN --list-formats-ext). Valeurs à vérifier, comme la position sur le robot.
+PREREGLAGES_CAMERA = {
+    "See3CAM_11CUG": {
+        "modele": "See3CAM_11CUG",
+        "largeur": 1280, "hauteur": 720, "ips": 30,
+        "note": "Caméra couleur USB 3 de 1,3 mégapixel (e-con Systems), objectif M12 interchangeable. "
+                "Mode 1280 × 720 à 30 images par seconde proposé : vérifiez les modes avec "
+                "« v4l2-ctl -d /dev/videoN --list-formats-ext ». Le champ de vision dépend de l'objectif : "
+                "lisez sa fiche, ou mesurez-le (une règle à 1 m, d'un bord à l'autre de l'image).",
+    },
+}
+MODES_IMAGE_11CUG = ((1280, 960), (1280, 720), (640, 480))   # modes UVC habituels, à confirmer sur la caméra
+
+# Sens des valeurs de la caméra, pour la vérification (avertissements seulement)
+HAUTEUR_CAMERA_M = (0.5, 1.6)      # G1 debout : la poitrine est vers 1 m, la tête vers 1,3 m
+TANGAGE_MAX_RAD = 0.6              # au-delà, la caméra regarde surtout le sol ou le plafond
+ROULIS_MAX_RAD = 0.35              # caméra penchée sur le côté
+
+
+# ---------------------------------------------------------------- agent Équipe : textes
+
+def normaliser(texte):
+    """Forme d'un texte pour comparer une phrase aux motifs : minuscules, sans accents (é → e,
+    œ → oe), toute ponctuation (y compris l'apostrophe, « _ » et « - ») remplacée par un espace,
+    espaces réduits. « Emmène-moi à l'Accueil ! » → « emmene moi a l accueil »."""
+    texte = str(texte).replace("œ", "oe").replace("Œ", "oe").replace("æ", "ae").replace("Æ", "ae")
+    texte = unicodedata.normalize("NFKD", texte)
+    texte = "".join(c for c in texte if not unicodedata.combining(c)).lower()
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", texte).split())
+
+
+def reperes(texte):
+    """Repères {…} d'un texte, dans l'ordre (« je cherche {salle} » → ["{salle}"])."""
+    return _REPERE.findall(str(texte))
+
+
+def jetons_motif(motif):
+    """Mots normalisés d'un motif de dialogues.yaml, avec les repères {salle} et {*} gardés tels quels :
+    « Où est {salle} ? » → ["ou", "est", "{salle}"]. Un autre repère ({piece}…) devient un mot ordinaire
+    (verifier_equipe le signale : il ne correspondra jamais)."""
+    jetons = []
+    for morceau in re.split(r"(\{salle\}|\{\*\})", str(motif)):
+        if morceau in REPERES_MOTIF:
+            jetons.append(morceau)
+        else:
+            jetons += normaliser(morceau).split()
+    return jetons
+
+
+def formes_salles(salles):
+    """{forme normalisée: id de salle} pour l'id, le nom et chaque alias de chaque salle ; une forme
+    partagée par deux salles va à la première (verifier_equipe le signale). salles : Salle ou dict."""
+    formes = {}
+    for s in salles:
+        ident, nom, alias = _champs_salle(s)
+        for texte in [ident, nom, *alias]:
+            forme = normaliser(texte)
+            if forme:
+                formes.setdefault(forme, ident)
+    return formes
+
+
+def _champs_salle(s):
+    if isinstance(s, dict):
+        return s["id"], s.get("nom", s["id"]), list(s.get("alias") or [])
+    return s.id, s.nom, list(s.alias)
+
+
+def maintenant_iso():
+    """Heure locale ISO 8601 avec décalage, à la seconde (champ temps des messages)."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+# ---------------------------------------------------------------- agent Équipe : messages des sujets
+
+def personnalite_active(personnalites, ident=None):
+    """La personnalité (dict de personnalites.yaml) d'id ident, ou l'active du fichier ; None si absente.
+    personnalites : contenu de personnalites.yaml, ou None."""
+    if not personnalites:
+        return None
+    ident = ident or personnalites.get("active")
+    return next((p for p in personnalites.get("personnalites", []) if p.get("id") == ident), None)
+
+
+def message_personnalite_active(personnalite, lieu=None):
+    """Message de /personnalite/active (schéma personnalite_active) : la personnalité entière, telle
+    que dans personnalites.yaml, plus version, lieu (id) et temps (heure de la publication : quand
+    plusieurs éditeurs ont publié, un abonné garde le message le plus récent)."""
+    message = dict(personnalite)
+    message["version"] = 1
+    if lieu:
+        message["lieu"] = str(lieu)
+    message["temps"] = maintenant_iso()
+    return message
+
+
+def message_robot_dire(texte, source, code=None, priorite="normale", personnalite=None, langue="fr"):
+    """Message de /robot/dire (schéma robot_dire). personnalite : dict de la personnalité active ;
+    son id et ses réglages de voix sont joints (champs en plus, permis par le schéma), pour que la
+    partie voix n'ait pas à suivre /personnalite/active si elle ne veut pas."""
+    if source not in SOURCES_DIRE:
+        raise ValueError(f"source inconnue : {source} ({', '.join(SOURCES_DIRE)})")
+    message = {"version": 1, "texte": str(texte).strip()[:500], "source": source, "priorite": priorite,
+               "langue": langue, "temps": maintenant_iso()}
+    if code:
+        message["code"] = code
+    if personnalite:
+        message["personnalite"] = personnalite.get("id")
+        if personnalite.get("voix"):
+            message["voix"] = dict(personnalite["voix"])
+    return message
+
+
+# ---------------------------------------------------------------- agent Équipe : vérification
+
+def _contenus(lieu, donnees):
+    """(contenus, erreurs) : le contenu de chaque fichier de l'équipe, donné ou lu (None : absent)."""
+    contenus, erreurs = {}, []
+    for quoi, fichier in FICHIERS_EQUIPE.items():
+        if donnees is not None and quoi in donnees:
+            d = donnees[quoi]
+            problemes = [] if d is None else valider_equipe(quoi, d)
+            if problemes:
+                erreurs += problemes
+                d = None
+            contenus[quoi] = d
+            continue
+        try:
+            contenus[quoi] = charger_equipe(lieu, quoi)
+        except ErreurLieu as e:
+            erreurs += e.erreurs
+            contenus[quoi] = None
+    return contenus, erreurs
+
+
+def _verifier_personnalites(p, av):
+    fichier = FICHIERS_EQUIPE["personnalites"]
+    for perso in p["personnalites"]:
+        ou = f"{fichier}, personnalité « {perso['id']} »"
+        for code, phrase in sorted((perso.get("phrases") or {}).items()):
+            autres = [r for r in reperes(phrase) if r not in REPERES_PHRASE]
+            if autres:
+                av.append(f"{ou}, phrase « {code} » : {autres[0]} ne sera pas remplacé (seul {{nom}}, le nom de la "
+                          "salle, l'est)")
+        if perso.get("geste_salut") == 13:
+            av.append(f"{ou} : le geste 13 n'est pas confirmé sur ce G1 (à essayer au portique)")
+        voix = perso.get("voix") or {}
+        if voix.get("volume") == 0:
+            av.append(f"{ou} : volume 0, le robot sera muet dans ce mode")
+        if perso.get("vitesse_max") is not None and perso["vitesse_max"] < 0.1:
+            av.append(f"{ou} : vitesse_max de {perso['vitesse_max']:g} m/s, le robot avancera à peine")
+
+
+def _verifier_dialogues(d, personnalites, salles, err, av):
+    fichier = FICHIERS_EQUIPE["dialogues"]
+    ids_perso = [x["id"] for x in personnalites["personnalites"]] if personnalites else None
+    vus = {}                    # motif normalisé → règle qui l'a en premier
+    guider = False
+    for r in d["regles"]:
+        ou = f"{fichier}, règle « {r['id']} »"
+        if r["action"] == "guider":
+            guider = True
+        if r["action"] == "personnalite":
+            if ids_perso is None:
+                av.append(f"{ou} : elle passe à la personnalité « {r['personnalite']} », mais le lieu n'a pas de "
+                          "personnalites.yaml (onglet Personnalités)")
+            elif r["personnalite"] not in ids_perso:
+                err.append(f"{ou} : la personnalité « {r['personnalite']} » n'existe pas dans personnalites.yaml "
+                           f"(personnalités : {', '.join(ids_perso)})")
+        for motif in r["motifs"]:
+            inconnus = [x for x in reperes(motif) if x not in REPERES_MOTIF]
+            if inconnus:
+                err.append(f"{ou} : le motif « {motif} » contient {inconnus[0]}, qui n'existe pas (seuls "
+                           "{salle} et {*} existent) : il ne correspondra jamais")
+                continue
+            if reperes(motif).count(REPERE_SALLE) > 1:
+                av.append(f"{ou} : le motif « {motif} » a plusieurs {{salle}} : le robot va à la dernière citée")
+            jetons = jetons_motif(motif)
+            if not jetons:
+                err.append(f"{ou} : le motif « {motif} » ne contient aucun mot")
+                continue
+            if all(j == REPERE_JOKER for j in jetons):
+                av.append(f"{ou} : le motif « {motif} » correspond à toutes les phrases : les règles suivantes "
+                          "et le repli ne serviront plus")
+            cle = tuple(jetons)
+            if cle in vus:
+                av.append(f"{ou} : le motif « {motif} » ne servira jamais : la règle « {vus[cle]} », plus haut, "
+                          "a le même")
+            else:
+                vus[cle] = r["id"]
+        hors = [x for x in reperes(r["reponse"]) if x not in REPERES_REPONSE]
+        if hors:
+            av.append(f"{ou} : la réponse contient {hors[0]}, qui ne sera pas remplacé (seuls {{nom_salle}} et "
+                      "{salle} le sont, pour l'action guider)")
+        elif r["action"] != "guider" and reperes(r["reponse"]):
+            av.append(f"{ou} : {reperes(r['reponse'])[0]} n'est remplacé que pour l'action guider")
+    if reperes(d["repli"]):
+        av.append(f"{fichier} : le repli contient {reperes(d['repli'])[0]}, qui ne sera pas remplacé")
+    if guider and not salles:
+        av.append(f"{fichier} : des règles guident vers {{salle}}, mais le lieu n'a aucune salle (onglet Salles)")
+    # une même forme (id, nom ou alias) pour deux salles : le chatbot prend la première
+    proprietaires = {}
+    for s in salles:
+        ident, nom, alias = _champs_salle(s)
+        for texte in [ident, nom, *alias]:
+            forme = normaliser(texte)
+            if forme:
+                proprietaires.setdefault(forme, [])
+                if ident not in proprietaires[forme]:
+                    proprietaires[forme].append(ident)
+    for forme, ids in sorted(proprietaires.items()):
+        if len(ids) > 1:
+            av.append(f"salles.yaml : « {forme} » désigne plusieurs salles ({', '.join(ids)}) ; le chatbot choisit "
+                      f"« {ids[0]} »")
+
+
+def _verifier_camera(c, av):
+    fichier = FICHIERS_EQUIPE["camera"]
+    cam, det = c["camera"], c["detection"]
+    pos = cam["position"]
+    if not HAUTEUR_CAMERA_M[0] <= pos["z"] <= HAUTEUR_CAMERA_M[1]:
+        av.append(f"{fichier} : la caméra est à {pos['z']:g} m du sol ; sur le G1 debout, elle est d'habitude entre "
+                  f"{HAUTEUR_CAMERA_M[0]:g} et {HAUTEUR_CAMERA_M[1]:g} m (la poitrine est vers 1 m) : vérifiez z")
+    if abs(pos["tangage"]) > TANGAGE_MAX_RAD:
+        av.append(f"{fichier} : tangage de {pos['tangage']:g} rad : la caméra regarde surtout "
+                  f"{'le sol' if pos['tangage'] > 0 else 'le plafond'} (positif : vers le bas)")
+    if abs(pos["roulis"]) > ROULIS_MAX_RAD:
+        av.append(f"{fichier} : roulis de {pos['roulis']:g} rad : l'image est penchée")
+    if det["frequence_hz"] > cam["ips"]:
+        av.append(f"{fichier} : la détection à {det['frequence_hz']:g} Hz ne peut pas aller plus vite que la "
+                  f"caméra ({cam['ips']} images par seconde)")
+    if "champ_horizontal_deg" not in cam:
+        av.append(f"{fichier} : sans champ_horizontal_deg, l'onglet Caméra ne peut pas dessiner ce que voit la "
+                  "caméra (fiche de l'objectif, ou mesure)")
+    if "11cug" in normaliser(cam.get("modele", "")).replace(" ", "") and \
+            (cam["largeur"], cam["hauteur"]) not in MODES_IMAGE_11CUG:
+        av.append(f"{fichier} : {cam['largeur']} × {cam['hauteur']} n'est pas un mode habituel de la See3CAM_11CUG : "
+                  "vérifiez avec « v4l2-ctl -d " + cam["peripherique"] + " --list-formats-ext »")
+    if det["actif"] and det.get("modele"):
+        import atelier
+        modeles = atelier.RACINE / "modeles"
+        if modeles.is_dir() and not any(modeles.rglob(det["modele"])):
+            av.append(f"{fichier} : le modèle de détection « {det['modele']} » est introuvable dans "
+                      f"{modeles} sur cet ordinateur")
+
+
+def verifier_equipe(lieu, donnees=None):
+    """Vérifie les fichiers de l'équipe du lieu, entre eux et avec salles.yaml : ce que les schémas ne
+    voient pas. donnees : {quoi: contenu} à vérifier à la place du fichier enregistré (contenu d'un
+    onglet pas encore enregistré ; None : comme absent). Renvoie {ok, erreurs, avertissements}
+    (messages en français) ; ne lève jamais d'exception pour un fichier faux (il est dans erreurs).
+
+    erreurs : un fichier invalide, une règle qui passe à une personnalité inconnue, un motif qui ne
+    correspondra jamais. avertissements : ce qui marche, mais surprendra sans doute (motif jamais
+    utilisé, alias de deux salles, caméra mal placée…)."""
+    contenus, erreurs = _contenus(lieu, donnees)
+    avertissements = []
+    try:
+        salles = charger_salles(lieu)
+    except ErreurLieu as e:
+        salles = []
+        avertissements.append("salles.yaml est invalide : les règles qui guident vers {salle} ne trouveront aucune "
+                              f"salle ({e.erreurs[0]})")
+    if contenus["personnalites"]:
+        _verifier_personnalites(contenus["personnalites"], avertissements)
+    if contenus["dialogues"]:
+        _verifier_dialogues(contenus["dialogues"], contenus["personnalites"], salles, erreurs, avertissements)
+    if contenus["camera"]:
+        _verifier_camera(contenus["camera"], avertissements)
+    return {"ok": not erreurs, "erreurs": erreurs, "avertissements": avertissements}
+
+
 __all__ = ["ACTIONS_DIALOGUE", "DOSSIER_EXEMPLES", "ENTETES_EQUIPE", "EXEMPLE_PERSONNALITE_ACTIVE",
            "EXEMPLE_ROBOT_DIRE", "FICHIERS_EQUIPE", "SUJETS_EQUIPE", "charger_equipe", "chemin_equipe",
-           "enregistrer_equipe", "exemple_equipe", "valider_equipe"]
+           "enregistrer_equipe", "exemple_equipe", "valider_equipe",
+           # agent Équipe
+           "MODES_IMAGE_11CUG", "PREREGLAGES_CAMERA", "REPERES_MOTIF", "REPERES_PHRASE", "REPERES_REPONSE",
+           "REPERE_JOKER", "REPERE_SALLE", "SOURCES_DIRE", "formes_salles", "jetons_motif", "maintenant_iso",
+           "message_personnalite_active", "message_robot_dire", "normaliser", "personnalite_active", "reperes",
+           "verifier_equipe"]

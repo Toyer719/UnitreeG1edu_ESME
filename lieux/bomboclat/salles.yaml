@@ -6,6 +6,7 @@
   etage: rdc
   pose: {x: 1, y: 1, theta: 0}
   phrase_arrivee: ''
+  etiquettes: [principal]
 - id: '1'
   nom: '1'
   alias: []

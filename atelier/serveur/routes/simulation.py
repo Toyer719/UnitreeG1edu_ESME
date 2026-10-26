@@ -13,17 +13,23 @@
           Jetson) ; seulement au câble, serveur lancé après source ~/robot-g1/setup/robot.sh
   POST /api/simulation/arreter      arrête tout ce qui a été lancé (mode robot : g1-jetson arreter)
   GET  /api/simulation/etat         processus, simulation en cours, pont ROS 2
-  POST /api/guide/aller {cible}     publie l'id sur /guide/aller (répétition et robot : 409 tant que
-                                    le robot n'est pas repéré)
+  POST /api/guide/aller {cible, accompagner?, retour?}
+                                    publie sur /guide/aller : l'id seul (visite sans accompagnement,
+                                    retour selon le lieu), ou, avec accompagner ou retour, le JSON
+                                    {cible, accompagner, retour, source: atelier} (vague 4, 11.4) ;
+                                    cible « principal » : le point principal ; répétition et robot :
+                                    409 tant que le robot n'est pas repéré
   POST /api/guide/stop              publie sur /guide/stop (à défaut : g1-guide stop)
   POST /api/simulation/teleop {vx, vy, wz}   pilote le robot simulé (flèches de l'onglet Scan) :
         publie /cmd_vel par le pont ROS 2, avec un homme mort (vitesse nulle après 0,5 s sans consigne) ;
         en répétition, /cmd_vel passe par le pont vers le faux G1 ; refusée avec le vrai robot
 """
+import json
 import math
 import os
 import threading
 import time
+from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
@@ -46,8 +52,8 @@ ROLES = ("simulation", "faux_slam", "navigation")
 # Répétition : écart-type de position ajouté par le faux slam_operate à la relocalisation (m), pour
 # que la correction map → odom soit éprouvée comme avec le vrai robot (g1-slam ... --bruit)
 BRUIT_REPETITION_M = 0.01
-MESSAGE_REPERER = ("Repérez d'abord le robot : posez-le sur la marque au sol, tourné dans le sens de la "
-                   "flèche, puis cliquez sur « Repérer le robot ».")
+MESSAGE_REPERER = ("Repérez d'abord le robot : posez-le sur le point principal (l'étoile sur la carte), tourné "
+                   "dans le sens de la flèche, puis cliquez sur « Repérer le robot ».")
 
 
 class DemandeSimulation(BaseModel):
@@ -60,6 +66,8 @@ class DemandeSimulation(BaseModel):
 
 class DemandeAller(BaseModel):
     cible: str
+    accompagner: Optional[bool] = None   # vague 4 : suivre le visiteur (ralentir, l'attendre)
+    retour: Optional[bool] = None        # vague 4 : retour au point principal après la visite
 
 
 class DemandeTeleop(BaseModel):
@@ -81,6 +89,27 @@ def etat_simulation(etat):
             "processus": etat.gestionnaire.etat(),
             "ros": {"actif": pont["actif"], "erreur": pont["erreur"],
                     "guide_ecoute": etat.pont.abonnes_aller()}}
+
+
+def synchroniser_le_depart(dossier):
+    """Vague 4 (section 11.2) : la simulation part du point principal. Si depart_robot du monde de
+    son étage diffère (monde écrit à la main, ou par PUT …/monde), il y est recopié avant le
+    lancement. Renvoie un avertissement (texte) si le fichier a changé ou n'a pas pu l'être, sinon None."""
+    try:
+        from atelier.lieu.principal import point_principal, synchroniser_depart
+        principal = point_principal(dossier)
+        avant = None
+        if principal is not None and chemin_monde(dossier, principal.etage).is_file():
+            avant = charger_monde(dossier, principal.etage).depart_robot
+        if synchroniser_depart(dossier):
+            ancien = "" if avant is None else f" (il était en ({avant.x:g} ; {avant.y:g} ; {avant.theta:g}))"
+            return (f"Le départ du robot dans le monde a été remis sur le point principal « {principal.nom} »"
+                    f"{ancien} : la simulation part de là.")
+    except NotImplementedError:
+        return None
+    except Exception as e:      # noqa: BLE001 : un lieu imparfait ne doit pas empêcher la simulation
+        return f"Le départ du robot n'a pas pu être remis sur le point principal ({e})."
+    return None
 
 
 def verifier_terminal_robot():
@@ -154,6 +183,9 @@ async def demarrer(demande: DemandeSimulation, request: Request):
         raise ErreurAtelier(409, "Le monde Gazebo de cet étage n'existe pas encore : dans l'onglet Carte, "
                                  "cliquez sur « Fabriquer la carte », puis relancez la simulation.")
     avertissements = []
+    depart = synchroniser_le_depart(dossier)
+    if depart:
+        avertissements.append(depart)
     navigation = demande.navigation
     if navigation and not chemin_carte(dossier, demande.etage).is_file():
         raise ErreurAtelier(409, "Cet étage n'a pas de carte 2D : le guide ne peut pas naviguer. Dans "
@@ -235,6 +267,7 @@ def aller(demande: DemandeAller, request: Request):
         dossier = dossier_du_lieu(etat.simulation["lieu"])
         try:
             connus = {s.id for s in charger_salles(dossier)} | set(charger_itineraires(dossier).noeuds)
+            connus.add("principal")     # le point principal (vague 4, section 11.4)
         except ErreurLieu:
             connus = None
         if connus is not None and cible not in connus:
@@ -243,11 +276,24 @@ def aller(demande: DemandeAller, request: Request):
     if not etat.pont.actif:
         raise ErreurAtelier(503, "Pas de liaison avec ROS 2 : "
                             + (etat.pont.erreur or "le pont ROS 2 du serveur n'est pas démarré") + ".")
-    ecoute = etat.pont.aller(cible)
+    # vague 4 (section 11.4) : avec accompagner ou retour, la demande part en JSON (schéma demande_guide)
+    message = cible
+    if demande.accompagner is not None or demande.retour is not None:
+        corps = {"cible": cible, "accompagner": bool(demande.accompagner), "source": "atelier"}
+        if demande.retour is not None:
+            corps["retour"] = demande.retour
+        message = json.dumps(corps)
+    ecoute = etat.pont.aller(message)
     reponse = {"envoye": cible, "ecoute": ecoute}
+    if message != cible:
+        reponse["demande"] = json.loads(message)
     if ecoute == 0:
         reponse["avertissement"] = ("Aucun guide n'écoute /guide/aller : lancez la simulation (avec la "
                                     "navigation) ou g1-guide navigation.")
+    maitre = etat.pont.dernier("/mouvement/maitre")
+    if maitre and maitre.get("maitre") == "pilotage":
+        reponse["avertissement"] = ("Le robot est piloté à la main (onglet Pilotage) : le guide refusera "
+                                    "d'y aller. Rendez d'abord la main.")
     return reponse
 
 

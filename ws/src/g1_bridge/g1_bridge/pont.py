@@ -6,7 +6,8 @@ Nœud pont_g1 : /cmd_vel de Nav2 → ordres de marche 7105 du G1 (section 10.3 d
 
 Entrées : /cmd_vel (geometry_msgs/Twist), /api/sport/response (unitree_api/Response, best_effort),
 /reperage/etat (std_msgs/String JSON), /guide/stop (std_msgs/Empty), /pont/arret (std_msgs/Bool,
-fiable et transient_local).
+fiable et transient_local), /mouvement/maitre (std_msgs/String JSON, fiable et transient_local,
+vague 4 : « pilotage » fait ignorer /cmd_vel, état pilotage).
 Sorties : /api/sport/request (unitree_api/Request, fiable, profondeur 10) et /pont/etat
 (std_msgs/String JSON, schéma etat_pont, 2 Hz et à chaque changement d'état).
 
@@ -87,6 +88,7 @@ def creer_noeud():
             self.create_subscription(String, '/reperage/etat', self._sur_reperage, 10)
             self.create_subscription(Empty, '/guide/stop', self._sur_guide_stop, 10)
             self.create_subscription(Bool, '/pont/arret', self._sur_verrou, verrou)
+            self.create_subscription(String, '/mouvement/maitre', self._sur_maitre, verrou)
 
             # Temps mural monotone, même si use_sim_time est vrai
             mural = Clock(clock_type=ClockType.STEADY_TIME)
@@ -95,6 +97,7 @@ def creer_noeud():
 
             self.dernier_etat = None
             self.reperage_illisible = False
+            self.maitre_illisible = False
             self.pas_effectues = 0
             r = reglages
             journal.info(
@@ -171,6 +174,20 @@ def creer_noeud():
 
         def _sur_guide_stop(self, _msg):
             self._publier(self.pont.sur_guide_stop())
+
+        def _sur_maitre(self, msg):
+            try:
+                maitre = json.loads(msg.data).get('maitre')
+                envois = self.pont.sur_maitre(maitre)
+                self.maitre_illisible = False
+            except (ValueError, AttributeError):
+                if not self.maitre_illisible:
+                    self.get_logger().warning(f'/mouvement/maitre illisible : {msg.data[:200]!r}')
+                self.maitre_illisible = True
+                return
+            self.get_logger().info(f'maître des mouvements : {maitre}')
+            self._publier(envois)
+            self._publier_etat(seulement_si_change=True)
 
         def _sur_verrou(self, msg):
             self._publier(self.pont.sur_verrou(bool(msg.data)))

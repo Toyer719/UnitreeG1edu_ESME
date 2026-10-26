@@ -3,7 +3,7 @@
 <package format="3">
   <name>g1_jumeau</name>
   <version>0.1.0</version>
-  <description>Faux G1 pour la répétition dans Gazebo : faux service sport (7105), vitesses du robot proxy, odométrie /state_estimator/odom_pelvis qui dérive (Atelier G1, section 10.4 du plan)</description>
+  <description>Faux G1 pour la répétition dans Gazebo : faux service sport (7105 ; vague 4 : modes, danses, tâches), services arm et voice, rt/arm_sdk vérifié et /lowstate simulé, vitesses du robot proxy, odométrie /state_estimator/odom_pelvis qui dérive (Atelier G1, sections 10.4 et 11.5 du plan)</description>
   <maintainer email="joonhk913@gmail.com">joonho</maintainer>
   <license>TODO: License declaration</license>
 
@@ -12,6 +12,8 @@
   <depend>nav_msgs</depend>
   <depend>std_msgs</depend>
   <depend>unitree_api</depend>
+  <!-- Vague 4 (section 11.5) : rt/arm_sdk (LowCmd), /lowstate (LowState), /lf/bmsstate (BmsState) -->
+  <depend>unitree_hg</depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

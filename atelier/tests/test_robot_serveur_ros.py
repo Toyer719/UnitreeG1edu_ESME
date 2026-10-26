@@ -103,20 +103,29 @@ def test_reperer_par_le_relais(faux_relais, lieux, faux_bin, monkeypatch):
         assert attendre(lambda: etat.pont.reperage() is not None and etat.pont.abonnes_reperage() > 0, 15)
         e = c.get("/api/robot/etat").json()
         assert e["etat"] == "non_repere" and e["pont"]["etat"] == "attente_reperage"
-        # à la marque : pas de pose dans la demande
+        # sans pose : le robot est posé sur le point principal (vague 4, section 11.2), dont la pose
+        # complète part dans la demande (le relais la convertit vers le repère d'Unitree)
         r = c.post("/api/robot/reperer", json={"lieu": "demo", "etage": "rdc"})
         assert r.status_code == 200, r.text
         e = r.json()
         assert e["repere"] and e["etat"] == "repere" and e["position"] == {"x": 2.5, "y": 10.0, "theta": 0.0}
         assert e["precision_m"] == 0.02 and "précision 2 cm" in e["message"]
-        assert set(faux_relais.demandes[-1]) == {"id"} and faux_relais.demandes[-1]["id"] == e["demande"]
+        d = faux_relais.demandes[-1]
+        assert d == {"id": e["demande"], "x": 2.5, "y": 10.0, "theta": 0.0}
         # le robot est sur la carte : /ws/etat donne la pose du repérage, « Y aller » passe
         with c.websocket_connect("/ws/etat") as ws:
             m = ws.receive_json()
         assert m["mode"] == "repetition" and m["reperage"]["repere"]
         assert (m["robot"]["x"], m["robot"]["y"]) == (2.5, 10.0) and not m["robot"]["perimee"]
         assert c.post("/api/guide/aller", json={"cible": "b204"}).status_code == 200
-        # ailleurs que sur la marque : x, y, cap → x, y, theta
+        # le point principal tourné et déplacé : la demande par défaut le suit
+        r = c.put("/api/lieux/demo/principal", json={"x": 3.0, "y": 10.5, "theta": 1.5708})
+        assert r.status_code == 200 and "avertissement" in r.json(), r.text
+        assert c.get("/api/robot/etat").json()["marque"] == {"x": 3.0, "y": 10.5, "theta": 1.5708}
+        assert c.post("/api/robot/reperer", json={"lieu": "demo", "etage": "rdc"}).status_code == 200
+        d = faux_relais.demandes[-1]
+        assert (d["x"], d["y"], d["theta"]) == (3.0, 10.5, 1.5708)
+        # ailleurs que sur le point principal : x, y, cap → x, y, theta
         r = c.post("/api/robot/reperer", json={"lieu": "demo", "etage": "rdc", "x": 3.0, "y": 9.5, "cap": 0.5})
         assert r.status_code == 200
         d = faux_relais.demandes[-1]

@@ -76,7 +76,7 @@ def test_vitesses_pendant_duration_puis_zero_a_20_hz(client, lancer):
 
 def test_codes_d_erreur(client, lancer):
     pret(client, lancer)
-    cas = {client.requete('{}', api_id=7001): 3203,
+    cas = {client.requete('{}', api_id=7999): 3203,
            client.requete('pas du json'): 3204,
            client.requete('{"velocity": [0.1, 0.2], "duration": 0.5}'): 3204}
     for ident, code in cas.items():

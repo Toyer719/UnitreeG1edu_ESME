@@ -4,14 +4,18 @@
   g1-lieu creer ID --nom NOM     crée lieux/ID : un étage, l'accueil, un monde entouré de 4 murs
   g1-lieu valider --lieu L       vérifie le lieu L (chemin, ou id seul : demo) et dit quoi corriger
   g1-lieu liste                  liste les lieux de ~/robot-g1/lieux
+  g1-lieu migrer --lieu L [--depuis-depart] [--a-blanc]
+                                 vague 4 (section 11.2 du plan) : le point principal du lieu reçoit
+                                 l'étiquette « principal », après une sauvegarde des fichiers d'avant
 
 Lancé par bin/g1-lieu avec le Python de .venv-projet. Code de sortie : 0 si tout va bien,
-1 s'il y a des erreurs, 2 si la commande est mal tapée.
+1 s'il y a des erreurs (ou si la migration est refusée), 2 si la commande est mal tapée.
 """
 import argparse
 import sys
 
 from atelier.lieu import ErreurLieu, creer_lieu, dossier_lieu, lister_lieux, valider_lieu
+from atelier.lieu.principal import migrer_lieu, texte_migration
 
 
 # Messages d'argparse les plus courants, en français
@@ -82,9 +86,23 @@ def commande_liste(args):
     return 0
 
 
+def commande_migrer(args):
+    try:
+        rapport = migrer_lieu(args.lieu, depuis_depart=args.depuis_depart, a_blanc=args.a_blanc)
+    except ErreurLieu as e:
+        print("Migration refusée :")
+        for m in e.erreurs:
+            print(f"  - {m}")
+        return 1
+    print(texte_migration(rapport))
+    if rapport["changements"] and not rapport["a_blanc"]:
+        print(f"Vérification : g1-lieu valider --lieu {args.lieu}")
+    return 0
+
+
 def main(argv=None):
     p = Analyseur(prog="g1-lieu", description="Créer ou vérifier un paquet de lieu de l'Atelier G1.")
-    sous = p.add_subparsers(dest="commande", metavar="{creer,valider,liste}", parser_class=Analyseur)
+    sous = p.add_subparsers(dest="commande", metavar="{creer,valider,liste,migrer}", parser_class=Analyseur)
     sous.required = True
 
     c = sous.add_parser("creer", help="créer un lieu neuf", description="Créer un lieu neuf : un étage, "
@@ -104,6 +122,18 @@ def main(argv=None):
 
     li = sous.add_parser("liste", help="lister les lieux", description="Lister les lieux de ~/robot-g1/lieux.")
     li.set_defaults(fonction=commande_liste)
+
+    m = sous.add_parser("migrer", help="donner au lieu son point principal (format de la vague 4)",
+                        description="Point principal du lieu (l'accueil : départ de la simulation, pose du "
+                        "repérage, retour après chaque visite) : la salle « accueil » reçoit l'étiquette "
+                        "« principal », et accueil de lieu.yaml, son nœud et depart_robot s'alignent sur elle. "
+                        "Les fichiers d'avant sont d'abord copiés dans lieux/<id>/sauvegardes/. Un second "
+                        "passage ne change rien. lieux/demo (référence des tests) est refusé.")
+    m.add_argument("--lieu", required=True, help="dossier du lieu, ou son id seul (ex. bomboclat)")
+    m.add_argument("--depuis-depart", action="store_true",
+                   help="le point principal prend d'abord la pose depart_robot du monde de son étage")
+    m.add_argument("--a-blanc", action="store_true", help="montrer ce qui changerait, sans rien écrire")
+    m.set_defaults(fonction=commande_migrer)
 
     args = p.parse_args(argv)
     return args.fonction(args)

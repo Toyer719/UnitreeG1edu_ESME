@@ -1,34 +1,56 @@
 """
-Guide : emmène le robot jusqu'à une salle ou un nœud, et change de couloir s'il est coincé.
+Guide : emmène le robot jusqu'à une salle ou un nœud, puis revient seul au point principal.
 
-Sujets ROS 2 (section 4.2 du plan) :
-  /guide/aller  std_msgs/String  id de salle ou de nœud (« b204 », « accueil »)
-  /guide/stop   std_msgs/Empty   arrêt immédiat
-  /guide/etat   std_msgs/String  JSON {"etat", "cible", "reste_m", "itineraire", "message"?}, 5
-                                 fois par seconde et à chaque changement d'état ; message
-                                 (facultatif, section 10.7) : phrase pour l'utilisateur
-  /reperage/etat std_msgs/String JSON du relais odom_vers_tf (section 10.5), écouté
+Il accompagne le visiteur, attend les passants, contourne les couloirs bouchés, s'arrête quand il
+est perdu, et annonce chaque étape au visiteur (sections 4.2, 10.7 et 11.4 du plan).
 
-États : attente, en_route, bloque, detour, arrive, echec.
-  - bloque : la distance restante ne baisse plus depuis 3 s (5 s juste après le départ) ;
-  - detour : coincé depuis 8 s, le guide a annulé, marqué le couloir bloqué (120 s), puis
-    il est reparti par un autre chemin. L'état reste « detour » jusqu'à l'arrivée.
-  - attente avec un message, après /guide/aller : la navigation n'est pas encore prête (Nav2
-    démarre, ou le robot n'a pas encore de position sur la carte). Le guide réessaie à chaque
-    pas, DELAI_PREPARATION_S au plus, puis echec. Sans position sur la carte et si le relais dit
-    que le robot n'est pas repéré : echec tout de suite (« Robot non repéré... »).
-  - en route, repérage perdu : le pont arrête le robot. Ce n'est pas un couloir bouché : le guide
-    ne compte pas ce temps-là (ni bloque, ni détour) et le dit dans le message ; il reprend seul
-    quand le robot est de nouveau repéré.
+Sujets ROS 2 :
+  /guide/aller      std_msgs/String  id de salle ou de nœud (« b204 »), le mot « principal »,
+                                     ou du JSON {cible, accompagner?, retour?, source?} (schéma
+                                     demande_guide) ; l'id simple : visite sans accompagnement
+  /guide/stop       std_msgs/Empty   arrêt immédiat (toujours accepté), retour prévu annulé
+  /guide/etat       std_msgs/String  JSON (schéma etat_guide) {version, etat, cible, reste_m,
+                                     itineraire, mission, accompagner, visiteur, depuis_s,
+                                     message?, retour_dans_s?}, 5 fois par seconde et à chaque
+                                     changement
+  /guide/evenement  std_msgs/String  JSON (schéma evenement_guide), une fois par événement : la
+                                     phrase à dire au visiteur (départ, détour, arrivée, retour...)
+  /speed_limit      nav2_msgs/SpeedLimit  en pourcentage : le robot ralentit si le visiteur traîne
+  écoutés : /reperage/etat (relais odom_vers_tf), /personnes/lidar (detecteur_personnes),
+            /mouvement/maitre (verrou du pilotage, fiable et transient_local)
 
-Le guide ne parle jamais directement à Nav2 : il passe par un Moteur (moteurs.py). Le
-paramètre ROS « moteur » le choisit : nav2 (MoteurNav2), unitree (MoteurUnitree, écrit par
-l'agent Scan) ou factice (MoteurFactice, pour les essais sans simulation).
+États (atelier.lieu.comportement.ETATS_GUIDE) :
+  attente          au repos ; après un retour, au point principal, tourné selon sa flèche ; aussi
+                   avec un message quand la navigation n'est pas encore prête (Nav2 démarre, robot
+                   pas encore repéré : DELAI_PREPARATION_S au plus, puis echec) ;
+  en_route         visite vers la salle demandée (mission visite) ;
+  retour           retour automatique vers le point principal (mission retour),
+                   delai_avant_retour_s après une arrivée, un abandon ou un échec ; à l'arrivée, le
+                   robot se tourne dans le sens de la flèche (TOLERANCE_RETOUR_RAD), puis attente ;
+  bloque           plus de progrès depuis 3 s (5 s juste après le départ), personne devant ;
+  attente_passage  plus de progrès et une personne vue devant à 1,5 m au plus : le guide attend
+                   delai_passant_s (« Pardon, puis-je passer ? ») avant de déclarer le couloir
+                   bloqué ;
+  detour           couloir marqué bloqué (120 s), autre chemin, jusqu'à l'arrivée. Un détour
+                   déraisonnable (plus de detour_facteur_max fois le trajet direct et plus de
+                   detour_marge_m de plus) est refusé : le guide attend encore le passant, ou
+                   renonce ;
+  attente_visiteur le visiteur suivi traîne trop (distance_attendre_m) ou n'est plus vu depuis
+                   2 s : robot arrêté, delai_visiteur_s au plus, puis abandon (visiteur_perdu) et
+                   retour ;
+  perdu            repérage perdu (relais), ou plus de position sur la carte depuis 2 s : robot
+                   arrêté, delai_perdu_s au plus ; retrouvé : reprise ; sinon echec, sans retour ;
+  arrive, echec    fin d'une visite (le retour qui suit est un nouveau trajet, cible : le
+                   point principal).
 
-La logique (classe Guide) n'utilise pas ROS : elle se teste avec un moteur factice. Le nœud
-ROS (NoeudGuide) l'appelle depuis un seul fil, environ 5 fois par seconde.
+Le guide ne parle jamais directement à Nav2 : il passe par un Moteur (moteurs.py). Le paramètre
+ROS « moteur » le choisit : nav2 (MoteurNav2), unitree (MoteurUnitree) ou factice (MoteurFactice).
+
+La logique (classe Guide) n'utilise pas ROS : elle se teste avec un moteur factice et une fausse
+horloge. Le nœud ROS (NoeudGuide) l'appelle depuis un seul fil, environ 5 fois par seconde.
 
   ros2 run g1_nav guide --ros-args -p lieu:=demo -p etage:=rdc -p moteur:=nav2
+      [-p accompagnement:=false] [-p passants:=false] [-p delai_avant_retour_s:=5.0] ...
 """
 import json
 import math
@@ -36,7 +58,11 @@ import signal
 import sys
 import time
 
+from atelier.lieu.comportement import (DELAI_VISITEUR_DEPART_S, DELAIS_GUIDE,
+                                       DISTANCE_VISITEUR_DEPART_M, ETATS_GUIDE, evenement,
+                                       TOLERANCE_RETOUR_M)
 from g1_nav.routeur import CibleInconnue, Routeur
+from g1_nav.visiteur import lire_personnes, personne_devant, SuiviVisiteur
 
 try:
     import rclpy
@@ -45,7 +71,10 @@ except ImportError:      # logique seule, sans ROS (tests)
     rclpy = None
     Node = object
 
-ETATS = ('attente', 'en_route', 'bloque', 'detour', 'arrive', 'echec')
+ETATS = ETATS_GUIDE
+# États d'une mission en cours (le guide lit le moteur à chaque pas)
+ETATS_ACTIFS = ('en_route', 'retour', 'bloque', 'detour', 'attente_passage', 'attente_visiteur',
+                'perdu')
 
 # Sans progrès pendant DELAI_BLOQUE_S : bloque ; pendant DELAI_DETOUR_S : détour
 DELAI_BLOQUE_S = 3.0
@@ -62,10 +91,55 @@ DELAI_PREPARATION_S = 90.0
 MESSAGE_PREPARATION = 'La navigation démarre : départ dès qu\'elle est prête.'
 MESSAGE_NON_REPERE = 'Robot non repéré : cliquez sur « Repérer le robot ».'
 MESSAGE_REPERAGE_EN_COURS = 'Repérage en cours : départ dès que le robot est repéré.'
-MESSAGE_PERDU = ('Repérage perdu : le robot est arrêté, il repartira dès qu\'il aura retrouvé sa '
-                 'position.')
+MESSAGE_PERDU = 'repérage perdu'
 # /reperage/etat plus vieux : on ne s'y fie plus
 DELAI_REPERAGE_PERIME_S = 2.0
+
+# Vague 4 (section 11.4) ------------------------------------------------------------------
+# Réglages du guide : ceux du contrat (DELAIS_GUIDE, section guide de lieu.yaml), plus ceux qui
+# ne sont que des paramètres ROS du nœud (désactiver l'accompagnement ou la règle du passant,
+# refuser les détours déraisonnables)
+REGLAGES_NOEUD = {
+    'accompagnement': True,         # false : {accompagner: true} part sans suivre le visiteur
+    'passants': True,               # false : un passant devant ne change rien (bloque, détour)
+    'detour_facteur_max': 3.5,      # détour refusé au-delà de ce facteur du trajet direct...
+    'detour_marge_m': 45.0,         # ... et de cette marge (m) : max(facteur × d, d + marge)
+    'vitesse_max_nav2': 0.0,        # vx_max du contrôleur de Nav2 (m/s) ; 0 : inconnue
+}
+REGLAGES_DEFAUT = dict(DELAIS_GUIDE, **REGLAGES_NOEUD)
+# Passant qui bouche : personne vue devant (±60°) à moins de DISTANCE_PASSANT_M, dans la dernière
+# seconde ; partie depuis DELAI_PASSANT_PARTI_S alors que le robot n'avance toujours pas : bloque
+DISTANCE_PASSANT_M = 1.5
+PERSISTANCE_DEVANT_S = 1.0
+DELAI_PASSANT_PARTI_S = 2.0
+# Détour refusé à cause d'un passant : le guide attend encore, au plus ce nombre de fois
+MAX_PROLONGATIONS_PASSANT = 2
+# Nav2 renonce pendant l'attente du passant : nouvel essai, au plus toutes les DELAI_REPRISE_S
+DELAI_REPRISE_S = 5.0
+# « Pardon, puis-je passer ? » au plus une fois par ANNONCE_PASSANT_S (le robot qui avance un peu
+# puis se rebloque devant la même personne ne le répète pas)
+ANNONCE_PASSANT_S = 20.0
+# Visiteur : il redevient « proche » sous distance_ralentir_m − HYSTERESE_VISITEUR_M ; à moins de
+# DISTANCE_BUT_SANS_ATTENTE_M du but, le robot ne s'arrête plus pour l'attendre
+HYSTERESE_VISITEUR_M = 0.3
+DISTANCE_BUT_SANS_ATTENTE_M = 1.0
+# Messages de /personnes/lidar plus vieux : ignorés
+DELAI_PERSONNES_PERIME_S = 1.0
+# Plus de position sur la carte depuis DELAI_TF_PERDU_S pendant une mission : robot perdu
+DELAI_TF_PERDU_S = 2.0
+# Retour : à l'arrivée, si le cap est à plus de SEUIL_ORIENTATION_RAD de la flèche, le robot se
+# tourne (ESSAIS_ORIENTATION fois au plus, DELAI_ORIENTATION_S chacune) ; but :
+# TOLERANCE_RETOUR_RAD
+SEUIL_ORIENTATION_RAD = 0.09
+ESSAIS_ORIENTATION = 3
+DELAI_ORIENTATION_S = 15.0
+# Ralenti pour le visiteur : ralenti × la vitesse mesurée sur les FENETRE_VITESSE_S dernières
+# secondes (en pourcentage de vitesse_max_nav2), POURCENTAGE_MIN au moins. Le Collision Monitor
+# freine déjà le robot quand le visiteur le suit de près : un pourcentage de la vitesse maximale
+# ne le ralentirait pas toujours.
+FENETRE_VITESSE_S = 4.0
+VITESSE_MESURABLE_M_S = 0.05
+POURCENTAGE_MIN = 10.0
 
 
 def distance_segment(p, a, b):
@@ -80,17 +154,25 @@ def distance_segment(p, a, b):
     return math.dist(p, (ax + t * dx, ay + t * dy))
 
 
+def ecart_angle(a, b):
+    """Renvoie a − b ramené entre −π et π."""
+    return math.atan2(math.sin(a - b), math.cos(a - b))
+
+
 class Guide:
     """Machine à états du guide, sans ROS : routeur + moteur + position du robot."""
 
     def __init__(self, routeur, moteur, position=None, horloge=time.monotonic,
                  journal=None, au_changement=None, depart_defaut='accueil', preparation=None,
-                 delai_preparation=DELAI_PREPARATION_S, suspension=None):
+                 delai_preparation=DELAI_PREPARATION_S, suspension=None, reglages=None,
+                 principal=None, personnes=None, au_evenement=None, limiter_vitesse=None,
+                 maitre=None):
         """
         Prépare le guide.
 
         routeur       : Routeur de l'étage ;
-        moteur        : un Moteur (moteurs.py) ;
+        moteur        : un Moteur (moteurs.py) ; s'il a une méthode tourner(angle), elle sert à se
+                        mettre dans le sens de la flèche du point principal au retour ;
         position      : fonction sans argument qui renvoie (x, y, theta) dans map, ou None ;
         horloge       : temps en secondes (fausse horloge des tests) ;
         journal       : fonction qui reçoit les messages pour l'utilisateur (print par défaut) ;
@@ -99,9 +181,18 @@ class Guide:
         preparation   : fonction sans argument : None si la navigation est prête, sinon
                         ('attendre', message) ou ('echec', message) ;
         delai_preparation : attente maximale de la navigation après /guide/aller, en s ;
-        suspension    : fonction sans argument : None si le robot peut avancer, sinon le message
-                        qui dit pourquoi il est arrêté (repérage perdu) ; ce temps ne
-                        compte pas pour bloque ni détour.
+        suspension    : fonction sans argument : None si le robot sait où il est, sinon la raison
+                        (repérage perdu) : le guide passe à « perdu » ;
+        reglages      : délais et distances (REGLAGES_DEFAUT, atelier.lieu.reglages_guide) ;
+        principal     : id du point principal (nœud de l'étage), cible du retour ; None : pas de
+                        retour automatique ;
+        personnes     : fonction sans argument : liste de Personne vues maintenant (visiteur.py),
+                        ou None sans message frais du détecteur ; None : ni accompagnement ni
+                        passants ;
+        au_evenement  : fonction appelée avec chaque message /guide/evenement (dict) ;
+        limiter_vitesse : fonction appelée avec un pourcentage de la vitesse permise, ou None pour
+                        lever la limite ;
+        maitre        : fonction sans argument : « guide » ou « pilotage » (verrou des mouvements).
         """
         self.routeur = routeur
         self.moteur = moteur
@@ -113,111 +204,165 @@ class Guide:
         self.preparation = preparation
         self.delai_preparation = delai_preparation
         self.suspension = suspension
+        self.reglages = dict(REGLAGES_DEFAUT, **{k: v for k, v in (reglages or {}).items()
+                                                 if v is not None})
+        self.principal = principal if principal in routeur.noeuds else None
+        self.personnes = personnes
+        self.au_evenement = au_evenement
+        self.limiter_vitesse = limiter_vitesse
+        self.maitre = maitre
         self._etat = 'attente'
         self._message = ''
+        self._depuis = horloge()
         self._en_attente = None          # (cible, fin de l'attente) : départ dès que prêt
         self._cible = None
         self._itineraire = []
         self._reste = None
         self._dernier_progres = horloge()
-        self._etat_route = 'en_route'    # en_route, ou detour après un changement de couloir
+        self._etat_route = 'en_route'    # en_route ou retour ; detour après un détour
         self._relances = 0
+        self._mission = None             # visite, retour, ou None au repos
+        self._demande = {}
+        self._retour_prevu = None        # instant du retour automatique
+        self._limite = 'inconnue'        # limite de vitesse envoyée (None : aucune)
+        self._suivi = SuiviVisiteur()
+        self._accompagner = False
+        self._nouvelle_mission(None, None)
         self.detours = 0
         self.arrets = 0
+        self.attentes_passage = 0
 
     # ------------------------------------------------------------ commandes
 
-    def aller(self, cible):
-        """Part vers une salle ou un nœud. Renvoie True si le robot est parti (ou va partir)."""
-        self.detours = 0
-        self.arrets = 0
-        self._etat_route = 'en_route'
+    def aller(self, cible, accompagner=False, retour=None, source=None):
+        """
+        Part vers une salle ou un nœud (« principal » : le point principal), en visite.
+
+        accompagner : suivre le visiteur (la personne la plus proche au départ) ; retour : retour
+        automatique au point principal après la visite (None : retour_auto du lieu) ; source : qui
+        demande (journal). Renvoie True si le robot est parti (ou va partir).
+        """
+        self._retour_prevu = None
         self._en_attente = None
+        texte = str(cible).strip()
+        if self._pilote():
+            self.moteur.annuler()
+            self._nouvelle_mission('visite', texte)
+            return self._refuser_pilotage()
+        if texte == 'principal' and self.principal is not None:
+            texte = self.principal
         try:
-            but = self.routeur.resoudre(cible)
+            but = self.routeur.resoudre(texte)
         except CibleInconnue as e:
-            self._cible, self._itineraire, self._reste = str(cible).strip(), [], None
+            self._nouvelle_mission('visite', texte)
+            if texte == 'principal':
+                return self._echouer('le lieu n\'a pas de point principal sur cet étage')
             return self._echouer(f'cible inconnue : {e}')
-        self._cible = but
+        accompagner = bool(accompagner) and bool(self.reglages['accompagnement']) \
+            and self.personnes is not None
+        self._nouvelle_mission('visite', but, accompagner, {'retour': retour, 'source': source})
+        if source:
+            self.journal(f'demande de « {source} » : {but}'
+                         + (' (accompagner le visiteur)' if accompagner else ''))
         verdict = self.preparation() if self.preparation else None
         if verdict is not None:
             genre, message = verdict
             if genre == 'echec':
                 return self._echouer(message)
             self._en_attente = (but, self.horloge() + self.delai_preparation)
-            self._itineraire, self._reste = [], None
             self._changer('attente', message, message)
             return True
-        return self._partir_vers(but)
+        return self._commencer_visite(but)
 
-    def _partir_vers(self, but):
-        """Itinéraire depuis la position du robot, envoyé au moteur."""
-        depart, position = self._depart()
-        if depart is None:
-            return self._echouer('le graphe des itinéraires est vide')
-        itineraire = self.routeur.itineraire(depart, but)
-        if itineraire is None:
-            return self._echouer(f'aucun chemin libre de « {depart} » à « {but} »')
-        # Le robot est déjà sur le premier couloir : inutile de revenir au nœud de départ
-        sauter = (position is not None and len(itineraire) > 1
-                  and math.dist(position, self.routeur.noeuds[itineraire[1]])
-                  < self.routeur.distance(itineraire[0], itineraire[1]))
-        return self._partir(itineraire, self.routeur.poses(itineraire, sauter), 'en_route')
+    def refuser(self, cible, raison):
+        """Demande /guide/aller illisible : echec avec la raison, sans mouvement."""
+        self._retour_prevu = None
+        self._en_attente = None
+        self._nouvelle_mission('visite', str(cible).strip()[:40] or None)
+        return self._echouer(raison)
 
     def stop(self):
-        """Arrête le robot tout de suite ; le guide revient en attente."""
+        """Arrête le robot tout de suite ; le guide revient en attente (retour prévu annulé)."""
+        actif = (self._etat in ETATS_ACTIFS or self._en_attente is not None
+                 or self._retour_prevu is not None)
+        mission = self._mission
         self._en_attente = None
+        self._retour_prevu = None
         self.moteur.annuler()
-        self._cible, self._itineraire, self._reste = None, [], None
+        self._nouvelle_mission(None, None)
         self._changer('attente', 'arrêt demandé')
+        if actif:
+            self._evenement('arret', salle=None, mission=mission)
 
     def pas(self):
         """Lit l'état du moteur et fait avancer la machine à états. Renvoie etat()."""
+        maintenant = self.horloge()
         if self._en_attente is not None:
-            self._attendre_preparation()
+            if self._pilote():
+                self._en_attente = None
+                self._refuser_pilotage()
+            else:
+                self._attendre_preparation()
             return self.etat()
-        if self._etat not in ('en_route', 'bloque', 'detour'):
+        if self._etat not in ETATS_ACTIFS:
+            if self._retour_prevu is not None:
+                if self._pilote():
+                    self._retour_prevu = None
+                    self.journal('retour annulé : le robot est piloté à la main')
+                elif maintenant >= self._retour_prevu:
+                    self._demarrer_retour()
+            return self.etat()
+        if self._pilote():
+            self._interrompre_pilotage()
+            return self.etat()
+        pose = self.position()
+        self._compter_parcours(pose)
+        if self._verifier_perdu(maintenant, pose):
+            return self.etat()
+        if self._etat == 'attente_visiteur':
+            self._attendre_visiteur(maintenant, pose)
+            return self.etat()
+        if self._orientation is not None:
+            self._suivre_orientation(maintenant)
             return self.etat()
         e = self.moteur.etat()
-        maintenant = self.horloge()
         if e['reste_m'] is not None:
             self._reste = e['reste_m']
         if e['arrive']:
-            self._reste = 0.0
-            self._changer('arrive', f'arrivé à « {self._cible} »')
+            self._arriver()
         elif e['echec']:
+            if self._etat == 'attente_passage':
+                self._reprendre_pendant_passage(maintenant)
             # Premier abandon sur ce trajet : on relance depuis le couloir actuel ; ensuite,
             # détour (un abandon isolé de Nav2 ne doit pas fermer un couloir)
-            if self._relances < 1:
+            elif self._relances < 1:
                 self._relances += 1
                 self._reprendre()
             else:
                 self._detourner('le moteur a renoncé deux fois')
         elif not e['en_cours']:
             self._echouer('le moteur s\'est arrêté sans arriver')
-        elif self._suspendre(maintenant):
-            pass
         else:
-            approche = self._reste is not None and self._reste < DISTANCE_APPROCHE_M
-            if e['progresse'] or approche:
-                self._dernier_progres = maintenant
-                if self._etat == 'bloque':
-                    self._changer(self._etat_route, 'le robot avance de nouveau')
-            immobile = maintenant - self._dernier_progres
-            if immobile >= DELAI_DETOUR_S:
-                self._detourner(f'aucun progrès depuis {immobile:.0f} s')
-            elif immobile >= DELAI_BLOQUE_S and self._etat != 'bloque':
-                self.arrets += 1
-                self._changer('bloque', f'aucun progrès depuis {immobile:.0f} s')
+            if self._recherche_jusqu_a is not None:
+                self._chercher_visiteur(maintenant, pose)
+            elif self._accompagner and self._surveiller_visiteur(maintenant, pose):
+                return self.etat()
+            self._suivre_progres(maintenant, e)
         return self.etat()
 
     def etat(self):
-        """Renvoie l'état à publier sur /guide/etat, au format des sections 4.2 et 10.7 du plan."""
-        reste = None if self._reste is None else round(float(self._reste), 2)
-        etat = {'etat': self._etat, 'cible': self._cible, 'reste_m': reste,
-                'itineraire': list(self._itineraire)}
+        """Renvoie le message de /guide/etat : schéma etat_guide, sections 4.2 à 11.4 du plan."""
+        maintenant = self.horloge()
+        reste = None if self._reste is None else round(max(0.0, float(self._reste)), 2)
+        etat = {'version': 1, 'etat': self._etat, 'cible': self._cible, 'reste_m': reste,
+                'itineraire': list(self._itineraire), 'mission': self._mission,
+                'accompagner': bool(self._accompagner),
+                'visiteur': self._suivi.resume(maintenant) if self._accompagner else None,
+                'depuis_s': round(max(0.0, maintenant - self._depuis), 1)}
         if self._message:
             etat['message'] = self._message
+        if self._retour_prevu is not None:
+            etat['retour_dans_s'] = round(max(0.0, self._retour_prevu - maintenant), 1)
         return etat
 
     @property
@@ -225,19 +370,378 @@ class Guide:
         """Vrai si une destination attend que la navigation soit prête."""
         return self._en_attente is not None
 
-    # ------------------------------------------------------------ interne
+    @property
+    def retour_prevu(self):
+        """Instant (horloge du guide) du retour automatique au point principal, ou None."""
+        return self._retour_prevu
 
-    def _suspendre(self, maintenant):
-        """Vrai si le robot est arrêté sans obstacle (repérage perdu) : le temps ne compte pas."""
-        pause = self.suspension() if self.suspension else None
-        if pause:
-            self._dernier_progres = maintenant
-            if pause != self._message:
-                self._changer(self._etat, pause, pause)
+    # ------------------------------------------------------------ missions
+
+    def _nouvelle_mission(self, mission, cible, accompagner=False, demande=None):
+        """Remet à zéro ce qui dépend du trajet : compteurs, visiteur, passant, perte, détours."""
+        self._mission = mission
+        self._cible = cible
+        self._demande = dict(demande or {})
+        self._itineraire, self._reste = [], None
+        self._etat_route = 'retour' if mission == 'retour' else 'en_route'
+        self._relances = 0
+        self.detours = 0
+        self.arrets = 0
+        self._orientation = None
+        self._essais_orientation = 0
+        self._retour_annonce = True
+        self._longueur_directe = None
+        self._parcouru = 0.0
+        self._derniere_pose = None
+        self._recentes = []              # (instant, x, y) des dernières secondes : vitesse mesurée
+        self._position_vue = False
+        self._sans_position_depuis = None
+        self._perdu_debut = None
+        self._passage_debut = None
+        self._passage_vu = None
+        self._passant_annonce = None     # instant du dernier « Pardon, puis-je passer ? »
+        self._devant_vu_a = None
+        self._prolongations = 0
+        self._derniere_reprise = None
+        self._attente_visiteur_debut = None
+        self._recherche_jusqu_a = None
+        self._ralenti = False
+        self._suivi.oublier()
+        self._accompagner = bool(accompagner)
+        self._lever_limite()
+
+    def _commencer_visite(self, but):
+        """Départ d'une visite : itinéraire, puis l'annonce (depart, ou seul sans visiteur vu)."""
+        if not self._partir_vers(but, 'en_route'):
+            return False
+        if self._accompagner:
+            if self._suivi.choisir(self._personnes_fraiches(), self.horloge(), self.position(),
+                                   DISTANCE_VISITEUR_DEPART_M):
+                self.journal(f'visiteur choisi (personne n° {self._suivi.id}, à '
+                             f'{self._suivi.distance:.1f} m)')
+                self._evenement('depart')
+            else:
+                # Personne en vue tout de suite : on le cherche encore DELAI_VISITEUR_DEPART_S
+                self._recherche_jusqu_a = self.horloge() + DELAI_VISITEUR_DEPART_S
+        else:
+            self._evenement('depart')
+        return True
+
+    def _retour_voulu(self):
+        voulu = self._demande.get('retour')
+        return bool(self.reglages['retour_auto']) if voulu is None else bool(voulu)
+
+    def _programmer_retour(self):
+        """Après une visite (arrivée, abandon, échec) : retour au point principal plus tard."""
+        if self._mission != 'visite' or not self._retour_voulu():
+            return
+        if self.principal is None:
+            return
+        if self.position() is None or (self.suspension and self.suspension()):
+            self.journal('pas de retour automatique : la position du robot est inconnue')
+            return
+        if self._pilote():
+            return
+        delai = float(self.reglages['delai_avant_retour_s'])
+        self._retour_prevu = self.horloge() + delai
+        self.journal(f'retour au point principal « {self.principal} » dans {delai:.0f} s')
+
+    def _demarrer_retour(self):
+        """Le retour automatique : nouveau trajet vers le point principal (mission retour)."""
+        self._retour_prevu = None
+        pose = self.position()
+        if pose is None or (self.suspension and self.suspension()):
+            self.journal('retour annulé : la position du robot est inconnue')
+            return
+        cible = self.principal
+        px, py, ptheta = self.routeur.pose_arrivee(cible)
+        if math.dist(pose[:2], (px, py)) <= TOLERANCE_RETOUR_M:
+            # Déjà au point principal : au plus une rotation sur place, sans annonce
+            self._nouvelle_mission('retour', cible)
+            self._retour_annonce = False
+            self._itineraire, self._reste = [cible], 0.0
+            if not self._orienter():
+                self._finir_retour()
+            return
+        verdict = self.preparation() if self.preparation else None
+        if verdict is not None:
+            self.journal(f'retour annulé : {verdict[1]}')
+            return
+        self._nouvelle_mission('retour', cible)
+        self._retour_annonce = True
+        self._evenement('retour')
+        self._partir_vers(cible, 'retour')
+
+    def _finir_retour(self):
+        """
+        Arrivé au point principal, dans le sens de la flèche : attente.
+
+        Événement retour_arrive, sauf si le robot y était déjà.
+        """
+        annoncer = self._retour_annonce
+        cible = self._cible
+        pose = self.position()
+        detail = ''
+        if pose is not None:
+            px, py, ptheta = self.routeur.pose_arrivee(cible)
+            detail = (f' (à {math.dist(pose[:2], (px, py)):.2f} m et '
+                      f'{math.degrees(abs(ecart_angle(pose[2], ptheta))):.0f}° de la flèche)')
+        nom = self._nom(cible)
+        self._nouvelle_mission(None, None)
+        self._changer('attente', f'de retour au point principal « {cible} »{detail}',
+                      f'De retour au point principal « {nom} ».')
+        if annoncer:
+            self._evenement('retour_arrive', salle=cible, nom=nom, mission='retour')
+
+    def _arriver(self):
+        """Le moteur dit arrivé : fin de la visite (puis retour prévu), ou fin du retour."""
+        self._reste = 0.0
+        if self._mission == 'retour':
+            if not self._orienter():
+                self._finir_retour()
+            return
+        self._lever_limite()
+        self._changer('arrive', f'arrivé à « {self._cible} »')
+        phrase = (self.routeur.salles.get(self._cible) or {}).get('phrase_arrivee') or None
+        self._evenement('arrivee', texte=phrase)
+        self._programmer_retour()
+
+    def _orienter(self):
+        """Au point principal : se tourne dans le sens de la flèche. True si le robot tourne."""
+        tourner = getattr(self.moteur, 'tourner', None)
+        pose = self.position()
+        if tourner is None or pose is None or self._essais_orientation >= ESSAIS_ORIENTATION:
+            return False
+        ecart = ecart_angle(self.routeur.pose_arrivee(self._cible)[2], pose[2])
+        if abs(ecart) <= SEUIL_ORIENTATION_RAD:
+            return False
+        self._essais_orientation += 1
+        if not tourner(ecart):
+            return False
+        self._orientation = self.horloge()
+        self._changer('retour', f'se tourne de {math.degrees(ecart):.0f}° vers la flèche',
+                      'Le robot se tourne dans le sens de la flèche du point principal.')
+        return True
+
+    def _suivre_orientation(self, maintenant):
+        e = self.moteur.etat()
+        fini = e['arrive'] or e['echec'] or not e['en_cours']
+        if not fini and maintenant - self._orientation < DELAI_ORIENTATION_S:
+            return
+        if not fini:
+            self.moteur.annuler()
+        self._orientation = None
+        if not self._orienter():
+            self._finir_retour()
+
+    # ------------------------------------------------------------ visiteur
+
+    def _personnes_fraiches(self):
+        if self.personnes is None:
+            return None
+        try:
+            return self.personnes()
+        except Exception as e:     # noqa: BLE001 : un détecteur fautif n'arrête pas le guide
+            self.journal(f'personnes illisibles : {e}')
+            return None
+
+    def _chercher_visiteur(self, maintenant, pose):
+        """Les DELAI_VISITEUR_DEPART_S du départ : le visiteur est-il derrière ? Sinon : seul."""
+        if self._suivi.choisir(self._personnes_fraiches(), maintenant, pose,
+                               DISTANCE_VISITEUR_DEPART_M):
+            self._recherche_jusqu_a = None
+            self.journal(f'visiteur choisi (personne n° {self._suivi.id}, à '
+                         f'{self._suivi.distance:.1f} m)')
+            self._evenement('depart')
+        elif maintenant >= self._recherche_jusqu_a:
+            self._recherche_jusqu_a = None
+            self._accompagner = False
+            self.journal('personne à accompagner : le robot part seul')
+            self._evenement('seul')
+
+    def _surveiller_visiteur(self, maintenant, pose):
+        """
+        En route : ralentit si le visiteur traîne, l'attend s'il est trop loin ou n'est plus vu.
+
+        Renvoie True si le robot s'arrête pour l'attendre.
+        """
+        obs = self._suivi.observer(self._personnes_fraiches(), maintenant, pose)
+        d = obs['distance_m']
+        proche_du_but = self._reste is not None and self._reste < DISTANCE_BUT_SANS_ATTENTE_M
+        if not proche_du_but and (not obs['vu'] or d > self.reglages['distance_attendre_m']):
+            raison = (f'le visiteur est à {d:.1f} m' if obs['vu']
+                      else f'le visiteur n\'est plus vu depuis {obs["age_s"] or 0:.0f} s')
+            self.moteur.annuler()
+            self._attente_visiteur_debut = maintenant
+            delai = float(self.reglages['delai_visiteur_s'])
+            self._changer('attente_visiteur', raison, 'Le visiteur ne suit plus : le robot '
+                          f'l\'attend ({delai:.0f} s au plus).')
+            self._evenement('attente_visiteur')
             return True
-        if self._message:
-            self._changer(self._etat, 'le robot peut de nouveau avancer')
+        if obs['vu'] and d > self.reglages['distance_ralentir_m']:
+            if not self._ralenti:
+                self._ralenti = True
+                pourcentage = self._pourcentage_ralenti()
+                self._limiter(pourcentage)
+                self.journal(f'le visiteur traîne ({d:.1f} m) : le robot ralentit '
+                             f'({pourcentage:.0f} % de la vitesse maximale)')
+                self._evenement('ralentir')
+        elif self._ralenti and obs['vu'] and \
+                d < self.reglages['distance_ralentir_m'] - HYSTERESE_VISITEUR_M:
+            self._ralenti = False
+            self._lever_limite()
+            self.journal('le visiteur suit de nouveau : vitesse normale')
         return False
+
+    def _attendre_visiteur(self, maintenant, pose):
+        """Robot arrêté : le visiteur revient (reprise), ou l'attente dure trop (abandon)."""
+        if self._suivi.reprendre(self._personnes_fraiches(), maintenant, pose,
+                                 self.reglages['distance_ralentir_m']):
+            self._ralenti = False
+            self._lever_limite()
+            self._evenement('visiteur_retrouve')
+            self._relancer('le visiteur est revenu')
+            return
+        delai = float(self.reglages['delai_visiteur_s'])
+        if maintenant - self._attente_visiteur_debut >= delai:
+            self._evenement('visiteur_perdu')
+            self._echouer(f'le visiteur ne suit plus depuis {delai:.0f} s : visite abandonnée',
+                          annoncer=False)
+
+    # ------------------------------------------------------------ robot perdu, verrou
+
+    def _verifier_perdu(self, maintenant, pose):
+        """
+        Robot perdu (repérage perdu, ou plus de position) : arrêt, reprise ou échec.
+
+        Renvoie True si le pas est traité ici.
+        """
+        raison = self.suspension() if self.suspension else None
+        if pose is not None:
+            self._position_vue = True
+            self._sans_position_depuis = None
+        elif self._position_vue:
+            if self._sans_position_depuis is None:
+                self._sans_position_depuis = maintenant
+            elif maintenant - self._sans_position_depuis >= DELAI_TF_PERDU_S and not raison:
+                raison = f'plus de position sur la carte depuis {DELAI_TF_PERDU_S:.0f} s'
+        delai = float(self.reglages['delai_perdu_s'])
+        if self._etat == 'perdu':
+            if not raison:
+                self._perdu_debut = None
+                self._evenement('retrouve')
+                self._relancer('le robot sait de nouveau où il est')
+            elif maintenant - self._perdu_debut >= delai:
+                nom = self._nom(self.principal) if self.principal else None
+                ou = f'sur le point principal « {nom} »' if nom else 'sur le point principal'
+                self._echouer(f'Le robot est perdu depuis {delai:.0f} s : replacez-le {ou}, puis '
+                              'cliquez sur « Repérer le robot ».', retour=False)
+            return True
+        if not raison:
+            return False
+        self.moteur.annuler()
+        self._orientation = None
+        self._perdu_debut = maintenant
+        self._changer('perdu', raison,
+                      f'Robot perdu ({raison}) : il est arrêté et attend de retrouver sa position '
+                      f'({delai:.0f} s au plus).')
+        self._evenement('perdu')
+        return True
+
+    def _pilote(self):
+        if self.maitre is None:
+            return False
+        try:
+            return self.maitre() == 'pilotage'
+        except Exception:      # noqa: BLE001
+            return False
+
+    def _refuser_pilotage(self):
+        self._evenement('pilotage')
+        return self._echouer('le robot est piloté à la main (onglet Pilotage) : rendez la main '
+                             'pour l\'envoyer', retour=False, annoncer=False)
+
+    def _interrompre_pilotage(self):
+        mission = self._mission
+        self.moteur.annuler()
+        self._nouvelle_mission(None, None)
+        self._changer('attente', 'le pilotage a pris la main',
+                      'Piloté à la main : le guide s\'est arrêté.')
+        self._evenement('pilotage', salle=None, mission=mission)
+
+    # ------------------------------------------------------------ progrès, passants, détours
+
+    def _suivre_progres(self, maintenant, e):
+        approche = self._reste is not None and self._reste < DISTANCE_APPROCHE_M
+        if e['progresse'] or approche:
+            self._dernier_progres = maintenant
+            if self._etat == 'bloque':
+                self._changer(self._etat_route, 'le robot avance de nouveau')
+            elif self._etat == 'attente_passage':
+                self._changer(self._etat_route, 'le passant s\'est écarté')
+                if self._passant_annonce is not None:      # « Merci ! » après « Pardon... »
+                    self._evenement('passage_libre')
+            return
+        immobile = maintenant - self._dernier_progres
+        devant = self._passant_devant(maintenant)
+        if self._etat == 'attente_passage':
+            if devant:
+                self._passage_vu = maintenant
+            if maintenant - self._passage_debut >= float(self.reglages['delai_passant_s']):
+                self._detourner(f'le passant bouche le passage depuis '
+                                f'{maintenant - self._passage_debut:.0f} s', passant=True)
+            elif maintenant - self._passage_vu >= DELAI_PASSANT_PARTI_S:
+                # Plus personne devant, et le robot n'avance toujours pas : un autre obstacle
+                self._dernier_progres = maintenant - DELAI_BLOQUE_S
+                self.arrets += 1
+                self._changer('bloque', 'plus personne devant, mais le robot n\'avance pas')
+            return
+        if immobile >= DELAI_BLOQUE_S and devant:
+            self._passage_debut = self._passage_vu = maintenant
+            self.attentes_passage += 1
+            delai = float(self.reglages['delai_passant_s'])
+            self._changer('attente_passage', 'une personne bouche le passage (aucun progrès '
+                          f'depuis {immobile:.0f} s)', 'Une personne bouche le passage : le robot '
+                          f'attend qu\'elle s\'écarte ({delai:.0f} s au plus).')
+            self._annoncer_passant(maintenant)
+        elif immobile >= DELAI_DETOUR_S:
+            self._detourner(f'aucun progrès depuis {immobile:.0f} s')
+        elif immobile >= DELAI_BLOQUE_S and self._etat != 'bloque':
+            self.arrets += 1
+            self._changer('bloque', f'aucun progrès depuis {immobile:.0f} s')
+
+    def _annoncer_passant(self, maintenant):
+        """« Pardon, puis-je passer ? », au plus une fois par ANNONCE_PASSANT_S (pas en boucle)."""
+        if self._passant_annonce is not None \
+                and maintenant - self._passant_annonce < ANNONCE_PASSANT_S:
+            return
+        self._passant_annonce = maintenant
+        self._evenement('passant_gene')
+
+    def _passant_devant(self, maintenant):
+        """Vrai si une personne (autre que le visiteur) a été vue devant depuis une seconde."""
+        if not self.reglages['passants'] or self.personnes is None:
+            return False
+        p = personne_devant(self._personnes_fraiches(), DISTANCE_PASSANT_M,
+                            sauf=self._suivi.id if self._accompagner else None)
+        if p is not None:
+            self._devant_vu_a = maintenant
+        return (self._devant_vu_a is not None
+                and maintenant - self._devant_vu_a <= PERSISTANCE_DEVANT_S)
+
+    def _reprendre_pendant_passage(self, maintenant):
+        """Nav2 a renoncé pendant l'attente du passant : nouvel essai, sans fermer de couloir."""
+        if self._derniere_reprise is not None \
+                and maintenant - self._derniere_reprise < DELAI_REPRISE_S:
+            return
+        self._derniere_reprise = maintenant
+        couloir = self._couloir_actuel()
+        reste = self._itineraire[self._itineraire.index(couloir[1]):] if couloir \
+            else self._itineraire
+        if reste and not self.moteur.demarrer(self.routeur.poses(reste)):
+            self._echouer('le moteur a refusé le déplacement')
+
+    # ------------------------------------------------------------ interne
 
     def _attendre_preparation(self):
         """Une destination attend : part si la navigation est prête, renonce après le délai."""
@@ -245,7 +749,7 @@ class Guide:
         verdict = self.preparation() if self.preparation else None
         if verdict is None:
             self._en_attente = None
-            self._partir_vers(but)
+            self._commencer_visite(but)
         elif verdict[0] == 'echec':
             self._en_attente = None
             self._echouer(verdict[1])
@@ -267,10 +771,36 @@ class Guide:
             return self.depart_defaut, None
         return self.routeur.noeud_proche(0.0, 0.0), None
 
+    def _partir_vers(self, but, etat='en_route'):
+        """Itinéraire depuis la position du robot, envoyé au moteur."""
+        depart, position = self._depart()
+        if depart is None:
+            return self._echouer('le graphe des itinéraires est vide')
+        itineraire = self.routeur.itineraire(depart, but)
+        if itineraire is None:
+            return self._echouer(f'aucun chemin libre de « {depart} » à « {but} »')
+        # Le robot est déjà sur le premier couloir : inutile de revenir au nœud de départ
+        sauter = (position is not None and len(itineraire) > 1
+                  and math.dist(position, self.routeur.noeuds[itineraire[1]])
+                  < self.routeur.distance(itineraire[0], itineraire[1]))
+        return self._partir(itineraire, self.routeur.poses(itineraire, sauter), etat)
+
+    def _relancer(self, raison):
+        """
+        Reprise après un arrêt voulu (visiteur revenu, robot retrouvé).
+
+        Nouvel itinéraire depuis la position du robot, dans le même état de route (en_route,
+        retour ou detour).
+        """
+        self.journal(f'reprise : {raison}')
+        self._partir_vers(self._cible, self._etat_route)
+
     def _partir(self, itineraire, poses, etat):
-        """Envoie les poses au moteur et passe à l'état donné (en_route ou detour)."""
+        """Envoie les poses au moteur et passe à l'état donné (en_route, retour ou detour)."""
         self._itineraire = list(itineraire)
         self._reste = self.routeur.longueur(itineraire)
+        if self._longueur_directe is None:
+            self._longueur_directe = self._reste
         if not self.moteur.demarrer(poses):
             return self._echouer('le moteur a refusé le déplacement')
         self._dernier_progres = self.horloge() + DELAI_DEPART_S
@@ -278,6 +808,40 @@ class Guide:
         self._etat_route = etat
         self._changer(etat, 'itinéraire : ' + ' → '.join(itineraire))
         return True
+
+    def _compter_parcours(self, pose):
+        """Distance parcourue pendant la mission (détours) et positions récentes (vitesse)."""
+        if pose is None:
+            return
+        if self._derniere_pose is not None:
+            self._parcouru += math.dist(pose[:2], self._derniere_pose)
+        self._derniere_pose = tuple(pose[:2])
+        maintenant = self.horloge()
+        self._recentes.append((maintenant, float(pose[0]), float(pose[1])))
+        while self._recentes and self._recentes[0][0] < maintenant - FENETRE_VITESSE_S:
+            self._recentes.pop(0)
+
+    def _vitesse_recente(self):
+        """Vitesse moyenne du robot sur les FENETRE_VITESSE_S dernières secondes (m/s), ou None."""
+        r = self._recentes
+        if len(r) < 2 or r[-1][0] - r[0][0] < FENETRE_VITESSE_S / 2:
+            return None
+        chemin = sum(math.dist(a[1:], b[1:]) for a, b in zip(r, r[1:]))
+        return chemin / (r[-1][0] - r[0][0])
+
+    def _pourcentage_ralenti(self):
+        """
+        Limite de vitesse quand le visiteur traîne, en pourcentage de la vitesse maximale de Nav2.
+
+        ralenti × la vitesse mesurée juste avant (si elle et vitesse_max_nav2 sont connues), sinon
+        ralenti × 100 ; POURCENTAGE_MIN au moins, ralenti × 100 au plus.
+        """
+        ralenti = 100.0 * float(self.reglages['ralenti'])
+        vmax = float(self.reglages.get('vitesse_max_nav2') or 0.0)
+        v = self._vitesse_recente()
+        if vmax <= 0 or v is None or v < VITESSE_MESURABLE_M_S:
+            return ralenti
+        return round(max(POURCENTAGE_MIN, min(ralenti, ralenti * v / vmax)), 1)
 
     def _couloir_actuel(self):
         """Couloir (a, b) de l'itinéraire où se trouve le robot, a étant le nœud déjà passé."""
@@ -310,28 +874,117 @@ class Guide:
         self._dernier_progres = self.horloge() + DELAI_DEPART_S
         return True
 
-    def _detourner(self, raison):
-        """Annule, marque le couloir actuel bloqué et repart par un autre chemin."""
+    def _detour_raisonnable(self, itineraire, depart):
+        """
+        Dit si un détour est raisonnable : (oui ou non, longueur totale, limite).
+
+        Longueur totale : parcouru + jusqu'au nœud de départ du détour + détour ; comparée au
+        trajet direct de la mission.
+        """
+        pose = self.position()
+        vers_depart = math.dist(pose[:2], self.routeur.noeuds[depart]) if pose is not None else 0.0
+        parcouru = self._parcouru
+        if not parcouru and self._longueur_directe and self._reste is not None:
+            parcouru = max(0.0, self._longueur_directe - self._reste)
+        total = parcouru + vers_depart + self.routeur.longueur(itineraire)
+        direct = self._longueur_directe or self.routeur.longueur(itineraire)
+        limite = max(float(self.reglages['detour_facteur_max']) * direct,
+                     direct + float(self.reglages['detour_marge_m']))
+        return total <= limite, total, limite
+
+    def _detourner(self, raison, passant=False):
+        """
+        Annule, marque le couloir bloqué et repart par un autre chemin, s'il est raisonnable.
+
+        passant : le couloir est bouché par des personnes (attente_passage) ; si le détour est
+        refusé, le guide les attend encore.
+        """
         if self.detours >= MAX_DETOURS:
             return self._echouer(f'{raison}, et déjà {self.detours} détours : abandon')
         couloir = self._couloir_actuel()
-        self.moteur.annuler()
         if couloir is None:
+            self.moteur.annuler()
             return self._echouer(f'{raison}, et aucun couloir à éviter')
         a, b = couloir
         self.routeur.bloquer(a, b)
-        self.journal(f'{raison} : couloir « {a} » – « {b} » marqué bloqué')
         itineraire = self.routeur.itineraire(a, self._cible)
         if itineraire is None:
+            self.moteur.annuler()
             return self._echouer(f'aucun autre chemin de « {a} » à « {self._cible} »')
-        self.detours += 1
-        return self._partir(itineraire, self.routeur.poses(itineraire), 'detour')
-
-    def _echouer(self, raison):
-        """Arrête le robot (un trajet précédent ne doit pas continuer) et passe en echec."""
+        raisonnable, total, limite = self._detour_raisonnable(itineraire, a)
+        if not raisonnable:
+            self.routeur.debloquer(a, b)
+            if passant and self._prolongations < MAX_PROLONGATIONS_PASSANT:
+                self._prolongations += 1
+                self._passage_debut = self._passage_vu = self.horloge()
+                delai = float(self.reglages['delai_passant_s'])
+                self._changer('attente_passage',
+                              f'{raison} ; le détour ferait {total:.0f} m (au plus '
+                              f'{limite:.0f} m) : le robot attend encore',
+                              'Le passage reste encombré et le détour serait trop long '
+                              f'({total:.0f} m) : le robot attend encore ({delai:.0f} s au plus).')
+                self._passant_annonce = None
+                self._annoncer_passant(self.horloge())
+                return False
+            self.moteur.annuler()
+            return self._echouer(f'{raison}, et le seul détour ferait {total:.0f} m, bien plus '
+                                 f'que le trajet direct ({self._longueur_directe or 0:.0f} m) : '
+                                 'abandon')
         self.moteur.annuler()
+        self.journal(f'{raison} : couloir « {a} » – « {b} » marqué bloqué ; détour de '
+                     f'{self.routeur.longueur(itineraire):.0f} m (trajet total {total:.0f} m, au '
+                     f'plus {limite:.0f} m)')
+        self.detours += 1
+        self._passage_debut = None
+        ok = self._partir(itineraire, self.routeur.poses(itineraire), 'detour')
+        if ok:
+            self._evenement('detour')
+        return ok
+
+    def _echouer(self, raison, retour=True, annoncer=True):
+        """
+        Arrête le robot (un trajet précédent ne doit pas continuer) et passe en echec.
+
+        retour : le retour automatique suit (visite seulement) ; annoncer : événement echec.
+        """
+        self.moteur.annuler()
+        self._orientation = None
+        self._lever_limite()
         self._changer('echec', raison, raison[:1].upper() + raison[1:])
+        if annoncer:
+            self._evenement('echec')
+        if retour:
+            self._programmer_retour()
         return False
+
+    def _limiter(self, pourcentage):
+        """Limite de vitesse (pourcentage), ou None pour la lever ; envoyée si elle change."""
+        if pourcentage == self._limite:
+            return
+        self._limite = pourcentage
+        if self.limiter_vitesse is not None:
+            self.limiter_vitesse(pourcentage)
+
+    def _lever_limite(self):
+        self._limiter(None)
+
+    def _nom(self, cible):
+        salle = self.routeur.salles.get(cible) if cible else None
+        return (salle or {}).get('nom') or cible
+
+    def _evenement(self, code, texte=None, salle='cible', nom=None, mission='mission'):
+        """Publie un message au visiteur (/guide/evenement) ; salle et mission : ceux du trajet."""
+        if self.au_evenement is None:
+            return
+        salle = self._cible if salle == 'cible' else salle
+        mission = self._mission if mission == 'mission' else mission
+        nom = nom or (self._nom(salle) if salle else None)
+        try:
+            message = evenement(code, salle=salle, nom=nom, texte=texte, mission=mission)
+        except KeyError as e:
+            self.journal(f'événement inconnu : {e}')
+            return
+        self.au_evenement(message)
 
     def _changer(self, etat, raison='', message=''):
         """
@@ -341,6 +994,8 @@ class Guide:
         """
         ancien, ancien_message = self._etat, self._message
         self._etat, self._message = etat, message
+        if etat != ancien:
+            self._depuis = self.horloge()
         if raison:
             self.journal(f'{etat} : {raison}')
         if self.au_changement is not None and (etat != ancien or etat == 'detour'
@@ -388,9 +1043,14 @@ class NoeudGuide(Node):
 
     def __init__(self):
         super().__init__('guide')
+        from rcl_interfaces.msg import ParameterDescriptor
         from rclpy.clock import Clock, ClockType
+        from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
         from std_msgs.msg import Empty, String
         import tf2_ros
+        from atelier import chemin_lieu
+        from atelier.lieu.comportement import (reglages_guide, SUJET_EVENEMENT,
+                                               SUJET_LIMITE_VITESSE, SUJET_PERSONNES)
 
         lieu = self.declare_parameter('lieu', '').value
         etage = self.declare_parameter('etage', '').value
@@ -399,44 +1059,83 @@ class NoeudGuide(Node):
         self.repere_carte = self.declare_parameter('repere_carte', 'map').value
         self.repere_robot = self.declare_parameter('repere_robot', 'base_link').value
         vitesse_factice = float(self.declare_parameter('vitesse_factice', 0.5).value)
+        sujet_personnes = self.declare_parameter('sujet_personnes', SUJET_PERSONNES).value
         if not lieu or not etage:
             raise ErreurMoteur('paramètres lieu et etage obligatoires '
                                '(ex. --ros-args -p lieu:=demo -p etage:=rdc)')
+        # Délais et distances : défauts, section guide de lieu.yaml, puis ces paramètres s'ils
+        # sont donnés (ex. -p delai_avant_retour_s:=5.0) ; et les réglages propres au nœud
+        libre = ParameterDescriptor(dynamic_typing=True)
+        donnes = {nom: self.declare_parameter(nom, None, libre).value for nom in DELAIS_GUIDE}
+        reglages = reglages_guide(chemin_lieu(lieu), **donnes)
+        for nom, defaut in REGLAGES_NOEUD.items():
+            reglages[nom] = type(defaut)(self.declare_parameter(nom, defaut, libre).value)
 
         routeur = Routeur.depuis_lieu(lieu, etage)
+        if not routeur.noeuds:
+            raise ErreurMoteur(f'aucun nœud sur l\'étage « {etage} » dans itineraires.yaml')
         self.id_principal = None         # salle du point principal (vague 4, section 11.2)
         try:
             from atelier.lieu.principal import point_principal
-            from atelier import chemin_lieu
             principal = point_principal(chemin_lieu(lieu))
-            self.id_principal = principal.id if principal is not None else None
+            if principal is not None and principal.etage == etage \
+                    and principal.id in routeur.noeuds:
+                self.id_principal = principal.id
         except Exception as e:     # lieu illisible ici : le routeur l'a déjà lu, on s'en passe
             self.get_logger().warn(f'point principal inconnu : {e}')
-        if not routeur.noeuds:
-            raise ErreurMoteur(f'aucun nœud sur l\'étage « {etage} » dans itineraires.yaml')
-        depart = routeur.pose_arrivee('accueil') if 'accueil' in routeur.noeuds else (0, 0, 0)
+        if 'accueil' in routeur.noeuds:
+            depart = routeur.pose_arrivee('accueil')
+        elif self.id_principal:
+            depart = routeur.pose_arrivee(self.id_principal)
+        else:
+            depart = (0, 0, 0)
         self.moteur = fabriquer_moteur(nom_moteur, self, depart, vitesse_factice)
 
         self.tampon_tf = tf2_ros.Buffer()
         self.ecoute_tf = tf2_ros.TransformListener(self.tampon_tf, self)
         self.String = String
         self.pub_etat = self.create_publisher(String, '/guide/etat', 10)
+        self.pub_evenement = self.create_publisher(String, SUJET_EVENEMENT, 10)
+        self._limite_msg = None
+        try:
+            from nav2_msgs.msg import SpeedLimit
+            self._limite_msg = SpeedLimit
+            self.pub_limite = self.create_publisher(SpeedLimit, SUJET_LIMITE_VITESSE, 10)
+        except ImportError:     # nav2_msgs absent : pas de ralenti pour le visiteur
+            self.get_logger().warn('nav2_msgs introuvable : le guide ne pourra pas ralentir')
         self._reperage = None            # (dernier /reperage/etat, instant de réception)
+        self._personnes = None           # (liste de Personne, instant de réception)
+        self._maitre = None              # dernier /mouvement/maitre (dict)
         self.guide = Guide(routeur, self.moteur, position=self.position,
                            journal=self.get_logger().info, au_changement=self.publier,
-                           preparation=self.preparation, suspension=self.suspension)
+                           preparation=self.preparation, suspension=self.suspension,
+                           reglages=reglages, principal=self.id_principal,
+                           personnes=self.personnes, au_evenement=self.publier_evenement,
+                           limiter_vitesse=self.limiter_vitesse, maitre=self.maitre)
         self.create_subscription(String, '/guide/aller', self._sur_aller, 10)
         self.create_subscription(Empty, '/guide/stop', self._sur_stop, 10)
         self.create_subscription(String, '/reperage/etat', self._sur_reperage, 10)
+        self.create_subscription(String, sujet_personnes, self._sur_personnes, 10)
+        # Verrou des mouvements : fiable et transient_local, comme son éditeur (section 11.5)
+        verrou = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                            history=HistoryPolicy.KEEP_LAST)
+        self.create_subscription(String, '/mouvement/maitre', self._sur_maitre, verrou)
         # Horloge murale : le guide continue de répondre même si la simulation est en pause
         self.create_timer(1.0 / frequence, self._sur_minuterie,
                           clock=Clock(clock_type=ClockType.STEADY_TIME))
+        options = ', '.join(f'{k} {v}' for k, v in reglages.items())
         self.get_logger().info(
             f'guide prêt : lieu {lieu}, étage {etage}, moteur {nom_moteur}, '
-            f'{len(routeur.noeuds)} nœuds. En attente sur /guide/aller.')
+            f'{len(routeur.noeuds)} nœuds, point principal {self.id_principal or "aucun"}. '
+            f'Réglages : {options}. En attente sur /guide/aller.')
 
     def position(self):
-        """(x, y, theta) du robot dans map, par TF ; position du moteur factice ; ou None."""
+        """
+        Renvoie (x, y, theta) du robot dans map, par TF (moteur factice : sa position), ou None.
+
+        Une position plus vieille que DELAI_TF_PERDU_S (horloge du nœud) compte comme absente.
+        """
         from atelier.lieu.conversions import quaternion_vers_cap
         from g1_nav.moteurs import MoteurFactice
         from rclpy.time import Time
@@ -447,6 +1146,11 @@ class NoeudGuide(Node):
             t = self.tampon_tf.lookup_transform(self.repere_carte, self.repere_robot, Time())
         except Exception:     # TF pas encore disponible
             return None
+        tampon = Time.from_msg(t.header.stamp)
+        if tampon.nanoseconds > 0:
+            age = (self.get_clock().now() - tampon).nanoseconds * 1e-9
+            if age > DELAI_TF_PERDU_S:
+                return None
         return (t.transform.translation.x, t.transform.translation.y,
                 quaternion_vers_cap(t.transform.rotation))
 
@@ -474,46 +1178,89 @@ class NoeudGuide(Node):
         if reperage is not None and not reperage.get('repere'):
             if reperage.get('etat') == 'en_cours':
                 return ('attendre', MESSAGE_REPERAGE_EN_COURS)
+            if reperage.get('etat') == 'perdu':
+                return ('echec', 'Repérage perdu : replacez le robot sur le point principal, puis '
+                                 'cliquez sur « Repérer le robot ».')
             return ('echec', MESSAGE_NON_REPERE)
         if self.position() is None or not self.moteur.pret():
             return ('attendre', MESSAGE_PREPARATION)
         return None
 
     def suspension(self):
-        """Message si le relais dit le repérage perdu (le pont a arrêté le robot), sinon None."""
+        """La raison si le relais dit le repérage perdu (robot perdu), sinon None."""
         reperage = self.reperage()
         if reperage is not None and reperage.get('etat') == 'perdu':
             return MESSAGE_PERDU
         return None
 
-    def _sur_reperage(self, msg):
-        try:
-            donnees = json.loads(msg.data)
-        except ValueError:
+    def personnes(self):
+        """Personnes du dernier /personnes/lidar s'il est frais, sinon None."""
+        if self._personnes is None \
+                or time.monotonic() - self._personnes[1] > DELAI_PERSONNES_PERIME_S:
+            return None
+        return self._personnes[0]
+
+    def maitre(self):
+        """Maître des mouvements (/mouvement/maitre) : « guide » sans message."""
+        return (self._maitre or {}).get('maitre', 'guide')
+
+    def limiter_vitesse(self, pourcentage):
+        """Publie /speed_limit en pourcentage ; None lève la limite (100 %, jamais 0)."""
+        if self._limite_msg is None:
             return
-        if isinstance(donnees, dict):
+        m = self._limite_msg()
+        m.percentage = True
+        m.speed_limit = float(pourcentage) if pourcentage else 100.0
+        self.pub_limite.publish(m)
+        self.get_logger().info(f'/speed_limit : {m.speed_limit:.0f} %')
+
+    def publier_evenement(self, message):
+        self.get_logger().info(f'événement {message["code"]} : {message["texte"]}')
+        self.pub_evenement.publish(self.String(data=json.dumps(message, ensure_ascii=False)))
+
+    @staticmethod
+    def _lire(texte):
+        try:
+            donnees = json.loads(texte)
+        except ValueError:
+            return None
+        return donnees if isinstance(donnees, dict) else None
+
+    def _sur_reperage(self, msg):
+        donnees = self._lire(msg.data)
+        if donnees is not None:
             self._reperage = (donnees, time.monotonic())
+
+    def _sur_personnes(self, msg):
+        donnees = self._lire(msg.data)
+        if donnees is not None:
+            self._personnes = (lire_personnes(donnees), time.monotonic())
+
+    def _sur_maitre(self, msg):
+        donnees = self._lire(msg.data)
+        if donnees is not None and donnees.get('maitre') in ('guide', 'pilotage'):
+            if donnees.get('maitre') != self.maitre():
+                self.get_logger().info(f'maître des mouvements : {donnees["maitre"]}')
+            self._maitre = donnees
 
     def publier(self, etat=None):
         self.pub_etat.publish(self.String(data=json.dumps(etat or self.guide.etat(),
                                                           ensure_ascii=False)))
 
     def _sur_aller(self, msg):
-        # Vague 4 (section 11.4) : /guide/aller accepte aussi du JSON {cible, accompagner?,
-        # retour?} (atelier.lieu.comportement.lire_demande_aller) ; « principal » désigne le
-        # point principal. Passerelle de l'intégrateur : seule la cible est prise en compte,
-        # l'agent Comportement du guide ajoute l'accompagnement et le retour.
+        # /guide/aller : l'id simple (visite sans accompagnement), ou du JSON {cible, accompagner?,
+        # retour?, source?} (atelier.lieu.comportement.lire_demande_aller) ; « principal » désigne
+        # le point principal (section 11.4 du plan)
+        from atelier.lieu.comportement import lire_demande_aller
         try:
-            from atelier.lieu.comportement import lire_demande_aller
-            cible = lire_demande_aller(msg.data)['cible']
-        except ImportError:
-            cible = msg.data
+            demande = lire_demande_aller(msg.data)
         except ValueError as e:
             self.get_logger().warn(f'/guide/aller illisible : {e}')
-            cible = msg.data
-        if cible == 'principal' and self.id_principal:
-            cible = self.id_principal
-        self.guide.aller(cible)
+            self.guide.refuser(msg.data, f'demande illisible : {e}')
+            self.publier()
+            return
+        self.guide.aller(demande['cible'], accompagner=demande['accompagner'],
+                         retour=demande['retour'], source=demande['source'])
         self.publier()
 
     def _sur_stop(self, _msg):
@@ -530,6 +1277,10 @@ class NoeudGuide(Node):
             self.moteur.annuler()
         except Exception as e:     # Nav2 déjà arrêté, par exemple
             self.get_logger().warn(f'annulation impossible en quittant : {e}')
+        try:
+            self.limiter_vitesse(None)
+        except Exception:      # noqa: BLE001 : le contexte ROS se ferme
+            pass
 
 
 def main(args=None):

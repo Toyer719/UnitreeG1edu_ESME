@@ -263,6 +263,51 @@ g1-jetson journal > ~/robot-g1/docs/releves/seance_$(date +%F)_conteneur.log    
 Puis, dans l'Atelier : **Arrêter la navigation du robot** (le pont envoie un arrêt, le conteneur
 s'arrête et se retire). Robot en amortissement, puis éteint. Complétez la feuille de résultats.
 
+## 6. Séance suivante : le pilotage (vague 4, environ 1 h, au portique)
+
+But : vérifier sur le vrai G1 ce que l'onglet **Pilotage** envoie (section 11.5 du plan). Tout a
+été essayé contre le faux G1 seulement (critères 28 et 29). **Au portique, télécommande en main,
+une personne qui tient le robot** ; jamais les danses 401, 402, 403.
+
+Préparation (PC, au câble) :
+
+```bash
+source ~/robot-g1/setup/robot.sh
+G1_VITESSE_MAX=0.2 g1-jetson demarrer --veille            # le nœud pilotage seul (G1_PILOTAGE=1), sans navigation
+export G1_PILOTAGE_URL=http://192.168.123.164:8010 G1_PILOTAGE_JETON=$(cat ~/robot-g1/opt/jetson/jeton_pilotage)
+g1-pilotage etat                                             # robot_repond : true ; noter fsm
+G1_PILOTAGE_URL=$G1_PILOTAGE_URL g1-atelier                  # onglet Pilotage
+```
+
+1. **Lecture du mode (7001)** : `g1-pilotage etat` donne `fsm`. Noter la valeur robot debout, assis,
+   accroupi, amorti. Si elle n'est jamais 801 debout, corriger `FSM_MARCHE` (danses et
+   chorégraphies l'exigent).
+2. **Postures** (« Prendre la main », puis les boutons) : 500, 706, 702, 3 depuis le conteneur, sans
+   bail ; temps de chaque transition ; **la télécommande reste prioritaire et arrête tout**.
+3. **Amortir (1) et couple nul (0)** : seulement robot tenu au portique ; case « robot au portique »
+   et confirmation double.
+4. **Joystick** (plafonds 0,2 m/s) : l'arrêt seul 0,5 s après le dernier ordre — fermer la page en
+   marche, puis couper le Wi-Fi du PC en marche ; latence par le Wi-Fi.
+5. **Gestes** : `g1-pilotage geste 26`. Si le robot répond 3204 (paramètres), le format est
+   `{"data": n}` (SDK Python) et non `{"action_id": n}` (SDK C++) : corriger
+   `atelier.lieu.pilotage.parametre_geste`. Noter les codes réels de 7400, 7401, 7402, 7404 ; le
+   geste 13 ; la liste 7107 (format) ; les gestes appris (7108).
+6. **Voix et LED** : `g1-pilotage dire "Bonjour"` (langue de la synthèse ? `speaker_id` ?),
+   `g1-pilotage volume 50`, `g1-pilotage led 255 0 128` (format `{"R","G","B"}`).
+7. **Danses** (pieds au sol, 3 m libres, robot tenu au portique d'abord) : `g1-pilotage danses
+   --lire` (format exact de 7100, numéros présents sur ce micrologiciel, durées) ; puis 604 :
+   `g1-pilotage danse 604 --zone-libre` ; durée réelle, retour seul en 801 (lu par 7001) ;
+   ce que fait un 7105 ou un autre 7101 pendant la danse ; **ce qui interrompt une danse**
+   (télécommande ? StopMove ?).
+8. **rt/arm_sdk** : d'abord une chorégraphie lente, sans pas (onglet « Mes chorégraphies » :
+   « Nouvelle », une seule pose coudes à 0,5 rad, vitesse de lecture 1/2), au portique ; vérifier
+   le poids dans `motor_cmd[29].q`, les rampes, la taille tenue (12 à 14), les gains (kp 60,
+   kd 1,5), le `mode` des moteurs (0 comme l'exemple d'Unitree, ou 1 ?), le CRC (non calculé, comme
+   l'exemple ROS 2), la vitesse réelle des bras et la reprise par le contrôleur à la fin. Puis
+   `exemple_kpop` à la vitesse de lecture 1/2, robot posé au sol, zone libre.
+9. **Batterie** : `/lf/bmsstate` (unitree_hg/BmsState, champ `soc`) existe-t-il sur le G1 ?
+10. **Musique par le haut-parleur du robot** (1003, flux PCM) : pas encore prise en charge.
+
 ## Si le conteneur ne marche pas
 
 Le repérage et le trajet se font alors avec la navigation **sur le PC**, au câble : la personne du
@@ -307,6 +352,15 @@ g1-guide stop                                                                   
 | 4.4 | Écart à l'arrivée | moins de 30 cm | | |
 | 4.5 | Bloquer, puis Y aller | immobile | | |
 | 5 | Arrêt de la navigation | arrêt propre, conteneur retiré | | |
+| 6.1 | 7001 (mode) debout, assis, accroupi, amorti | 801 debout ; valeurs notées | | |
+| 6.2 | Postures 500, 706, 702, 3 depuis le conteneur | acceptées ; durées ; télécommande prioritaire | | |
+| 6.3 | Amortir, couple nul (robot tenu) | confirmation double ; robot tenu | | |
+| 6.4 | Joystick : page fermée, Wi-Fi coupé en marche | arrêt seul en 0,5 s ; latence notée | | |
+| 6.5 | Gestes : format `action_id` ou `data`, codes 7400 à 7404, geste 13 | code 0 ; codes notés | | |
+| 6.6 | TTS, volume, LED | langue, `speaker_id`, couleur | | |
+| 6.7 | Danses : 7100, 550604, retour en 801, interruption | liste notée ; durée ; ce qui l'interrompt | | |
+| 6.8 | rt/arm_sdk : chorégraphie lente, puis exemple_kpop à 1/2 | poids, rampes, taille tenue, gains, `mode`, CRC | | |
+| 6.9 | Batterie `/lf/bmsstate` | `soc` lu | | |
 
 Ce qui reste après la séance, si tout passe : les vitesses réelles de 0,1 à 0,4 m/s (régler les
 plafonds et `nav2_g1_reel.yaml`), la position réelle du MID-360 (`base_link → lidar`), le nuage de

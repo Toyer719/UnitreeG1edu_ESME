@@ -1,2 +1,23 @@
-/* Styles de l'agent Passants (vague 4, section 11 du plan). Feuille livrée vide par l'intégrateur,
-   chargée après atelier.css et scan.css (index.html). */
+/* Styles de l'agent Passants (vague 4, section 11 du plan) : panneau des passants de l'onglet
+   Simulation (js/panneaux/passants.js). Chargée après atelier.css et scan.css (index.html). */
+
+.passants-distance { margin: 0 0 8px; padding: 6px 8px; border-radius: 6px; background: var(--fond); font-weight: 600; }
+.passants-liste { list-style: none; margin: 0 0 8px; padding: 0; max-height: 11rem; overflow-y: auto; }
+.passants-pieton { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; padding: 2px 0; font-size: 0.92rem; }
+.passants-id { font-family: monospace; min-width: 7.5rem; }
+.passants-etat { color: var(--texte-doux, #555); }
+.passants-etat-arret, .passants-etat-ecart { color: #9a5b00; font-weight: 600; }
+.passants-etat-pilote { color: #2b5ea8; }
+.passants-note { color: var(--texte-doux, #777); font-size: 0.82rem; }
+.passants-d { margin-left: auto; font-variant-numeric: tabular-nums; }
+.passants-loin { color: #2f7d32; }
+.passants-moyen { color: #9a5b00; }
+.passants-pres { color: #c45a00; font-weight: 600; }
+.passants-contact { color: #b00020; font-weight: 700; }
+.passants-distance.passants-contact { background: #fde7ea; }
+.passants-distance.passants-pres { background: #fff1e0; }
+.passants-details { margin-top: 6px; }
+.passants-scenes, .passants-bancs { list-style: none; margin: 4px 0; padding: 0; }
+.passants-scene, .passants-banc { padding: 6px 0; border-top: 1px solid var(--bord); }
+.passants-commande { display: inline-block; padding: 1px 6px; background: var(--fond); border-radius: 4px; font-size: 0.85rem; }
+.passants-erreur { color: #b00020; font-size: 0.85rem; }

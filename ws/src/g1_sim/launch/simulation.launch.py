@@ -2,7 +2,7 @@
 Simulation Gazebo d'un étage d'un lieu de l'Atelier G1 (contrat : section 4.5 du plan).
 
   ros2 launch g1_sim simulation.launch.py lieu:=DOSSIER etage:=ID sans_fenetre:=true|false
-      [monde:=FICHIER.sdf] [jumeau:=true|false]
+      [monde:=FICHIER.sdf] [jumeau:=true|false] [pietons:=corps|acteurs]
 
 Ce que lance ce fichier :
   - Gazebo Fortress sur <lieu>/mondes/<etage>.sdf (ou sur monde:=FICHIER.sdf) ;
@@ -20,12 +20,22 @@ jumeau:=true (répétition du vrai robot, section 10.4 du plan ; défaut false :
   - le nœud g1_jumeau (paquet g1_jumeau), faux service « sport » du G1 : il reçoit les ordres
     7105 sur /api/sport/request et pilote le robot proxy par /g1_jumeau/cmd_vel.
 
+pietons:=corps (vague 4, section 11.3 du plan ; le défaut) : piétons crédibles. Chaque piéton du
+monde qui a un corps (corps: true, le défaut) devient dans Gazebo un cylindre solide, que le LiDAR
+voit et que le robot ne traverse pas (atelier.monde.sdf.sdf_simulation : le monde simulé est
+écrit dans un dossier temporaire, le .sdf du lieu ne change pas). Le nœud pietons (scripts/
+pietons.py) les conduit sur leur trajet, avec leur réaction au robot, et publie /pietons/etat ;
+un pont ros_gz_bridge à part (pont_pietons) relie leurs vitesses, leurs positions vraies et le
+service set_pose du monde. pietons:=acteurs : les <actor> de la vague 1, traversables, sans nœud.
+
 Le repère map → odom n'est pas publié ici : c'est le lancement de g1_nav qui s'en charge
 (identité en simulation, car le repère odom de Gazebo est le repère du monde, donc de la carte).
 Les variables ROS_DOMAIN_ID et IGN_PARTITION de l'environnement sont respectées.
 """
 import math
 import os
+import shutil
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -34,7 +44,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, EmitEvent, ExecuteProcess, LogInfo,
                             OpaqueFunction, RegisterEventHandler)
-from launch.event_handlers import OnProcessExit
+from launch.event_handlers import OnProcessExit, OnShutdown
 from launch.events import Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -91,6 +101,15 @@ def nom_du_monde(sdf):
     if monde is None or not monde.get('name'):
         raise ErreurSimulation(f'{sdf} ne contient pas de <world name="...">')
     return monde.get('name')
+
+
+def fichier_monde_yaml(dossier, etage, sdf=None):
+    """Fichier monde.yaml qui décrit le monde lancé (même ordre que depart_robot), ou None."""
+    candidats = [Path(dossier) / 'mondes' / f'{etage}.monde.yaml']
+    if sdf is not None:
+        sdf = Path(sdf)
+        candidats.append(sdf.with_name(sdf.stem + '.monde.yaml'))
+    return next((c for c in candidats if c.is_file()), None)
 
 
 def depart_robot(dossier, etage, sdf=None):
@@ -195,6 +214,88 @@ def noeud_jumeau():
     return Node(package='g1_jumeau', executable='jumeau', name='g1_jumeau', output='screen')
 
 
+def executable_pietons():
+    """
+    Commande du nœud pietons, ou None pour l'exécutable installé.
+
+    Sinon le script des sources (paquet pas encore recompilé depuis son ajout, comme pour
+    pont_gz_jumeau.yaml).
+    """
+    from ament_index_python.packages import get_package_prefix
+    installe = Path(get_package_prefix('g1_sim')) / 'lib' / 'g1_sim' / 'pietons'
+    if installe.is_file():
+        return None
+    source = Path(__file__).resolve().parent.parent / 'scripts' / 'pietons.py'
+    if source.is_file():
+        return ['python3', str(source)]
+    raise ErreurSimulation(f'{installe} est introuvable : recompilez g1_sim (cd ~/robot-g1/ws && '
+                           'colcon build --symlink-install --packages-select g1_sim)')
+
+
+def parametres_pietons(monde_yaml, nom, ids, jumeau):
+    """
+    Paramètres du nœud pietons : monde, nom du monde Gazebo, piétons-corps, vérité du robot.
+
+    Pas de use_sim_time : le nœud lit le temps simulé sur les odométries (moins cher que /clock).
+    """
+    return {'monde': str(monde_yaml), 'monde_gz': nom, 'corps': ','.join(ids),
+            'sujet_robot': '/g1_jumeau/odom' if jumeau else '/odom'}
+
+
+def preparer_pietons(sdf, monde_yaml, nom, mode, jumeau):
+    """
+    Piétons crédibles (pietons:=corps) : (monde .sdf à lancer, actions, message).
+
+    Écrit dans un dossier temporaire le monde simulé (les <actor> des piétons-corps remplacés par
+    leur corps) et les réglages du pont des piétons ; renvoie aussi le nœud pietons et ce pont.
+    Sans piéton, avec pietons:=acteurs, ou sans le paquet atelier : le .sdf du lieu, tel quel.
+    """
+    if mode == 'acteurs' or monde_yaml is None:
+        return sdf, [], 'piétons : <actor> de la vague 1 (pietons:=acteurs ou pas de monde.yaml)'
+    try:
+        from atelier.lieu import Monde
+        from atelier.lieu import fichiers
+        from atelier.monde.sdf import sdf_simulation, texte_pont_pietons
+    except ImportError:
+        return sdf, [], 'piétons : <actor> de la vague 1 (paquet atelier introuvable)'
+    try:
+        monde = Monde.depuis_dict(fichiers.charger_fichier(monde_yaml, 'monde'))
+    except Exception as erreur:  # ErreurLieu : on la montre telle quelle
+        raise ErreurSimulation(str(erreur)) from erreur
+    if not monde.pietons:
+        return sdf, [], 'piétons : aucun dans ce monde'
+    texte, ids = sdf_simulation(Path(sdf).read_text(encoding='utf-8'), monde, Path(sdf).parent,
+                                mode)
+    dossier = Path(tempfile.mkdtemp(prefix='g1_sim_pietons_'))
+    sdf_simule = dossier / Path(sdf).name
+    sdf_simule.write_text(texte, encoding='utf-8')
+    actions = [RegisterEventHandler(OnShutdown(on_shutdown=[OpaqueFunction(
+        function=lambda _contexte: shutil.rmtree(dossier, ignore_errors=True))]))]
+    parametres = parametres_pietons(monde_yaml, nom, ids, jumeau)
+    if ids:
+        pont = dossier / 'pont_pietons.yaml'
+        pont.write_text(texte_pont_pietons(ids), encoding='utf-8')
+        actions.append(Node(
+            package='ros_gz_bridge', executable='parameter_bridge', name='pont_pietons',
+            output='screen',
+            arguments=[f'/world/{nom}/set_pose@ros_gz_interfaces/srv/SetEntityPose'],
+            parameters=[{'config_file': str(pont)}]))
+    commande = executable_pietons()
+    if commande is None:
+        actions.append(Node(package='g1_sim', executable='pietons', name='pietons',
+                            output='screen', parameters=[parametres]))
+    else:
+        arguments = ['--ros-args', '-r', '__node:=pietons']
+        for cle, valeur in parametres.items():
+            texte = str(valeur).lower() if isinstance(valeur, bool) else valeur
+            arguments += ['-p', f'{cle}:={texte}']
+        actions.append(ExecuteProcess(cmd=commande + arguments, output='screen', name='pietons'))
+    message = (f'piétons : {len(ids)} piéton(s)-corps ({", ".join(ids) or "aucun"}), '
+               f'{len(monde.pietons) - len(ids)} <actor>, nœud pietons ; '
+               f'monde simulé {sdf_simule}')
+    return sdf_simule, actions, message
+
+
 def commande_gazebo(sdf, sans_fenetre):
     """Commande ign gazebo : serveur seul sans fenêtre, ou serveur et fenêtre."""
     if sans_fenetre:
@@ -209,6 +310,7 @@ def _lancer(context):
     sans_fenetre = LaunchConfiguration('sans_fenetre').perform(context) == 'true'
     monde = LaunchConfiguration('monde').perform(context)
     jumeau = LaunchConfiguration('jumeau').perform(context) == 'true'
+    mode_pietons = LaunchConfiguration('pietons').perform(context)
 
     partage = dossier_partage()
     modele = partage / 'models' / NOM_ROBOT / 'model.sdf'
@@ -218,6 +320,9 @@ def _lancer(context):
     sdf = fichier_monde(dossier, etage, monde)
     nom = nom_du_monde(sdf)
     (x, y, theta), origine = depart_robot(dossier, etage, sdf)
+    sdf_lieu = sdf
+    sdf, pietons, message_pietons = preparer_pietons(
+        sdf, fichier_monde_yaml(dossier, etage, sdf_lieu), nom, mode_pietons, jumeau)
 
     gazebo = ExecuteProcess(cmd=commande_gazebo(sdf, sans_fenetre), output='screen',
                             name='gazebo')
@@ -242,14 +347,15 @@ def _lancer(context):
                    noeud_jumeau()]
 
     return [
-        LogInfo(msg=f'g1_sim : monde {sdf} (« {nom} »)'),
+        LogInfo(msg=f'g1_sim : monde {sdf_lieu} (« {nom} »)'),
+        LogInfo(msg=f'g1_sim : {message_pietons}'),
         LogInfo(msg=f'g1_sim : robot en x={x:.2f} y={y:.2f} theta={theta:.2f} '
                     f'({math.degrees(theta):.0f}°), d\'après {origine}'),
         gazebo,
         apparition,
         pont_gz,
         etat_robot,
-    ] + jumeaux + [
+    ] + jumeaux + pietons + [
         # Gazebo fermé (fenêtre fermée, plantage) : on arrête tout le lancement
         RegisterEventHandler(OnProcessExit(
             target_action=gazebo,
@@ -286,5 +392,11 @@ def generate_launch_description():
             description='true : répétition du vrai robot. Le faux G1 (g1_jumeau) reçoit les '
                         'ordres 7105 et pilote le robot proxy ; rien sur /cmd_vel, /odom '
                         'ni /tf.'),
+        # Argument de la vague 4 (section 11.3) ; défaut corps : piétons crédibles
+        DeclareLaunchArgument(
+            'pietons', default_value='corps', choices=['corps', 'acteurs'],
+            description='corps : piétons crédibles (un corps solide que le robot ne traverse pas, '
+                        'une réaction au robot, /pietons/etat). acteurs : les <actor> de la '
+                        'vague 1, traversables, sans nœud.'),
         OpaqueFunction(function=_lancer),
     ])

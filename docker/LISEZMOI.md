@@ -1,7 +1,9 @@
 # docker/ : le conteneur g1-jetson
 
 Conteneur ROS 2 Humble du Jetson du G1 (section 10.2 du plan) : Nav2, guide, relais
-`odom_vers_tf` et pont `pont_g1`. Guide pas à pas pour le jour du robot : `docs/jetson.md`.
+`odom_vers_tf` et pont `pont_g1` ; vague 4 (section 11.5) : le nœud `pilotage` de l'onglet
+Pilotage (`G1_PILOTAGE=1`, défaut avec le robot). Guide pas à pas pour le jour du robot :
+`docs/jetson.md`.
 
 | Fichier | Rôle |
 |---|---|
@@ -65,6 +67,20 @@ crée pas son domaine sur une interface multicast (« ddsi_udp_create_conn: set 
 failed: Unsupported »), et chaque nœud meurt. Le critère 16 (`E2E_ARM64=1`) fait donc parler
 l'image arm64 et l'hôte en unicast sur `lo` (`G1_CYCLONEDDS_URI`, pairs 127.0.0.1). Le Jetson,
 natif, n'est pas concerné.
+
+## Le nœud pilotage (vague 4)
+
+L'image contient aussi `unitree_hg` (rt/arm_sdk, /lowstate ; couche 2b, compilée après
+`unitree_api` pour garder son cache), `python3-tornado` (couche 2c) et `g1_pilotage`. Avec
+`G1_PILOTAGE=1`, `demarrer.sh` lance l'exécutable `pilote` (pas `ros2 run` : SIGINT lui arrive
+directement) sur `G1_PILOTAGE_PORT` (8010), en navigation comme en veille ; la ligne de démarrage
+le dit (« pilotage port 8010 avec jeton »). À l'arrêt, il s'arrête en premier (SIGINT, 5 s) : bras
+rendus au contrôleur d'Unitree en 1 s, StopMove, main rendue au guide.
+
+`g1-jetson demarrer` (robot) passe `G1_PILOTAGE=1`, le port et le jeton `G1_PILOTAGE_JETON`
+(sinon celui du fichier `~/robot-g1/opt/jetson/jeton_pilotage`, créé au premier démarrage, que
+l'Atelier relit) ; `--local` passe `G1_PILOTAGE=0`, sauf `G1_PILOTAGE=1` dans le terminal.
+`G1_VITESSE_MAX` est transmise aussi en veille : elle baisse les plafonds du joystick et des pas.
 
 ## Lancement
 

@@ -1,9 +1,15 @@
 """Position des piétons pendant la simulation, pour l'affichage en direct.
 
-Les piétons de Gazebo (<actor>) suivent leur trajet à vitesse constante depuis le temps
-simulé 0 (contrat 4.1) : départ à trajet[0] ; aller_retour vrai : va-et-vient ; faux : boucle,
-avec retour direct du dernier point au premier. On recalcule donc leur position à partir du
-monde et du temps simulé (/clock), sans sujet ROS supplémentaire.
+Vague 4 (section 11.3 du plan) : avec les piétons crédibles (pietons:=corps, le défaut de g1_sim),
+le nœud pietons publie leurs positions vraies sur /pietons/etat, et l'écran les prend là
+(atelier/serveur/etat.py). Ce module ne sert plus que sans /pietons/etat frais (pietons:=acteurs,
+ou simulation d'avant la vague 4).
+
+Les piétons de Gazebo (<actor>) suivent leur horaire depuis le temps simulé 0 (contrat 4.1) :
+départ à trajet[0] ; aller_retour vrai : va-et-vient ; faux : boucle, avec retour direct du
+dernier point au premier ; vague 4 : pauses, départ différé et un seul parcours
+(atelier.monde.pietons). On recalcule donc leur position à partir du monde et du temps simulé
+(/clock), sans sujet ROS supplémentaire.
 
 Le calcul de référence est celui de l'agent Monde (atelier.monde.pietons.position_pieton), qui
 écrit aussi les points de passage du SDF : l'écran montre donc ce que fait Gazebo. S'il manque,

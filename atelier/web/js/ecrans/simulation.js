@@ -4,7 +4,9 @@
 // Trois modes (section 10.8 du plan) : « Simulation » (Gazebo seul), « Répétition sans robot »
 // (Gazebo avec le faux G1 : la vraie chaîne du robot, repérage et pont compris) et « Robot »
 // (la navigation dans le conteneur du Jetson). En répétition et avec le robot, le panneau
-// « Repérage » rappelle de poser le robot sur la marque au sol, puis « Repérer le robot » ;
+// « Repérage » rappelle de poser le robot sur le point principal du lieu (vague 4, section 11.2 :
+// l'étoile sur la carte, tourné dans le sens de sa flèche), puis « Repérer le robot », qui part
+// de cette pose ; sans point principal sur l'étage, c'est la marque au sol (croix) de la vague 3.
 // « Y aller » reste grisé tant que le robot n'est pas repéré ou que Nav2 n'est pas prêt.
 
 import { api, urlLieu } from '../api.js';
@@ -15,6 +17,7 @@ import * as G from '../geometrie.js';
 import { afficherErreur, afficherMessage } from '../messages.js';
 import { creerPlan, iconeOrientee, ll, lls, suivrePointeur } from '../plan.js';
 import { Vue3D } from '../vue3d.js';
+import { etiquetteSalle, iconePrincipal, sallePrincipale } from './salles.js';
 // Vague 4 (section 11 du plan) : panneaux des agents Comportement du guide et Passants
 import * as panneauGuide from '../panneaux/guide.js';
 import * as panneauPassants from '../panneaux/passants.js';
@@ -63,6 +66,11 @@ const ETATS_GUIDE = {
   detour: 'Détour : le guide prend un autre chemin',
   arrive: 'Arrivé',
   echec: 'Échec : le guide n\'a pas pu y aller',
+  // vague 4 (section 11.4)
+  retour: 'Retour au point principal',
+  attente_passage: 'Attend qu\'un passant libère le passage',
+  attente_visiteur: 'Attend le visiteur',
+  perdu: 'Perdu : le robot ne sait plus où il est',
 };
 
 export function ouvrir(racine) {
@@ -73,10 +81,11 @@ export function ouvrir(racine) {
     salles: [], noeuds: {}, monde: null, dernierItineraire: '', enCours: false,
     mode: MODES.some((m) => m.id === memoire) ? memoire : 'simu',   // mode choisi
     modeActif: null,        // mode de ce qui tourne (null : rien)
-    marque: null,           // marque au sol {x, y, theta}, repère map
+    marque: null,           // pose où poser le robot {x, y, theta}, repère map : le point principal, sinon la marque au sol
+    principal: null,        // point principal de l'étage {salle, nom, etage, x, y, theta}, ou null
     repere: false,
     reperageEnCours: false,
-    placement: null,        // « pas sur la marque » : {x, y, theta} pendant le geste
+    placement: null,        // « pas sur le point principal » : {x, y, theta} pendant le geste
     choixPosition: false,
   };
 
@@ -96,9 +105,9 @@ export function ouvrir(racine) {
         <div class="vue3d" data-role="vue3d"></div>
         <div class="panneau panneau-reperage" data-role="reperage" hidden>
           <h3 class="panneau-titre">Repérage</h3>
-          <p class="panneau-texte">Posez le robot sur la marque au sol (croix sur la carte), tourné dans le sens de la flèche.</p>
+          <p class="panneau-texte" data-role="consigne-reperage">Posez le robot sur le point principal (étoile sur la carte), tourné dans le sens de la flèche.</p>
           <button type="button" class="bouton bouton-principal bouton-grand bouton-reperer" data-role="reperer">Repérer le robot</button>
-          <button type="button" class="bouton-lien" data-role="pas-sur-marque">Le robot n'est pas sur la marque</button>
+          <button type="button" class="bouton-lien" data-role="pas-sur-marque">Le robot n'est pas sur le point principal</button>
           <p class="panneau-note" data-role="aide-position" hidden>Cliquez sur la carte là où se trouve le robot, puis glissez vers l'avant du robot. Le repérage part quand vous lâchez.</p>
           <div class="etat-reperage" data-role="etat-reperage">Non repéré</div>
           <div class="panneau-note" data-role="message-reperage"></div>
@@ -138,7 +147,7 @@ export function ouvrir(racine) {
   let marqueurPlacement = null;
   const marqueursPietons = new Map();
 
-  // ---------------------------------------------------------------- mode et marque au sol
+  // ---------------------------------------------------------------- mode, point principal et marque au sol
 
   const boutonsModes = MODES.map((m) => {
     const b = F.el('button', 'outil', m.texte);
@@ -183,13 +192,43 @@ export function ouvrir(racine) {
     dessinerMarque();
   }
 
+  // Textes du panneau Repérage : le point principal (vague 4), ou la marque au sol sans lui
+  function textesPose() {
+    const p = etat.principal;
+    if (p) {
+      return {
+        consigne: 'Posez le robot sur le point principal « ' + p.nom + ' » (étoile sur la carte), tourné dans le sens de la flèche.',
+        lien: 'Le robot n\'est pas sur le point principal',
+        annuler: 'Annuler : le robot est sur le point principal',
+        court: 'sur le point principal « ' + p.nom + ' »',
+      };
+    }
+    return {
+      consigne: 'Posez le robot sur la marque au sol (croix sur la carte), tourné dans le sens de la flèche.',
+      lien: 'Le robot n\'est pas sur la marque',
+      annuler: 'Annuler : le robot est sur la marque',
+      court: 'sur la marque au sol',
+    };
+  }
+
+  function majTextesPose() {
+    const t = textesPose();
+    $('consigne-reperage').textContent = t.consigne;
+    $('pas-sur-marque').textContent = etat.choixPosition ? t.annuler : t.lien;
+  }
+
   async function chargerMarque() {
     try {
       const r = await api.lire('/api/robot/etat?lieu=' + encodeURIComponent(lieu) + '&etage=' + encodeURIComponent(etage));
-      if (!r.mode || (r.lieu === lieu && r.etage === etage)) etat.marque = r.marque;
+      if (!r.mode || (r.lieu === lieu && r.etage === etage)) {
+        etat.marque = r.marque;
+        etat.principal = r.principal || null;
+      }
     } catch (e) {
       etat.marque = null;          // pas grave : la marque n'est qu'une aide
+      etat.principal = null;
     }
+    majTextesPose();
     dessinerMarque();
   }
 
@@ -197,6 +236,14 @@ export function ouvrir(racine) {
     calqueMarque.clearLayers();
     if (!etat.marque || !avecReperage()) return;
     const m = etat.marque;
+    if (etat.principal) {
+      // le point principal est déjà dessiné (étoile et flèche, calque des salles) : on l'entoure
+      L.circle(ll(m.x, m.y), { radius: 0.6, className: 'marque-principal', interactive: false })
+        .bindTooltip('Point principal « ' + etat.principal.nom + ' » : posez le robot ici, tourné dans le sens de la flèche',
+          { direction: 'top', className: 'etiquette' })
+        .addTo(calqueMarque);
+      return;
+    }
     const deg = -m.theta * 180 / Math.PI;
     L.marker(ll(m.x, m.y), {
       icon: L.divIcon({ className: 'marque-sol', iconSize: [34, 34], iconAnchor: [17, 17],
@@ -237,7 +284,7 @@ export function ouvrir(racine) {
   function choisirPosition(oui) {
     etat.choixPosition = oui;
     $('aide-position').hidden = !oui;
-    $('pas-sur-marque').textContent = oui ? 'Annuler : le robot est sur la marque' : 'Le robot n\'est pas sur la marque';
+    majTextesPose();
     plan.cadre.classList.toggle('dessin', oui);
   }
 
@@ -306,7 +353,7 @@ export function ouvrir(racine) {
     const avecRobot = !!etat.modeActif && etat.modeActif !== 'simu';
     let titre = 'Non repéré';
     let classe = 'reperage-non_repere';
-    let message = 'Lancez la répétition ou le robot, puis posez le robot sur la marque.';
+    let message = 'Lancez la répétition ou le robot, puis posez le robot ' + textesPose().court + '.';
     etat.repere = false;
     if (avecRobot) {
       if (!r || r.perime) {
@@ -366,9 +413,11 @@ export function ouvrir(racine) {
 
   function dessinerSalles() {
     calqueSalles.clearLayers();
+    const p = sallePrincipale(etat.salles);
     etat.salles.filter((s) => s.etage === etage).forEach((s) => {
-      L.marker(ll(s.pose.x, s.pose.y), { icon: iconeOrientee('salle' + (s.id === 'accueil' ? ' accueil' : ''), s.pose.theta), keyboard: false })
-        .bindTooltip(s.nom, { permanent: true, direction: 'right', offset: [12, 0], className: 'etiquette' })
+      const icone = s === p ? iconePrincipal(s.pose.theta) : iconeOrientee('salle', s.pose.theta);
+      L.marker(ll(s.pose.x, s.pose.y), { icon: icone, keyboard: false, zIndexOffset: s === p ? 500 : 0 })
+        .bindTooltip(etiquetteSalle(s.nom, s === p), { permanent: true, direction: 'right', offset: [14, 0], className: 'etiquette' })
         .on('click', () => allerVers(s.id))
         .addTo(calqueSalles);
     });
@@ -406,7 +455,7 @@ export function ouvrir(racine) {
       const av = (r.simulation && r.simulation.avertissements) || [];
       if (mode === 'simu') afficherMessage('Simulation lancée. Gazebo démarre (sans fenêtre) : le robot apparaît dans quelques secondes.', 'succes');
       else if (mode === 'repetition') afficherMessage('Répétition lancée : Gazebo et le faux G1 démarrent. Quand le relais de position est prêt, cliquez sur « Repérer le robot ».', 'succes');
-      else afficherMessage('Navigation lancée sur le robot. Posez-le sur la marque, puis cliquez sur « Repérer le robot ».', 'succes');
+      else afficherMessage('Navigation lancée sur le robot. Posez-le ' + textesPose().court + ', tourné dans le sens de la flèche, puis cliquez sur « Repérer le robot ».', 'succes');
       av.forEach((m) => afficherMessage(m, 'avertissement'));
     } catch (e) {
       afficherErreur(e);
@@ -431,7 +480,7 @@ export function ouvrir(racine) {
   function texteGuide(g) {
     if (!g) return { titre: 'Guide non lancé', detail: 'Lancez la simulation : le guide démarre avec elle.' };
     let titre = ETATS_GUIDE[g.etat] || ('État : ' + g.etat);
-    if ((g.etat === 'en_route' || g.etat === 'arrive' || g.etat === 'echec' || g.etat === 'detour' || g.etat === 'bloque') && g.cible) {
+    if (['en_route', 'arrive', 'echec', 'detour', 'bloque', 'retour', 'attente_passage', 'attente_visiteur', 'perdu'].includes(g.etat) && g.cible) {
       titre += (g.etat === 'arrive' ? ' à « ' : ' — vers « ') + nomDe(g.cible) + ' »';
     }
     let detail = '';
@@ -544,7 +593,7 @@ export function ouvrir(racine) {
     const attendreReperage = navEnCours && avecReperage() && !etat.repere;
     if (attendreReperage) {
       t.titre = 'Le guide attend le repérage du robot';
-      t.detail = 'Posez le robot sur la marque au sol, puis cliquez sur « Repérer le robot ».';
+      t.detail = 'Posez le robot ' + textesPose().court + ', tourné dans le sens de la flèche, puis cliquez sur « Repérer le robot ».';
     } else if (attendreNav2) {
       t.titre = 'Le guide démarre…';
       t.detail = 'Nav2 se prépare (20 à 30 secondes après le lancement). « Y aller » sera possible ensuite.';

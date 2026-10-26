@@ -1,14 +1,19 @@
-# Chorégraphie d'exemple « K-pop » (vague 4, section 11.5 du plan). Format :
+# Chorégraphie d'exemple « K-pop » (vague 4, section 11.5 du plan), 29 s. Format :
 # atelier/lieu/schemas/choregraphie.schema.json ; limites : atelier.lieu.pilotage.verifier_choregraphie.
-# Pas de musique protégée dans le dépôt : un battement généré à 120 temps par minute (un temps = 0,5 s).
-# Pour jouer votre musique : copiez le fichier dans choregraphies/musique/ (ignoré par Git) et
-# mettez son nom dans musique.fichier. Les bras changent de pose tous les deux temps ; quelques pas de
-# côté et un quart de tour, puis retour au point de départ.
+# Chorégraphie originale de l'Atelier G1, dans le style K-pop : bras en V, pointer en diagonale, coudes
+# qui battent la mesure pendant des pas de côté, bras de robot pendant un huitième de tour aller-retour, cœur
+# au-dessus de la tête, grand salut. Elle ne reprend aucune chorégraphie protégée.
+# Pas de musique protégée dans le dépôt : un battement généré à 120 temps par minute (un temps = 0,5 s,
+# une mesure = 2 s). Pour danser sur votre musique : copiez le fichier dans choregraphies/musique/
+# (ignoré par Git), mettez son nom dans musique.fichier et réglez musique.decalage_s.
+# Sûreté : bras à 1,41 rad/s au plus (1,5 permis), rampes du poids de 1,5 s, pas de 0,15 m au plus et
+# rotation cumulée de 1,5 rad ; le robot revient à son point de départ. Au portique et à mi-vitesse
+# d'abord sur le vrai robot (docs/seance-robot.md).
 version: 1
 id: exemple_kpop
-nom: "Exemple K-pop (battement généré)"
-auteur: "Atelier G1"
-duree_s: 24.0
+nom: Exemple K-pop (battement généré)
+auteur: Atelier G1
+duree_s: 29.0
 zone_libre_m: 2.5
 musique:
   fichier: null
@@ -19,38 +24,118 @@ bras:
   rampe_s: 1.5
   interpolation: douce
   poses:
-    - {t: 2.5, nom: prets, q: {left_shoulder_pitch: -0.5, right_shoulder_pitch: -0.5, left_elbow: 0.8, right_elbow: 0.8}}
-    - {t: 3.5, nom: bras en V, q: {left_shoulder_roll: 0.9, right_shoulder_roll: -0.9, left_elbow: 0.3, right_elbow: 0.3}}
-    - {t: 4.5, nom: prets, q: {left_shoulder_roll: 0.0, right_shoulder_roll: 0.0, left_elbow: 0.8, right_elbow: 0.8}}
-    - {t: 5.5, nom: bras en V, q: {left_shoulder_roll: 0.9, right_shoulder_roll: -0.9, left_elbow: 0.3, right_elbow: 0.3}}
-    - {t: 6.5, nom: prets, q: {left_shoulder_roll: 0.0, right_shoulder_roll: 0.0, left_elbow: 0.8, right_elbow: 0.8}}
-    - {t: 7.5, nom: main gauche levee, q: {left_shoulder_pitch: -1.4, left_elbow: 0.4}}
-    - {t: 8.5, nom: main droite levee, q: {left_shoulder_pitch: -0.5, left_elbow: 0.8, right_shoulder_pitch: -1.4, right_elbow: 0.4}}
-    - {t: 9.5, nom: main gauche levee, q: {left_shoulder_pitch: -1.4, left_elbow: 0.4, right_shoulder_pitch: -0.5, right_elbow: 0.8}}
-    - {t: 10.5, nom: prets, q: {left_shoulder_pitch: -0.5, left_elbow: 0.8}}
-    - {t: 11.5, nom: coude a coude, q: {left_shoulder_yaw: 0.6, right_shoulder_yaw: -0.6, left_elbow: 1.5, right_elbow: 1.5}}
-    - {t: 12.5, nom: prets, q: {left_shoulder_yaw: 0.0, right_shoulder_yaw: 0.0, left_elbow: 0.8, right_elbow: 0.8}}
-    - {t: 13.5, nom: coude a coude, q: {left_shoulder_yaw: 0.6, right_shoulder_yaw: -0.6, left_elbow: 1.5, right_elbow: 1.5}}
-    - {t: 14.5, nom: prets, q: {left_shoulder_yaw: 0.0, right_shoulder_yaw: 0.0, left_elbow: 0.8, right_elbow: 0.8}}
-    - {t: 15.5, nom: haut, q: {left_shoulder_pitch: -1.3, right_shoulder_pitch: -1.3, left_shoulder_roll: 0.4, right_shoulder_roll: -0.4}}
-    - {t: 16.5, nom: coeur, q: {left_shoulder_pitch: -2.0, right_shoulder_pitch: -2.0, left_elbow: 1.3, right_elbow: 1.3}}
-    - {t: 18.5, nom: coeur tenu, q: {left_wrist_roll: 0.3, right_wrist_roll: -0.3}}
-    - {t: 19.5, nom: haut, q: {left_shoulder_pitch: -1.3, right_shoulder_pitch: -1.3, left_elbow: 0.8, right_elbow: 0.8, left_wrist_roll: 0.0, right_wrist_roll: 0.0}}
-    - {t: 20.5, nom: salut final, q: {left_shoulder_pitch: -0.5, right_shoulder_pitch: -1.2, left_shoulder_roll: 0.0, right_shoulder_roll: 0.0, right_elbow: 0.5}}
-    - {t: 21.5, nom: bras bas, q: {left_shoulder_pitch: -0.4, right_shoulder_pitch: -0.4, left_elbow: 0.5, right_elbow: 0.5}}
+  - t: 2.5
+    nom: prets
+    q: {left_shoulder_pitch: -0.5, right_shoulder_pitch: -0.5, left_elbow: 0.8, right_elbow: 0.8, left_shoulder_roll: 0.15, right_shoulder_roll: -0.15}
+  - t: 3.5
+    nom: bras en V
+    q: {left_shoulder_pitch: -0.9, right_shoulder_pitch: -0.9, left_shoulder_roll: 0.9, right_shoulder_roll: -0.9, left_elbow: 0.25, right_elbow: 0.25}
+  - t: 4.5
+    nom: prets
+    q: {left_shoulder_pitch: -0.5, right_shoulder_pitch: -0.5, left_shoulder_roll: 0.15, right_shoulder_roll: -0.15, left_elbow: 0.8, right_elbow: 0.8}
+  - t: 5.5
+    nom: bras en V
+    q: {left_shoulder_pitch: -0.9, right_shoulder_pitch: -0.9, left_shoulder_roll: 0.9, right_shoulder_roll: -0.9, left_elbow: 0.25, right_elbow: 0.25}
+  - t: 6.5
+    nom: pointe a gauche
+    q: {left_shoulder_pitch: -1.3, right_shoulder_pitch: -0.4, left_shoulder_roll: 0.5, right_shoulder_roll: -0.5, left_elbow: 0.1, right_elbow: 0.2}
+  - t: 7.5
+    nom: pointe a droite
+    q: {left_shoulder_pitch: -0.4, right_shoulder_pitch: -1.3, left_elbow: 0.2, right_elbow: 0.1}
+  - t: 8.5
+    nom: pointe a gauche
+    q: {left_shoulder_pitch: -1.3, right_shoulder_pitch: -0.4, left_elbow: 0.1, right_elbow: 0.2}
+  - t: 9.5
+    nom: poings serres
+    q: {left_shoulder_pitch: -0.6, right_shoulder_pitch: -0.6, left_shoulder_roll: 0.2, right_shoulder_roll: -0.2, left_elbow: 1.0, right_elbow: 1.0}
+  - t: 10.0
+    nom: coudes en arriere
+    q: {left_shoulder_pitch: -0.2, right_shoulder_pitch: -0.2, left_elbow: 1.3, right_elbow: 1.3}
+  - t: 10.5
+    nom: coudes en avant
+    q: {left_shoulder_pitch: -0.65, right_shoulder_pitch: -0.65, left_elbow: 1.0, right_elbow: 1.0}
+  - t: 11.0
+    nom: coudes en arriere
+    q: {left_shoulder_pitch: -0.2, right_shoulder_pitch: -0.2, left_elbow: 1.3, right_elbow: 1.3}
+  - t: 11.5
+    nom: coudes en avant
+    q: {left_shoulder_pitch: -0.65, right_shoulder_pitch: -0.65, left_elbow: 1.0, right_elbow: 1.0}
+  - t: 12.0
+    nom: coudes en arriere
+    q: {left_shoulder_pitch: -0.2, right_shoulder_pitch: -0.2, left_elbow: 1.3, right_elbow: 1.3}
+  - t: 12.5
+    nom: coudes en avant
+    q: {left_shoulder_pitch: -0.65, right_shoulder_pitch: -0.65, left_elbow: 1.0, right_elbow: 1.0}
+  - t: 13.0
+    nom: coudes en arriere
+    q: {left_shoulder_pitch: -0.2, right_shoulder_pitch: -0.2, left_elbow: 1.3, right_elbow: 1.3}
+  - t: 13.5
+    nom: coudes en avant
+    q: {left_shoulder_pitch: -0.65, right_shoulder_pitch: -0.65, left_elbow: 1.0, right_elbow: 1.0}
+  - t: 14.5
+    nom: bras de robot
+    q: {left_shoulder_pitch: -0.3, right_shoulder_pitch: -0.3, left_shoulder_roll: 0.3, right_shoulder_roll: -0.3, left_elbow: 1.57, right_elbow: 1.57}
+  - t: 15.5
+    nom: robot a gauche
+    q: {left_shoulder_yaw: 0.4, right_shoulder_yaw: 0.4}
+  - t: 16.5
+    nom: robot a droite
+    q: {left_shoulder_yaw: -0.4, right_shoulder_yaw: -0.4}
+  - t: 17.5
+    nom: bras de robot
+    q: {left_shoulder_yaw: 0.0, right_shoulder_yaw: 0.0}
+  - t: 18.5
+    nom: haut
+    q: {left_shoulder_pitch: -1.2, right_shoulder_pitch: -1.2, left_shoulder_roll: 0.4, right_shoulder_roll: -0.4, left_elbow: 0.8, right_elbow: 0.8}
+  - t: 19.5
+    nom: coeur
+    q: {left_shoulder_pitch: -2.0, right_shoulder_pitch: -2.0, left_shoulder_roll: 0.3, right_shoulder_roll: -0.3, left_elbow: 1.3, right_elbow: 1.3}
+  - t: 20.5
+    nom: coeur balance
+    q: {left_wrist_roll: 0.3, right_wrist_roll: -0.3}
+  - t: 21.5
+    nom: coeur balance
+    q: {left_wrist_roll: -0.3, right_wrist_roll: 0.3}
+  - t: 22.5
+    nom: salut
+    q: {left_shoulder_pitch: -1.1, left_shoulder_roll: 0.3, left_elbow: 1.0, left_wrist_roll: 0.0, right_shoulder_pitch: -2.2, right_shoulder_roll: -0.6,
+      right_elbow: 0.5, right_wrist_roll: 0.0}
+  - t: 23.0
+    nom: salut
+    q: {left_shoulder_pitch: -0.7, right_elbow: 0.95}
+  - t: 23.5
+    nom: salut
+    q: {left_shoulder_pitch: -0.4, left_elbow: 0.6, right_elbow: 0.5}
+  - t: 24.0
+    nom: salut
+    q: {right_elbow: 0.95}
+  - t: 24.5
+    nom: salut
+    q: {right_elbow: 0.5}
+  - t: 25.5
+    nom: au revoir
+    q: {right_shoulder_pitch: -1.3, right_shoulder_roll: -0.3, right_elbow: 0.4, left_shoulder_roll: 0.15, left_elbow: 0.4}
+  - t: 26.5
+    nom: bras bas
+    q: {left_shoulder_pitch: -0.3, right_shoulder_pitch: -0.5, left_shoulder_roll: 0.1, right_shoulder_roll: -0.1, left_elbow: 0.3, right_elbow: 0.3}
 pas:
-  - {t: 10.0, vx: 0.0, vy: 0.15, wz: 0.0, duree_s: 1.0}
-  - {t: 12.0, vx: 0.0, vy: -0.15, wz: 0.0, duree_s: 1.0}
-  - {t: 14.0, vx: 0.0, vy: 0.0, wz: 0.5, duree_s: 1.0}
-  - {t: 16.0, vx: 0.0, vy: 0.0, wz: -0.5, duree_s: 1.0}
+- {t: 10.0, vx: 0.0, vy: 0.15, wz: 0.0, duree_s: 1.0}
+- {t: 12.0, vx: 0.0, vy: -0.15, wz: 0.0, duree_s: 1.0}
+- {t: 14.0, vx: 0.0, vy: 0.0, wz: 0.5, duree_s: 1.5}
+- {t: 16.0, vx: 0.0, vy: 0.0, wz: -0.5, duree_s: 1.5}
+- {t: 22.5, vx: 0.1, vy: 0.0, wz: 0.0, duree_s: 1.0}
+- {t: 24.5, vx: -0.1, vy: 0.0, wz: 0.0, duree_s: 1.0}
 led:
-  - {t: 0.0, r: 255, g: 0, b: 128}
-  - {t: 4.0, r: 0, g: 200, b: 255}
-  - {t: 8.0, r: 255, g: 200, b: 0}
-  - {t: 12.0, r: 255, g: 0, b: 128}
-  - {t: 16.0, r: 160, g: 0, b: 255}
-  - {t: 20.0, r: 255, g: 255, b: 255}
-  - {t: 23.5, r: 0, g: 0, b: 0}
+- {t: 0.0, r: 255, g: 0, b: 128}
+- {t: 2.0, r: 0, g: 200, b: 255}
+- {t: 6.0, r: 255, g: 200, b: 0}
+- {t: 10.0, r: 255, g: 0, b: 128}
+- {t: 14.0, r: 160, g: 0, b: 255}
+- {t: 18.0, r: 255, g: 40, b: 90}
+- {t: 22.0, r: 255, g: 255, b: 255}
+- {t: 24.0, r: 255, g: 170, b: 0}
+- {t: 28.5, r: 0, g: 0, b: 0}
 paroles:
-  - {t: 0.2, texte: "C'est parti !"}
-  - {t: 21.0, texte: "Merci !"}
+- {t: 0.2, texte: C'est parti !}
+- {t: 19.5, texte: Un cœur pour vous !}
+- {t: 26.0, texte: Merci !}

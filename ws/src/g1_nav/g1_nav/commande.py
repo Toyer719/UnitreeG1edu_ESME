@@ -3,15 +3,19 @@ Commande g1-guide : lancer la navigation, envoyer le robot, l'arrêter.
 
   g1-guide navigation --lieu L --etage E [--simu] [--moteur nav2|unitree]
                       [--localisation simu|unitree|amcl|externe] [--pont auto|oui|non]
-                      [--vitesse-max M_PAR_S]
+                      [--vitesse-max M_PAR_S] [--sans-personnes]
       Nav2, routeur et guide sur la carte du lieu (ros2 launch g1_nav navigation.launch.py) ;
       --localisation : défaut simu avec --simu, unitree sinon (repérage par 1804, section 10.5) ;
       --pont : /cmd_vel → ordres de marche du robot (défaut auto : avec Nav2, sauf en simu) ;
       --vitesse-max : plafonds du pont abaissés (premiers essais, ex. 0.2) ; défaut : la
-      variable G1_VITESSE_MAX, sinon les plafonds du contrat
-  g1-guide aller ID [--sans-suivre]
-      envoie le robot vers la salle ou le nœud ID, puis affiche l'état du guide jusqu'à
-      l'arrivée (Ctrl+C arrête l'affichage, pas le robot)
+      variable G1_VITESSE_MAX, sinon les plafonds du contrat ;
+      --sans-personnes : sans le détecteur de personnes au LiDAR (ni accompagnement, ni attente
+      des passants)
+  g1-guide aller ID [--accompagner] [--sans-retour] [--sans-suivre]
+      envoie le robot vers la salle ou le nœud ID (« principal » : le point principal), puis
+      affiche l'état du guide et ses messages au visiteur jusqu'à l'arrivée (Ctrl+C arrête
+      l'affichage, pas le robot) ; --accompagner : il suit le visiteur ; --sans-retour : il ne
+      revient pas seul au point principal ensuite
   g1-guide stop
       arrête le robot tout de suite
   g1-guide etat
@@ -80,7 +84,19 @@ def commande_navigation(args):
     vitesse = getattr(args, 'vitesse_max', None) or os.environ.get('G1_VITESSE_MAX', '').strip()
     if vitesse:
         commande.append(f'vitesse_max:={vitesse}')
+    if getattr(args, 'sans_personnes', False):
+        commande.append('personnes:=false')
     return commande
+
+
+def demande_aller(cible, accompagner=False, retour=True):
+    """Texte de /guide/aller : l'id seul, ou le JSON de la vague 4 (schéma demande_guide)."""
+    if not accompagner and retour:
+        return cible
+    corps = {'cible': cible, 'accompagner': bool(accompagner), 'source': 'g1-guide'}
+    if not retour:
+        corps['retour'] = False
+    return json.dumps(corps)
 
 
 class Client:
@@ -97,11 +113,19 @@ class Client:
         self.pub_aller = self.noeud.create_publisher(String, '/guide/aller', 10)
         self.pub_stop = self.noeud.create_publisher(Empty, '/guide/stop', 10)
         self.etat = None
+        self.evenements = []
         self.noeud.create_subscription(String, '/guide/etat', self._sur_etat, 10)
+        self.noeud.create_subscription(String, '/guide/evenement', self._sur_evenement, 10)
 
     def _sur_etat(self, msg):
         try:
             self.etat = json.loads(msg.data)
+        except ValueError:
+            pass
+
+    def _sur_evenement(self, msg):
+        try:
+            self.evenements.append(json.loads(msg.data))
         except ValueError:
             pass
 
@@ -130,13 +154,15 @@ def guide_absent():
     return 1
 
 
-def aller(client, cible, suivre=True):
+def aller(client, cible, suivre=True, accompagner=False, retour=True):
     if not client.attendre_guide(client.pub_aller):
         return guide_absent()
     client.tourner(0.3)
     avant = (client.etat or {}).get('cible')
-    client.pub_aller.publish(client.String(data=cible))
-    print(f'Envoyé : aller à « {cible} »')
+    client.evenements.clear()
+    client.pub_aller.publish(client.String(data=demande_aller(cible, accompagner, retour)))
+    print(f'Envoyé : aller à « {cible} »' + (' en accompagnant le visiteur' if accompagner else '')
+          + ('' if retour else ', sans retour au point principal'))
     if not suivre:
         client.tourner(0.3)      # laisse le temps au message de partir
         return 0
@@ -145,6 +171,8 @@ def aller(client, cible, suivre=True):
         while True:
             client.tourner(0.2)
             etat = client.etat
+            while client.evenements:          # les messages au visiteur (vague 4)
+                print(f'\n  « {client.evenements.pop(0).get("texte")} »', end='', flush=True)
             # On attend un état qui concerne cette cible (le guide traduit les alias en id)
             if etat is None or not (etat.get('cible') == cible.strip()
                                     or etat.get('cible') not in (avant, None)):
@@ -203,10 +231,17 @@ def main(argv=None):
                      help='premiers essais : vitesse maximale en m/s (ex. 0.2), les plafonds du '
                           'pont baissent dans la même proportion (défaut : $G1_VITESSE_MAX, sinon '
                           '0,4 / 0,25 / 0,6)')
+    nav.add_argument('--sans-personnes', action='store_true',
+                     help='sans détecteur de personnes au LiDAR : le guide n\'accompagne pas le '
+                          'visiteur et n\'attend pas les passants')
     va = sous.add_parser('aller', help='envoie le robot vers une salle ou un nœud')
     va.add_argument('cible', help='id de la salle ou du nœud (ex. b204, accueil)')
     va.add_argument('--sans-suivre', action='store_true',
                     help='rend la main tout de suite, sans afficher le trajet')
+    va.add_argument('--accompagner', action='store_true',
+                    help='le robot suit le visiteur : il ralentit ou l\'attend s\'il traîne')
+    va.add_argument('--sans-retour', action='store_true',
+                    help='le robot reste à destination (pas de retour seul au point principal)')
     sous.add_parser('stop', help='arrête le robot tout de suite')
     sous.add_parser('etat', help='affiche l\'état du guide')
     args = p.parse_args(argv)
@@ -220,7 +255,8 @@ def main(argv=None):
     client = Client()
     try:
         if args.action == 'aller':
-            return aller(client, args.cible, not args.sans_suivre)
+            return aller(client, args.cible, not args.sans_suivre, args.accompagner,
+                         not args.sans_retour)
         if args.action == 'stop':
             return stop(client)
         return afficher_etat(client)

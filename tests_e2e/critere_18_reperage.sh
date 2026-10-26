@@ -3,11 +3,12 @@
 # l'Atelier (POST /api/simulation/demarrer mode repetition : Gazebo --jumeau avec le faux G1,
 # g1-slam faux-service --jumeau, g1-guide navigation --simu --localisation unitree).
 #   A. repère d'Unitree figé (départ du robot, (2,5 ; 10 ; 0)) : non repéré avant, « Y aller » refusé ;
-#      « Repérer le robot » à la marque en moins de 20 s (1804 avec (0, 0, 0) et repetition.pcd) ;
-#      map → base_link à moins de 0,1 m et 0,05 rad de la vérité, aussi après 2 m et 90° par
-#      /cmd_vel (pont, faux G1) alors que l'odométrie dérive ; relocalisation coupée : perdu en
-#      moins de 4 s, puis repéré ;
-#   B. repere_unitree (3 ; 9 ; 0,5) : refus à la marque (502), puis repéré à (2,5 ; 10 ; 0) ;
+#      « Repérer le robot » sans pose, depuis le point principal (vague 4), en moins de 20 s (1804
+#      avec (0, 0, 0) et repetition.pcd) ; map → base_link à moins de 0,1 m et 0,05 rad de la vérité,
+#      aussi après 2 m et 90° par /cmd_vel (pont, faux G1) alors que l'odométrie dérive ;
+#      relocalisation coupée : perdu en moins de 4 s, puis repéré ;
+#   B. repere_unitree (3 ; 9 ; 0,5) : refus avec une pose fausse donnée exprès (502), puis repéré sans
+#      pose, depuis le point principal (2,5 ; 10 ; 0), avec la pose convertie dans 1804 ;
 #   /reperage/etat toujours conforme au schéma, et plus aucun processus à la fin.
 # Vérité terrain : /g1_jumeau/odom. Sans fenêtre ; jamais le vrai robot (G1_SLAM_FAUX=1).
 source "$(dirname "$0")/commun.sh"
@@ -49,4 +50,4 @@ generer essai_b
 [ "${PIPESTATUS[0]}" -eq 0 ] || echoue "variante B : $(grep 'ÉCHEC' "$TRAVAIL/journaux/variante_b.log" | tail -n 1)"
 http POST /api/simulation/arreter > /dev/null || echoue "POST /api/simulation/arreter refusé"
 restes || echoue "variante B : des processus restent après « Arrêter »"
-reussi "repérage à la marque, dérive corrigée, perte et reprise, repère tourné"
+reussi "repérage depuis le point principal, dérive corrigée, perte et reprise, repère tourné"

@@ -69,3 +69,19 @@ def test_vitesse_reduite(monkeypatch):
     assert lance[-1][-1] == 'vitesse_max:=0.15'
     commande.main(['navigation', '--lieu', 'demo', '--etage', 'rdc', '--vitesse-max', '0.3'])
     assert lance[-1][-1] == 'vitesse_max:=0.3'
+
+
+def test_aller_en_json_et_sans_personnes(monkeypatch):
+    """Vague 4 : --accompagner et --sans-retour (JSON de /guide/aller), --sans-personnes."""
+    import json
+    from atelier.lieu.comportement import lire_demande_aller
+    assert commande.demande_aller('b204') == 'b204'
+    d = lire_demande_aller(commande.demande_aller('b204', accompagner=True))
+    assert d == {'cible': 'b204', 'accompagner': True, 'retour': None, 'source': 'g1-guide'}
+    assert json.loads(commande.demande_aller('b204', retour=False)) == {
+        'cible': 'b204', 'accompagner': False, 'source': 'g1-guide', 'retour': False}
+    monkeypatch.delenv('G1_VITESSE_MAX', raising=False)
+    lance = []
+    monkeypatch.setattr(commande.os, 'execvp', lambda prog, args: lance.append(args))
+    commande.main(['navigation', '--lieu', 'demo', '--etage', 'rdc', '--simu', '--sans-personnes'])
+    assert lance[-1][-1] == 'personnes:=false'

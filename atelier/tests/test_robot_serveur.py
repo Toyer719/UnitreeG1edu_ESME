@@ -50,12 +50,15 @@ def _demarrer(c, mode, **champs):
 def test_etat_sans_navigation(client):
     e = client.get("/api/robot/etat?lieu=demo&etage=rdc").json()
     assert e["mode"] is None and e["repere"] is False and e["etat"] == "non_repere"
-    # marque au sol du demo : le départ du robot (repère d'Unitree figé de la répétition)
+    # vague 4 (section 11.2) : on pose le robot sur le point principal du demo (la salle accueil,
+    # principal implicite), qui est aussi le départ du robot et l'origine du repère d'Unitree figé
     assert e["marque"] == {"x": 2.5, "y": 10.0, "theta": 0.0}
+    assert e["principal"] == {"salle": "accueil", "nom": "Accueil", "etage": "rdc", "x": 2.5, "y": 10.0, "theta": 0.0}
     assert e["pont"] is None and e["reperage"] is None and "Aucune navigation" in e["message"]
     # lieu inconnu : pas de marque, mais pas d'erreur
     assert client.get("/api/robot/etat?lieu=nulle_part&etage=rdc").json()["marque"] is None
     assert client.get("/api/robot/etat").json()["marque"] is None
+    assert client.get("/api/robot/etat").json()["principal"] is None
 
 
 def test_mode_inconnu_ou_sans_navigation(client, faux_bin):

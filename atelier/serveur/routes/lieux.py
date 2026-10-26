@@ -2,8 +2,10 @@
 
   GET  /api/lieux                      liste des lieux de $ATELIER_LIEUX
   POST /api/lieux                      {id, nom, largeur?, profondeur?, etage?, nom_etage?} : crée un lieu
-  GET  /api/lieux/{id}                 fiche du lieu, avec ce qui existe pour chaque étage
-  PUT  /api/lieux/{id}                 réécrit lieu.yaml (ajout au contrat : étages, accueil)
+  GET  /api/lieux/{id}                 fiche du lieu, avec ce qui existe pour chaque étage, et son point
+                                       principal (vague 4 : {salle, nom, etage, x, y, theta, explicite} ou null)
+  PUT  /api/lieux/{id}                 réécrit lieu.yaml (ajout au contrat : étages, accueil) ; vague 4 :
+                                       accueil reste la copie du point principal (section 11.2 du plan)
   GET  /api/lieux/{id}/verification    règles entre fichiers (comme g1-lieu valider)
 """
 from typing import Any
@@ -12,9 +14,9 @@ from fastapi import APIRouter, Body
 from pydantic import BaseModel
 
 import atelier
-from atelier.lieu import (ErreurLieu, Lieu, chemin_carte, chemin_interdit, chemin_monde, chemin_sdf,
+from atelier.lieu import (ErreurLieu, Lieu, PoseEtage, chemin_carte, chemin_interdit, chemin_monde, chemin_sdf,
                           charger_fiche, charger_itineraires, charger_salles, charger_zones, creer_lieu,
-                          enregistrer_fiche, lister_lieux, valider_donnees)
+                          enregistrer_fiche, lister_lieux, point_principal, principal_explicite, valider_donnees)
 
 from ..communs import (ErreurAtelier, dossier_du_lieu, erreur_validation, fiche_du_lieu, rapport_du_lieu,
                        verifier_id)
@@ -59,7 +61,20 @@ def _detail(dossier):
             compte[nom] = mesurer(lire(dossier))
         except ErreurLieu:
             compte[nom] = None          # fichier invalide : la vérification le dira
-    return dict(fiche.vers_dict(), id=dossier.name, dossier=str(dossier), etages=etages, compte=compte)
+    return dict(fiche.vers_dict(), id=dossier.name, dossier=str(dossier), etages=etages, compte=compte,
+                principal=_principal(dossier))
+
+
+def _principal(dossier):
+    """Le point principal du lieu (vague 4, section 11.2), ou None (aucun, ou salles.yaml invalide)."""
+    try:
+        s = point_principal(dossier)
+        if s is None:
+            return None
+        return {"salle": s.id, "nom": s.nom, "etage": s.etage, "x": s.pose.x, "y": s.pose.y,
+                "theta": s.pose.theta, "explicite": principal_explicite(dossier)}
+    except ErreurLieu:
+        return None
 
 
 @routeur.get("")
@@ -95,8 +110,13 @@ def ecrire_lieu(id_lieu: str, donnees: Any = Body(...)):
     erreurs = valider_donnees("lieu", donnees, "lieu.yaml")
     if erreurs:
         raise erreur_validation("lieu.yaml", erreurs)
+    fiche = Lieu.depuis_dict(donnees, dossier)
+    # vague 4 (section 11.2) : accueil est la copie de la pose du point principal (onglet Salles)
+    principal = _principal(dossier)
+    if principal is not None and fiche.etage(principal["etage"]) is not None:
+        fiche.accueil = PoseEtage(principal["etage"], principal["x"], principal["y"], principal["theta"])
     try:
-        enregistrer_fiche(Lieu.depuis_dict(donnees, dossier), dossier)
+        enregistrer_fiche(fiche, dossier)
     except ErreurLieu as e:
         raise erreur_validation("lieu.yaml", e.erreurs) from None
     return {"enregistre": ["lieu.yaml"], "lieu": _detail(dossier), "rapport": rapport_du_lieu(dossier)}

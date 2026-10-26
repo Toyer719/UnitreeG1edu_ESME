@@ -3,9 +3,10 @@
 
   g1-monde generer --lieu L --etage E
       mondes/E.monde.yaml → mondes/E.sdf, cartes/E.pgm et .yaml, cartes/E_interdit.pgm et .yaml
-  g1-monde simuler --lieu L --etage E [--sans-fenetre] [--jumeau]
+  g1-monde simuler --lieu L --etage E [--sans-fenetre] [--jumeau] [--pietons corps|acteurs]
       Gazebo, robot proxy et piétons : ros2 launch g1_sim simulation.launch.py (section 4.5 du plan) ;
-      --jumeau : répétition du vrai robot, avec le faux G1 (jumeau:=true, section 10.4)
+      --jumeau : répétition du vrai robot, avec le faux G1 (jumeau:=true, section 10.4) ;
+      --pietons : piétons crédibles (corps, le défaut de g1_sim) ou <actor> de la vague 1 (11.3)
 
 L : chemin du lieu, ou id seul (demo désigne ~/robot-g1/lieux/demo). Lancé par bin/g1-monde avec
 le Python de .venv-projet. Code de sortie : 0 si tout va bien, 1 en cas d'erreur, 2 si la commande
@@ -73,6 +74,8 @@ def commande_ros2(args, dossier):
         commande.append(f"monde:={os.path.abspath(args.monde)}")
     if getattr(args, "jumeau", False):
         commande.append("jumeau:=true")
+    if getattr(args, "pietons", None):
+        commande.append(f"pietons:={args.pietons}")
     return commande
 
 
@@ -149,6 +152,9 @@ def main(argv=None):
     s.add_argument("--jumeau", action="store_true",
                    help="répétition du vrai robot : le faux G1 reçoit les ordres de marche (7105) et pilote "
                         "le robot proxy ; rien sur /cmd_vel, /odom ni /tf")
+    s.add_argument("--pietons", choices=["corps", "acteurs"], default=None,
+                   help="piétons crédibles, un corps qui gêne le robot (corps, le défaut), ou <actor> de la "
+                        "vague 1, traversables (acteurs)")
     s.add_argument("--afficher", action="store_true", help="afficher la commande ros2 launch sans la lancer")
     s.set_defaults(fonction=commande_simuler)
 

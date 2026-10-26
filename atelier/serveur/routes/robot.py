@@ -2,12 +2,16 @@
 
   GET  /api/robot/etat [?lieu=L&etage=E]
         {mode, lieu, etage, localisation, repere, etat, position, precision_m, age_s, message,
-         marque, pont, reperage}. mode vaut null si aucune navigation ne tourne ; lieu et etage
-         (facultatifs) donnent alors la marque au sol du lieu affiché.
+         marque, principal, pont, reperage}. mode vaut null si aucune navigation ne tourne ; lieu et
+         etage (facultatifs) donnent alors la pose de repérage du lieu affiché. Vague 4 (section
+         11.2) : marque est la pose où poser le robot, le point principal s'il est sur cet étage
+         (sinon la marque au sol, origine de la carte d'Unitree) ; principal : {salle, nom, etage, x,
+         y, theta} du point principal de cet étage, ou null.
   POST /api/robot/reperer {lieu, etage, x?, y?, cap?}
         « Repérer le robot » : publie /reperage/demander (nouvel id ; cap devient theta, repère
-        map ; sans x, y et cap : la marque au sol), puis attend 25 s au plus l'état final de cette
-        demande sur /reperage/etat. Repéré : 200 et l'état de GET /api/robot/etat ; echec : 502 avec
+        map ; sans x, y et cap : la pose du point principal, atelier.lieu.pose_de_reperage, toujours
+        envoyée en entier), puis attend 25 s au plus l'état final de cette demande sur /reperage/etat.
+        Repéré : 200 et l'état de GET /api/robot/etat ; echec : 502 avec
         le message du relais ; rien : 504 ; 409 en simulation, sans navigation, ou pour un autre lieu
         ou étage ; 400 si x, y et cap ne vont pas ensemble ; 503 sans pont ROS 2.
   POST /api/robot/arret {verrou}
@@ -25,7 +29,7 @@ from typing import Optional
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from atelier.lieu import ErreurLieu, marque_au_sol
+from atelier.lieu import ErreurLieu, pose_de_reperage, point_principal
 
 from ..communs import ErreurAtelier, dossier_du_lieu, etage_du_lieu
 
@@ -59,16 +63,23 @@ def _etat(request):
 
 
 def _marque(lieu, etage):
-    """Marque au sol {x, y, theta} (repère map) d'un étage, ou None si le lieu est illisible."""
+    """(marque, principal) d'un étage : la pose de repérage par défaut {x, y, theta} (repère map : le
+    point principal s'il est sur cet étage, sinon la marque au sol), et le point principal de cet étage
+    {salle, nom, etage, x, y, theta} ou None. (None, None) si le lieu est illisible."""
     if not lieu or not etage:
-        return None
+        return None, None
     try:
         dossier = dossier_du_lieu(lieu)
         etage_du_lieu(dossier, etage)
-        m = marque_au_sol(dossier, etage)
+        m = pose_de_reperage(dossier, etage)
+        s = point_principal(dossier)
     except (ErreurAtelier, ErreurLieu):
-        return None
-    return {"x": round(m.x, 4), "y": round(m.y, 4), "theta": round(m.theta, 4)}
+        return None, None
+    marque = {"x": round(m.x, 4), "y": round(m.y, 4), "theta": round(m.theta, 4)}
+    if s is None or s.etage != etage:
+        return marque, None
+    return marque, {"salle": s.id, "nom": s.nom, "etage": s.etage, "x": round(s.pose.x, 4),
+                    "y": round(s.pose.y, 4), "theta": round(s.pose.theta, 4)}
 
 
 def etat_robot(etat, lieu=None, etage=None):
@@ -78,9 +89,10 @@ def etat_robot(etat, lieu=None, etage=None):
         lieu, etage = etat.simulation["lieu"], etat.simulation["etage"]
     reperage = etat.pont.reperage()
     pont = etat.pont.etat_pont()
+    marque, principal = _marque(lieu, etage)
     reponse = {"mode": mode, "lieu": lieu, "etage": etage, "localisation": None, "repere": False,
                "etat": "non_repere", "position": None, "precision_m": None, "age_s": None,
-               "message": MESSAGES[None], "marque": _marque(lieu, etage), "pont": pont,
+               "message": MESSAGES[None], "marque": marque, "principal": principal, "pont": pont,
                "reperage": reperage}
     if mode == "simu":
         robot = etat.pont.etat()["robot"]
@@ -105,7 +117,8 @@ def lire_etat(request: Request, lieu: Optional[str] = None, etage: Optional[str]
 
 
 def _pose_demandee(demande):
-    """(x, y, theta) de la demande, ou None pour la marque au sol. 400 si incomplète ou absurde."""
+    """(x, y, theta) de la demande, ou None pour la pose par défaut (le point principal). 400 si
+    incomplète ou absurde."""
     valeurs = {"x": demande.x, "y": demande.y, "cap": demande.cap}
     donnees = [nom for nom, v in valeurs.items() if v is not None]
     if not donnees:
@@ -113,7 +126,7 @@ def _pose_demandee(demande):
     if len(donnees) != 3:
         manque = ", ".join(nom for nom, v in valeurs.items() if v is None)
         raise ErreurAtelier(400, f"x, y et cap vont ensemble (il manque : {manque}). Sans aucun des trois, "
-                                 "le robot est supposé posé sur la marque au sol.")
+                                 "le robot est supposé posé sur le point principal, dans le sens de sa flèche.")
     for nom, v in valeurs.items():
         if not math.isfinite(v):
             raise ErreurAtelier(400, f"« {nom} » doit être un nombre fini, pas {v}.")
@@ -148,10 +161,14 @@ def reperer(demande: DemandeReperer, request: Request):
     if etat.pont.abonnes_reperage() == 0:
         raise ErreurAtelier(504, "Le relais de position (odom_vers_tf) ne répond pas : la navigation est-elle "
                                  "lancée ? Ouvrez « Ce qui tourne » dans l'onglet Simulation.")
+    if pose is None:
+        # vague 4 (section 11.2) : le robot est posé sur le point principal, dans le sens de sa flèche.
+        # La pose est toujours envoyée en entier (repère map) : le relais la convertit vers le repère
+        # d'Unitree (carte_vers_unitree avec repere_unitree) avant 1804.
+        p = pose_de_reperage(dossier, demande.etage)
+        pose = (float(p.x), float(p.y), math.remainder(float(p.theta), 2 * math.pi))
     ident = f"atelier-{int(time.time())}-{next(_NUMEROS)}"
-    message = {"id": ident}
-    if pose is not None:
-        message.update(x=pose[0], y=pose[1], theta=pose[2])
+    message = {"id": ident, "x": pose[0], "y": pose[1], "theta": pose[2]}
     etat.pont.reperer(message)
     resultat = etat.pont.attendre_reperage(ident, DELAI_REPERAGE_S)
     if resultat is None:

@@ -3,12 +3,14 @@
 <package format="3">
   <name>g1_equipe</name>
   <version>0.1.0</version>
-  <description>Emplacements de l'équipe : chatbot à règles (dialogues.yaml), relais des événements du guide vers /robot/dire, personnalité active, bouchon de la caméra (Atelier G1, section 11.6 du plan)</description>
+  <description>Emplacements de l'équipe : chatbot à règles d'exemple (dialogues.yaml), relais des événements du guide vers /robot/dire, personnalité active, fausse caméra et voix du journal (Atelier G1, section 11.6 du plan)</description>
   <maintainer email="joonhk913@gmail.com">joonho</maintainer>
   <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
+  <depend>nav_msgs</depend>
+  <exec_depend>python3-yaml</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

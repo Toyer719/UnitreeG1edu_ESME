@@ -19,7 +19,18 @@ Il répond comme le vrai robot :
       dérive).
   /g1_jumeau/panne (std_msgs/String, fiable) : aucune, muet ou refus.
   /g1_jumeau/etat (std_msgs/String JSON, 2 Hz) : {version, panne, consigne, reste_s, requetes,
-      appliquees, ...}, pour les tests.
+      appliquees, ..., robot}, pour les tests.
+
+Vague 4 (section 11.5 du plan), le faux G1 étendu (robot.py) :
+  /api/sport/request : aussi les modes (7001, 7101 : 0, 1, 3, 500 puis 801, 702 puis 801, 706),
+      les danses (7100, 7101 550000 + n, retour en 801), les tâches (7106), avec les refus
+      réalistes (7301, 7302, 7303) ; réponses avec leur data (7001 : {"data": mode}) ;
+  /api/arm/request → /api/arm/response : gestes (7106, 7401, 7402, 7404, 7400), liste (7107) ;
+  /api/voice/request → /api/voice/response : TTS (1001), volume (1005, 1006), LED (1010) ;
+  /arm_sdk (unitree_hg/LowCmd) reçu et vérifié (poids, rampes, limites, vitesses, taille,
+      jambes) ; /lowstate (unitree_hg/LowState, 50 Hz) : bras qui suivent les ordres pondérés ;
+  /lf/bmsstate (unitree_hg/BmsState, 1 Hz) : batterie simulée.
+Paramètres en plus : fsm_depart (801 : debout, prêt à marcher), echelle_danses (1,0).
 
 Options pour les essais : latence_s (délai avant d'appliquer et de répondre), perte (part des
 requêtes perdues : ni appliquées ni répondues), graine (tirage des pertes).
@@ -31,6 +42,11 @@ import signal
 import sys
 
 from .logique import FauxSport, OdometrieDerivee, PANNES
+from .robot import BrasSimules, FauxG1
+
+SERVICES = ('sport', 'arm', 'voice')
+PERIODE_LOWSTATE_S = 0.02
+PERIODE_BATTERIE_S = 1.0
 
 PERIODE_FILE_S = 0.005          # traitement des requêtes retardées (option latence_s)
 PERIODE_ETAT_S = 0.5
@@ -61,6 +77,7 @@ def creer_noeud():
     from std_msgs.msg import String
     from unitree_api.msg import Response
     from unitree_api.msg import Request
+    from unitree_hg.msg import BmsState, LowCmd, LowState
 
     class NoeudJumeau(Node):
         """g1_jumeau : faux service sport, vitesses vers Gazebo, odométrie qui dérive."""
@@ -75,9 +92,15 @@ def creer_noeud():
             echelle = float(self.declare_parameter('derive_echelle', 0.02).value)
             lacet = float(self.declare_parameter('derive_lacet_par_m', 0.01).value)
             panne = self.declare_parameter('panne', 'aucune').value
+            fsm_depart = int(self.declare_parameter('fsm_depart', 801).value)
+            echelle_danses = float(self.declare_parameter('echelle_danses', 1.0).value)
 
             self.sport = FauxSport()
             self.sport.changer_panne(panne)
+            self.robot = FauxG1(self.sport, fsm=fsm_depart, echelle_danses=echelle_danses)
+            self.bras = BrasSimules()
+            self.LowState, self.BmsState = LowState, BmsState
+            self.batterie = 87.0
             self.odometrie = OdometrieDerivee(echelle, lacet)
             self.file = []                  # [(échéance murale, requête)] si latence_s > 0
             self.perdues = 0
@@ -87,13 +110,25 @@ def creer_noeud():
 
             fiable = QoSProfile(depth=50, reliability=ReliabilityPolicy.RELIABLE,
                                 durability=DurabilityPolicy.VOLATILE)
-            self.pub_reponse = self.create_publisher(Response, '/api/sport/response', fiable)
+            self.pubs_reponse = {s: self.create_publisher(Response, f'/api/{s}/response', fiable)
+                                 for s in SERVICES}
+            self.pub_reponse = self.pubs_reponse['sport']
             self.pub_vitesse = self.create_publisher(Twist, '/g1_jumeau/cmd_vel', 10)
             self.pub_pelvis = self.create_publisher(
                 Odometry, '/state_estimator/odom_pelvis',
                 QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
             self.pub_etat = self.create_publisher(String, '/g1_jumeau/etat', 10)
-            self.create_subscription(Request, '/api/sport/request', self._sur_requete, fiable)
+            for service in SERVICES:
+                self.create_subscription(Request, f'/api/{service}/request',
+                                         self._recepteur(service), fiable)
+            self.create_subscription(LowCmd, '/arm_sdk', self._sur_arm_sdk,
+                                     QoSProfile(depth=50, reliability=ReliabilityPolicy.RELIABLE))
+            self.pub_lowstate = self.create_publisher(LowState, '/lowstate',
+                                                      qos_profile_sensor_data)
+            self.pub_batterie = self.create_publisher(BmsState, '/lf/bmsstate',
+                                                      qos_profile_sensor_data)
+            self.create_timer(PERIODE_LOWSTATE_S, self._publier_lowstate, clock=self.mural)
+            self.create_timer(PERIODE_BATTERIE_S, self._publier_batterie, clock=self.mural)
             self.create_subscription(Odometry, '/g1_jumeau/odom', self._sur_verite,
                                      qos_profile_sensor_data)
             self.create_subscription(String, '/g1_jumeau/panne', self._sur_panne,
@@ -112,14 +147,19 @@ def creer_noeud():
 
         # -------------------------------------------------------- requêtes
 
-        def _sur_requete(self, msg):
+        def _recepteur(self, service):
+            def recevoir(msg):
+                self._sur_requete(msg, service)
+            return recevoir
+
+        def _sur_requete(self, msg, service='sport'):
             if self.perte > 0 and self.tirage.random() < self.perte:
                 self.perdues += 1
                 return
             if self.latence > 0:
-                self.file.append((self._maintenant() + self.latence, msg))
+                self.file.append((self._maintenant() + self.latence, (msg, service)))
             else:
-                self._traiter(msg)
+                self._traiter(msg, service)
 
         def _maintenant(self):
             return self.sport.horloge()
@@ -128,25 +168,50 @@ def creer_noeud():
             t = self._maintenant()
             prets = [m for echeance, m in self.file if echeance <= t]
             self.file = [(e, m) for e, m in self.file if e > t]
-            for msg in prets:
-                self._traiter(msg)
+            for msg, service in prets:
+                self._traiter(msg, service)
 
-        def _traiter(self, msg):
+        def _traiter(self, msg, service='sport'):
             identite = msg.header.identity
-            code = self.sport.traiter(identite.api_id, msg.parameter)
-            if code is None:
+            reponse_robot = self.robot.traiter(service, identite.api_id, msg.parameter)
+            if reponse_robot is None:
                 return                        # panne muet : ni réponse, ni mouvement
+            code, data = reponse_robot
             reponse = self.Response()
             reponse.header.identity.id = identite.id
             reponse.header.identity.api_id = identite.api_id
             reponse.header.status.code = int(code)
-            reponse.data = ''
-            self.pub_reponse.publish(reponse)
+            reponse.data = str(data)
+            self.pubs_reponse[service].publish(reponse)
             if code != 0:
                 self.get_logger().warning(
-                    f'requête {identite.id} (api {identite.api_id}) refusée : code {code}',
+                    f'requête {identite.id} ({service} {identite.api_id}) refusée : code {code}',
                     throttle_duration_sec=2.0)
-            self._publier_vitesse()          # la nouvelle consigne part tout de suite
+            elif service != 'sport' or identite.api_id not in (7001, 7105):
+                self.get_logger().info(f'{service} {identite.api_id} {msg.parameter[:120]} : 0')
+            if service == 'sport':
+                self._publier_vitesse()      # la nouvelle consigne part tout de suite
+
+        # -------------------------------------------------------- bras, /lowstate, batterie
+
+        def _sur_arm_sdk(self, msg):
+            q = [m.q for m in msg.motor_cmd]
+            kp = [m.kp for m in msg.motor_cmd]
+            kd = [m.kd for m in msg.motor_cmd]
+            self.robot.arm_sdk.recevoir(q, kp, kd)
+            self.bras.ordonner(q[29], q)
+
+        def _publier_lowstate(self):
+            angles = self.bras.avancer(self._maintenant(), self.robot.arm_sdk.actif())
+            msg = self.LowState()
+            for i, q in enumerate(angles):
+                msg.motor_state[i].q = float(q)
+            msg.mode_machine = 5                 # G1 29 ddl (à vérifier sur le robot)
+            self.pub_lowstate.publish(msg)
+
+        def _publier_batterie(self):
+            self.batterie = max(5.0, self.batterie - 1.0 / 600.0)      # 1 % toutes les 10 min
+            self.pub_batterie.publish(self.BmsState(soc=int(self.batterie)))
 
         # -------------------------------------------------------- vitesses vers Gazebo
 
@@ -204,7 +269,7 @@ def creer_noeud():
                     'reste_s': round(self.sport.reste(), 3), 'requetes': self.sport.requetes,
                     'appliquees': self.sport.appliquees, 'reponses': self.sport.reponses,
                     'perdues': self.perdues, 'latence_s': self.latence, 'perte': self.perte,
-                    'pannes_possibles': list(PANNES)}
+                    'pannes_possibles': list(PANNES), 'robot': self.robot.etat()}
             self.pub_etat.publish(self.String(data=json.dumps(etat)))
 
     return NoeudJumeau()

@@ -33,7 +33,12 @@ secondes ; jamais le temps simulé), pour les tester finement :
      un nouvel abonné apparaît alors que le robot n'a jamais répondu ou est muet (service
      relancé), si le pont n'est pas en train d'envoyer une consigne. Rien de continu au repos.
 
-Un /cmd_vel ignoré (garde, verrou, repérage) n'est pas gardé : il ne sert pas plus tard.
+ 10. Maître des mouvements (vague 4, section 11.5 du plan) : /mouvement/maitre « pilotage » (le
+     pilotage de l'Atelier a la main) : état pilotage, mouvement interdit, /cmd_vel ignoré, un
+     arrêt tout de suite si le robot bougeait. « guide », ou aucun message : comme avant ; le
+     mouvement ne reprend qu'avec un /cmd_vel reçu après le retour de la main.
+
+Un /cmd_vel ignoré (garde, verrou, repérage, pilotage) n'est pas gardé : il ne sert pas plus tard.
 """
 from collections import OrderedDict, namedtuple
 from dataclasses import dataclass, fields
@@ -61,8 +66,8 @@ MEMOIRE_IDENTIFIANTS = 1000
 TOLERANCE_ENVOI_S = 0.008
 
 # 'pilotage' (vague 4, section 11.5 du plan) : le pilotage de l'Atelier a la main
-# (/mouvement/maitre), /cmd_vel est ignoré. Le contrat le déclare ; le comportement est à écrire
-# par l'agent Pilotage.
+# (/mouvement/maitre), /cmd_vel est ignoré (règle 10)
+MAITRES = ('guide', 'pilotage')
 ETATS = ('demarrage', 'attente_reperage', 'pret', 'en_mouvement', 'arret', 'arret_verrouille',
          'robot_muet', 'refus', 'pilotage')
 
@@ -207,6 +212,7 @@ class Pont:
         self.abonnes = 0                   # abonnés vus à /api/sport/request (le service sport)
         self.verifications = []            # instants des arrêts de vérification du lien à venir
         self.t_verification = None         # début de la vérification en cours
+        self.maitre = 'guide'              # /mouvement/maitre (vague 4) ; aucun message : le guide
 
     # ------------------------------------------------------------ état
 
@@ -225,7 +231,7 @@ class Pont:
     def mouvement_permis(self, t=None):
         """Vrai si un /cmd_vel non nul reçu maintenant serait envoyé au robot."""
         t = self.maintenant() if t is None else t
-        if self.verrou or self.en_garde(t):
+        if self.verrou or self.en_garde(t) or self.maitre == 'pilotage':
             return False
         return self.reperage_valable(t) or not self.reglages.exiger_reperage
 
@@ -247,6 +253,8 @@ class Pont:
             return 'robot_muet'
         if self.code not in (None, 0):
             return 'refus'
+        if self.maitre == 'pilotage':
+            return 'pilotage'
         if self.reglages.exiger_reperage and not self.reperage_valable(t):
             return 'attente_reperage'
         if self.en_garde(t):
@@ -267,6 +275,9 @@ class Pont:
                     f'allumé et debout en mode marche.')
         if etat == 'refus':
             return message_refus(self.code)
+        if etat == 'pilotage':
+            return ('Le robot est piloté depuis l\'onglet Pilotage : la navigation ne le commande '
+                    'pas (/cmd_vel ignoré) tant que la main n\'est pas rendue.')
         if etat == 'attente_reperage':
             if self.t_reperage is None:
                 return ('Robot non repéré : cliquez sur « Repérer le robot ». En attendant, '
@@ -416,6 +427,22 @@ class Pont:
         self.arrets_prevus = [t + i * ECART_ARRETS_VERROU_S
                               for i in range(1, NOMBRE_ARRETS_VERROU)]
         return [self._arret(t, 'verrou')]
+
+    def sur_maitre(self, maitre):
+        """Maître des mouvements (/mouvement/maitre) ; ValueError pour une valeur inconnue."""
+        if maitre not in MAITRES:
+            raise ValueError(f'maître inconnu « {maitre} » : guide ou pilotage')
+        t = self.maintenant()
+        ancien, self.maitre = self.maitre, maitre
+        if maitre == ancien:
+            return []
+        if maitre == 'pilotage':
+            if self.actif or self.bouge():
+                return [self._arret(t, 'pilotage')]
+            self.actif = False
+            return []
+        self.consigne, self.actif = (0.0, 0.0, 0.0), False      # reprise au prochain /cmd_vel
+        return []
 
     def sur_reperage(self, repere):
         """/reperage/etat reçu (champ repere) ; repérage perdu en marche : arrêt tout de suite."""

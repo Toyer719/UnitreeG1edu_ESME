@@ -8,6 +8,7 @@
   etage: rdc
   pose: {x: 2.5, y: 10.0, theta: 0.0}
   phrase_arrivee: "Nous sommes de retour à l'accueil."
+  etiquettes: [principal]
 
 - id: vie_scolaire
   nom: "Vie scolaire"
