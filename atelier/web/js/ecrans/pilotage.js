@@ -1,6 +1,8 @@
 // Onglet Pilotage (vague 4, section 11.5 du plan), comme l'appli Unitree Explore : état et batterie,
 // postures (avec leurs confirmations), joystick tactile, gestes, voix, volume et LED, danses du robot
 // et « Mes chorégraphies » (éditeur à ligne de temps, aperçu 3D du G1, lecture sur le robot).
+// Sous « Commandes » et « Danses du robot », la Vue du robot (section 11.13) : carte, G1 en 3D et
+// caméra de la tête ; elle ne fait qu'afficher.
 //
 // Tout passe par le serveur de l'Atelier (/api/pilotage/*, /ws/pilotage), qui relaie vers le nœud
 // pilotage (conteneur du Jetson, ou le PC en répétition). Les règles de sécurité sont dans le nœud ;
@@ -15,6 +17,7 @@ import * as C from '../pilotage/choregraphie.js';
 import { Joystick } from '../pilotage/joystick.js';
 import { LigneTemps } from '../pilotage/ligne_temps.js';
 import { Musique } from '../pilotage/musique.js';
+import { VueRobot } from '../pilotage/vue_robot.js';
 
 const PERIODE_ETAT_MS = 500;
 const SOUS_ONGLETS = [
@@ -86,6 +89,7 @@ class EcranPilotage {
     this.construire();
     api.lire('/api/pilotage/config').then((c) => {
       this.config = c;
+      this.vueRobot = new VueRobot(this.zoneVue, c);
       racine.classList.remove('chargement');
       this.ouvrirSousOnglet(this.sousOnglet);
       this.majEntete();
@@ -131,6 +135,9 @@ class EcranPilotage {
     const onglets = F.el('div', 'pilotage-sous-onglets');
     this.barreOnglets = F.barreOutils(onglets, SOUS_ONGLETS, this.sousOnglet, (id) => this.ouvrirSousOnglet(id));
     p.appendChild(onglets);
+    this.zoneVue = F.el('div', 'zone-vue-robot');
+    this.zoneVue.hidden = true;
+    p.appendChild(this.zoneVue);
     this.contenu = F.el('div', 'pilotage-contenu');
     p.appendChild(this.contenu);
     r.appendChild(p);
@@ -146,6 +153,7 @@ class EcranPilotage {
     this.barreOnglets.choisir(id);
     this.contenu.innerHTML = '';
     this.contenu.dataset.section = id;
+    if (this.vueRobot) this.vueRobot.montrer(id !== 'choregraphies');   // l'éditeur a son propre aperçu 3D
     if (id === 'danses') this.sectionDanses();
     else if (id === 'choregraphies') this.sectionChoregraphies();
     else this.sectionCommandes();
@@ -222,6 +230,7 @@ class EcranPilotage {
         ? ' (Dernier refus du robot : ' + e.dernier_refus.message + ')' : '');
     }
     this.contenu.classList.toggle('sans-main', !this.aLaMain());
+    if (this.vueRobot) this.vueRobot.majEtat(this.etat, this.joignable);
     if (this.majSection) this.majSection();
   }
 
@@ -355,16 +364,16 @@ class EcranPilotage {
     F.titre(gestes, 'Gestes des bras');
     const boutonsGestes = F.el('div', 'boutons-gestes');
     c.gestes.filter((g) => g.id !== 99).forEach((g) => {
-      const b = F.bouton(boutonsGestes, g.nom, () => this.commande('/api/pilotage/geste', { action: g.id }), 'bouton mouvement');
+      const b = F.bouton(boutonsGestes, g.nom, () => this.geste('bras', g.id), 'bouton mouvement');
       b.dataset.geste = String(g.id);
     });
     gestes.appendChild(boutonsGestes);
-    const relacher = F.bouton(gestes, 'Relâcher les bras (99)', () => this.commande('/api/pilotage/geste', { action: 99 }), 'bouton');
+    const relacher = F.bouton(gestes, 'Relâcher les bras (99)', () => this.geste('bras', 99), 'bouton');
     relacher.dataset.geste = '99';
     const taches = F.el('div', 'boutons-gestes');
     taches.appendChild(F.el('span', 'champ-libelle', 'En marchant :'));
     c.taches.filter((t) => t.id === 0 || t.id === 2).forEach((t) => {
-      F.bouton(taches, t.nom, () => this.commande('/api/pilotage/tache', { tache: t.id }), 'bouton mouvement');
+      F.bouton(taches, t.nom, () => this.geste('tache', t.id), 'bouton mouvement');
     });
     gestes.appendChild(taches);
     grille.appendChild(gestes);
@@ -413,6 +422,13 @@ class EcranPilotage {
       }
     };
     this.majSection();
+  }
+
+  // Geste (arm 7106) ou tâche (sport 7106) ; la Vue du robot en montre un aperçu approché
+  async geste(genre, id) {
+    const r = genre === 'tache' ? await this.commande('/api/pilotage/tache', { tache: id })
+      : await this.commande('/api/pilotage/geste', { action: id });
+    if (r && this.vueRobot) this.vueRobot.gesteDemande(genre, id);
   }
 
   ouvrirWs() {
@@ -988,6 +1004,7 @@ class EcranPilotage {
     document.removeEventListener('keydown', this._echap);
     this.fermerSection();
     this.musique.arreter();
+    if (this.vueRobot) this.vueRobot.fermer();
   }
 }
 

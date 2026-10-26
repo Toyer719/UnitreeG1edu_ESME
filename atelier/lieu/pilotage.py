@@ -49,6 +49,15 @@ SUJET_MAITRE = "/mouvement/maitre"          # verrou des mouvements (schéma mai
 SUJET_ETAT = "/pilotage/etat"               # schéma etat_pilotage
 PORT_PILOTAGE = 8010                        # API HTTP et WebSocket du nœud pilotage
 ENTETE_JETON = "X-Jeton"                    # jeton partagé (G1_PILOTAGE_JETON) sur le Wi-Fi
+# Caméra de la tête (Vue du robot de l'onglet Pilotage, section 11.13) : le service videohub du
+# SDK d'Unitree (unitree_sdk2py/go2/video/video_client.py, GetImageSample, api 1001) rend une image
+# JPEG dans le champ binary de la réponse. Demandée image par image, seulement quand une page la
+# regarde (jamais le flux H264 de /frontvideostream) : à vérifier sur le robot.
+SERVICE_VIDEO = "/api/videohub"             # + /request, /response (unitree_api/Request, Response)
+API_VIDEO = {"get_image_sample": 1001}
+CAMERA_ECART_MIN_S = 0.2                    # au plus 5 demandes par seconde au robot, toutes pages comprises
+CAMERA_DELAI_S = 1.0                        # attente d'une image par le nœud
+CAMERA_PERIODE_PAGE_S = 0.35                # une page demande une image au plus toutes les 0,35 s
 
 API_SPORT = {"get_fsm_id": 7001, "get_fsm_mode": 7002, "get_balance_mode": 7003, "get_swing_height": 7004,
              "get_stand_height": 7005, "get_phase": 7006, "fsm_api": 7100, "set_fsm_id": 7101,

@@ -34,7 +34,7 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 import atelier
 from atelier.lieu import ErreurLieu
@@ -524,6 +524,61 @@ def maillage(nom: str):
     if chemin is None or not chemin.is_file():
         raise ErreurAtelier(404, f"Maillage « {nom} » introuvable.")
     return FileResponse(chemin, media_type="model/stl", headers={"Cache-Control": "max-age=86400"})
+
+
+# ---------------------------------------------------------------- caméra de la tête (Vue du robot)
+
+class CacheCamera:
+    """Une seule demande d'image à la fois vers le nœud, partagée par toutes les pages (section 11.13)."""
+
+    PARTAGE_S = 0.15                 # une image de moins de ce temps sert à toutes les pages
+
+    def __init__(self):
+        self.boucle = None
+        self.verrou = None
+        self.t = 0.0
+        self.reponse = None          # (statut, octets, type, en-têtes)
+
+    def _verrou(self):
+        boucle = asyncio.get_running_loop()
+        if self.boucle is not boucle:            # nouvelle boucle (tests) : nouveau verrou
+            self.boucle, self.verrou = boucle, asyncio.Lock()
+        return self.verrou
+
+    async def lire(self):
+        async with self._verrou():
+            if self.reponse is not None and time.monotonic() - self.t < self.PARTAGE_S:
+                return self.reponse
+            self.reponse = await _demander_image()
+            self.t = time.monotonic()
+            return self.reponse
+
+
+async def _demander_image():
+    import httpx
+    try:
+        async with httpx.AsyncClient(timeout=D.CAMERA_DELAI_S + 2.0) as client:
+            r = await client.get(url_noeud() + "/camera", headers=_entetes())
+    except httpx.HTTPError as e:
+        erreur = _injoignable(e)
+        return 503, json.dumps({"detail": erreur.detail}).encode(), "application/json", {}
+    if r.status_code == 404:
+        detail = ("Le nœud pilotage ne connaît pas encore la caméra : arrêtez-le et redémarrez-le "
+                  "(« Démarrer le pilotage », ou avec le robot : g1-jetson demarrer après la nouvelle image).")
+        return 503, json.dumps({"detail": detail}).encode(), "application/json", {}
+    entetes = {k: v for k, v in r.headers.items() if k.lower() in ("x-image-age-s", "x-image-numero")}
+    return r.status_code, r.content, r.headers.get("content-type", "application/octet-stream"), entetes
+
+
+CACHE_CAMERA = CacheCamera()
+
+
+@routeur.get("/api/pilotage/camera")
+async def camera():
+    """Dernière image JPEG de la caméra de la tête, demandée au nœud pilotage (lecture seule)."""
+    statut, contenu, genre, entetes = await CACHE_CAMERA.lire()
+    entetes = dict(entetes, **{"Cache-Control": "no-store"})
+    return Response(content=contenu, status_code=statut, media_type=genre.split(";")[0], headers=entetes)
 
 
 # ---------------------------------------------------------------- joystick : WebSocket relayé

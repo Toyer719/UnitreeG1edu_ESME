@@ -6,7 +6,10 @@ Nœud ROS 2 « pilotage » : passe les messages au cœur (coeur.py) et publie se
            /mouvement/maitre (std_msgs/String JSON, fiable, transient_local, profondeur 1)
            /pilotage/etat (std_msgs/String JSON, 2 Hz et à chaque changement)
            /guide/stop (std_msgs/Empty), /robot/dire (std_msgs/String JSON)
+           /api/videohub/request (unitree_api/Request) : une image de la caméra de la tête,
+           seulement quand une page la demande (GET /camera, section 11.13)
   entrées  /api/<service>/response (unitree_api/Response, au mieux),
+           /api/videohub/response (unitree_api/Response, au mieux : JPEG dans binary),
            /lowstate (unitree_hg/LowState),
            /guide/etat, /pont/etat (std_msgs/String JSON), /lf/bmsstate (unitree_hg/BmsState,
            batterie, à vérifier sur le robot)
@@ -86,6 +89,11 @@ def creer_noeud(coeur):
             for service, prefixe in D.SERVICES.items():
                 self.create_subscription(Response, f'{prefixe}/response', self._sur_reponse,
                                          reponses)
+            # caméra de la tête (Vue du robot) : service videohub, une image par demande
+            self.pubs['videohub'] = self.create_publisher(Request, f'{D.SERVICE_VIDEO}/request',
+                                                          fiable)
+            self.create_subscription(Response, f'{D.SERVICE_VIDEO}/response', self._sur_image,
+                                     reponses)
             self.pub_bras = self.create_publisher(LowCmd, D.SUJET_ARM_SDK, fiable)
             self.pub_maitre = self.create_publisher(String, D.SUJET_MAITRE, verrou)
             self.pub_etat = self.create_publisher(String, D.SUJET_ETAT, 10)
@@ -115,7 +123,7 @@ def creer_noeud(coeur):
                 if isinstance(s, Envoi):
                     self.pubs[s.service].publish(
                         remplir_requete(self.Request(), s.identifiant, s.api_id, s.parametre))
-                    if s.raison not in ('lecture_fsm', 'joystick', 'pas'):
+                    if s.raison not in ('lecture_fsm', 'joystick', 'pas', 'camera'):
                         self.get_logger().info(f'{s.service} {s.api_id} {s.parametre} '
                                                f'({s.raison})')
                 elif isinstance(s, Bras):
@@ -150,6 +158,13 @@ def creer_noeud(coeur):
         def _sur_reponse(self, msg):
             identite = msg.header.identity
             self.coeur.sur_reponse(identite.id, msg.header.status.code, msg.data)
+
+        def _sur_image(self, msg):
+            identite = msg.header.identity
+            binaire = msg.binary
+            octets = binaire.tobytes() if hasattr(binaire, 'tobytes') else bytes(
+                (v & 0xFF for v in binaire))
+            self.coeur.sur_image(identite.id, msg.header.status.code, octets)
 
         def _sur_lowstate(self, msg):
             self.coeur.entree('sur_lowstate', [m.q for m in msg.motor_state])

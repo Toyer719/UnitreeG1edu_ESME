@@ -19,6 +19,7 @@ from atelier.lieu import pilotage as D
 sys.path[:0] = [str(atelier.RACINE / "ws" / "src" / "g1_pilotage"), str(atelier.RACINE / "ws" / "src" / "g1_jumeau")]
 tornado = pytest.importorskip("tornado")
 
+from g1_jumeau.camera import FausseCamera  # noqa: E402
 from g1_jumeau.logique import FauxSport  # noqa: E402
 from g1_jumeau.robot import FauxG1  # noqa: E402
 from g1_pilotage.coeur import Coeur  # noqa: E402
@@ -40,6 +41,7 @@ class NoeudEnMemoire:
         self.recues = []
         self.bras = []
         self.robot = FauxG1(FauxSport())
+        self.camera = FausseCamera()                 # caméra de la tête (Vue du robot)
         self.coeur = Coeur(Pilotage(), self.publier)
         self.jeton = jeton
         self.fin = threading.Event()
@@ -60,6 +62,9 @@ class NoeudEnMemoire:
             if not isinstance(s, Envoi):
                 continue
             self.recues.append((t, s))
+            if s.service == "videohub":
+                self.coeur.sur_image(s.identifiant, *self.camera.traiter(s.api_id, s.parametre))
+                continue
             reponse = self.robot.traiter(s.service, s.api_id, s.parametre)
             if reponse is not None:
                 self.coeur.sur_reponse(s.identifiant, *reponse)
@@ -283,3 +288,33 @@ def test_jeton_transmis(client, monkeypatch):
         assert client.get("/api/pilotage/etat").status_code == 200
     finally:
         n.arreter()
+
+
+def test_camera_de_la_tete_relayee(client, noeud):
+    """Vue du robot (section 11.13) : JPEG du service videohub, lecture seule (sans la main)."""
+    from atelier.serveur.routes import pilotage as routes
+    r = client.get("/api/pilotage/camera")
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+    assert r.content[:2] == b"\xff\xd8" and r.headers["x-image-numero"] == "1"
+    assert r.headers["cache-control"] == "no-store"
+    # pages qui demandent en même temps : une image partagée, une demande au robot
+    r2 = client.get("/api/pilotage/camera")
+    assert r2.status_code == 200 and r2.headers["x-image-numero"] == "1"
+    time.sleep(routes.CacheCamera.PARTAGE_S + D.CAMERA_ECART_MIN_S)
+    assert client.get("/api/pilotage/camera").headers["x-image-numero"] == "2"
+    demandes = [s for _, s in noeud.recues if s.service == "videohub"]
+    assert len(demandes) == 2 and all(s.api_id == D.API_VIDEO["get_image_sample"] for s in demandes)
+    assert client.get("/api/pilotage/etat").json()["maitre"] == "guide"      # rien n'a changé
+
+
+def test_camera_sans_noeud_ou_sans_image(client, noeud, monkeypatch):
+    monkeypatch.setenv("G1_PILOTAGE_URL", f"http://127.0.0.1:{port_libre()}")
+    time.sleep(0.2)
+    r = client.get("/api/pilotage/camera")
+    assert r.status_code == 503 and "ne répond pas" in r.json()["detail"]
+    monkeypatch.setenv("G1_PILOTAGE_URL", f"http://127.0.0.1:{noeud.port}")
+    noeud.camera.traiter = lambda api_id, parametre: (3104, b"")       # caméra muette
+    noeud.coeur.camera.ecart_min_s = 0.0
+    time.sleep(0.2)
+    r = client.get("/api/pilotage/camera")
+    assert r.status_code == 503 and "code 3104" in r.json()["detail"]

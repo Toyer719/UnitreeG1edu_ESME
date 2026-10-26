@@ -40,6 +40,7 @@ commandes (`g1_jumeau/robot.py`, logique sans ROS, classe `FauxG1`) :
 | `/arm_sdk` | chaque LowCmd est vérifié (`VerificationArmSdk`) : poids dans [0, 1] et sans saut (rampe de 1 s au moins), angles dans `LIMITES_BRAS`, vitesse par ordre au plus `VITESSE_BRAS_MAX`, taille tenue, jambes et moteurs 30 à 34 jamais écrits ; tout écart est compté |
 | `/lowstate` | 50 Hz : les bras suivent l'ordre pondéré par le poids d'arm_sdk, sinon la pose où le contrôleur d'Unitree les tient |
 | `/lf/bmsstate` | 1 Hz : batterie simulée (`soc`) |
+| `/api/videohub/request` → `/response` | caméra de la tête (GetImageSample, 1001) : une image de test JPEG 640 × 360 dans `binary` à chaque demande (Pillow : « Faux G1 : pas de caméra en répétition », numéro, heure) ; rien en panne `muet` ; 3203 pour une autre api (Vue du robot, plan 11.13) |
 
 `/g1_jumeau/etat` porte tout cela dans son champ `robot` : `fsm`, `danse`, `bras_tenus`,
 `postures`, `gestes_joues`, `interdits_recus`, `voix` (`tts`, `volume`, `led`, `led_historique`),

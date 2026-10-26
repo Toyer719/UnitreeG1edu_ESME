@@ -288,6 +288,20 @@ haut : l'état, la batterie, **Prendre la main** / **Rendre la main**, et le gro
   paroles, musique) et **aperçu 3D** du G1 avant de jouer. Les bras passent par rt/arm_sdk avec des
   rampes, des angles et des vitesses bornés ; les jambes restent au contrôleur d'Unitree.
 
+**La Vue du robot** (sous « Commandes » et « Danses du robot », pliable avec « Masquer la vue ») montre
+ce que fait le robot, sans rien commander :
+
+- une **carte** du lieu en cours (simulation, répétition ou robot) avec la position et le cap du
+  robot et les passants, comme l'onglet Simulation (en répétition et avec le robot, il faut avoir
+  cliqué « Repérer le robot » dans l'onglet Simulation) ; « Suivre le robot » la recentre ;
+- **le G1 en 3D** : la posture d'après le mode du robot (debout, accroupi, assis, amorti), les
+  jambes qui marchent avec le joystick, les gestes des bras et la danse du robot en **aperçu
+  approché** (le vrai mouvement est dans le robot ; une danse montre sa barre de progression), et
+  une chorégraphie de l'Atelier avec ses **vraies poses** ;
+- la **caméra de la tête** : avec le robot, quelques images par seconde (bouton « Voir » /
+  « Couper », seulement quand la vue est à l'écran) ; en répétition, une image de remplacement, et
+  « Voir » montre l'image de test du faux G1 (toute la chaîne de la vidéo est essayée).
+
 **Un seul maître des mouvements** : tant que le guide a la main, le pilotage refuse joystick,
 postures, gestes et danses (voix, LED et ARRÊT restent permis) ; quand le pilotage a la main, le
 guide refuse les visites et le pont ignore Nav2. **ARRÊT est toujours permis.** La télécommande
@@ -315,6 +329,11 @@ Jetson (`G1_PILOTAGE=1`, défaut de `g1-jetson demarrer`), joint par le Wi-Fi ou
 `opt/jetson/jeton_pilotage`, ou `G1_PILOTAGE_JETON`). Les chorégraphies sont dans
 `~/robot-g1/choregraphies/` (`exemple_kpop` : 29 s sur un battement généré) ; vos musiques vont dans
 `choregraphies/musique/`, jamais dans Git. Détails : `ws/src/g1_pilotage/LISEZMOI.md`.
+
+La caméra de la tête passe par le service `videohub` du robot (une image JPEG à chaque demande,
+5 par seconde au plus, partagée entre les pages) : le nœud pilotage la demande seulement quand une
+page la regarde, et l'Atelier la relaie (`GET /api/pilotage/camera`). Le flux H264 de
+`/frontvideostream` n'est jamais lu. **À vérifier sur le robot** (`docs/seance-robot.md`, 6.12).
 
 ### L'équipe : personnalités, dialogues, caméra
 

@@ -596,3 +596,27 @@ def test_guide_muet_en_pleine_visite_compte_encore(p, h):
     assert p.prendre_main().statut == 409
     h.t += 11.0                                  # au-delà de 30 s : le guide ne compte plus
     assert p.prendre_main().statut == 202
+
+
+# ---------------------------------------------------------------- Vue du robot : geste en cours
+
+def test_geste_en_cours_dans_l_etat(p, h):
+    assert p.etat()['geste'] is None
+    prendre(p, h)
+    en_801(p, h)
+    r = p.geste(17)
+    repondre(p, r)
+    g = p.etat()['geste']
+    assert (g['numero'], g['genre'], g['id'], g['nom']) == (1, 'bras', 17, D.GESTES_BRAS[17])
+    h.t += 3.0
+    assert p.etat()['geste']['ecoule_s'] == 3.0
+    repondre(p, p.tache(2))
+    g = p.etat()['geste']
+    assert (g['numero'], g['genre'], g['id']) == (2, 'tache', 2)
+    h.t += 10.5                                    # au-delà de DUREE_GESTE_VU_S
+    assert p.etat()['geste'] is None
+    repondre(p, p.geste(20), code=7404)            # refusé par le robot : pas montré
+    assert p.etat()['geste'] is None
+    repondre(p, p.geste(26))
+    p.arret()                                      # ARRÊT relâche les bras : 99 montré
+    assert p.etat()['geste']['id'] == D.GESTE_RELACHER

@@ -331,6 +331,26 @@ G1_PILOTAGE_URL=$G1_PILOTAGE_URL g1-atelier                  # onglet Pilotage
     `ros2 topic pub --once /robot/geste std_msgs/msg/String "{data: '{\"geste\": 26, \"source\": \"atelier\"}'}"`
     → grand salut, puis bras relâchés 5 s après ; le même message pendant que l'onglet a la main :
     ignoré (journal du conteneur : « Geste demandé ignoré »).
+12. **Vidéo de la tête dans la Vue du robot** (onglet Pilotage, « Commandes », panneau « Caméra de
+    la tête », bouton « Voir » ; le conteneur doit venir de la nouvelle image, `g1-jetson
+    demarrer`) :
+    - le service existe-t-il ? `ros2 topic list | grep videohub` dans le conteneur
+      (`/api/videohub/request` et `/api/videohub/response`) ; sinon noter ce qui existe
+      (`/frontvideostream` seulement ? caméra RealSense de la tête ?) ;
+    - une image arrive : `curl -s -H "X-Jeton: $(cat ~/robot-g1/opt/jetson/jeton_pilotage)"
+      http://<Jetson>:8010/camera -o tete.jpg` puis ouvrir `tete.jpg` (le nœud demande
+      GetImageSample, api 1001, et attend le JPEG dans le champ `binary` de la réponse) ; si la
+      réponse est vide, refusée (code noté) ou n'est pas un JPEG, noter le code et le premier
+      octet ; si rien ne revient en 1 s, le message de la page le dit ;
+    - le débit : la page demande une image toutes les 0,35 s au plus (5 par seconde au plus au
+      robot) ; noter la taille d'une image, le nombre d'images par seconde vues sur la tablette,
+      au câble puis **par le Wi-Fi**, et si le joystick reste vif pendant que la caméra tourne
+      (latence appui → premier pas, caméra allumée puis coupée) ;
+    - « Couper », onglet fermé, autre sous-onglet : plus aucune demande (journal du conteneur : pas
+      de requêtes videohub) ;
+    - la vue 3D suit-elle le robot : posture lue (7001) après chaque changement, geste montré en
+      même temps que le vrai (l'aperçu des gestes est approché : noter ceux qui ne ressemblent pas
+      du tout), danse avec sa barre de progression, chorégraphie aux mêmes poses que le vrai robot.
 
 ## 7. Point principal, passants et accompagnement (vague 4, environ 45 min, au sol)
 
@@ -417,6 +437,7 @@ g1-guide stop                                                                   
 | 6.8 | rt/arm_sdk : chorégraphie lente, puis exemple_kpop à 1/2 | poids, rampes, taille tenue, gains, `mode`, CRC | | |
 | 6.9 | Batterie `/lf/bmsstate` | `soc` lu | | |
 | 6.11 | LED de la personnalité ; geste demandé (`/robot/geste`) robot au repos | couleur ; salut puis bras relâchés | | |
+| 6.12 | Vue du robot : vidéo de la tête (videohub 1001), au câble puis par le Wi-Fi ; vue 3D | image reçue ; taille, images par seconde, latence du joystick caméra allumée ; posture et gestes suivis | | |
 | 7.1 | Repérage depuis le point principal, à la croix puis loin et tourné | « Repéré » ; écart < 10 cm ; durée | | |
 | 7.2 | Retour seul au point principal | 15 s après l'arrivée ; cap à 10° près | | |
 | 7.3 | Accompagnement d'un volontaire | `depart`, ralentit, attend, reprend | | |

@@ -1,10 +1,11 @@
-// Aperçu 3D du G1 pour les chorégraphies (section 11.5 du plan) : le modèle de l'URDF g1_29dof_rev_1_0
+// Aperçu 3D du G1 pour les chorégraphies (section 11.5 du plan) et la Vue du robot (11.13) : le modèle de l'URDF g1_29dof_rev_1_0
 // (GET /api/pilotage/modele) et ses maillages STL (models/g1_proxy/meshes), animés articulation par
 // articulation. Repère du robot : x vers l'avant, y vers la gauche, z vers le haut (comme l'URDF).
 //
 // Deux rendus : three.js (WebGL, avec les maillages) ; sans WebGL (Firefox sans fenêtre des tests,
 // vieux navigateur), un dessin 2D en perspective du squelette des mêmes articulations. Les deux
-// comptent les images dessinées (this.images), exposées aussi dans window.apercuPilotage.
+// comptent les images dessinées (this.images), exposées aussi dans window.apercuPilotage (ou le nom
+// donné par options.nomGlobal : window.vueRobot3d pour la Vue du robot).
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
@@ -18,6 +19,8 @@ const COULEUR_CORPS = '#6b7280';
 const HAUTEUR_COU = 0.32;              // m au-dessus de l'origine du torse (dessin sans WebGL)
 const POSITION_TETE = [0.0, 0, 0.42];  // centre de la tête, dans le repère du torse
 const POSITION_LED = [0.085, 0, 0.42]; // LED devant la tête (à vérifier sur le robot)
+const SEMELLE = 0.035;                 // m, de l'origine de la cheville (ankle_roll_link) à la semelle
+const DESSOUS_BASSIN = 0.1;            // m, de l'origine du bassin à son dessous (robot assis par terre)
 
 // Squelette de secours si l'URDF manque : les mêmes noms d'articulations, longueurs approchées
 const SQUELETTE_SECOURS = (function construire() {
@@ -89,9 +92,11 @@ function couleurCote(nom) {
 }
 
 export class Apercu3D {
-  // element : le conteneur. charger() lit le modèle ; poser(q, base, led) place le G1.
-  constructor(element) {
+  // element : le conteneur. charger() lit le modèle ; poser(q, base, led, corps) place le G1.
+  // options : {nomGlobal} (window.apercuPilotage par défaut), {camera: [x, y, z], cible: [x, y, z]}
+  constructor(element, options) {
     this.element = element;
+    this.nomGlobal = (options && options.nomGlobal) || 'apercuPilotage';
     this.images = 0;
     this.pret = false;
     this.maillagesCharges = 0;
@@ -106,8 +111,12 @@ export class Apercu3D {
     this.scene.background = new THREE.Color(0xf4f6f8);
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.05, 50);
     this.camera.up.set(0, 0, 1);
-    this.camera.position.set(2.6, 1.4, 1.5);
-    this.cible = new THREE.Vector3(0, 0, 0.9);
+    const o = options || {};
+    const position = o.camera || [2.6, 1.4, 1.5];
+    this.camera.position.set(position[0], position[1], position[2]);
+    this.cible = new THREE.Vector3(...(o.cible || [0, 0, 0.9]));
+    this.distance2D = Math.hypot(position[0] - this.cible.x, position[1] - this.cible.y);
+    this.hauteur2D = position[2];
     this.camera.lookAt(this.cible);
     try {
       this.rendu = new THREE.WebGLRenderer({ antialias: true });
@@ -121,6 +130,7 @@ export class Apercu3D {
       element.appendChild(this.rendu.domElement);
       this.controles = new OrbitControls(this.camera, this.rendu.domElement);
       this.controles.target.copy(this.cible);
+      this.controles.update();         // sinon la caméra garde la cible du constructeur (l'origine, au sol)
       this.controles.addEventListener('change', () => this.demanderRendu());
       this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8a80, 1.2));
       const soleil = new THREE.DirectionalLight(0xffffff, 1.3);
@@ -134,7 +144,7 @@ export class Apercu3D {
       this.toile.className = 'apercu-toile';
       element.appendChild(this.toile);
       this.contexte = this.toile.getContext('2d');
-      this.azimut = Math.atan2(1.4, 2.6);
+      this.azimut = Math.atan2(this.camera.position.y - this.cible.y, this.camera.position.x - this.cible.x);
       this._glisser();
     }
     this.base = new THREE.Group();     // le robot dans son repère de départ (pas de marche)
@@ -146,7 +156,7 @@ export class Apercu3D {
     this.observateur = new ResizeObserver(() => this.redimensionner());
     this.observateur.observe(element);
     this.redimensionner();
-    window.apercuPilotage = this;
+    window[this.nomGlobal] = this;
     const boucle = () => {
       if (!this.actif) return;
       if (this.aRendre) {
@@ -279,12 +289,15 @@ export class Apercu3D {
     await Promise.all(fils);
   }
 
-  // q : {articulation: angle} ; base : {x, y, cap} (repère de départ) ; led : {r, g, b} ou null
-  poser(q, base, led) {
+  // q : {articulation: angle} ; base : {x, y, cap} (repère de départ) ; led : {r, g, b} ou null ;
+  // corps : {sol: true} pose le robot au sol (pieds, ou bassin s'il est assis), sinon bassin à 0,793 m
+  poser(q, base, led, corps) {
     Object.keys(q || {}).forEach((nom) => {
       const a = this.articulations[nom];
       if (a) a.groupe.quaternion.setFromAxisAngle(a.axe, q[nom]);
     });
+    this.bassin.position.z = HAUTEUR_BASSIN;
+    if (corps && corps.sol) this._poserAuSol();
     if (base) {
       this.base.position.set(base.x, base.y, 0);
       this.base.rotation.set(0, 0, base.cap);
@@ -292,6 +305,26 @@ export class Apercu3D {
     this.couleurLed = led ? 'rgb(' + led.r + ',' + led.g + ',' + led.b + ')' : null;
     if (this.led) this.led.material.color.set(this.couleurLed || '#222222');
     this.demanderRendu();
+  }
+
+  // Le point le plus bas (semelles, dessous du bassin) touche le sol
+  _poserAuSol() {
+    if (!this.contacts) {
+      const noms = Object.keys(this.liens);
+      let pieds = noms.filter((n) => /ankle_roll_link$/.test(n));
+      if (!pieds.length) pieds = noms.filter((n) => /ankle_pitch_link$/.test(n));
+      this.contacts = pieds.map((n) => [n, SEMELLE]);
+      if (this.modele && this.liens[this.modele.racine]) this.contacts.push([this.modele.racine, DESSOUS_BASSIN]);
+    }
+    if (!this.contacts.length) return;
+    this.base.updateMatrixWorld(true);
+    let bas = Infinity;
+    const v = new THREE.Vector3();
+    this.contacts.forEach(([nom, sous]) => {
+      this.liens[nom].getWorldPosition(v);
+      bas = Math.min(bas, v.z - sous);
+    });
+    if (Number.isFinite(bas)) this.bassin.position.z = HAUTEUR_BASSIN - bas;
   }
 
   dessiner() {
@@ -323,8 +356,9 @@ export class Apercu3D {
     const c = this.contexte;
     const l = this.toile.width;
     const h = this.toile.height;
-    const distance = 3.0;
-    this.camera.position.set(this.cible.x + distance * Math.cos(this.azimut), this.cible.y + distance * Math.sin(this.azimut), 1.5);
+    const distance = this.distance2D;
+    this.camera.position.set(this.cible.x + distance * Math.cos(this.azimut), this.cible.y + distance * Math.sin(this.azimut),
+      this.hauteur2D);
     this.camera.lookAt(this.cible);
     this.camera.updateMatrixWorld();
     this.scene.updateMatrixWorld(true);
@@ -407,6 +441,6 @@ export class Apercu3D {
       this.rendu.dispose();
       this.rendu.domElement.remove();
     }
-    if (window.apercuPilotage === this) window.apercuPilotage = null;
+    if (window[this.nomGlobal] === this) window[this.nomGlobal] = null;
   }
 }

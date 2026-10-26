@@ -16,10 +16,13 @@ from tornado import gen, testing, websocket
 from tornado.httpclient import HTTPRequest
 
 try:
+    from g1_jumeau.camera import FausseCamera
     from g1_jumeau.logique import FauxSport
     from g1_jumeau.robot import FauxG1
 except ImportError:          # g1_jumeau absent : robot minimal
-    FauxG1 = None
+    FauxG1 = FausseCamera = None
+
+JPEG_MINIMAL = b'\xff\xd8\xff\xe0' + b'\x00' * 16 + b'\xff\xd9'
 
 
 class RobotMemoire:
@@ -29,12 +32,17 @@ class RobotMemoire:
         self.recues = []
         self.coeur = None
         self.robot = FauxG1(FauxSport()) if FauxG1 is not None else None
+        self.camera = FausseCamera() if FausseCamera is not None else None
 
     def __call__(self, sorties):
         for s in sorties:
             if not isinstance(s, Envoi):
                 continue
             self.recues.append((time.monotonic(), s))
+            if s.service == 'videohub':        # caméra de la tête : image de test du faux G1
+                self.coeur.sur_image(s.identifiant, *(self.camera.traiter(s.api_id, s.parametre)
+                                                      if self.camera else (0, JPEG_MINIMAL)))
+                continue
             if self.robot is None:
                 reponse = (0, json.dumps({'data': 801}) if s.api_id == 7001 else '')
             else:
@@ -93,6 +101,16 @@ class TestSansJeton(Base):
         assert code == 200 and etat['maitre'] == 'guide' and etat['fsm'] == 801
         lieu = pytest.importorskip('atelier.lieu')
         assert lieu.valider_message('etat_pilotage', etat) == []
+
+    def test_camera_sans_la_main(self):
+        r = self.fetch('/camera')
+        assert r.code == 200 and r.headers['Content-Type'] == 'image/jpeg'
+        assert r.body[:2] == b'\xff\xd8' and r.headers['X-Image-Numero'] == '1'
+        assert float(r.headers['X-Image-Age-S']) < 1.0
+        r = self.fetch('/camera')                  # moins de 0,2 s après : la même image
+        assert r.code == 200 and r.headers['X-Image-Numero'] == '1'
+        demandes = [s for _, s in self.robot.recues if s.service == 'videohub']
+        assert len(demandes) == 1 and demandes[0].api_id == 1001
 
     def test_interdits_403_rien_d_envoye(self):
         self.prendre()
@@ -203,6 +221,9 @@ class TestAvecJeton(Base):
         assert code == 401
         code, r = self.appel('/etat', jeton=self.JETON)
         assert code == 200 and r['version'] == 1
+        code, r = self.appel('/camera')            # la caméra aussi exige le jeton
+        assert code == 401
+        assert self.fetch('/camera', headers={'X-Jeton': self.JETON}).code == 200
 
     @testing.gen_test
     async def test_joystick_401_sans_jeton(self):

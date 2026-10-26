@@ -30,17 +30,22 @@ Vague 4 (section 11.5 du plan), le faux G1 étendu (robot.py) :
   /arm_sdk (unitree_hg/LowCmd) reçu et vérifié (poids, rampes, limites, vitesses, taille,
       jambes) ; /lowstate (unitree_hg/LowState, 50 Hz) : bras qui suivent les ordres pondérés ;
   /lf/bmsstate (unitree_hg/BmsState, 1 Hz) : batterie simulée.
+  /api/videohub/request → /api/videohub/response : caméra de la tête (GetImageSample, 1001), une
+      image de test JPEG dans binary à chaque demande (camera.py, section 11.13) ; rien en panne
+      muet.
 Paramètres en plus : fsm_depart (801 : debout, prêt à marcher), echelle_danses (1,0).
 
 Options pour les essais : latence_s (délai avant d'appliquer et de répondre), perte (part des
 requêtes perdues : ni appliquées ni répondues), graine (tirage des pertes).
 """
+from array import array
 import json
 import math
 import random
 import signal
 import sys
 
+from .camera import FausseCamera
 from .logique import FauxSport, OdometrieDerivee, PANNES
 from .robot import BrasSimules, FauxG1
 
@@ -121,6 +126,10 @@ def creer_noeud():
             for service in SERVICES:
                 self.create_subscription(Request, f'/api/{service}/request',
                                          self._recepteur(service), fiable)
+            # caméra de la tête (Vue du robot de l'onglet Pilotage) : une image de test par demande
+            self.camera = FausseCamera()
+            self.pub_video = self.create_publisher(Response, '/api/videohub/response', fiable)
+            self.create_subscription(Request, '/api/videohub/request', self._sur_video, fiable)
             self.create_subscription(LowCmd, '/arm_sdk', self._sur_arm_sdk,
                                      QoSProfile(depth=50, reliability=ReliabilityPolicy.RELIABLE))
             self.pub_lowstate = self.create_publisher(LowState, '/lowstate',
@@ -191,6 +200,18 @@ def creer_noeud():
                 self.get_logger().info(f'{service} {identite.api_id} {msg.parameter[:120]} : 0')
             if service == 'sport':
                 self._publier_vitesse()      # la nouvelle consigne part tout de suite
+
+        def _sur_video(self, msg):
+            if self.sport.panne == 'muet':
+                return
+            identite = msg.header.identity
+            code, octets = self.camera.traiter(identite.api_id, msg.parameter)
+            reponse = self.Response()
+            reponse.header.identity.id = identite.id
+            reponse.header.identity.api_id = identite.api_id
+            reponse.header.status.code = int(code)
+            reponse.binary = array('b', octets)
+            self.pub_video.publish(reponse)
 
         # -------------------------------------------------------- bras, /lowstate, batterie
 

@@ -70,6 +70,7 @@ TOLERANCE_POIDS = 1e-6
 GUIDE_PERIME_S = 30.0           # /guide/etat plus vieux : le guide ne compte plus comme en mission
 ECART_GESTE_AUTO_S = 10.0       # gestes demandés par l'équipe (/robot/geste) : un au plus par 10 s
 RELACHER_GESTE_AUTO_S = 5.0     # ... puis les bras sont relâchés (99) après ce temps
+DUREE_GESTE_VU_S = 10.0         # champ « geste » de l'état (Vue du robot) : pendant ce temps
 
 STOP_MOVE = D.parametre_vitesse(0.0, 0.0, 0.0, 1.0)
 
@@ -188,8 +189,19 @@ class Pilotage:
         self.personnalite = None              # dernier /personnalite/active (dict)
         self.t_geste_auto = None              # dernier geste demandé par /robot/geste
         self.relacher_geste_a = None          # instant du relâchement (99) qui suit ce geste
+        # Vue du robot de l'onglet Pilotage : dernier geste ou tâche envoyé (section 11.13)
+        self.geste_vu = None                  # {numero, genre, id, nom, debut, identifiant}
+        self.gestes_vus = 0
 
     # ------------------------------------------------------------ outils
+
+    def _voir_geste(self, genre, ident, envoi):
+        """Note le geste (« bras » : arm 7106 ; « tache » : sport 7106) pour la Vue du robot."""
+        self.gestes_vus += 1
+        noms = D.GESTES_BRAS if genre == 'bras' else D.TACHES_LOCO
+        self.geste_vu = {'numero': self.gestes_vus, 'genre': genre, 'id': int(ident),
+                         'nom': noms.get(ident, str(ident)), 'debut': self.maintenant(),
+                         'identifiant': envoi.identifiant}
 
     def maintenant(self):
         return float(self.horloge())
@@ -296,6 +308,10 @@ class Pilotage:
         elif self.descente is not None:
             choregraphie = {'id': self.descente['id'], 't': None, 'duree_s': None, 'arret': True,
                             'poids_bras': round(self._poids_descente(t), 4)}
+        geste = None
+        if self.geste_vu is not None and t - self.geste_vu['debut'] < DUREE_GESTE_VU_S:
+            geste = {cle: self.geste_vu[cle] for cle in ('numero', 'genre', 'id', 'nom')}
+            geste['ecoule_s'] = round(t - self.geste_vu['debut'], 2)
         batterie = None
         if self.batterie is not None:
             batterie = {'pourcent': self.batterie[0], 'age_s': round(t - self.batterie[1], 1)}
@@ -304,7 +320,8 @@ class Pilotage:
             'fsm': self.fsm, 'activite': self.activite(t), 'message': self.message,
             'consigne': {'vx': round(vx, 4), 'vy': round(vy, 4), 'wz': round(wz, 4)},
             'age_ordre_s': None if self.t_ordre is None else round(max(0.0, t - self.t_ordre), 3),
-            'danse': danse, 'choregraphie': choregraphie, 'bras_tenus': self.bras_tenus,
+            'danse': danse, 'choregraphie': choregraphie, 'geste': geste,
+            'bras_tenus': self.bras_tenus,
             'dernier_refus': self.dernier_refus,
             # en plus du schéma
             'maitre_detail': dict(self.maitre), 'limites': dict(self.limites),
@@ -332,6 +349,8 @@ class Pilotage:
         if code != 0:
             message = D.message_refus(code)
             self._noter_refus(code, message, service, api_id)
+            if self.geste_vu is not None and self.geste_vu['identifiant'] == identifiant:
+                self.geste_vu = None          # geste refusé : la Vue du robot ne le montre pas
             if raison not in ('lecture_fsm',):
                 self.message = message
             return True
@@ -558,6 +577,7 @@ class Pilotage:
                 return verif
         envoi = self._envoi('sport', 7106, D.parametre_tache(tache), 'tache')
         self.t_geste = self.maintenant()
+        self._voir_geste('tache', tache, envoi)
         self.message = f'Tâche demandée : {D.TACHES_LOCO[tache]}.'
         return Resultat(200, {'detail': self.message}, [envoi], attendre=envoi.identifiant)
 
@@ -578,6 +598,7 @@ class Pilotage:
                 return occupe
         envoi = self._envoi('arm', 7106, D.parametre_geste(action), f'geste:{action}')
         self.t_geste = self.maintenant()
+        self._voir_geste('bras', action, envoi)
         self.message = f'Geste demandé : {D.GESTES_BRAS[action]}.'
         return Resultat(200, {'detail': self.message, 'action': action}, [envoi],
                         attendre=envoi.identifiant)
@@ -669,6 +690,7 @@ class Pilotage:
                               f'{ECART_GESTE_AUTO_S:.0f} s.')
         envoi = self._envoi('arm', 7106, D.parametre_geste(action), f'geste:{action}')
         self.t_geste = self.t_geste_auto = t
+        self._voir_geste('bras', action, envoi)
         self.relacher_geste_a = t + RELACHER_GESTE_AUTO_S
         source = donnees.get('source') or 'équipe'
         self.message = f'Geste demandé ({source}) : {D.GESTES_BRAS[action]}.'
@@ -682,8 +704,10 @@ class Pilotage:
         self.relacher_geste_a = None
         if self.a_la_main() or self.danse is not None or self.lecture is not None:
             return []           # le pilote ou une danse a repris les bras entre-temps
-        return [self._envoi('arm', 7106, D.parametre_geste(D.GESTE_RELACHER),
-                            f'geste:{D.GESTE_RELACHER}')]
+        envoi = self._envoi('arm', 7106, D.parametre_geste(D.GESTE_RELACHER),
+                            f'geste:{D.GESTE_RELACHER}')
+        self._voir_geste('bras', D.GESTE_RELACHER, envoi)
+        return [envoi]
 
     # ------------------------------------------------------------ danses du robot
 
@@ -963,6 +987,7 @@ class Pilotage:
         if self.bras_tenus or (self.t_geste is not None and t - self.t_geste < DUREE_GESTE_S):
             sorties.append(self._envoi('arm', 7106, D.parametre_geste(D.GESTE_RELACHER),
                                        f'geste:{D.GESTE_RELACHER}'))
+            self._voir_geste('bras', D.GESTE_RELACHER, sorties[-1])
         sorties.append(ArretGuide(f'ARRÊT ({par})'))
         self.message = 'ARRÊT : robot arrêté.'
         return Resultat(200, {'detail': self.message}, sorties)

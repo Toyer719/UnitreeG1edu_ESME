@@ -74,6 +74,7 @@ la confirmation double) ; 504 le robot ne répond pas en 2 s.
 | `GET /etat` | | état (schéma `etat_pilotage`, plus `maitre_detail`, `limites`, `batterie`, `lowstate`…) |
 | `GET /danses[?lire=1]` | | danses du robot ; `lire=1` : 7100 `{"fsm_id": 550, "api_id": 1}` au robot |
 | `GET /gestes[?lire=1]` | | gestes d'Unitree (et la liste 7107 du robot) |
+| `GET /camera` | | image JPEG de la caméra de la tête (service videohub, GetImageSample 1001 ; une demande à la fois, 5 par seconde au plus, en-têtes `X-Image-Age-S` et `X-Image-Numero`) ; 503 sans image ; permise sans la main (Vue du robot, plan 11.13) |
 | `POST /maitre` | `{maitre: pilotage\|guide, forcer?, par?}` | prendre (409 pendant une visite, sauf `forcer`) ou rendre la main |
 | `POST /posture` | `{fsm, portique?, jeton?}` | 7101 : 500, 706, 702, 3 ; 1 et 0 : case `portique` puis confirmation double (10 s) |
 | `POST /tache` | `{tache}` | sport 7106 : 0, 1 saluer ; 2, 3 serrer la main |

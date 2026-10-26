@@ -79,8 +79,8 @@ est alors la pose du repérage (et non `/odom`, qui est l'odométrie locale). Te
 | Onglet Monde | `js/ecrans/monde.js` | le départ du robot de l'étage du principal est affiché « = point principal » |
 | Onglet Simulation, panneau **Passants** | `js/panneaux/passants.js`, `css/passants.css` | piétons en direct, distance bord à bord au plus proche, scènes, derniers bancs (`/api/passants/*`) |
 | Onglet Simulation, panneau **Comportement du guide** | `js/panneaux/guide.js`, `css/guide.css` | « Accompagner un visiteur », état du guide et du visiteur, événements, faux visiteur (Suivre, Traîner, Partir) |
-| Onglet **Pilotage** | `js/ecrans/pilotage.js`, `js/pilotage/*.js`, `css/pilotage.css` | barre du haut (main, ARRÊT, Échap), Commandes, Danses du robot, Mes chorégraphies (aperçu 3D) ; `/api/pilotage/*`, `/ws/pilotage` |
+| Onglet **Pilotage** | `js/ecrans/pilotage.js`, `js/pilotage/*.js`, `css/pilotage.css` | barre du haut (main, ARRÊT, Échap), Commandes, Danses du robot, Mes chorégraphies (aperçu 3D) ; Vue du robot sous Commandes et Danses (`js/pilotage/vue_robot.js`, `js/pilotage/poses_vue.js` : carte, G1 en 3D, caméra de la tête, plan 11.13) ; `/api/pilotage/*`, `/ws/pilotage` |
 | Onglets **Personnalités**, **Dialogues**, **Caméra** | `js/ecrans/{personnalites,dialogues,camera}.js`, `js/equipe/*.js`, `css/equipe.css` | les fichiers de l'équipe ; « Rendre active » ; « Essayer » une phrase ; vues de la caméra |
 
 Tests dans Firefox sans fenêtre : `atelier/tests/test_principal_navigateur.py`, `test_passants_navigateur.py`,
-`test_guide_navigateur.py`, `test_pilotage_navigateur.py`, `test_equipe_navigateur.py`.
+`test_guide_navigateur.py`, `test_pilotage_navigateur.py`, `test_pilotage_vue_navigateur.py`, `test_equipe_navigateur.py`.

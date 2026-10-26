@@ -9,6 +9,9 @@ les connexions de la machine elle-même (127.0.0.1) sont acceptées.
   GET  /etat                        état du pilotage (schéma etat_pilotage)
   GET  /danses[?lire=1]             danses du robot (lire=1 : 7100 au robot ; sinon la dernière)
   GET  /gestes[?lire=1]             gestes d'Unitree (et la liste 7107 du robot avec lire=1)
+  GET  /camera                      dernière image JPEG de la caméra de la tête (service videohub,
+                                    demandée au robot à cet instant, 5 par seconde au plus) ; 503
+                                    sans image (section 11.13 : Vue du robot, lecture seule)
   POST /maitre    {maitre: pilotage|guide, forcer?, par?}       prendre ou rendre la main
   POST /posture   {fsm, portique?, jeton?}                       7101 (1, 0 : confirmation double)
   POST /tache     {tache}                                        sport 7106 (saluer, serrer main)
@@ -179,6 +182,22 @@ class Gestes(Base):
         self.repondre(200, {'gestes': gestes, 'taches': [{'id': n, 'nom': nom} for n,
                                                          nom in D.TACHES_LOCO.items()],
                             'robot': robot})
+
+
+class Camera(Base):
+    """Image de la caméra de la tête : lecture seule, permise quel que soit le maître."""
+
+    async def get(self):
+        derniere, erreur = await self.executer(self.coeur.image_camera)
+        if derniere is None:
+            detail = erreur or 'Pas encore d\'image de la caméra de la tête.'
+            self.repondre(503, {'detail': detail})
+            return
+        image, age, numero = derniere
+        self.set_header('Content-Type', 'image/jpeg')
+        self.set_header('X-Image-Age-S', f'{age:.2f}')
+        self.set_header('X-Image-Numero', str(numero))
+        self.write(image)
 
 
 class Maitre(Base):
@@ -356,7 +375,8 @@ class Inconnue(Base):
 def creer_application(coeur, jeton=''):
     """L'application tornado du nœud pilotage."""
     options = dict(coeur=coeur, jeton=jeton or '')
-    routes = [(r'/etat', Etat), (r'/danses', Danses), (r'/gestes', Gestes), (r'/maitre', Maitre),
+    routes = [(r'/etat', Etat), (r'/danses', Danses), (r'/gestes', Gestes), (r'/camera', Camera),
+              (r'/maitre', Maitre),
               (r'/posture', Posture), (r'/tache', Tache), (r'/geste', Geste), (r'/voix', Voix),
               (r'/volume', Volume), (r'/led', Led), (r'/danse', Danse), (r'/choregraphie',
                                                                          Choregraphie),

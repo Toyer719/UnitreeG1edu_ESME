@@ -25,6 +25,7 @@
     "age_ordre_s": {"description": "Facultatif : secondes depuis le dernier ordre du joystick, ou null.", "type": ["number", "null"], "minimum": 0},
     "danse": {"description": "Facultatif : danse en cours {id, nom, debut, duree_s}, ou null.", "type": ["object", "null"]},
     "choregraphie": {"description": "Facultatif : chorégraphie en cours {id, t, duree_s, poids_bras}, ou null.", "type": ["object", "null"]},
+    "geste": {"description": "Facultatif : geste en cours ou récent {numero, genre (bras : arm 7106 ; tache : sport 7106 SetTaskId), id, nom, ecoule_s}, pendant 10 s au plus, ou null (Vue du robot de l'onglet Pilotage).", "type": ["object", "null"]},
     "bras_tenus": {"description": "Facultatif : un geste d'Unitree tient encore les bras (relâcher avec 99).", "type": "boolean"},
     "dernier_refus": {"description": "Facultatif : dernier refus {code, message}, ou null.", "type": ["object", "null"]}
   }

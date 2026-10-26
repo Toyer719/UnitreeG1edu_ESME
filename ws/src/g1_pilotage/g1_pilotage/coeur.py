@@ -8,7 +8,8 @@ sorties de la logique (requêtes unitree_api, /arm_sdk, /guide/stop, /mouvement/
 import threading
 import time
 
-from .logique import D, DELAI_REPONSE_S, Pilotage, Resultat
+from .camera import API_IMAGE, Camera
+from .logique import D, DELAI_REPONSE_S, Envoi, Pilotage, Resultat
 
 DELAI_PRISE_S = 3.0             # prendre la main : attente du robot immobile, au plus
 
@@ -23,6 +24,8 @@ class Coeur:
         self.verrou = threading.RLock()
         self.attentes = {}              # identifiant → threading.Event
         self.ecouteurs = []             # fonctions appelées à chaque changement d'état (WebSocket)
+        self.camera = Camera(horloge)   # caméra de la tête (Vue du robot), service videohub
+        self.image_recue = threading.Condition()
 
     def faire(self, nom, *args, **kwargs):
         """Appelle une entrée de la logique, publie ses sorties ; renvoie le Resultat."""
@@ -87,6 +90,45 @@ class Coeur:
             return Resultat(409, corps)
         corps['data'] = data
         return Resultat(200, corps)
+
+    # ---------------------------------------------------- caméra de la tête (lecture seule)
+
+    def image_camera(self, delai=None):
+        """
+        Dernière image de la caméra : (octets JPEG, âge en s, numéro), ou None et l'erreur.
+
+        Demande une image au robot si la dernière a plus de CAMERA_ECART_MIN_S, puis attend sa
+        réponse (CAMERA_DELAI_S au plus). Lecture seule : permis quel que soit le maître.
+        """
+        delai = self.camera.delai_s if delai is None else delai
+        with self.verrou:
+            identifiant = self.logique.identifiants()
+            envoyer = self.camera.demander(identifiant)
+            numero = self.camera.numero
+        if envoyer:         # hors du verrou : la réponse peut arriver pendant la publication
+            self.publier([Envoi('videohub', API_IMAGE, '', identifiant, 'camera')])
+        fin = self.horloge() + delai
+        while True:
+            with self.verrou:
+                if self.camera.numero != numero or not self.camera.en_attente():
+                    break
+            restant = fin - self.horloge()
+            if restant <= 0:
+                break
+            with self.image_recue:
+                self.image_recue.wait(min(0.05, restant))
+        with self.verrou:
+            self.camera.expirer()
+            return self.camera.derniere(), self.camera.erreur
+
+    def sur_image(self, identifiant, code, binaire):
+        """Réponse du service videohub (nœud ROS, ou faux G1 des tests)."""
+        with self.verrou:
+            notre = self.camera.sur_reponse(identifiant, code, binaire)
+        if notre:
+            with self.image_recue:
+                self.image_recue.notify_all()
+        return notre
 
     def faire_et_attendre(self, nom, *args, delai=DELAI_REPONSE_S, **kwargs):
         return self.attendre(self.faire(nom, *args, **kwargs), delai)
