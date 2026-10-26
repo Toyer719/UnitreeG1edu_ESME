@@ -270,10 +270,11 @@ def test_gestes_et_bras_tenus(p, h):
     assert p.dernier_refus['code'] == 7404 and 'debout' in p.dernier_refus['message']
 
 
-# ---------------------------------------------------------------- équipe : personnalité, gestes demandés
+# ---------------------------------------------------------------- équipe : LED, gestes demandés
 
 def test_personnalite_active_met_la_led_sans_la_main(p, h):
-    r = p.appliquer_personnalite({'id': 'accueillant', 'nom': 'Accueillant', 'led': {'r': 0, 'g': 120, 'b': 255}})
+    r = p.appliquer_personnalite({'id': 'accueillant', 'nom': 'Accueillant',
+                                  'led': {'r': 0, 'g': 120, 'b': 255}})
     assert r.ok and 'LED' in r.corps['detail']
     assert [e.api_id for e in envois(r, 'voice')] == [1010]
     assert not p.a_la_main()

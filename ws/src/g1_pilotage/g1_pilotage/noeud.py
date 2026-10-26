@@ -158,7 +158,7 @@ def creer_noeud(coeur):
             self.coeur.entree('sur_batterie', msg.soc)
 
         def _demande(self, nom):
-            """Message JSON de l'équipe → entrée de la logique qui envoie des ordres (journalisée)."""
+            """Message JSON de l'équipe → entrée de la logique qui envoie des ordres."""
             def recevoir(msg):
                 try:
                     donnees = json.loads(msg.data)
