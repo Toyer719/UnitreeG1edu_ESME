@@ -323,6 +323,8 @@ def assembler_contexte(destination, racine=RACINE, incomplet=False):
         source = racine / chemin
         cible = destination / 'python' / chemin
         cible.parent.mkdir(parents=True, exist_ok=True)
+        if not source.exists():
+            raise Erreur(f'{chemin} absent du dépôt ({source}) : il fait partie de l\'image du Jetson')
         if source.is_dir():
             shutil.copytree(source, cible, ignore=IGNORES)
         else:

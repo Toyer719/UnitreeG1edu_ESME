@@ -221,6 +221,8 @@ def test_contexte_sans_pont(tmp_path):
     shutil.copytree(jetson.UNITREE_API, racine / jetson.UNITREE_API.relative_to(RACINE))
     shutil.copytree(jetson.UNITREE_HG, racine / jetson.UNITREE_HG.relative_to(RACINE))
     shutil.copytree(RACINE / 'atelier' / 'lieu', racine / 'atelier' / 'lieu')
+    shutil.copytree(RACINE / 'atelier' / 'equipe', racine / 'atelier' / 'equipe',
+                    ignore=shutil.ignore_patterns('__pycache__'))
     (racine / 'atelier' / 'scan').mkdir()
     for f in ['atelier/__init__.py', 'atelier/scan/__init__.py', 'atelier/scan/slam_client.py']:
         shutil.copy2(RACINE / f, racine / f)
