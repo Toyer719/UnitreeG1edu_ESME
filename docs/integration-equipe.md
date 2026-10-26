@@ -114,7 +114,7 @@ personnalites:
     nom: Accueillant
     description: Chaleureux et patient, pour l'accueil des visiteurs.
     salutation: "Bonjour ! Je suis le robot d'accueil du lycée. Où voulez-vous aller ?"
-    voix: {vitesse: 1.0, hauteur: 1.0, volume: 80}   # 1.0 = normal ; volume de 0 à 100
+    voix: {nom: fr_FR-siwis-medium, vitesse: 1.0, hauteur: 1.0, volume: 80}   # nom : la voix choisie (facultatif) ; 1.0 = normal ; volume de 0 à 100
     led: {r: 0, g: 120, b: 255}     # couleur de la LED, de 0 à 255
     geste_salut: 26                 # geste des bras d'Unitree (26 : grand salut)
     vitesse_max: 0.3                # m/s, 0,4 au plus
@@ -126,10 +126,11 @@ personnalites:
 | Champ | Qui s'en sert | État |
 |---|---|---|
 | `salutation` | le chatbot d'exemple, quand la caméra voit un visiteur proche et que le robot attend à l'accueil | branché |
-| `voix` | la partie voix (elle reçoit ces réglages avec chaque phrase, et sur `/personnalite/active`) | à brancher par la partie voix |
+| `voix` (`nom`, `vitesse`, `hauteur`, `volume`) | la partie voix (elle reçoit ces réglages avec chaque phrase, et sur `/personnalite/active`) ; `nom` : la voix à prendre (ex. `fr_FR-siwis-medium` ou `fr_FR-tom-medium` de Piper) | à brancher par la partie voix |
 | `phrases` | le relais des événements du guide (nœud `dialogue`) ; `{nom}` devient le nom de la salle | branché |
-| `led`, `geste_salut` | le nœud pilotage, qui garde la main sur les bras et la LED (section 7) | à brancher, avec l'onglet Pilotage |
-| `vitesse_max` | le guide, qui seul règle la vitesse de marche | à brancher dans le guide |
+| `led` | le nœud pilotage, qui écoute `/personnalite/active` et met la couleur (service voice, 1010) | branché (à l'assemblage de la vague 4) |
+| `geste_salut` | le nœud `dialogue` le demande sur `/robot/geste` quand il salue ; le nœud pilotage le fait seulement robot au repos (guide sans mission, pas piloté à la main, aucune danse), un toutes les 10 s au plus, puis relâche les bras | branché (à l'assemblage de la vague 4) |
+| `vitesse_max` | le guide, qui seul règle la vitesse de marche : la plus petite des limites (personnalité, visiteur qui traîne) part sur `/speed_limit` | branché (à l'assemblage de la vague 4) |
 
 Codes des phrases (textes par défaut dans `atelier/lieu/comportement.py`, `CODES_EVENEMENT`) : `depart`, `seul`, `ralentir`, `attente_visiteur`, `visiteur_retrouve`, `visiteur_perdu`, `passant_gene`, `passage_libre`, `detour`, `arrivee`, `retour`, `retour_arrive`, `perdu`, `retrouve`, `echec`, `arret`, `pilotage`. À l'arrivée, si la salle a sa propre phrase (`phrase_arrivee` dans l'onglet Salles), c'est elle qui est dite : elle est plus précise.
 
@@ -144,7 +145,7 @@ repli: "Je n'ai pas compris. Vous pouvez me dire par exemple : je cherche la sal
 regles:
   - id: chercher_salle
     motifs: ["je cherche {salle}", "ou est {salle}", "je vais {salle}", "emmene moi {salle}", "{salle}"]
-    action: guider                  # guider, dire, personnalite ou stop
+    action: guider                  # guider, dire, personnalite, stop ou geste
     accompagner: true               # le robot surveille que le visiteur suit (ralentit, l'attend)
     reponse: "Je vous emmène à {nom_salle}. Suivez-moi !"
   - id: bonjour
@@ -160,7 +161,14 @@ regles:
     motifs: ["stop", "arrete toi", "arrete"]
     action: stop
     reponse: "Je m'arrête."
+  - id: coucou                      # action geste (assemblage de la vague 4)
+    motifs: ["fais coucou", "dis au revoir"]
+    action: geste
+    geste: 25                       # geste des bras d'Unitree (onglet Pilotage, liste des gestes)
+    reponse: "Au revoir !"
 ```
+
+L'action `geste` répond, puis demande le geste sur `/robot/geste` (schéma `robot_geste`) : le nœud pilotage ne le fait que robot au repos (ni piloté à la main, ni en visite, ni pendant une danse), un toutes les 10 s au plus, et relâche les bras 5 s après.
 
 Comment le chatbot d'exemple lit une phrase (`atelier/equipe/dialogue.py`) :
 
@@ -211,7 +219,8 @@ Tous sont des `std_msgs/String`. Sauf `/visiteur/texte` (texte brut), ils contie
 | `/guide/evenement` | `evenement_guide` | guide → relais (nœud `dialogue`) | ce qui arrive pendant une visite (départ, arrivée, détour…) |
 | `/guide/etat` | `etat_guide` | guide → tout le monde | où en est le guide (`attente`, `en_route`, `retour`, `arrive`…) |
 | `/visiteurs/detectes` | `personnes` (`source: camera`) | **caméra** → chatbot, Atelier | les visiteurs vus par la See3CAM |
-| `/personnalite/active` | `personnalite_active` | onglet Personnalités, chatbot → voix, relais | la personnalité active (QoS spéciale, ci-dessous) |
+| `/personnalite/active` | `personnalite_active` | onglet Personnalités, chatbot → voix, relais, guide (`vitesse_max`), nœud pilotage (`led`) | la personnalité active (QoS spéciale, ci-dessous) |
+| `/robot/geste` | `robot_geste` | chatbot (règle `geste`, `geste_salut` en saluant) → nœud pilotage | un geste des bras, fait seulement robot au repos |
 | `/mouvement/maitre` | `maitre_mouvement` | nœud pilotage → guide, chatbot | qui commande les mouvements : `guide` ou `pilotage` |
 
 ### Les messages, un par un
@@ -423,6 +432,6 @@ Le robot pèse 35 kg et marche au milieu des gens. Ces règles ne se discutent p
 
 **À faire par l'équipe** : le nœud de la See3CAM (détection, distance, suivi) ; la reconnaissance vocale branchée sur `/visiteur/texte` ; la voix branchée sur `/robot/dire` (avec les réglages de la personnalité et la priorité haute) ; les règles du chatbot pour votre bâtiment.
 
-**À brancher dans le reste du logiciel** (demandé à l'intégrateur) : `vitesse_max` d'une personnalité appliquée par le guide ; `led` et `geste_salut` appliqués par le nœud pilotage ; le choix de la voix dans `personnalites.yaml` (le format n'a que vitesse, hauteur et volume) ; une action « geste » dans `dialogues.yaml` (le format n'a que guider, dire, personnalite et stop) ; le paquet `g1_equipe` dans l'image du Jetson.
+**Branché à l'assemblage de la vague 4** : `vitesse_max` d'une personnalité appliquée par le guide ; `led` et `geste_salut` appliqués par le nœud pilotage ; le champ `voix.nom` (choix de la voix) ; l'action `geste` des dialogues (`/robot/geste`) ; `g1-lieu valider` vérifie aussi les trois fichiers de l'équipe ; `atelier/equipe/` et `g1_equipe` sont dans l'image du Jetson (`ros2 run g1_equipe dialogue …` dans `g1-jetson shell`, non lancé d'office).
 
 **À vérifier sur le robot** : la See3CAM sur le Jetson (numéro du périphérique, modes d'image, débit USB 3), sa position réelle dans `base_link` et son champ de vision ; la distance estimée contre le mètre ruban ; où tournent le chatbot et la voix (Jetson ou PC) et la latence de bout en bout (parole → réponse → départ) ; le haut-parleur et le micro du robot dans un hall bruyant.

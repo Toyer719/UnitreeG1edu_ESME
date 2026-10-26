@@ -6,7 +6,7 @@ voix de l'équipe. Guide pour les coéquipiers : `docs/integration-equipe.md`.
 
 | Exécutable | Rôle | Sujets |
 |---|---|---|
-| `dialogue` | applique `dialogues.yaml` du lieu (ou les règles d'exemple) à ce que dit le visiteur ; relaie les événements du guide avec les phrases de la personnalité active ; salue un visiteur vu par la caméra | écoute `/visiteur/texte`, `/guide/evenement`, `/guide/etat`, `/visiteurs/detectes`, `/personnalite/active`, `/mouvement/maitre` ; publie `/robot/dire`, `/guide/aller` (JSON), `/guide/stop`, `/personnalite/active` |
+| `dialogue` | applique `dialogues.yaml` du lieu (ou les règles d'exemple) à ce que dit le visiteur ; relaie les événements du guide avec les phrases de la personnalité active ; salue un visiteur vu par la caméra | écoute `/visiteur/texte`, `/guide/evenement`, `/guide/etat`, `/visiteurs/detectes`, `/personnalite/active`, `/mouvement/maitre` ; publie `/robot/dire`, `/guide/aller` (JSON), `/guide/stop`, `/personnalite/active`, `/robot/geste` (règle « geste », `geste_salut` de la personnalité quand il salue) |
 | `fausse_camera` | bouchon de la See3CAM : une personne fixe, personne, ou les piétons de Gazebo dans le champ de `camera.yaml` | publie `/visiteurs/detectes` ; écoute `/fausse_camera/mode`, `/pietons/etat`, `/odom` |
 | `voix_journal` | bouchon de la voix : écrit chaque phrase de `/robot/dire` dans le journal, et la dit avec une commande (ex. `g1-parler`) | écoute `/robot/dire`, `/personnalite/active` |
 
@@ -19,17 +19,15 @@ ros2 run g1_equipe voix_journal [--ros-args -p commande:=g1-parler]
 Sécurité : aucun de ces nœuds ne commande un moteur. Le chatbot demande au guide (`/guide/aller`),
 qui décide et conduit ; il ne le demande pas quand le robot est piloté à la main
 (`/mouvement/maitre` : `pilotage`) ni pendant une visite ; l'arrêt (`/guide/stop`) est toujours
-envoyé. La logique sans ROS est dans `atelier/equipe/` (chatbot, relais, caméra) et
+envoyé. Les gestes (`/robot/geste`) et la LED de la personnalité sont faits par le nœud pilotage,
+qui ne fait un geste que robot au repos. La logique sans ROS est dans `atelier/equipe/` (chatbot, relais, caméra) et
 `atelier/lieu/equipe.py` (fichiers et messages).
 
-Compilation et tests, sans jamais toucher à `ws/build` pendant le travail en parallèle :
+Compilation et tests (avec les autres paquets, dans `ws/install`) :
 
 ```bash
-cd ~/robot-g1/ws && colcon --log-base log_g1_equipe build --symlink-install --packages-select g1_equipe \
-    --build-base build_g1_equipe --install-base install_g1_equipe
-source install_g1_equipe/local_setup.bash
-colcon --log-base log_g1_equipe test --packages-select g1_equipe --build-base build_g1_equipe \
-    --install-base install_g1_equipe && colcon test-result --test-result-base build_g1_equipe --all
+cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_equipe
+colcon test --packages-select g1_equipe && colcon test-result --all
 ```
 
 Les tests (`test/test_noeuds.py`, environ 30 s) lancent les trois nœuds et jouent le guide, la

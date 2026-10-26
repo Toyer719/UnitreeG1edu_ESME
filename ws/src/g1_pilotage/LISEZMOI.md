@@ -58,6 +58,8 @@ guide reprend la main (`/mouvement/maitre`).
 | `/guide/stop` | std_msgs/Empty | sortie | à la prise de la main forcée, et à chaque ARRÊT |
 | `/guide/etat`, `/pont/etat` | std_msgs/String JSON | entrée | refuser la main pendant une visite ; robot immobile ? |
 | `/robot/dire` | std_msgs/String JSON | sortie | paroles des chorégraphies (voix de l'équipe) |
+| `/personnalite/active` | std_msgs/String JSON (fiable, transient_local) | entrée | LED de la personnalité active (voice 1010, toujours permise) ; assemblage de la vague 4 |
+| `/robot/geste` | std_msgs/String JSON (schéma `robot_geste`) | entrée | geste demandé par l'équipe (règle « geste » du chatbot, `geste_salut` de la personnalité) : fait seulement robot au repos (guide maître sans mission, aucune danse, chorégraphie ni prise de main, bras libres), un toutes les 10 s au plus, bras relâchés (99) 5 s après |
 
 ## API HTTP et WebSocket du nœud
 
@@ -107,10 +109,8 @@ la confirmation double) ; 504 le robot ne répond pas en 2 s.
 ## Tests
 
 ```bash
-cd ~/robot-g1/ws && colcon --log-base log_g1_pilotage build --symlink-install --packages-select g1_pilotage \
-    --build-base build_g1_pilotage --install-base install_g1_pilotage
-colcon --log-base log_g1_pilotage test --packages-select g1_pilotage --build-base build_g1_pilotage \
-    --install-base install_g1_pilotage && colcon test-result --test-result-base build_g1_pilotage/g1_pilotage
+cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_pilotage
+colcon test --packages-select g1_pilotage && colcon test-result --all
 ```
 
 `test/test_logique.py` (règles, horloge à la main), `test/test_serveur.py` (API tornado et WebSocket,

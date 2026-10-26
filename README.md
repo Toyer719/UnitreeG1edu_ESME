@@ -26,6 +26,7 @@ Toutes les commandes s'utilisent dans un terminal ouvert après l'installation (
 | `g1-ecouter` | Reconnaissance vocale en français (Vosk, faster-whisper) | non |
 | `g1-atelier` | Atelier G1 : décrire ou scanner un lieu, fabriquer la carte, essayer le guide dans Gazebo (section ci-dessous) | non (oui pour scanner un vrai bâtiment) |
 | `g1-jetson` | Conteneur de la navigation sur le Jetson du robot : construire, envoyer, démarrer, arrêter (section « Le vrai robot ») | oui (non avec `--local`) |
+| `g1-pilotage` | Piloter le G1 comme l'onglet Pilotage de l'Atelier : postures, gestes, voix, LED, danses, chorégraphies (section « Pilotage et danses ») | oui (non contre le faux G1) |
 
 Le calendrier jour par jour, avec toutes les commandes de chaque étape, est sur la page du
 projet : https://claude.ai/artifact/3sjPDb9CYcwJGrTZ8vgxNP
@@ -61,12 +62,11 @@ seul), **Répétition sans robot** (comme avec le vrai robot, mais contre un fau
 repérage, pont vers la marche) et **Robot** (section « Le vrai robot »).
 Ctrl+C dans le terminal arrête le serveur, et avec lui la simulation et la navigation.
 
-**En construction (vague 4, section 11 du plan)** : le point principal du lieu (accueil, départ de la
-simulation, pose du repérage et retour après chaque visite), des passants que le robot contourne, le
-retour automatique et l'accompagnement du visiteur, l'onglet **Pilotage** (postures, joystick, gestes,
-voix, LED, danses du robot, chorégraphies) et les onglets **Personnalités**, **Dialogues** et
-**Caméra** pour l'équipe. Les onglets existent, encore vides ; les formats sont fixés dans
-`atelier/lieu/schemas/` et dans la section 11 du plan.
+Depuis la vague 4 (section 11 du plan) : le **point principal** du lieu (l'accueil : départ de la
+simulation, pose du repérage, retour après chaque visite), des **passants** que le robot contourne
+ou attend, l'**accompagnement** du visiteur et le retour automatique, l'onglet **Pilotage**
+(postures, joystick, gestes, voix, LED, danses du robot, chorégraphies) et les onglets
+**Personnalités**, **Dialogues** et **Caméra** pour l'équipe. Chacun a sa section ci-dessous.
 
 ### Les mêmes étapes en ligne de commande
 
@@ -87,12 +87,14 @@ Sans `--sans-fenetre`, Gazebo s'ouvre dans une fenêtre. `--lieu` accepte un id 
 | Commande | À quoi elle sert |
 |---|---|
 | `g1-atelier [--port 8000] [--sans-navigateur] [--hote 0.0.0.0]` | Le logiciel web (`--hote 0.0.0.0` : depuis une tablette du réseau) |
-| `g1-lieu creer ID --nom "Nom"`, `g1-lieu valider --lieu L`, `g1-lieu liste` | Créer, vérifier, lister les lieux |
+| `g1-lieu creer ID --nom "Nom"`, `g1-lieu valider --lieu L`, `g1-lieu liste` | Créer, vérifier (fichiers de l'équipe compris), lister les lieux |
+| `g1-lieu migrer --lieu L [--a-blanc] [--depuis-depart]` | Donne au lieu son point principal (la salle `accueil`), après une sauvegarde (section « Le point principal ») |
 | `g1-monde generer --lieu L --etage E` | Monde Gazebo `.sdf`, carte `.pgm`/`.yaml` et masque, depuis le monde dessiné |
 | `g1-monde simuler --lieu L --etage E [--sans-fenetre] [--jumeau]` | Gazebo avec le robot proxy (taille du G1, LiDAR à 1,245 m) et les piétons ; `--jumeau` : le faux G1 (répétition) |
 | `g1-guide navigation --lieu L --etage E --simu [--localisation unitree\|amcl] [--pont auto\|oui\|non] [--vitesse-max 0.2]` | Nav2, routeur et guide (sans `--simu` : vrai robot) ; `--localisation unitree` : relais et repérage d'Unitree, avec le pont |
-| `g1-guide aller ID`, `g1-guide stop`, `g1-guide etat` | Envoyer le robot vers une salle, l'arrêter, voir l'état du guide |
+| `g1-guide aller ID [--accompagner] [--sans-retour]`, `g1-guide stop`, `g1-guide etat` | Envoyer le robot vers une salle (en accompagnant le visiteur, sans retour seul au point principal), l'arrêter, voir l'état du guide |
 | `g1-banc --lieu L --etage E --trajets 20 --lancer` | Banc de test : trajets tirés au sort, résultats en CSV dans `journaux/` |
+| `g1-banc --scene ID [--reaction aucune\|arret\|ecart]` | Banc d'une scène de passants (copie du lieu, simulation lancée, trajets, seuils ; section « Les passants ») |
 | `g1-slam scan-debut`, `scan-fin --nom N`, `relocaliser`, `aller`, `pause`, `reprendre`, `arreter` | Service de cartographie du G1 (`--faux` : faux service, à lancer avec `g1-slam faux-service` ; `g1-slam faux-service --jumeau --lieu L --etage E` : celui de la répétition) |
 | `g1-carte-3d --lieu L --etage E --enregistrement DOSSIER` | Enregistrement ros2 bag → nuage 3D `.pcd` |
 | `g1-carte-2d --lieu L --etage E` | Nuage 3D → carte 2D de navigation |
@@ -175,6 +177,170 @@ répétition sans robot : `--mode robot --repetition`. Chaque scan est rangé da
 monde, `rapport.json`). L'enregistrement pèse environ 100 Mo par minute de scan ; il n'est pas
 sauvegardé par Git : effacez le dossier `enregistrement/` quand le scan est adopté.
 
+### Le point principal
+
+Chaque lieu a **un seul point principal** : l'accueil, où le robot attend les visiteurs. C'est une
+salle de `salles.yaml` qui porte l'étiquette `principal`, avec une flèche (le sens du robot). Il sert
+à trois choses :
+
+- la **simulation** part de lui (le départ du robot du monde de son étage le suit) ;
+- le **repérage** du vrai robot part de lui : on pose le robot sur le point principal, dans le sens
+  de la flèche, puis « Repérer le robot » (plus besoin de la marque au départ du scan) ;
+- le **retour** : après chaque visite, le guide revient seul au point principal et se tourne dans le
+  sens de la flèche.
+
+Dans l'Atelier, onglet **Salles** : le point principal est dessiné d'une étoile et d'une flèche.
+Pour en changer : choisissez la salle, puis **« Faire de cette salle le point principal »**. Pour
+le tourner : glissez la flèche (par pas de 15°), puis **« Enregistrer les salles »**. On ne peut pas
+supprimer le point principal sans en avoir choisi un autre. Un lieu d'avant la vague 4 sans
+étiquette prend la salle `accueil` ; un lieu sans point principal du tout est refusé par
+`g1-lieu valider`, et l'Atelier refuse d'y lancer la simulation.
+
+Pour donner explicitement son point principal à un lieu existant (une sauvegarde est faite d'abord
+dans `lieux/<id>/sauvegardes/`, avec un `LISEZMOI.txt` pour revenir en arrière) :
+
+```bash
+g1-lieu migrer --lieu bomboclat --a-blanc      # montre ce qui changerait, sans rien écrire
+g1-lieu migrer --lieu bomboclat                # sauvegarde, puis étiquette « principal » sur la salle accueil
+g1-lieu migrer --lieu L --depuis-depart        # le point principal prend d'abord la pose du départ du robot
+g1-lieu valider --lieu bomboclat               # vérifie tout, fichiers de l'équipe compris
+```
+
+`lieux/demo` (la référence des tests) n'est jamais migré. API : `GET` et `PUT
+/api/lieux/{id}/principal` (`{salle?, x?, y?, theta?}`).
+
+### Les passants
+
+Dans Gazebo, chaque piéton du monde est un **corps** (cylindre de 0,25 m de rayon, 1,7 m de haut)
+que le LiDAR voit et que le robot ne peut pas traverser, et il **réagit** au robot (champ `reaction`
+d'un piéton, onglet Monde) : `ecart` (défaut : il ralentit et s'écarte, ou attend 8 s au plus s'il
+ne peut pas passer), `arret` (il s'arrête), `aucune` (il ne voit pas le robot : le pire cas).
+`g1-monde simuler … ` lance les corps (argument `pietons:=corps` de `simulation.launch.py`, ou
+`acteurs` pour les silhouettes de la vague 1).
+
+Ce que fait le robot : il garde ses distances (carte des coûts locale, inflation de 0,9 m), voit les
+obstacles bas de 0,15 à 1,9 m, ralentit de moitié quand un obstacle (une personne) est à moins de
+1 m devant lui ou à moins de 0,7 m tout autour, et s'arrête à 0,4 m. Si une personne lui bouche le passage (aucun
+progrès depuis 3 s, une personne vue à moins de 2,5 m devant lui ou dans la direction du couloir),
+il **s'arrête et attend** (« Pardon, puis-je passer ? »), repart quand le passage est libre
+(« Merci ! »), ou prend un autre couloir après 20 s (`delai_passant_s`).
+
+Scènes de test (`atelier/monde/scenes/`, sur des copies du lieu `demo`) : `immobile_couloir`,
+`en_face`, `coupe_route`, `groupe_couloir`, `groupe_reste`, `foule`, `accompagnement` :
+
+```bash
+g1-banc --scene immobile_couloir                  # copie du demo, simulation sans fenêtre, 5 trajets, seuils
+g1-banc --scene en_face --reaction ecart          # même scène, piétons qui s'écartent
+g1-banc --scene foule                             # les 5 piétons du demo, 20 trajets tirés au sort
+```
+
+Le CSV (dans `journaux/`) compte les contacts, leur cause (robot ou piéton), la distance bord à bord
+la plus courte, les attentes de passage et la longueur parcourue. Dans l'onglet **Simulation**, le
+panneau **Passants** montre les piétons en direct, la distance au plus proche, les scènes et les
+derniers bancs.
+
+### Accompagnement du visiteur et retour au point principal
+
+Le guide (`g1_nav`) sait maintenant :
+
+- **accompagner** : au départ, le visiteur est la personne vue au LiDAR la plus proche derrière le
+  robot (moins de 2,5 m) ; s'il traîne à plus de 2 m, le robot ralentit ; à plus de 3,5 m (ou plus
+  vu), il l'attend 30 s au plus, puis abandonne et rentre. Sans visiteur au départ, il part seul ;
+- **revenir seul** au point principal 15 s après l'arrivée (ou un abandon, ou un échec) ;
+- **se dire perdu** quand le repérage se perd : il s'arrête, attend 30 s au plus de retrouver sa
+  position, puis échoue avec un message qui dit quoi faire ;
+- **attendre les passants** (section précédente) ;
+- **annoncer** chaque étape au visiteur, en français, sur `/guide/evenement` (la voix de l'équipe
+  les dit) : « Suivez-moi, je vous emmène à … », « Je vous attends. », « Je retourne à l'accueil. »…
+
+```bash
+g1-guide aller b204 --accompagner          # le robot suit le visiteur des yeux, ralentit ou l'attend
+g1-guide aller b204 --sans-retour          # il reste à b204
+g1-guide aller principal                   # retour au point principal
+g1-guide navigation --lieu L --etage E --simu --sans-personnes   # sans détecteur de personnes
+```
+
+Les délais se règlent par lieu, dans une section facultative de `lieu.yaml` :
+
+```yaml
+guide: {retour_auto: true, delai_avant_retour_s: 15, delai_visiteur_s: 30, distance_ralentir_m: 2.0,
+        distance_attendre_m: 3.5, ralenti: 0.5, delai_perdu_s: 30, delai_passant_s: 20}
+```
+
+Dans l'onglet **Simulation**, le panneau **Comportement du guide** : « Accompagner un visiteur »
+vers une salle (avec ou sans retour), l'état du guide et du visiteur, les derniers événements, et
+le **faux visiteur** de la simulation (Suivre, Traîner, Partir), qui joue un visiteur dans Gazebo.
+
+### Pilotage et danses
+
+L'onglet **Pilotage** pilote le robot comme l'appli Unitree Explore. Une barre reste toujours en
+haut : l'état, la batterie, **Prendre la main** / **Rendre la main**, et le gros bouton **ARRÊT**
+(touche Échap). Trois sous-onglets :
+
+- **Commandes** : postures (500 démarrer, 706 accroupi ↔ debout, 702 se relever, 3 s'asseoir ;
+  1 amortir et 0 couple nul seulement avec la case « robot au portique » et une double
+  confirmation), **joystick** (tactile sur une tablette ; le robot s'arrête seul 0,5 s après le
+  dernier ordre, ou dès que la page ou le Wi-Fi se coupe), gestes des bras, voix du robot, volume,
+  LED ;
+- **Danses du robot** : la liste lue dans le robot ; 401, 402 et 403 sont toujours interdites ;
+  chaque danse demande la case « zone libre de 2 à 3 m autour du robot » ;
+- **Mes chorégraphies** : éditeur à ligne de temps (poses des bras, pas de marche, gestes, LED,
+  paroles, musique) et **aperçu 3D** du G1 avant de jouer. Les bras passent par rt/arm_sdk avec des
+  rampes, des angles et des vitesses bornés ; les jambes restent au contrôleur d'Unitree.
+
+**Un seul maître des mouvements** : tant que le guide a la main, le pilotage refuse joystick,
+postures, gestes et danses (voix, LED et ARRÊT restent permis) ; quand le pilotage a la main, le
+guide refuse les visites et le pont ignore Nav2. **ARRÊT est toujours permis.** La télécommande
+reste l'arrêt d'urgence (une danse du robot ne s'interrompt que par elle).
+
+```bash
+g1-pilotage noeud                              # simulation ou répétition : le nœud pilotage sur le PC
+g1-pilotage prendre                            # prendre la main (--forcer pendant une visite : le guide s'arrête)
+g1-pilotage posture 706                        # accroupi ↔ debout
+g1-pilotage geste 26                           # grand salut (99 : relâcher les bras)
+g1-pilotage dire "Bonjour" ; g1-pilotage led 0 120 255 ; g1-pilotage volume 70
+g1-pilotage danses --lire                      # la liste des danses du robot
+g1-pilotage danse 604 --zone-libre             # une danse courte, zone libre confirmée
+g1-pilotage verifier exemple_kpop              # vérifie une chorégraphie (limites, vitesses, pas)
+g1-pilotage jouer exemple_kpop --zone-libre    # la joue
+g1-pilotage arret                              # ARRÊT
+g1-pilotage rendre                             # rendre la main au guide
+g1-pilotage importer-video danse.mp4 --id ma_danse   # bras d'une vidéo filmée de face (pose YOLO, hors ligne)
+```
+
+Dans l'Atelier, en simulation ou en répétition : bouton **« Démarrer le pilotage »** de l'onglet
+(le nœud tourne sur le PC, contre le faux G1). Avec le robot : le nœud tourne dans le conteneur du
+Jetson (`G1_PILOTAGE=1`, défaut de `g1-jetson demarrer`), joint par le Wi-Fi ou le câble :
+`G1_PILOTAGE_URL=http://<adresse du Jetson>:8010 g1-atelier` (jeton partagé dans
+`opt/jetson/jeton_pilotage`, ou `G1_PILOTAGE_JETON`). Les chorégraphies sont dans
+`~/robot-g1/choregraphies/` (`exemple_kpop` : 29 s sur un battement généré) ; vos musiques vont dans
+`choregraphies/musique/`, jamais dans Git. Détails : `ws/src/g1_pilotage/LISEZMOI.md`.
+
+### L'équipe : personnalités, dialogues, caméra
+
+Trois fichiers facultatifs du lieu, chacun avec son onglet et un bouton « Partir de l'exemple » :
+
+- `personnalites.yaml` (onglet **Personnalités**) : les modes du robot (salutation, voix et son
+  nom, couleur de la LED, geste de salut, vitesse maximale, phrases du guide) ; la personnalité
+  active part sur `/personnalite/active` : le guide applique sa vitesse maximale, le nœud pilotage
+  sa LED ;
+- `dialogues.yaml` (onglet **Dialogues**) : le chatbot à règles (guider, dire, personnalité, stop,
+  geste) ; « Essayer » montre la réponse d'une phrase sans rien faire bouger ;
+- `camera.yaml` (onglet **Caméra**) : la See3CAM_11CUG, sa position sur le robot (tangage positif :
+  vers le bas) et la détection des visiteurs.
+
+Pour essayer sans la caméra ni la voix de l'équipe (simulation lancée) :
+
+```bash
+ros2 run g1_equipe dialogue --ros-args -p lieu:=demo -p etage:=rdc     # chatbot d'exemple et relais
+ros2 run g1_equipe voix_journal                                         # écrit ce que le robot dirait
+ros2 topic pub --once /visiteur/texte std_msgs/msg/String "{data: 'je cherche la salle b204'}"
+```
+
+Le robot répond (« Je vous emmène à Salle B204. Suivez-moi ! ») et le guide y va. Le guide pour les
+coéquipiers (sujets, formats, comment brancher la See3CAM, le chatbot et la voix) :
+**`docs/integration-equipe.md`**.
+
 ### Les fichiers d'un lieu
 
 ```
@@ -200,20 +366,22 @@ Les formats exacts sont dans `atelier/lieu/schemas/` et dans la section 4 du pla
 ```bash
 cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q    # bibliothèques, scan, serveur, interface : 4 min environ
 cd ~/robot-g1 && .venv-projet/bin/python -m pytest docker/tests -q    # conteneur du Jetson : 30 s
-cd ~/robot-g1/ws && colcon test --executor sequential --packages-select g1_sim g1_nav g1_bridge g1_jumeau && colcon test-result --all   # paquets ROS 2 : 3 min
-~/robot-g1/tests_e2e/tout.sh            # les 30 critères de recette, sans fenêtre (21 à 30 : vague 4, en construction)
-~/robot-g1/tests_e2e/tout.sh 1 2 3 4    # seulement certains (11 à 15 : le scan ; 16 à 20 : le vrai robot en répétition)
+cd ~/robot-g1/ws && colcon test --executor sequential --packages-select g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe && colcon test-result --all   # paquets ROS 2
+~/robot-g1/tests_e2e/tout.sh            # les 30 critères de recette, sans fenêtre : « N / 30 » (3 h environ)
+~/robot-g1/tests_e2e/tout.sh 1 2 3 4    # seulement certains (11 à 15 : le scan ; 16 à 20 : le vrai robot en répétition ;
+                                        # 21 à 30 : point principal, passants, guide, pilotage, équipe)
 ```
 
 Tous les tests tournent sans robot et sans écran, sur des copies de `lieux/demo` dans des
 dossiers temporaires. Journaux : `~/robot-g1/journaux/`.
 
-Après une modification de `ws/src/g1_sim`, `g1_nav`, `g1_bridge` ou `g1_jumeau` (nouveau
-fichier, lancement, réglage), recompilez, puis refaites l'image du Jetson :
+Après une modification de `ws/src` (nouveau fichier, lancement, réglage), recompilez, puis
+refaites l'image du Jetson (elle contient `g1_nav`, `g1_bridge`, `g1_pilotage`, `g1_equipe` et
+`atelier/lieu`, `atelier/equipe`) :
 
 ```bash
-cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_sim g1_nav g1_bridge g1_jumeau
-g1-jetson construire --arch amd64 && g1-jetson construire     # 30 s chacune si seul le code a changé
+cd ~/robot-g1/ws && colcon build --symlink-install
+g1-jetson construire --arch amd64 && g1-jetson construire     # 30 s pour l'amd64, quelques minutes pour l'arm64
 ```
 
 ## Simulation
@@ -346,15 +514,17 @@ du premier essai, robot sur le portique.
 
 ### Le guide sur le vrai robot : navigation de niveau 2
 
-Le guide de l'Atelier conduit le vrai G1 avec Nav2. Trois pièces font le lien avec le robot :
+Le guide de l'Atelier conduit le vrai G1 avec Nav2. Trois pièces font le lien avec le robot (et,
+depuis la vague 4, le nœud pilotage de l'onglet Pilotage, dans le même conteneur) :
 
 - **le conteneur `g1-jetson`**, sur le Jetson du robot : ROS 2 Humble, Nav2, le guide, le relais
   de position et le pont ;
 - **le pont** (`g1_bridge`) : il traduit les vitesses de Nav2 (`/cmd_vel`) en ordres de marche du
   robot (`/api/sport/request`, ordre 7105), avec les sécurités ci-dessous ;
-- **le repérage** : au démarrage, le robot posé sur la marque au sol, « Repérer le robot » envoie
-  la commande 1804 au service de cartographie d'Unitree ; le relais `odom_vers_tf` transforme
-  ensuite la position fournie par Unitree en repères pour Nav2.
+- **le repérage** : au démarrage, le robot posé sur le point principal du lieu (dans le sens de sa
+  flèche), « Repérer le robot » envoie la commande 1804 au service de cartographie d'Unitree, avec
+  la pose du point principal ; le relais `odom_vers_tf` transforme ensuite la position fournie par
+  Unitree en repères pour Nav2.
 
 **État** : tout est prêt et répété sans robot, contre un faux G1 dans Gazebo (critères 16 à 20 de
 `tests_e2e/tout.sh`). Rien n'a encore été essayé sur le vrai G1 : les formats des messages
@@ -374,12 +544,13 @@ g1-jetson envoyer                            # copie l'image sur le Jetson (2 à
 g1-jetson verifier                           # doit voir les sujets du robot depuis le conteneur
 ```
 
-#### 2. La carte et la marque au sol
+#### 2. La carte et le point principal
 
 Le robot navigue sur la carte d'un **scan fait avec lui** (onglet Scan, mode Robot, section
-« Scanner un lieu »), adoptée pour l'étage. La **marque au sol** est le point de départ de ce scan :
-marquez-le d'une croix et d'une flèche (le sens du robot au départ) avant de scanner. Placez ensuite
-les salles et les itinéraires sur la nouvelle carte.
+« Scanner un lieu »), adoptée pour l'étage. Placez ensuite les salles et les itinéraires sur la
+nouvelle carte, et le **point principal** (onglet Salles, section « Le point principal ») : c'est
+là qu'on pose le robot avant de le repérer. Marquez-le au sol d'une croix et d'une flèche (le sens
+du robot). Le plus simple, au début : le point principal au point de départ du scan.
 
 #### 3. Se repérer et lancer la navigation
 
@@ -390,10 +561,11 @@ g1-atelier                            # ou G1_VITESSE_MAX=0.2 g1-atelier pour le
 
 1. Onglet **Simulation**, mode **Robot**, **Lancer sur le robot**, et confirmer : l'Atelier lance
    le conteneur sur le Jetson (`g1-jetson demarrer`, le lieu y est copié).
-2. Posez le robot **sur la marque, dans le sens de la flèche**, debout en mode marche.
+2. Posez le robot **sur le point principal, dans le sens de la flèche** (l'étoile sur la carte),
+   debout en mode marche.
 3. **Repérer le robot** : « Repéré », avec la précision, en quelques secondes. Si le robot n'est
-   pas sur la marque : « Le robot n'est pas sur la marque », cliquez sa position sur la carte,
-   glissez vers son orientation, puis repérez.
+   pas sur le point principal : « Le robot n'est pas sur le point principal », cliquez sa position
+   sur la carte, glissez vers son orientation, puis repérez.
 4. **Y aller** vers une salle. « Y aller » reste grisé tant que le robot n'est pas repéré.
 5. Pour finir : **Arrêter la navigation du robot** (arrêt propre du conteneur).
 

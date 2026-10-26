@@ -27,7 +27,8 @@ C'est ce qu'on vérifie ici, dans cet ordre : le pont au portique, puis le repé
   noté avec ce qu'on a vu, puis on passe au suivant si c'est sans danger.
 
 Matériel : robot chargé, télécommande, câble Ethernet de 2 à 3 m, PC chargé, rouleau de ruban
-adhésif (la marque au sol), mètre ruban, une zone dégagée de 5 m × 3 m au moins.
+adhésif (le point principal au sol : une croix et une flèche), mètre ruban, une zone dégagée de
+5 m × 3 m au moins.
 
 Les commandes se tapent dans des terminaux ouverts après l'installation (Ctrl+Alt+T). Dans
 **chaque** terminal qui parle au robot, tapez d'abord `source ~/robot-g1/setup/robot.sh` : il
@@ -168,11 +169,12 @@ navigation sur le PC, au câble (voir « Si le conteneur ne marche pas » à la 
 ## 3. Le repérage 1804 (0 h 50 → 1 h 15)
 
 Le robot quitte le portique. La carte du robot est celle d'un scan : il en faut un de la zone de
-l'essai. La **marque au sol** est le point de départ de ce scan ; c'est là qu'on posera le robot
-pour le repérer.
+l'essai. Depuis la vague 4, on pose le robot sur le **point principal** du lieu (l'accueil, une
+étoile et une flèche dans l'onglet Salles) avant « Repérer le robot ». Pour cette première séance,
+le point principal est au point de départ du scan : c'est le plus simple à vérifier.
 
-1. **La marque** : une croix au ruban adhésif au sol, au bord de la zone dégagée, et une flèche
-   qui montre la direction où le robot regardera (au moins 4 m libres devant lui).
+1. **Le point principal au sol** : une croix au ruban adhésif au sol, au bord de la zone dégagée,
+   et une flèche qui montre la direction où le robot regardera (au moins 4 m libres devant lui).
 2. **Le petit scan** (10 min), si le lieu `seance` n'a pas encore de scan de cette zone. Dans
    l'appli Unitree, les services `unitree_slam` et `lidar_driver` sont activés. Robot sur la
    croix, tourné dans le sens de la flèche, en mode marche.
@@ -186,8 +188,9 @@ pour le repérer.
    (3 à 5 min), la personne du PC derrière avec le câble lâche. Revenez **sur la croix, dans le
    sens de la flèche**, puis **Fin**. Dans la revue : **Utiliser cette carte pour l'étage**.
    À noter : le nom de la carte enregistrée sur le robot (`carte_unitree` dans `lieux/seance/lieu.yaml`).
-3. **L'accueil sur la marque et un but à 3 m devant**. Le repère de la carte du scan a son origine
-   à la croix, l'axe x dans le sens de la flèche (à vérifier : c'est ce que suppose le relais).
+3. **L'accueil (le point principal) sur la croix et un but à 3 m devant**. Le repère de la carte
+   du scan a son origine à la croix, l'axe x dans le sens de la flèche (à vérifier : c'est ce que
+   suppose le relais). La salle `accueil` devient le point principal du lieu (principal implicite).
    Dans un autre terminal, l'Atelier tournant :
 
    ```bash
@@ -236,9 +239,10 @@ pour le repérer.
    mouvement) : avancez le robot d'environ 2 m, puis tournez-le d'un quart de tour. À chaque arrêt,
    comparez la position affichée dans l'Atelier (Simulation, panneau Repérage) à la mesure au mètre
    ruban depuis la croix. Trois mesures. Attendu : moins de 10 cm d'écart.
-8. **Hors de la marque** (si le temps le permet) : robot à 0,5 m de la croix et tourné de 20°,
-   « Repérer le robot » sans rien changer : accepté ou refusé, à noter. Puis « Le robot n'est pas
-   sur la marque » : cliquer sa position sur la carte, glisser vers son orientation, et repérer.
+8. **Hors du point principal** (si le temps le permet) : robot à 0,5 m de la croix et tourné de
+   20°, « Repérer le robot » sans rien changer : accepté ou refusé, à noter. Puis « Le robot n'est
+   pas sur le point principal » : cliquer sa position sur la carte, glisser vers son orientation,
+   et repérer.
 
 ## 4. Premier trajet court (1 h 15 → 1 h 25)
 
@@ -269,6 +273,16 @@ But : vérifier sur le vrai G1 ce que l'onglet **Pilotage** envoie (section 11.5
 été essayé contre le faux G1 seulement (critères 28 et 29). **Au portique, télécommande en main,
 une personne qui tient le robot** ; jamais les danses 401, 402, 403.
 
+Avant de commencer, deux relevés (2 min) :
+
+- **Version du micrologiciel** : dans l'appli Unitree Explore, réglages du robot, « version » (la
+  source des danses parle du micrologiciel 1.5.6 ; noter la vôtre dans la feuille, ligne 6.0) ;
+- **Le Jetson a-t-il du Wi-Fi ?** Au câble, `ssh unitree@192.168.123.164 'ip -br addr; nmcli
+  device status'` (mot de passe 123) : une interface `wlan0` (ou `wlP…`) avec une adresse ? Si oui,
+  noter l'adresse : c'est elle qui servira pour le joystick par le Wi-Fi (étape 4). Si non, le
+  pilotage se fait au câble (`http://192.168.123.164:8010`), et le Wi-Fi est à ajouter (clé USB
+  ou carte M.2) avant d'utiliser l'onglet Pilotage depuis une tablette.
+
 Préparation (PC, au câble) :
 
 ```bash
@@ -286,8 +300,12 @@ G1_PILOTAGE_URL=$G1_PILOTAGE_URL g1-atelier                  # onglet Pilotage
    bail ; temps de chaque transition ; **la télécommande reste prioritaire et arrête tout**.
 3. **Amortir (1) et couple nul (0)** : seulement robot tenu au portique ; case « robot au portique »
    et confirmation double.
-4. **Joystick** (plafonds 0,2 m/s) : l'arrêt seul 0,5 s après le dernier ordre — fermer la page en
-   marche, puis couper le Wi-Fi du PC en marche ; latence par le Wi-Fi.
+4. **Joystick** (plafonds 0,2 m/s), d'abord au câble, puis **par le Wi-Fi** (si le Jetson en a :
+   relancer l'Atelier avec `G1_PILOTAGE_URL=http://<adresse Wi-Fi du Jetson>:8010`, PC sur le même
+   réseau Wi-Fi) : l'arrêt seul 0,5 s après le dernier ordre — fermer la page en marche ; puis,
+   **pendant une marche lente** (0,1 m/s, robot au portique, pieds au sol), **couper le Wi-Fi du
+   PC** : le robot doit s'arrêter seul en moins de 0,6 s (le conteneur ne dépend pas du PC).
+   Noter la latence par le Wi-Fi (appui → premier pas) et les plafonds (1,0 demandé → 0,2).
 5. **Gestes** : `g1-pilotage geste 26`. Si le robot répond 3204 (paramètres), le format est
    `{"data": n}` (SDK Python) et non `{"action_id": n}` (SDK C++) : corriger
    `atelier.lieu.pilotage.parametre_geste`. Noter les codes réels de 7400, 7401, 7402, 7404 ; le
@@ -307,6 +325,41 @@ G1_PILOTAGE_URL=$G1_PILOTAGE_URL g1-atelier                  # onglet Pilotage
    `exemple_kpop` à la vitesse de lecture 1/2, robot posé au sol, zone libre.
 9. **Batterie** : `/lf/bmsstate` (unitree_hg/BmsState, champ `soc`) existe-t-il sur le G1 ?
 10. **Musique par le haut-parleur du robot** (1003, flux PCM) : pas encore prise en charge.
+11. **Personnalité** (onglet Personnalités, lieu de la séance avec un `personnalites.yaml` partant
+    de l'exemple) : « Rendre active » « Accueillant » : la LED passe au bleu (0, 120, 255) sans
+    prendre la main ; « Discret » : gris. Puis, la main rendue au guide, guide au repos :
+    `ros2 topic pub --once /robot/geste std_msgs/msg/String "{data: '{\"geste\": 26, \"source\": \"atelier\"}'}"`
+    → grand salut, puis bras relâchés 5 s après ; le même message pendant que l'onglet a la main :
+    ignoré (journal du conteneur : « Geste demandé ignoré »).
+
+## 7. Point principal, passants et accompagnement (vague 4, environ 45 min, au sol)
+
+But : vérifier en vrai ce que les critères 21 à 27 ont vérifié dans Gazebo (sections 11.2 à 11.4
+du plan). Robot au sol, navigation sur le Jetson (`G1_VITESSE_MAX=0.2 g1-atelier`, mode Robot),
+télécommande en main, deux ou trois volontaires.
+
+1. **Robot posé sur le point principal** : principal à la croix, robot dans le sens de la flèche,
+   « Repérer le robot » : 1804 reçoit (0, 0, 0). Puis déplacez le principal **loin de l'origine du
+   scan et tourné** (onglet Salles : la salle « Essai à 3 m », « Faire de cette salle le point
+   principal », flèche tournée vers la croix, « Enregistrer les salles ») ; relancez la navigation
+   du robot, posez le robot sur ce nouveau point, dans le sens de sa flèche, et « Repérer le
+   robot » : « Repéré », écart au mètre ruban (moins de 10 cm), durée.
+2. **Retour au point principal** : « Y aller » vers l'autre salle ; à l'arrivée, attendre 15 s : le
+   robot revient seul et se tourne dans le sens de la flèche (écart de cap noté, 10° demandés).
+3. **Accompagnement** (panneau « Comportement du guide », « Accompagner un visiteur ») : un
+   volontaire derrière le robot à 1 m ; le robot le choisit (événement `depart`, pas `seul`) ;
+   le volontaire traîne à 2,5 m : le robot ralentit ; à plus de 3,5 m : il l'attend ; il revient :
+   « Vous voilà ! Continuons. ». Noter les distances ressenties, la vitesse du robot accompagné.
+4. **Passant qui bouche** : deux volontaires immobiles en travers de la zone, sur le chemin : le
+   robot s'arrête vers 2,5 m (« Pardon, puis-je passer ? »), attend ; ils s'écartent : il repart
+   (« Merci ! »). Puis un volontaire immobile sur le côté : le robot passe à côté sans s'arrêter
+   (distance bord à bord notée, 0,20 m au moins).
+5. **Collision Monitor et obstacles bas** (robot immobile, puis à 0,1 m/s) : dans RViz
+   (`collision_ralentir`, `collision_ralentir_pres`, `collision_arret`), aucun point du robot
+   lui-même (bras, mains) dans les zones ; une valise et un sac au sol sont vus (carte locale) ;
+   le robot ralentit à moins de 1 m devant, s'arrête à 0,4 m.
+6. **Robot perdu** : couper la relocalisation (couvrir le LiDAR n'est pas sûr : plutôt une
+   pièce sans repères, ou attendre une perte réelle) ; noter le message et le délai.
 
 ## Si le conteneur ne marche pas
 
@@ -322,7 +375,7 @@ l'Atelier a lancée lui-même. Avec la navigation lancée à la main, on passe d
 chacune dans un terminal avec `robot.sh` :
 
 ```bash
-ros2 topic pub --once /reperage/demander std_msgs/msg/String "{data: '{\"id\": \"seance-1\"}'}"   # repérer, robot sur la marque
+ros2 topic pub --once /reperage/demander std_msgs/msg/String "{data: '{\"id\": \"seance-1\", \"x\": 0, \"y\": 0, \"theta\": 0}'}"   # repérer, robot sur le point principal (0 ; 0 ; 0)
 ros2 topic echo /reperage/etat --field data                                                    # attendu : "etat": "repere"
 g1-guide aller essai_3m                                                                        # le trajet court
 g1-guide stop                                                                                  # arrêt
@@ -346,21 +399,29 @@ g1-guide stop                                                                   
 | 3.5 | 1804 en ROS 2 sur `/api/slam_operate/request` | « Repéré » en moins de 20 s ; texte de la réponse | | |
 | 3.6 | `/unitree/slam_relocation/odom` et `/points` | fréquence, repères, covariance | | |
 | 3.7 | Précision du repérage, 3 mesures | moins de 10 cm | | |
-| 3.8 | Hors de la marque (0,5 m, 20°) | accepté ou refusé | | |
+| 3.8 | Hors du point principal (0,5 m, 20°) | accepté ou refusé | | |
 | 4.2 | Y aller « Essai à 3 m » à 0,2 m/s | `arrive` | | |
 | 4.3 | ARRÊT à mi-chemin | arrêt net | | |
 | 4.4 | Écart à l'arrivée | moins de 30 cm | | |
 | 4.5 | Bloquer, puis Y aller | immobile | | |
 | 5 | Arrêt de la navigation | arrêt propre, conteneur retiré | | |
+| 6.0 | Micrologiciel (appli) ; Wi-Fi du Jetson | version notée ; interface et adresse Wi-Fi, ou « pas de Wi-Fi » | | |
 | 6.1 | 7001 (mode) debout, assis, accroupi, amorti | 801 debout ; valeurs notées | | |
 | 6.2 | Postures 500, 706, 702, 3 depuis le conteneur | acceptées ; durées ; télécommande prioritaire | | |
 | 6.3 | Amortir, couple nul (robot tenu) | confirmation double ; robot tenu | | |
 | 6.4 | Joystick : page fermée, Wi-Fi coupé en marche | arrêt seul en 0,5 s ; latence notée | | |
+| 6.4b | Joystick par le Wi-Fi ; Wi-Fi coupé pendant une marche lente | arrêt seul en moins de 0,6 s ; latence | | |
 | 6.5 | Gestes : format `action_id` ou `data`, codes 7400 à 7404, geste 13 | code 0 ; codes notés | | |
 | 6.6 | TTS, volume, LED | langue, `speaker_id`, couleur | | |
 | 6.7 | Danses : 7100, 550604, retour en 801, interruption | liste notée ; durée ; ce qui l'interrompt | | |
 | 6.8 | rt/arm_sdk : chorégraphie lente, puis exemple_kpop à 1/2 | poids, rampes, taille tenue, gains, `mode`, CRC | | |
 | 6.9 | Batterie `/lf/bmsstate` | `soc` lu | | |
+| 6.11 | LED de la personnalité ; geste demandé (`/robot/geste`) robot au repos | couleur ; salut puis bras relâchés | | |
+| 7.1 | Repérage depuis le point principal, à la croix puis loin et tourné | « Repéré » ; écart < 10 cm ; durée | | |
+| 7.2 | Retour seul au point principal | 15 s après l'arrivée ; cap à 10° près | | |
+| 7.3 | Accompagnement d'un volontaire | `depart`, ralentit, attend, reprend | | |
+| 7.4 | Passants : groupe qui bouche, personne sur le côté | attend puis repart ; 0,20 m bord à bord au moins | | |
+| 7.5 | Collision Monitor, obstacles bas | pas de point du robot dans les zones ; valise vue | | |
 
 Ce qui reste après la séance, si tout passe : les vitesses réelles de 0,1 à 0,4 m/s (régler les
 plafonds et `nav2_g1_reel.yaml`), la position réelle du MID-360 (`base_link → lidar`), le nuage de

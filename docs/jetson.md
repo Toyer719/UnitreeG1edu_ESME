@@ -263,8 +263,8 @@ journal de Docker est limité à 5 fichiers de 20 Mo.
 | Base | `ros:humble-ros-base-jammy` (Ubuntu 22.04), désignée par l'empreinte de l'architecture |
 | Paquets apt | CycloneDDS, les composants de Nav2 (sans RViz : ni `nav2_rviz_plugins`, ni `nav2_waypoint_follower`), `pointcloud_to_laserscan`, numpy, PyYAML, iproute2 |
 | Paquets apt (vague 4) | `python3-tornado` (API HTTP et WebSocket du nœud pilotage) |
-| Compilés dans `/opt/g1/install` | `unitree_api`, `unitree_hg` (rt/arm_sdk, /lowstate), `g1_nav`, `g1_bridge`, `g1_pilotage` |
-| Python dans `/opt/g1/python` | `atelier/__init__.py`, `atelier/lieu/`, `atelier/scan/slam_client.py` |
+| Compilés dans `/opt/g1/install` | `unitree_api`, `unitree_hg` (rt/arm_sdk, /lowstate), `g1_nav`, `g1_bridge`, `g1_pilotage`, `g1_equipe` (nœuds de l'équipe : `dialogue`, `fausse_camera`, `voix_journal`, non lancés d'office) |
+| Python dans `/opt/g1/python` | `atelier/__init__.py`, `atelier/lieu/`, `atelier/scan/slam_client.py`, `atelier/equipe/` (chatbot d'exemple et relais) |
 | Version | `/opt/g1/VERSION` : date, commit, empreinte ; dans `/g1_jetson/etat` (1 Hz) |
 | Lancement | réseau de l'hôte, `--init`, aucun redémarrage automatique, utilisateur `unitree`, lieux en lecture seule, pas de `--privileged` |
 

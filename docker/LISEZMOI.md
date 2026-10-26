@@ -71,7 +71,10 @@ natif, n'est pas concerné.
 ## Le nœud pilotage (vague 4)
 
 L'image contient aussi `unitree_hg` (rt/arm_sdk, /lowstate ; couche 2b, compilée après
-`unitree_api` pour garder son cache), `python3-tornado` (couche 2c) et `g1_pilotage`. Avec
+`unitree_api` pour garder son cache), `python3-tornado` (couche 2c), `g1_pilotage`, et depuis
+l'assemblage de la vague 4 `g1_equipe` avec `atelier/equipe/` (le nœud `dialogue` de l'équipe peut
+tourner sur le Jetson : `ros2 run g1_equipe dialogue --ros-args -p lieu:=<id>` dans
+`g1-jetson shell` ; il n'est pas lancé d'office). Avec
 `G1_PILOTAGE=1`, `demarrer.sh` lance l'exécutable `pilote` (pas `ros2 run` : SIGINT lui arrive
 directement) sur `G1_PILOTAGE_PORT` (8010), en navigation comme en veille ; la ligne de démarrage
 le dit (« pilotage port 8010 avec jeton »). À l'arrêt, il s'arrête en premier (SIGINT, 5 s) : bras

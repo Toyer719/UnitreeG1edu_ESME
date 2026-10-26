@@ -55,10 +55,13 @@ Trois modes en haut de l'onglet (section 10.8 du plan), retenus par le navigateu
   télécommande en main.
 
 En répétition et avec le robot, le panneau **Repérage** :
-- la consigne « Posez le robot sur la marque au sol (croix sur la carte), tourné dans le sens de la
-  flèche » ; la marque (croix et flèche) est dessinée sur la carte (`GET /api/robot/etat`, champ `marque`) ;
-- le gros bouton **« Repérer le robot »** (`POST /api/robot/reperer`) ; le lien « Le robot n'est pas sur
-  la marque » : un clic sur la carte là où il est, puis un glissé vers son avant, envoie sa pose ;
+- la consigne « Posez le robot sur le point principal « Accueil » (étoile sur la carte), tourné dans le
+  sens de la flèche » (vague 4) ; l'étoile et la flèche du point principal sont dessinées sur la carte
+  (`GET /api/robot/etat`, champs `marque` et `principal`). Sans point principal sur cet étage, c'est la
+  marque au sol de la vague 3 (croix : l'origine de la carte d'Unitree) ;
+- le gros bouton **« Repérer le robot »** (`POST /api/robot/reperer`, qui envoie la pose du point
+  principal) ; le lien « Le robot n'est pas sur le point principal » : un clic sur la carte là où il est,
+  puis un glissé vers son avant, envoie sa pose ;
 - l'état du repérage (`/ws/etat`, champ `reperage`) : Repéré (précision, âge), Non repéré, Repérage perdu,
   Échec avec son message ;
 - la pastille du pont (`/ws/etat`, champ `pont`), et « Bloquer le robot » / « Débloquer »
@@ -67,3 +70,17 @@ En répétition et avec le robot, le panneau **Repérage** :
 « Y aller » reste grisé tant que le robot n'est pas repéré ou que Nav2 n'est pas prêt. Le robot affiché
 est alors la pose du repérage (et non `/odom`, qui est l'odométrie locale). Tests :
 `atelier/tests/test_robot_serveur*.py` (API) et `test_robot_navigateur.py` (Firefox sans fenêtre).
+
+## Vague 4 : point principal, passants, guide, pilotage, équipe
+
+| Où | Fichiers | Ce qu'on y fait |
+|---|---|---|
+| Onglet Salles | `js/ecrans/salles.js`, `css/principal.css` | le point principal (étoile et flèche) ; « Faire de cette salle le point principal » ; flèche tournée puis « Enregistrer les salles » |
+| Onglet Monde | `js/ecrans/monde.js` | le départ du robot de l'étage du principal est affiché « = point principal » |
+| Onglet Simulation, panneau **Passants** | `js/panneaux/passants.js`, `css/passants.css` | piétons en direct, distance bord à bord au plus proche, scènes, derniers bancs (`/api/passants/*`) |
+| Onglet Simulation, panneau **Comportement du guide** | `js/panneaux/guide.js`, `css/guide.css` | « Accompagner un visiteur », état du guide et du visiteur, événements, faux visiteur (Suivre, Traîner, Partir) |
+| Onglet **Pilotage** | `js/ecrans/pilotage.js`, `js/pilotage/*.js`, `css/pilotage.css` | barre du haut (main, ARRÊT, Échap), Commandes, Danses du robot, Mes chorégraphies (aperçu 3D) ; `/api/pilotage/*`, `/ws/pilotage` |
+| Onglets **Personnalités**, **Dialogues**, **Caméra** | `js/ecrans/{personnalites,dialogues,camera}.js`, `js/equipe/*.js`, `css/equipe.css` | les fichiers de l'équipe ; « Rendre active » ; « Essayer » une phrase ; vues de la caméra |
+
+Tests dans Firefox sans fenêtre : `atelier/tests/test_principal_navigateur.py`, `test_passants_navigateur.py`,
+`test_guide_navigateur.py`, `test_pilotage_navigateur.py`, `test_equipe_navigateur.py`.
