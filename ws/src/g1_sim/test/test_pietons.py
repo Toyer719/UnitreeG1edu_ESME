@@ -114,6 +114,17 @@ class EcoutePietons(Ecoute):
         with self.verrou:
             return [m for t, m in self.etats if t >= debut]
 
+    def nuages_dates_depuis(self, debut):
+        """[(heure murale de réception, PointCloud2)] reçus depuis debut."""
+        with self.verrou:
+            return [(t, m) for t, m in self.nuages if t >= debut]
+
+    def pieton_a(self, ident, heure):
+        """Le piéton dans l'état reçu au plus près de cette heure murale (10 Hz : ±0,05 s)."""
+        with self.verrou:
+            _, etat = min(self.etats, key=lambda e: abs(e[0] - heure))
+        return next(p for p in etat['pietons'] if p['id'] == ident)
+
 
 def _sim(tmp_path_factory, nom, monde, arguments=()):
     dossier = tmp_path_factory.mktemp(f'lieu_{nom}') / nom
@@ -127,41 +138,65 @@ def _sim(tmp_path_factory, nom, monde, arguments=()):
     return simulation, ecoute
 
 
-@pytest.fixture(scope='module')
-def sim_corps(tmp_path_factory):
-    simulation, ecoute = _sim(tmp_path_factory, 'corps', MONDE_CORPS)
-    try:
-        ecoute.attendre_pret(simulation)
-        pret = ecoute.attendre(lambda: ecoute.dernier_etat() is not None, 30.0)
-        assert pret, simulation.texte_journal()
-        yield ecoute
-    finally:
-        ecoute.fermer()
-        simulation.arreter()
+class _Simulations:
+    """
+    Une seule simulation à la fois : ouvrir la suivante ferme la précédente.
+
+    Les trois simulations du module ont le même domaine ROS et la même partition de Gazebo : deux
+    à la fois mêleraient leurs /points, /odom et /pietons/etat (des fixtures de module restent
+    ouvertes jusqu'à la fin du module).
+    """
+
+    def __init__(self, fabrique):
+        self.fabrique = fabrique
+        self.nom, self.simulation, self.ecoute = None, None, None
+
+    def ouvrir(self, nom, monde, arguments=(), etat=True):
+        if self.nom == nom:
+            return self.ecoute
+        self.fermer()
+        self.simulation, self.ecoute = _sim(self.fabrique, nom, monde, arguments)
+        self.nom = nom
+        try:
+            self.ecoute.attendre_pret(self.simulation)
+            if etat:
+                pret = self.ecoute.attendre(lambda: self.ecoute.dernier_etat() is not None, 30.0)
+                assert pret, self.simulation.texte_journal()
+        except BaseException:
+            self.fermer()
+            raise
+        return self.ecoute
+
+    def fermer(self):
+        if self.simulation is not None:
+            self.ecoute.fermer()
+            self.simulation.arreter()
+        self.nom, self.simulation, self.ecoute = None, None, None
 
 
 @pytest.fixture(scope='module')
-def sim_reactions(tmp_path_factory):
-    simulation, ecoute = _sim(tmp_path_factory, 'reactions', MONDE_REACTIONS)
+def simulations(tmp_path_factory):
+    s = _Simulations(tmp_path_factory)
     try:
-        ecoute.attendre_pret(simulation)
-        pret = ecoute.attendre(lambda: ecoute.dernier_etat() is not None, 30.0)
-        assert pret, simulation.texte_journal()
-        yield ecoute
+        yield s
     finally:
-        ecoute.fermer()
-        simulation.arreter()
+        s.fermer()
 
 
-@pytest.fixture(scope='module')
-def sim_acteurs(tmp_path_factory):
-    simulation, ecoute = _sim(tmp_path_factory, 'acteurs', MONDE_ACTEURS, ['pietons:=acteurs'])
-    try:
-        ecoute.attendre_pret(simulation)
-        yield ecoute, lieu_api.Monde.depuis_dict(MONDE_ACTEURS)
-    finally:
-        ecoute.fermer()
-        simulation.arreter()
+@pytest.fixture
+def sim_corps(simulations):
+    return simulations.ouvrir('corps', MONDE_CORPS)
+
+
+@pytest.fixture
+def sim_reactions(simulations):
+    return simulations.ouvrir('reactions', MONDE_REACTIONS)
+
+
+@pytest.fixture
+def sim_acteurs(simulations):
+    ecoute = simulations.ouvrir('acteurs', MONDE_ACTEURS, ['pietons:=acteurs'], etat=False)
+    return ecoute, lieu_api.Monde.depuis_dict(MONDE_ACTEURS), simulations.simulation
 
 
 # ---------------------------------------------------------------- piétons crédibles
@@ -194,14 +229,18 @@ def test_un_corps_suit_son_horaire(sim_corps):
 
 
 def test_un_corps_est_vu_par_le_lidar(sim_corps):
+    """Le marcheur, scène remise à zéro : de (3 ; 3) à (6 ; 3), à 3,2 à 5 m du robot en (2 ; 0)."""
+    sim_corps.pub_reinit.publish(Empty())
+    assert sim_corps.attendre(lambda: sim_corps.dernier_etat()['temps_scene'] < 1.0, 5.0)
+    time.sleep(0.5)
     debut = time.monotonic()
-    time.sleep(4.0)
-    nuages = sim_corps.nuages_depuis(debut)[::4]
+    time.sleep(3.0)
+    nuages = sim_corps.nuages_dates_depuis(debut)[::3]
     vus = 0
-    for nuage in nuages:
+    for heure, nuage in nuages:
         x, y, theta, _ = sim_corps.pose()
         p = lidar_vers_odom(points_xyz(nuage), x, y, theta)
-        cible = sim_corps.pieton('marcheur')
+        cible = sim_corps.pieton_a('marcheur', heure)     # il marche à 1 m/s : l'état du nuage
         proches = ((np.hypot(p[:, 0] - cible['x'], p[:, 1] - cible['y']) < RAYON)
                    & (p[:, 2] > 0.3) & (p[:, 2] < 1.8))
         vus += int(proches.sum() >= 5)
@@ -296,7 +335,7 @@ def test_reactions_au_robot(sim_reactions):
     assert (x, y) == pytest.approx((6.0, 0.0), abs=0.05)
     sim_reactions.pub_reinit.publish(Empty())
     time.sleep(0.5)
-    traces = _suivre(sim_reactions, 16.0)
+    traces = _suivre(sim_reactions, 22.0)
 
     def bord(p):
         return math.hypot(p['x'] - x, p['y'] - y) - RAYON_ROBOT - p['rayon_m']
@@ -304,11 +343,15 @@ def test_reactions_au_robot(sim_reactions):
     etats = {i: {t[1][i]['etat'] for t in traces} for i in ('ecart', 'arret', 'aucune')}
     minimum = {i: min(bord(t[1][i]) for t in traces) for i in etats}
     print('états vus :', etats, '; distances bord à bord minimales :', minimum)
-    # ecart : il s'écarte (0,6 m au plus), ne touche pas le robot, revient sur son trajet et arrive
+    # ecart : le robot est arrêté droit devant lui ; s'écarter de 0,6 m ne laisserait que 0,09 m
+    # pour passer : il s'écarte et attend, loin du robot (8 s au plus, atelier.monde.foule), puis
+    # passe quand même, sans le toucher
     assert 'ecart' in etats['ecart'] and minimum['ecart'] > 0.0
-    assert max(abs(t[1]['ecart']['y']) for t in traces) <= 0.65
-    fin = traces[-1][1]['ecart']
-    assert (fin['etat'], round(fin['x'], 1), round(abs(fin['y']), 1)) == ('fini', 11.0, 0.0)
+    assert 0.5 <= max(abs(t[1]['ecart']['y']) for t in traces) <= 0.65
+    arrete = [e for _, e in ((t, t[1]['ecart']) for t in traces)
+              if e['etat'] == 'ecart' and e['x'] < x - 0.5 and math.hypot(e['vx'], e['vy']) < 0.1]
+    assert len(arrete) >= 30                         # 3 s au moins à attendre devant le robot
+    assert traces[-1][1]['ecart']['x'] > x + 0.5     # puis il est passé
     # arret : il s'arrête devant le robot (moins de 0,8 m bord à bord), et y reste
     assert 'arret' in etats['arret'] and 'ecart' not in etats['arret']
     assert 0.4 < minimum['arret'] < 0.85
@@ -330,8 +373,11 @@ def _points_du_pieton(nuage, pieton, pose):
 
 
 def test_acteurs_vus_par_le_lidar_sans_noeud(sim_acteurs):
-    ecoute, monde = sim_acteurs
-    assert ecoute.noeud.count_publishers('/pietons/etat') == 0
+    ecoute, monde, simulation = sim_acteurs
+    # Pas de nœud pietons : vu dans le journal du lancement, et non dans le graphe ROS de ce
+    # processus de test, qui garde parfois le nœud pietons de la simulation d'avant (arrêtée)
+    journal = simulation.texte_journal(lignes=100000)
+    assert '<actor> de la vague 1' in journal and '[pietons-' not in journal, journal[-2000:]
     debut = time.monotonic()
     time.sleep(6.0)
     nuages = ecoute.nuages_depuis(debut)[::5]   # un nuage toutes les 0,5 s

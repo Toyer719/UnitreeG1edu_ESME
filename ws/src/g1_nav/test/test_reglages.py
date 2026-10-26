@@ -115,10 +115,10 @@ def test_personnes_dans_la_carte_globale(reglages):
     """
     Vague 4 : les personnes vues sont aussi dans la carte globale.
 
-    Tranche de 1,125 à 1,9 m, que les rayons du LiDAR balaient partout autour du robot : le
-    chemin contourne les personnes au lieu de passer à travers (MPPI restait bloqué devant).
-    Rien sous 1,125 m dans la carte globale : elle n'est pas vidée chaque seconde, et les
-    voxels bas n'y seraient jamais effacés.
+    Tranche de 1,375 à 1,9 m (une personne debout) : le chemin contourne les personnes au lieu
+    de passer à travers (MPPI restait bloqué devant). Rien plus bas dans la carte globale : elle
+    n'est pas vidée chaque seconde (les voxels bas n'y seraient jamais effacés), et une boîte de
+    1,2 m n'y entre pas.
     """
     p = params(reglages, 'global_costmap', 'global_costmap')
     assert p['plugins'] == ['static_layer', 'voxel_layer', 'inflation_layer']
@@ -127,7 +127,10 @@ def test_personnes_dans_la_carte_globale(reglages):
     for s in sources:
         assert s['topic'] == '/points' and s['data_type'] == 'PointCloud2'
     marquage = [s for s in sources if s['marking']]
-    assert marquage and min(s['min_obstacle_height'] for s in marquage) >= 1.125
+    # une personne debout (1,7 m) y est ; une boîte, une table, un comptoir (1,2 m) n'y sont pas :
+    # sinon Nav2 bascule entre deux chemins devant une boîte qui bouche le couloir (critères 5, 19)
+    assert marquage and min(s['min_obstacle_height'] for s in marquage) > 1.25
+    assert min(s['min_obstacle_height'] for s in marquage) <= 1.5
     assert max(s['max_obstacle_height'] for s in marquage) <= 1.9
     assert all(s['obstacle_max_range'] <= 5.0 for s in marquage)
     assert any(s['clearing'] and s['min_obstacle_height'] < 0.0 for s in sources)
@@ -147,17 +150,85 @@ def test_distance_aux_personnes(reglages):
     assert cout_inflation(couche, 1.43) == 0               # milieu d'un couloir de 2,85 m : libre
 
 
+def dans_polygone(points, x, y):
+    """Vrai si le point (x, y) est dans le polygone [x1, y1, x2, y2...] (lancer de rayon)."""
+    sommets = list(zip(points[0::2], points[1::2]))
+    dedans = False
+    for (xa, ya), (xb, yb) in zip(sommets, sommets[1:] + sommets[:1]):
+        if (ya > y) != (yb > y) and x < xa + (y - ya) * (xb - xa) / (yb - ya):
+            dedans = not dedans
+    return dedans
+
+
+def zone_touchee(zone, x, y):
+    """Vrai si un obstacle en (x, y) de base_link déclenche cette zone du Collision Monitor."""
+    if zone['type'] == 'circle':
+        return math.hypot(x, y) <= zone['radius']
+    return dans_polygone(zone['points'], x, y)
+
+
 def test_collision_monitor(reglages):
     p = params(reglages, 'collision_monitor')
     assert p['cmd_vel_in_topic'] == 'cmd_vel_smoothed' and p['cmd_vel_out_topic'] == 'cmd_vel'
-    ralentir, arret = (p[nom] for nom in p['polygons'])
-    # ralentir près des personnes (et de tout ce qui est à moins de 1 m)
-    assert (ralentir['action_type'], ralentir['radius'], ralentir['slowdown_ratio']) == \
-        ('slowdown', 1.0, 0.5)
-    assert arret['action_type'] == 'stop' and arret['radius'] >= 0.4      # contrat 11.3
+    assert p['polygons'] == ['ralentir', 'ralentir_pres', 'arret']
+    arret = p['arret']
+    assert p['ralentir']['action_type'] == 'slowdown'          # zone : test suivant
+    assert arret['action_type'] == 'stop' and arret['type'] == 'circle'
+    assert arret['radius'] >= 0.4                                          # contrat 11.3
     source = p[p['observation_sources'][0]]
     assert source['type'] == 'pointcloud' and source['topic'] == '/points'
     assert source['min_height'] <= 0.15      # obstacles bas
+
+
+def test_ralentir_devant_seulement(reglages):
+    """
+    Vague 4 : ralentir quand quelque chose est DEVANT le robot, pas derrière.
+
+    Le cercle de 1 m tout autour freinait le robot quand le visiteur le suit à 1,2 m (sa surface à
+    0,95 m) : un robot accompagné roulait à mi-vitesse. La zone est la moitié avant de ce cercle :
+    devant, rien ne change (une zone qui porte plus loin faisait rester le robot sur le passage
+    d'un passant qui coupe la route : critère 24) ; derrière, rien ne freine.
+    """
+    ralentir = params(reglages, 'collision_monitor')['ralentir']
+    assert (ralentir['type'], ralentir['action_type']) == ('polygon', 'slowdown')
+    assert ralentir['slowdown_ratio'] == 0.5
+    assert all(isinstance(v, float) for v in ralentir['points'])   # ROS 2 : un seul type
+    xs, ys = ralentir['points'][0::2], ralentir['points'][1::2]
+    assert len(xs) == len(ys) >= 3
+    assert min(xs) >= 0.0                       # rien derrière l'axe du robot
+    # Devant et sur les côtés avant : le cercle de 1 m, à 2 cm près
+    for k in range(-6, 7):
+        angle = math.radians(15 * k + 7.5 * (k < 6))
+        if abs(angle) > math.pi / 2:
+            continue
+        assert zone_touchee(ralentir, 0.98 * math.cos(angle), 0.98 * math.sin(angle)), k
+        assert not zone_touchee(ralentir, 1.02 * math.cos(angle), 1.02 * math.sin(angle)), k
+    for x, y in ((0.45, 0.0), (0.6, 0.55), (0.6, -0.55), (0.3, 0.85), (0.95, 0.0)):
+        assert zone_touchee(ralentir, x, y), (x, y)
+    # Le visiteur qui suit à 1,2 m derrière (ou en biais derrière) : pas de ralentissement
+    for x, y in ((-1.2, 0.0), (-1.0, 0.4), (-0.95, -0.3), (-0.5, 0.0), (-0.05, 0.6)):
+        assert not zone_touchee(ralentir, x, y), (x, y)
+    # Un mur de couloir (2,85 m libres, robot au milieu) ne freine pas le robot qui longe
+    assert not zone_touchee(ralentir, 0.5, 1.4) and not zone_touchee(ralentir, 0.5, -1.4)
+
+
+def test_ralentir_tout_pres(reglages):
+    """
+    Vague 4 : ralentir aussi quand une personne est tout près, sur le côté ou derrière.
+
+    Sans cette zone (demi-disque seul), un contact causé par le robot sur cinq trajets dans
+    coupe_route (critère 24) : le robot qui tourne ou se déplace de côté près d'un passant. Le
+    visiteur qui suit à 1,2 m (sa surface à 0,95 m) reste dehors, avec 0,25 m de marge.
+    """
+    cm = params(reglages, 'collision_monitor')
+    pres, arret = cm['ralentir_pres'], cm['arret']
+    assert (pres['type'], pres['action_type'], pres['slowdown_ratio']) == \
+        ('circle', 'slowdown', 0.5)
+    assert arret['radius'] + 0.2 <= pres['radius'] <= 0.95 - 0.2
+    for x, y in ((-0.6, 0.0), (0.0, 0.65), (-0.4, -0.4)):      # tout près, côté ou derrière
+        assert zone_touchee(pres, x, y), (x, y)
+    for x, y in ((-0.95, 0.0), (-0.7, 0.6), (-0.5, -0.8)):     # surface du visiteur, derrière
+        assert not any(zone_touchee(cm[nom], x, y) for nom in cm['polygons']), (x, y)
 
 
 def test_arrivee_a_moins_de_0_3_m(reglages):

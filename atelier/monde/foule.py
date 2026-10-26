@@ -12,8 +12,12 @@ robot est à moins de distance_reaction_m bord à bord, devant lui (±60° autou
     distance_reaction_m, de quelque côté qu'il soit) ;
   - ecart : il ralentit à 0,5 m/s et s'écarte de 0,6 m au plus, du côté opposé au robot (à droite si
     le robot arrive droit devant), dans l'espace libre de la carte du monde ; s'il ne peut pas
-    s'écarter d'au moins 0,15 m, il s'arrête. Il revient sur son trajet 1 s après que le robot
-    s'est éloigné (au-delà de distance_reaction_m + 0,4 m) ;
+    s'écarter d'au moins 0,15 m, il s'arrête. Si son écart ne suffit pas pour passer le robot avec
+    0,15 m de marge (robot arrêté droit devant : 0,6 m d'écart pour 0,51 m de corps, il resterait
+    0,09 m), il n'avance plus tant que le robot est devant lui, et finit de s'écarter : il attend
+    que le robot passe ou s'écarte, au lieu de le frôler ; 8 s au plus, puis il passe quand même
+    (un robot bloqué devant lui, par une boîte, ne l'arrête pas pour toujours). Il revient sur son
+    trajet 1 s après que le robot s'est éloigné (au-delà de distance_reaction_m + 0,4 m) ;
   - aucune : il ne voit pas le robot (scènes « pire cas »).
 Un piéton « pilote: externe » ne suit pas d'horaire : il suit /pietons/consigne ({vx, vy, theta?},
 valable 0,5 s, 1,5 m/s au plus) et s'arrête devant un mur.
@@ -42,6 +46,8 @@ PAS_ECART_M = 0.05
 VITESSE_LATERALE = 0.6              # m/s : il s'écarte à cette vitesse
 VITESSE_RETOUR = 0.4                # m/s : il revient sur son trajet à cette vitesse
 MARGE_ECART_M = 0.4                 # l'écart dure tant que le robot est à moins de distance_reaction_m + 0,4 m
+MARGE_PASSAGE_M = 0.15              # m : écart bord à bord voulu pour passer à côté du robot, sinon il attend
+ATTENTE_ROBOT_MAX_S = 8.0           # s : il attend le robot au plus ce temps, puis passe quand même
 GAIN_RAPPEL = 2.0                   # 1/s : rappel vers la position prévue
 MARGE_MUR_M = 0.05                  # m : distance gardée aux murs et aux objets de la carte
 ANTICIPATION_MUR_S = 0.25           # s : il s'arrête si cette avance le mettrait dans un mur
@@ -170,6 +176,21 @@ class Passant:
             return None
         return genre
 
+    def _attendre_le_robot(self, t, base, position, direction, ecart_voulu, robot):
+        """Vrai si le robot est encore devant lui et que l'écart voulu ne laisse pas MARGE_PASSAGE_M
+        bord à bord pour passer à côté de lui : il n'avance plus (il finit de s'écarter). Pendant
+        ATTENTE_ROBOT_MAX_S au plus par réaction, puis il passe quand même."""
+        ux, uy = math.cos(direction), math.sin(direction)
+        if (robot[0] - position[0]) * ux + (robot[1] - position[1]) * uy <= 0.0:
+            return False                  # le robot est à côté ou derrière : il est passé
+        nx, ny = self.reaction["normale"]
+        cote_robot = (robot[0] - base[0]) * nx + (robot[1] - base[1]) * ny
+        cote_pieton = ecart_voulu[0] * nx + ecart_voulu[1] * ny
+        if abs(cote_robot - cote_pieton) - self.rayon_robot - self.rayon >= MARGE_PASSAGE_M:
+            return False
+        debut = self.reaction.setdefault("attente_depuis", t)
+        return t - debut <= ATTENTE_ROBOT_MAX_S
+
     def _ecart_possible(self, base):
         """Plus grand écart libre (m, ECART_MAX_M au plus) du côté choisi, depuis le point prévu."""
         nx, ny = self.reaction["normale"]
@@ -206,6 +227,8 @@ class Passant:
                 ecart_voulu = (self.reaction["cote"] * nx * o, self.reaction["cote"] * ny * o)
                 if etat == "marche" and self.pieton.vitesse > VITESSE_ECART:
                     rythme = VITESSE_ECART / self.pieton.vitesse
+                if self._attendre_le_robot(t, (x, y), position, cap, ecart_voulu, robot):
+                    rythme = 0.0
         if arret:
             # il s'arrête là où il est (même s'il a été poussé) ; son avancement attend
             self.cible = position
@@ -344,4 +367,4 @@ def vitesse_dans_la_carte(vx, vy, lacet):
 
 __all__ = ["Foule", "Passant", "CarteLibre", "Commande", "lire_consigne", "vitesse_dans_le_corps",
            "vitesse_dans_la_carte", "ANGLE_DEVANT", "DELAI_REPRISE_S", "VITESSE_ECART", "ECART_MAX_M",
-           "ECART_MIN_M"]
+           "ECART_MIN_M", "MARGE_PASSAGE_M", "ATTENTE_ROBOT_MAX_S"]

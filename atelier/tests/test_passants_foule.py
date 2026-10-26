@@ -11,8 +11,8 @@ import pytest
 from atelier import RACINE
 from atelier.lieu import Monde, Pieton, charger_monde, valider_message
 from atelier.lieu.passants import RAYON_ROBOT_CONTACT
-from atelier.monde.foule import (ECART_MAX_M, CarteLibre, Foule, Passant, lire_consigne, vitesse_dans_la_carte,
-                                 vitesse_dans_le_corps)
+from atelier.monde.foule import (ATTENTE_ROBOT_MAX_S, ECART_MAX_M, MARGE_PASSAGE_M, CarteLibre, Foule, Passant,
+                                 lire_consigne, vitesse_dans_la_carte, vitesse_dans_le_corps)
 
 DT = 0.05
 
@@ -82,16 +82,45 @@ def test_il_rattrape_sa_position_apres_une_poussee():
 def test_reaction_au_robot_qui_arrive_en_face(reaction):
     p = Pieton("h", [(10.0, 0.0), (1.0, 0.0)], 1.0, False, reaction=reaction, repeter=False)
     passant = Passant(p, CarteLibre(couloir()))
-    etats, dmin, trace = rouler(passant, (3.0, 0.0), 20.0)       # robot arrêté sur sa ligne
+    etats, dmin, trace = rouler(passant, (3.0, 0.0), 26.0)       # robot arrêté sur sa ligne
     if reaction == "aucune":
         assert "arret" not in etats and "ecart" not in etats and dmin < 0      # il fonce dedans
     elif reaction == "arret":
         assert "arret" in etats and "ecart" not in etats
         assert 0.0 < dmin < passant.reglages["distance_reaction_m"] + 0.06
     else:
+        # robot arrêté droit devant : 0,6 m d'écart ne laisse que 0,09 m pour passer ; il s'écarte et
+        # attend ATTENTE_ROBOT_MAX_S, loin du robot, puis passe quand même (le robot ne bouge pas)
         assert "ecart" in etats and dmin > 0.0
         assert max(abs(y) for _, y in trace) <= ECART_MAX_M + 0.02
         assert trace[-1] == pytest.approx((1.0, 0.0), abs=0.1)            # revenu sur son trajet, arrivé
+        attente = [i for i in range(1, len(trace)) if abs(trace[i][0] - trace[i - 1][0]) < 0.01 * DT
+                   and trace[i][0] > 3.5]
+        assert len(attente) * DT == pytest.approx(ATTENTE_ROBOT_MAX_S, abs=1.0)
+
+
+def test_ecart_attend_puis_passe_quand_le_robot_s_ecarte():
+    p = Pieton("h", [(10.0, 0.0), (1.0, 0.0)], 1.0, False, reaction="ecart", repeter=False)
+    passant = Passant(p, CarteLibre(couloir()))
+    etats, dmin, trace = rouler(passant, (3.0, 0.0), 10.0)          # il attend devant le robot arrêté
+    assert etats[-1] == "ecart" and dmin > 0.5
+    attente = trace[-1]
+    assert abs(trace[-1][0] - trace[-20][0]) < 0.02                  # il n'avance plus
+    # le robot s'écarte vers le sud (0,8 m en 2 s), puis ne bouge plus : la place est libre
+    etats2, dmin2, trace2 = rouler(passant, (3.0, 0.0), 2.0, v_robot=(0.0, -0.4), t0=10.0)
+    etats3, dmin3, trace3 = rouler(passant, (3.0, -0.8), 14.0, t0=12.0)
+    assert min(dmin2, dmin3) > MARGE_PASSAGE_M - 0.02
+    assert trace3[-1] == pytest.approx((1.0, 0.0), abs=0.1)           # revenu sur son trajet, arrivé
+    assert attente[0] > trace3[-1][0] + 3.0
+
+
+def test_ecart_suffisant_il_passe_sans_attendre():
+    # robot arrêté 0,2 m au sud de sa ligne : 0,6 + 0,2 − 0,51 = 0,29 m pour passer, il ne s'arrête pas
+    p = Pieton("h", [(10.0, 0.0), (1.0, 0.0)], 1.0, False, reaction="ecart", repeter=False)
+    passant = Passant(p, CarteLibre(couloir()))
+    etats, dmin, trace = rouler(passant, (5.0, -0.2), 14.0)
+    assert "ecart" in etats and dmin > MARGE_PASSAGE_M
+    assert trace[-1] == pytest.approx((1.0, 0.0), abs=0.1)
 
 
 def test_ecart_du_cote_oppose_au_robot():

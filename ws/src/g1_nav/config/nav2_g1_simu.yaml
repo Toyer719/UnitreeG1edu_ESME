@@ -6,9 +6,10 @@
 #   Planif.    : Smac 2D, sur la carte du lieu (static_layer) et le masque des zones interdites
 #   Contrôleur : MPPI, motion_model Omni (le G1 se déplace aussi sur le côté)
 #   Obstacles  : voxel_layer alimentée par /points (LiDAR) dans la carte de coûts locale, de 0,15 à
-#                1,9 m (obstacles bas compris) ; personnes (1,125 à 1,9 m) aussi dans la carte globale ;
+#                1,9 m (obstacles bas compris) ; personnes (1,375 à 1,9 m) aussi dans la carte globale ;
 #                inflation de 0,9 m en local (distance aux personnes), 1 m sur la carte globale
-#   Sécurité   : Collision Monitor, ralentit à ×0,5 sous 1 m (près des personnes), s'arrête sous 0,4 m
+#   Sécurité   : Collision Monitor, ralentit à ×0,5 si un obstacle est devant à moins de 1 m, ou
+#                à moins de 0,7 m tout autour (pas le visiteur qui suit à 1,2 m), s'arrête sous 0,4 m
 #
 # Chaîne des vitesses : controller_server → cmd_vel_nav → velocity_smoother → cmd_vel_smoothed
 #                       → collision_monitor → cmd_vel → robot
@@ -286,9 +287,12 @@ global_costmap:
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
-      # Vague 4 : les personnes vues, de 1,125 à 1,9 m seulement (tranche que les rayons balaient
-      # partout autour du robot) : cette carte n'est pas vidée chaque seconde, et un voxel bas
-      # vu de loin n'y serait jamais effacé. À 5 m au plus.
+      # Vague 4 : les personnes vues, de 1,375 à 1,9 m seulement (une personne debout, 1,7 m) : cette
+      # carte n'est pas vidée chaque seconde, et un voxel bas vu de loin n'y serait jamais effacé.
+      # À 5 m au plus. Pas plus bas que 1,375 m : une boîte, une table, un comptoir (1,2 m) ne
+      # doivent pas y entrer (reprise : avec 1,125 m, le haut de la boîte des critères 5 et 19 y
+      # était marqué par moments, et Nav2 basculait sans cesse entre le chemin direct et le
+      # couloir sud, devant la boîte) ; ils restent dans la carte locale, comme en vague 3.
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
@@ -305,7 +309,7 @@ global_costmap:
           data_type: "PointCloud2"
           marking: True
           clearing: False
-          min_obstacle_height: 1.125
+          min_obstacle_height: 1.375
           max_obstacle_height: 1.9
           obstacle_min_range: 0.0
           obstacle_max_range: 5.0
@@ -318,8 +322,8 @@ global_costmap:
           max_obstacle_height: 2.5
           raytrace_min_range: 0.0
           raytrace_max_range: 6.0
-      # Inflation de 1 m : le chemin global passe au milieu des couloirs de 3 m, loin du cercle
-      # « ralentir » (1 m) du Collision Monitor, et à distance des personnes vues (voxel_layer)
+      # Inflation de 1 m : le chemin global passe au milieu des couloirs de 3 m, loin des murs,
+      # et à distance des personnes vues (voxel_layer)
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         inflation_radius: 1.0
@@ -426,10 +430,20 @@ velocity_smoother:
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
 
-# Dernier filtre avant le robot, avec les points du LiDAR (dès 0,1 m de haut) : ralentir à ×0,5 sous
-# 1 m (près des personnes, des murs, des portes), s'arrêter sous 0,4 m. Vague 4 : un polygone de plus,
-# « ralentir si quelqu'un est devant à moins de 1,6 m », a été essayé et retiré : face à un passant
-# qui coupe la route, le robot restait plus longtemps devant lui (plus d'arrêts, un échec sur cinq).
+# Dernier filtre avant le robot, avec les points du LiDAR (dès 0,1 m de haut) :
+#   - ralentir (×0,5) : un demi-disque de 1 m DEVANT le robot (x ≥ 0 dans base_link, 13 sommets) :
+#     une personne, un mur, une porte devant lui ou à côté ;
+#   - ralentir_pres (×0,5) : un cercle de 0,7 m tout autour : une personne tout près, sur le côté
+#     ou derrière (0,44 m bord à bord), quand le robot tourne ou se déplace de côté ;
+#   - arret : un cercle de 0,4 m tout autour (contrat 11.3 : 0,4 m au moins).
+# Vague 4 : les deux zones « ralentir » remplacent le cercle de 1 m tout autour, qui freinait aussi
+# le robot quand le visiteur le suit à 1,2 m (sa surface à 0,95 m) : un robot accompagné roulait à
+# mi-vitesse (0,23 m/s au lieu de 0,46). Devant, rien ne change.
+# Essayés et retirés (vague 4, journal) : une zone qui porte plus loin devant le robot ralentit plus
+# tôt face à un passant qui coupe la route, et le robot reste plus longtemps sur son passage (plus
+# d'arrêts, des échecs) : rectangle de 0 à 1,6 m et ±0,45 m (×0,6) en plus du cercle, un échec sur
+# cinq ; rectangle de 0 à 1,2 m et ±0,6 m à la place du cercle, deux échecs sur cinq (critère 24).
+# Le demi-disque seul : un contact causé par le robot sur cinq trajets (coupe_route, critère 24).
 collision_monitor:
   ros__parameters:
     use_sim_time: True
@@ -441,15 +455,26 @@ collision_monitor:
     source_timeout: 5.0
     base_shift_correction: True
     stop_pub_timeout: 2.0
-    polygons: ["ralentir", "arret"]
+    polygons: ["ralentir", "ralentir_pres", "arret"]
     ralentir:
-      type: "circle"
-      radius: 1.0
+      type: "polygon"
+      points: [0.000, 1.000, 0.259, 0.966, 0.500, 0.866, 0.707, 0.707,
+               0.866, 0.500, 0.966, 0.259, 1.000, 0.000, 0.966, -0.259,
+               0.866, -0.500, 0.707, -0.707, 0.500, -0.866, 0.259, -0.966,
+               0.000, -1.000]
       action_type: "slowdown"
       slowdown_ratio: 0.5
       max_points: 3
       visualize: True
       polygon_pub_topic: "collision_ralentir"
+    ralentir_pres:
+      type: "circle"
+      radius: 0.7
+      action_type: "slowdown"
+      slowdown_ratio: 0.5
+      max_points: 3
+      visualize: True
+      polygon_pub_topic: "collision_ralentir_pres"
     arret:
       type: "circle"
       radius: 0.4

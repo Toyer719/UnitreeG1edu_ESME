@@ -21,7 +21,7 @@ Le `.sdf` du lieu ne change pas : le monde simulé est écrit au lancement dans 
 
 | `reaction` | Quand le robot est à moins de `distance_reaction_m` bord à bord, devant lui (±60°) |
 |---|---|
-| `ecart` (défaut) | il ralentit à 0,5 m/s et s'écarte de 0,6 m au plus du côté opposé au robot, dans l'espace libre ; sinon il s'arrête ; il revient sur son trajet 1 s après que le robot s'est éloigné |
+| `ecart` (défaut) | il ralentit à 0,5 m/s et s'écarte de 0,6 m au plus du côté opposé au robot, dans l'espace libre ; sinon il s'arrête ; si son écart ne laisse pas 0,15 m pour passer (robot arrêté droit devant), il n'avance plus tant que le robot est devant lui (8 s au plus) ; il revient sur son trajet 1 s après que le robot s'est éloigné |
 | `arret` | il s'arrête, et repart 1 s après que le robot s'est éloigné |
 | `aucune` | il ne voit pas le robot (scènes « pire cas ») |
 
