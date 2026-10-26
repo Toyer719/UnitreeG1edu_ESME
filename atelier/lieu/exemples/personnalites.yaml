@@ -1,0 +1,22 @@
+# Exemple de modes de personnalité (vague 4, section 11.6 du plan), à copier dans lieux/<id>/.
+# Format : atelier/lieu/schemas/personnalites.schema.json. Une seule personnalité est active.
+version: 1
+active: accueillant
+personnalites:
+  - id: accueillant
+    nom: Accueillant
+    description: Chaleureux et patient, pour l'accueil des visiteurs.
+    salutation: "Bonjour ! Je suis le robot d'accueil du lycée. Où voulez-vous aller ?"
+    voix: {vitesse: 1.0, hauteur: 1.0, volume: 80}
+    led: {r: 0, g: 120, b: 255}
+    geste_salut: 26
+    phrases:
+      depart: "Avec plaisir ! Suivez-moi jusqu'à {nom}."
+      arrivee: "Et voilà : {nom}. Bonne journée !"
+  - id: discret
+    nom: Discret
+    description: Peu bavard, plus lent, pour les jours d'examens.
+    salutation: "Bonjour. Je peux vous guider."
+    voix: {vitesse: 0.9, hauteur: 1.0, volume: 50}
+    led: {r: 40, g: 40, b: 40}
+    vitesse_max: 0.25

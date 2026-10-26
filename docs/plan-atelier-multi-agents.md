@@ -8,6 +8,8 @@ Vague 2, le scan intégré : chaque agent lit aussi la section 9 en entier (cont
 
 Vague 3, le vrai robot (conteneur du Jetson, pont vers la marche, repérage au démarrage) : chaque agent lit aussi la section 10 en entier. Ses contrats font foi au même titre que ceux des sections 4 et 9.
 
+Vague 4 (point principal, passants, comportement du guide, pilotage et danses, emplacements de l'équipe) : chaque agent lit aussi la section 11 en entier. Ses contrats font foi au même titre que ceux des sections 4, 9 et 10.
+
 ---
 
 ## 1. Le but
@@ -130,8 +132,11 @@ Principe : le serveur ne contient aucune logique robotique. Il appelle les bibli
 │   │   ├── config/nav2_g1_simu.yaml, nav2_g1_reel.yaml
 │   │   └── launch/navigation.launch.py
 │   ├── g1_bridge/                 # vague 3 : pont /cmd_vel → /api/sport/request (section 10.3)
-│   └── g1_jumeau/                 # vague 3 : faux service sport du G1 pour Gazebo (section 10.4)
+│   ├── g1_jumeau/                 # vague 3 : faux service sport du G1 pour Gazebo (section 10.4)
+│   ├── g1_pilotage/               # vague 4 : pilotage depuis l'Atelier, dans le conteneur (section 11.5)
+│   └── g1_equipe/                 # vague 4 : chatbot, personnalités, caméra de l'équipe (section 11.6)
 ├── docker/                        # vague 3 : conteneur Humble du Jetson (section 10.2)
+├── choregraphies/                 # vague 4 : chorégraphies du G1 ; musique/ ignoré par Git (section 11.5)
 ├── lieux/demo/                    # lieu d'exemple fourni par l'agent Données
 ├── tests_e2e/                     # agent Testeur
 └── bin/                           # commandes g1-* (chaque agent ajoute les siennes)
@@ -234,7 +239,7 @@ Valeurs des pixels : 0 = occupé, 254 = libre, 205 = inconnu. La ligne 0 de l'im
 
 **Règles complémentaires**, que les schémas ne peuvent pas exprimer (à vérifier dans `atelier.lieu`) :
 - **Identifiants** (étages, salles, nœuds, murs, objets, piétons ; un lieu est identifié par le nom de son dossier) : `^[a-z0-9][a-z0-9_-]{0,39}$`. Éviter `yes`, `no`, `on` et `off`, que YAML lit comme des booléens. Uniques dans leur fichier. Dans un monde, ils sont uniques entre murs, objets et piétons, car ils deviennent les noms des modèles Gazebo ; `sol` et `g1_proxy` sont réservés.
-- **Salles et nœuds** : chaque salle de `salles.yaml`, accueil compris, a dans `itineraires.yaml` un nœud de même id, à la même position. La salle `accueil` a la pose `accueil` de `lieu.yaml`. Une cible de `/guide/aller` est un id de salle ou de nœud.
+- **Salles et nœuds** : chaque salle de `salles.yaml`, accueil compris, a dans `itineraires.yaml` un nœud de même id, à la même position. La salle `accueil` a la pose `accueil` de `lieu.yaml`. Vague 4 (11.2) : c'est la règle du point principal, la salle qui porte l'étiquette `principal` (à défaut, la salle `accueil`), un seul par lieu, obligatoire. Une cible de `/guide/aller` est un id de salle ou de nœud (vague 4 : ou `principal`, ou du JSON, 11.4).
 - **Couloirs** : un couloir relie deux nœuds du même étage par un segment droit dans l'espace libre, de 8 m au plus.
 - **Murs** : boîte de longueur exactement égale au segment `de` → `a` (pas de débordement aux bouts), d'épaisseur centrée sur le segment, posée au sol. Un passage est l'écart entre les bouts de deux murs alignés.
 - **Objets** posés au sol. `boite` : `taille` = [longueur le long du cap, largeur, hauteur]. Encombrement des modèles (longueur × largeur × hauteur, en mètres) : chaise 0,45 × 0,45 × 0,9 ; table 1,2 × 0,8 × 0,75 ; banc 1,5 × 0,4 × 0,45 ; poubelle, cylindre de rayon 0,25 et de 0,8 de haut.
@@ -258,6 +263,8 @@ Valeurs des pixels : 0 = occupé, 254 = libre, 205 = inconnu. La ligne 0 de l'im
 
 Vague 3 (section 10) : sujets du pont (`/api/sport/*`, `/pont/etat`, `/pont/arret`), du repérage (`/reperage/demander`, `/reperage/etat`, `/api/slam_operate/*`, `/unitree/slam_relocation/*`) et du faux G1 (`/g1_jumeau/*`, `/state_estimator/odom_pelvis`) en 10.3 à 10.6. `/guide/etat` peut porter un champ `message` (10.7).
 
+Vague 4 (section 11) : nouveaux états et champs de `/guide/etat`, `/guide/aller` en JSON, `/guide/evenement` (11.4) ; `/pietons/etat`, `/pietons/consigne` (11.3) ; `/personnes/lidar`, `/faux_visiteur/mode`, `/speed_limit` (11.4) ; `/mouvement/maitre`, `/pilotage/etat`, `/api/arm/*`, `/api/voice/*`, `/arm_sdk`, `/lowstate` (11.5) ; `/visiteur/texte`, `/visiteurs/detectes`, `/personnalite/active`, `/robot/dire` (11.6).
+
 ### 4.3 Commandes
 
 | Commande | Rôle | Agent |
@@ -277,6 +284,8 @@ Vague 3 (section 10) : sujets du pont (`/api/sport/*`, `/pont/etat`, `/pont/arre
 Vague 2 (section 9.5) : `g1-scan demarrer|arreter|traiter|etat|adopter`, agent Orchestrateur.
 
 Vague 3 (section 10) : `g1-jetson construire|envoyer|lieu|demarrer|arreter|etat|journal|verifier` (agent Jetson) ; `g1-monde simuler … --jumeau` (agent Pont et faux G1) ; `g1-guide navigation … --localisation simu|unitree|amcl|externe --pont auto|oui|non` et `g1-slam faux-service --jumeau --lieu L --etage E` (agent Repérage). Ajouts acceptés à l'assemblage (10.12) : `g1-jetson tester-local|shell`, `construire --contexte|--incomplet`, `demarrer --vitesse-max` ; `g1-guide navigation … --vitesse-max`.
+
+Vague 4 (section 11) : `g1-lieu migrer --lieu L [--depuis-depart] [--a-blanc]` (agent Point principal) ; `g1-banc … --scene ID` (agent Passants) ; `g1-pilotage` (agent Pilotage et danses, facultatif : les commandes de l'onglet Pilotage en ligne de commande).
 
 Ajouts de la phase 1, acceptés à l'assemblage : `g1-lieu liste` ; `g1-monde simuler … [--monde F.sdf] [--afficher]` ; `g1-guide etat` et `g1-guide aller ID --sans-suivre` ; `g1-banc … [--simu] [--lancer] [--graine N] [--seuil P] [--csv F]` ; `g1-slam etat` et `g1-slam faux-service [--gazebo] [--relocalise]`, `scan-fin --lieu L` (note `carte_unitree`) ; `g1-atelier [--sans-navigateur] [--hote H]`.
 
@@ -302,6 +311,8 @@ Précisions et ajouts de la phase 1, acceptés à l'assemblage :
 
 Vague 3 (section 10.8) : champ `mode` (`simu`, `repetition`, `robot`) de `POST /api/simulation/demarrer` ; `GET /api/robot/etat`, `POST /api/robot/reperer`, `POST /api/robot/arret` ; `mode`, `reperage` et `pont` dans `/ws/etat`.
 
+Vague 4 (section 11) : `GET/PUT /api/lieux/{id}/principal` (11.2) ; `/api/pilotage/*` et `/ws/pilotage` (11.5) ; `GET/PUT /api/lieux/{id}/personnalites`, `…/dialogues`, `…/camera` (11.6) ; `evenements`, `maitre`, `personnes` et `visiteurs` dans `/ws/etat`, et `pietons` tiré de `/pietons/etat` quand il est publié.
+
 ### 4.5 Lancements ROS 2
 
 ```
@@ -323,6 +334,7 @@ ros2 launch g1_nav navigation.launch.py lieu:=DOSSIER etage:=ID simu:=true|false
 - Les deux lancements respectent les variables `ROS_DOMAIN_ID` et `IGN_PARTITION` de l'environnement : pendant les tests, chaque agent a les siennes.
 - Le monde Gazebo porte le nom de l'étage (`<world name="rdc">`) : sujets `/world/rdc/…`.
 - `moteur:=factice` (ajout de la phase 1) : `MoteurFactice`, sans Gazebo ni Nav2, pour les essais.
+- Vague 4 (section 11) : `pietons:=corps|acteurs` pour g1_sim (11.3, défaut `corps`) ; `personnes:=true|false` pour g1_nav (11.4, détecteur de personnes au LiDAR, défaut true).
 - Vague 3 (section 10) : `jumeau:=true|false` pour g1_sim (10.4, défaut `false` : rien ne change) ; `localisation:=simu|unitree|amcl|externe` et `pont:=auto|true|false` pour g1_nav (10.7), plus `nuage:=SUJET` et `vitesse_max:=M_PAR_S` (ajouts acceptés à l'assemblage, 10.12). `simu:=false` lance le relais `odom_vers_tf` de la section 10.5, qui remplace celui de la vague 1.
 - Si `cartes/<etage>_interdit.yaml` manque, g1_nav crée un masque tout libre dans `/tmp` et le signale ; si la carte manque, il s'arrête et propose `g1-monde generer`.
 - Les deux lancements sont complets depuis la phase 1 (agents Simulation et Navigation). Ils sont compilés dans `ws/install` : `cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_sim g1_nav`.
@@ -358,7 +370,7 @@ Sept agents. Chacun possède ses dossiers, et personne n'écrit dans les dossier
 | 6. Interface | `atelier/serveur/`, `atelier/web/`, `bin/g1-atelier` | Données, Monde ; Simulation et Navigation pour l'intégration |
 | 7. Scan et Testeur | `atelier/scan/`, `ws/src/g1_nav/g1_nav/moteur_unitree.py`, `bin/g1-slam`, `g1-carte-*`, `g1-salle`, `tests_e2e/` | Données, Simulation, Navigation (guide) |
 
-Vague 2 : agents et fichiers en 9.9. Vague 3 : agents Jetson, Pont et faux G1, Repérage, en 10.10.
+Vague 2 : agents et fichiers en 9.9. Vague 3 : agents Jetson, Pont et faux G1, Repérage, en 10.10. Vague 4 : agents Point principal, Passants, Comportement du guide, Pilotage et danses, Équipe, en 11.7.
 
 ### Phases
 
@@ -573,7 +585,7 @@ Tâches :
 9. **Interface** : le parcours « créer → dessiner → fabriquer la carte → placer une salle → lancer la simulation → Y aller » fonctionne. L'agent 6 fournit soit un test Playwright, soit la liste de vérifications cochée.
 10. **Un seul point d'entrée** : `g1-atelier` ouvre le logiciel, et `tests_e2e/tout.sh` affiche « 10 / 10 ».
 
-Critères 11 à 15 (vague 2, scan intégré) : section 9.10. Critères 16 à 20 (vague 3, le vrai robot en répétition, section 10), ci-dessous ; `tests_e2e/tout.sh` lance les vingt et affiche « N / 20 ». En répétition, la vérité terrain est `/g1_jumeau/odom`.
+Critères 11 à 15 (vague 2, scan intégré) : section 9.10. Critères 16 à 20 (vague 3, le vrai robot en répétition, section 10), ci-dessous. En répétition, la vérité terrain est `/g1_jumeau/odom`. Critères 21 à 30 (vague 4, section 11) : à la suite ; `tests_e2e/tout.sh` lance les trente et affiche « N / 30 ».
 
 16. **Conteneur** (`critere_16_conteneur.sh`, agent Jetson) :
     - `g1-jetson construire --arch amd64` réussit (une image déjà construite est réutilisée). Dans l'image : `ros2 pkg prefix g1_nav g1_bridge unitree_api`, `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`, `python3 -c "import atelier.lieu, atelier.scan.slam_client"` ;
@@ -615,6 +627,52 @@ Critères 11 à 15 (vague 2, scan intégré) : section 9.10. Critères 16 à 20 
     - arrêt : `POST /api/guide/stop` arrête le robot en moins de 0,3 s ; avec `POST /api/robot/arret {verrou: true}`, il reste immobile 5 s, même avec « Y aller » ;
     - consignes absurdes (NaN, 1e9) : jamais au-delà des plafonds ;
     - messages en français, jamais d'erreur 500.
+
+Critères 21 à 30 (vague 4 : point principal, passants, comportement du guide, pilotage, équipe ; section 11), ci-dessous ; `tests_e2e/tout.sh` lance les trente et affiche « N / 30 ». Un critère dont la pièce d'un autre agent manque répond « en attente » (77). Mesures dans le lieu `demo` (couloirs nord et sud de 2,85 m libres), sur des copies ; vérité terrain : `/odom` en simulation, `/g1_jumeau/odom` en répétition.
+
+21. **Point principal** (`critere_21_point_principal.sh`, agent Point principal). Sur des copies du demo :
+    - un lieu sans principal (ni étiquette ni salle `accueil`) : `g1-lieu valider` en erreur (« pas de point principal ») et `POST /api/simulation/demarrer` répond 409 ; deux principaux : `PUT …/salles` répond 422 ; un lieu migré dont `PUT …/salles` perdrait le principal : 422 ;
+    - `g1-lieu migrer` : la sauvegarde contient les fichiers d'avant à l'identique, l'étiquette est posée, `g1-lieu valider` ne signale aucune erreur, un second passage ne change rien ; `g1-lieu migrer --lieu demo` (la référence) est refusé, `lieux/demo` inchangé (empreintes) ;
+    - `PUT /api/lieux/{id}/principal {theta: 1.5708}` : `salles.yaml`, `accueil` de `lieu.yaml` et `depart_robot` valent 1,5708, et `GET …/principal` le rend ; puis le principal déplacé en (2,5 ; 11,0 ; 1,5708) ;
+    - la simulation part du principal : après `POST /api/simulation/demarrer` (simu), la première pose de `/odom` est à moins de 0,05 m et 0,05 rad du principal ;
+    - le repérage part du principal : en répétition, `POST /api/robot/reperer {lieu, etage}` sans pose → `/reperage/demander` porte x, y et theta du principal, le faux service reçoit 1804 avec `carte_vers_unitree(principal, repere_unitree)`, le robot est repéré, TF map → base_link à moins de 0,1 m de la vérité ; de même avec `repere_unitree` (3 ; 9 ; 0,5) dans la copie (pose convertie, repéré).
+22. **Retour automatique** (`critere_22_retour.sh`, agent Comportement du guide). Simulation d'une copie du demo (`guide: {delai_avant_retour_s: 5}`) :
+    - `POST /api/guide/aller {cible: "b204"}` → `arrive` à moins de 0,3 m ;
+    - puis, seul, `retour` (cible : le principal) et `attente` en moins de 120 s, le robot à moins de 0,3 m et 10° du principal ;
+    - événements `arrivee`, `retour` et `retour_arrive` reçus sur `/guide/evenement`, en français, conformes au schéma ; tous les `/guide/etat` conformes au schéma `etat_guide` ;
+    - avec `{"cible": "b204", "retour": false}`, le robot reste à b204 (moins de 0,1 m en 20 s après l'arrivée).
+23. **Passant immobile au milieu du couloir** (`critere_23_passant_immobile.sh`, agent Passants). Scène `immobile_couloir`, 5 essais accueil → b204 : 5 arrivées à moins de 0,3 m en moins de 180 s, sans détour, 0 contact, et sur chaque essai une distance bord à bord minimale de **0,20 m** au moins (0,71 m de centre à centre ; il reste 1,18 m libre de chaque côté du passant).
+24. **Passants en face et qui coupent la route** (`critere_24_passants_croises.sh`, agent Passants). Scènes `en_face` et `coupe_route`, piétons en pire cas (`reaction: aucune`), 5 essais chacune : **0 contact causé par le robot** sur les 10 essais, au moins 9 arrivées sur 10 à moins de 0,3 m en moins de 180 s ; les contacts causés par le piéton sont comptés et affichés. Puis les mêmes scènes avec `reaction: ecart` : 0 contact de toute sorte.
+25. **Groupe qui bouche le couloir** (`critere_25_groupe.sh`, agent Passants, avec le guide de l'agent Comportement) :
+    - scène `groupe_couloir` (3 essais, le groupe part après 15 s) : le guide passe par `attente_passage` (événement `passant_gene`), aucun `detour` tant que le groupe est là, puis il passe et arrive à moins de 0,3 m en moins de 180 s, 0 contact causé par le robot ;
+    - scène `groupe_reste` (2 essais, le groupe reste) : `attente_passage`, puis `detour` au plus tôt 20 s après (`delai_passant_s`), arrivée par le couloir sud en moins de 300 s, `longueur_m` au plus 75 m (un détour raisonnable) ;
+    - banc `foule` (les 5 piétons du critère 6, piétons crédibles, 20 trajets) avec la nouvelle mesure : au moins 90 % de réussite et **0 contact causé par le robot** ; le CSV a les colonnes de 11.3.
+26. **Accompagnement** (`critere_26_accompagnement.sh`, agent Comportement du guide). Simulation, scène `accompagnement` (faux visiteur 1 m derrière le robot au principal, `delai_visiteur_s: 10`), `/guide/aller {"cible": "b204", "accompagner": true}` :
+    - événement `depart` (et non `seul`) ; visiteur `suivre` : le robot va à sa vitesse normale ;
+    - `trainer` : `/speed_limit` publié, vitesse du robot au plus 60 % de celle d'avant, puis `attente_visiteur` (robot à moins de 2 cm/s) quand le visiteur est à plus de 3,5 m ;
+    - `suivre` de nouveau : `visiteur_retrouve`, reprise, `arrive` à moins de 0,3 m ;
+    - second essai, `partir` : `attente_visiteur`, puis `visiteur_perdu` 10 s après (± 2 s), puis `retour` et `attente` au principal (0,3 m, 10°) ; événements en français, conformes.
+27. **Perdu en route** (`critere_27_perdu.sh`, agent Comportement du guide). Répétition d'une copie du demo (`guide: {delai_perdu_s: 15}`), repérage, `/guide/aller b204`, puis `/faux_slam/panne muet` en route :
+    - `perdu` en moins de 4 s, événement `perdu`, robot arrêté (moins de 5 cm en 3 s) ;
+    - cas A, panne levée après 5 s : `retrouve`, reprise, `arrive` à moins de 0,3 m ;
+    - cas B, la panne reste : `echec` 15 s (± 2 s) après `perdu`, avec un message qui dit quoi faire, événement `echec`, robot immobile, pas de retour automatique.
+28. **Pilotage contre le faux G1** (`critere_28_pilotage.sh`, agent Pilotage et danses). Gazebo `--jumeau`, nœud pilotage sur le PC (port libre, jeton), `g1-atelier`, navigation de la répétition :
+    - postures 500, 706 et 3 acceptées (mode du faux G1 changé, lu par 7001) ; 1 et 0 refusées sans la confirmation double et la case « robot au portique », acceptées avec ;
+    - joystick par le WebSocket de l'Atelier : vx 0,3 pendant 2 s → 0,6 ± 0,2 m ; robot arrêté (moins de 2 cm/s) moins de 0,6 s après le dernier ordre ; WebSocket coupé en marche : arrêt en moins de 0,6 s ; plafonds (1,0 demandé → 0,4) ;
+    - gestes : 26 accepté ; un autre geste pendant que les bras tiennent → refus 7401 en français ; 99 relâche ; geste en posture assise → refus 7404 en français ;
+    - voix (TTS), volume et LED reçus par le faux G1 avec les bons paramètres ;
+    - verrou : guide en route → « prendre la main » refusé (409) ; avec `forcer` → `/guide/stop`, robot arrêté, `maitre: pilotage` ; `/guide/aller` alors refusé (`echec`, événement `pilotage`), pont en état `pilotage`, robot immobile ; « rendre la main » → le guide repart à la demande suivante ; ARRÊT permis dans tous les cas ;
+    - interdits : 7104, 7110, postures 2, 4 et 801 refusées (403), sans aucune requête au faux G1 ; demandes absurdes : jamais d'erreur 500, refus en français ; aucun processus restant.
+29. **Danses et chorégraphies** (`critere_29_danses.sh`, agent Pilotage et danses). Même montage :
+    - la liste des danses est lue (7100) et montrée, 401, 402 et 403 marquées interdites ;
+    - danse 604 avec la « zone libre » confirmée → le faux G1 reçoit 7101 `{"data": 550604}` ; sans confirmation : refus ; 401, 402 et 403 refusées même confirmées, rien d'envoyé ; pendant la danse, joystick refusé ; à la fin, mode 801 ; ARRÊT pendant une danse : StopMove, rien d'autre ;
+    - la chorégraphie `exemple_kpop` jouée sur le faux G1 (zone libre confirmée) : rt/arm_sdk reçu à 50 Hz (± 10 %), rampes du poids de 1 s au moins au début et à la fin, aucun angle hors de `LIMITES_BRAS`, aucune vitesse au-delà de `VITESSE_BRAS_MAX`, taille et jambes jamais pilotées, pas sous `LIMITES_PAS` et robot à 1 m au plus de son départ (vérité), LED et paroles à leur temps (± 0,2 s) ; ARRÊT au milieu : poids ramené à 0 en moins de 1,5 s, StopMove ;
+    - une chorégraphie hors limites est refusée avant de jouer, avec ses erreurs en français ;
+    - l'onglet Pilotage dans Firefox sans fenêtre : l'aperçu 3D de `exemple_kpop` se charge et avance (images dessinées), sans erreur dans la page.
+30. **Équipe** (`critere_30_equipe.sh`, agent Équipe) :
+    - les exemples de `personnalites.yaml`, `dialogues.yaml` et `camera.yaml` sont valides, trois fautes de chacun sont refusées en français ; écrits puis relus par l'API sur une copie du demo ;
+    - les onglets Personnalités, Dialogues et Caméra s'ouvrent dans Firefox sans fenêtre ; une personnalité choisie part sur `/personnalite/active` ; une phrase s'essaie dans l'onglet Dialogues ;
+    - bout en bout en simulation (Gazebo, navigation, nœud `dialogue`) : « je cherche la salle b204 » sur `/visiteur/texte` → `/robot/dire` (réponse en français, conforme) et `/guide/aller` en JSON vers b204 → `arrive` à moins de 0,3 m ; « bonjour » → une réponse, sans guidage ; une phrase inconnue → le `repli` ; aucun processus restant.
 
 ---
 
@@ -1354,3 +1412,326 @@ Acceptées par l'intégrateur le 26/10/2026. Elles complètent les sections 10.2
 **Réseau du robot.** `setup/robot.sh` exporte `ROS_DOMAIN_ID=0` (le robot publie sur le domaine 0 ; l'Atelier en mode robot l'exige).
 
 **Séance avec le robot.** Le déroulé pas à pas est dans `docs/seance-robot.md`. Il reprend la liste de 10.9 dans cet ordre : le pont au portique, à vitesse réduite (plafonds 0,1 m/s, format 7105, arrêt seul quand le pont meurt, télécommande prioritaire), puis le conteneur, puis le repérage 1804 (avec un petit scan de la zone s'il n'y en a pas), puis un premier trajet court de 3 m à 0,2 m/s (`G1_VITESSE_MAX=0.2`).
+
+---
+
+## 11. Accueil, passants, pilotage et équipe (vague 4)
+
+Contrats figés par l'intégrateur le 26/10/2026, avant le travail en parallèle de cinq agents (11.7). Comme les sections 4, 9 et 10, cette section fait foi ; on ne la modifie qu'en passant par l'intégrateur. Elle couvre cinq demandes de l'utilisateur : **A** un point principal unique par lieu ; **B** des passants que le robot contourne vraiment ; **C** le comportement du guide (retour, accompagnement, robot perdu, messages au visiteur) ; **D** un onglet Pilotage, comme l'appli Unitree Explore, avec les danses du robot et des chorégraphies sûres ; **E** les emplacements pour l'équipe (caméra See3CAM, chatbot à règles, modes de personnalité).
+
+Code partagé déjà livré et testé (`atelier/tests/test_contrats_vague4.py`) :
+- les schémas JSON (draft-07) des nouveaux fichiers et messages, reconnus par `valider_donnees` et `valider_message` : fichiers `personnalites`, `dialogues`, `camera`, `scene`, `choregraphie` ; messages `etat_guide`, `evenement_guide`, `demande_guide`, `pietons_etat`, `pietons_consigne`, `personnes`, `maitre_mouvement`, `etat_pilotage`, `robot_dire`, `personnalite_active` (`TYPES_MESSAGES`) ; l'état `pilotage` du pont dans `etat_pont` (`ETATS_PONT`) ;
+- les champs facultatifs : `etiquettes` d'une salle (`Salle.etiquettes`), la section `guide` de `lieu.yaml` (`Lieu.guide`), les champs du piéton crédible dans `monde.yaml` (`Pieton`) ; tous absents des fichiers quand ils valent leur défaut : les lieux existants ne changent pas ;
+- un module de contrat par agent dans `atelier/lieu/` : `principal.py`, `passants.py`, `comportement.py`, `pilotage.py`, `equipe.py` (fonctions et valeurs « contrat » écrites et testées ; les fonctions de l'agent lèvent `NotImplementedError` d'ici là) ; des exemples dans `atelier/lieu/exemples/` (personnalites, dialogues, camera) et la chorégraphie `choregraphies/exemple_kpop.choregraphie.yaml` ;
+- la règle « un seul point principal par lieu, obligatoire » dans la validation et la vérification ; l'étiquette posée par `creer_lieu` ;
+- `/guide/aller` en JSON et la cible `principal` acceptés par le nœud guide (passerelle : la cible seulement) ;
+- les squelettes : onglets Pilotage, Personnalités, Dialogues et Caméra (`app.js`, écrans vides), panneaux du guide et des passants dans l'onglet Simulation, une feuille de style par agent, cinq fichiers de routes vides enregistrés dans le serveur, l'écoute des sujets JSON de la vague 4 par le pont ROS 2 du serveur (`dernier`, `historique`, `publier_json`) et leurs champs dans `/ws/etat`, les paquets `ws/src/g1_pilotage` et `ws/src/g1_equipe` (compilés et testés), les nœuds `detecteur_personnes` et `faux_visiteur` déclarés dans `g1_nav` (modules vides), `atelier/monde/scene.py` et `atelier/equipe/` ;
+- `tests_e2e/tout.sh` compte 30 critères (« N / 30 ») ; un critère sans script est « absent ».
+
+### 11.1 Ce qui change, et le chemin des commandes du pilotage
+
+| Demande | Pièce | Où elle tourne |
+|---|---|---|
+| A | point principal (étiquette d'une salle) ; `depart_robot` synchronisé ; pose par défaut du repérage | fichiers du lieu, serveur, onglets Salles et Simulation |
+| B | piétons crédibles (corps et réaction), scènes, mesure des contacts, réglages de Nav2 | `g1_sim` (Gazebo), `g1-banc`, `nav2_g1_*.yaml` |
+| C | guide : retour, accompagnement, perdu, passant qui bouche, événements ; détecteur de personnes au LiDAR ; faux visiteur | `g1_nav` (guide, `detecteur_personnes`, `faux_visiteur`) |
+| D | pilotage : postures, joystick, gestes, voix, LED, danses, chorégraphies ; verrou des mouvements ; faux G1 étendu | `g1_pilotage` (conteneur du Jetson), Atelier, `g1_jumeau`, `g1_bridge`, `docker/` |
+| E | personnalités, dialogues, caméra ; sujets entre les parties ; document pour l'équipe | fichiers du lieu, onglets, `g1_equipe` |
+
+```
+Navigateur, onglet Pilotage ──HTTP /api/pilotage/* et WebSocket /ws/pilotage──► serveur de l'Atelier (PC)
+   ──HTTP et WebSocket par le Wi-Fi (G1_PILOTAGE_URL, port 8010, en-tête X-Jeton)──► nœud pilotage (g1_pilotage,
+     dans le conteneur du Jetson ; sur le PC en répétition)
+   ──ROS 2 sur le réseau interne 192.168.123.x──► services sport, arm, voice (unitree_api/Request sur
+     /api/<service>/request, réponses sur /api/<service>/response) et rt/arm_sdk (/arm_sdk, unitree_hg/LowCmd)
+```
+
+**Choix : une petite API HTTP et WebSocket dans le conteneur, et non DDS par le Wi-Fi.** Raisons :
+1. la découverte DDS par le Wi-Fi est lourde et fragile (une trentaine de participants avec Nav2, multicast souvent bloqué, `G1_PAIRS` à tenir à jour) ; une connexion TCP vers un port connu suffit ;
+2. la sécurité est au plus près du robot : plafonds, refus, homme mort et verrou sont dans le conteneur. Si le Wi-Fi ou la page se coupent, le conteneur arrête le robot de lui-même en 0,5 s, sans dépendre du PC ;
+3. l'Atelier n'a besoin d'aucun réglage DDS sur le réseau du robot pour piloter ; la navigation, elle, reste en DDS sur le réseau interne ;
+4. tout se teste sur le PC contre le faux G1, avec la même API.
+
+Bibliothèque : `tornado` (`python3-tornado`, déjà présent dans le Python du système du PC, paquet apt arm64 pour Ubuntu 22.04), HTTP et WebSocket sans dépendance de plus. Port `PORT_PILOTAGE` = 8010 (`G1_PILOTAGE_PORT`). Sur le Wi-Fi, un jeton partagé `G1_PILOTAGE_JETON` est exigé dans l'en-tête `X-Jeton` (refus 401 sans lui ; vide : seules les connexions de 127.0.0.1 sont acceptées). Le serveur de l'Atelier joint le nœud par `G1_PILOTAGE_URL` (défaut `http://127.0.0.1:8010`, la répétition sur le PC ; avec le robot : l'adresse Wi-Fi du Jetson, ou `http://192.168.123.164:8010` au câble).
+
+### 11.2 A. Le point principal (agent Point principal)
+
+**Format.** Le point principal est une salle de `salles.yaml` qui porte l'étiquette `principal` :
+
+```yaml
+- id: accueil
+  nom: Accueil
+  alias: [accueil]
+  etage: rdc
+  pose: {x: 2.5, y: 10.0, theta: 0.0}      # la flèche : le robot y est posé tourné vers theta
+  phrase_arrivee: ''
+  etiquettes: [principal]                  # vague 4 : facultatif, liste vide par défaut
+```
+
+`accueil` de `lieu.yaml` garde son nom et devient la copie de la pose du point principal (`etage`, `x`, `y`, `theta`). L'id du principal est libre (en général `accueil`) ; il a son nœud de même id dans `itineraires.yaml`, comme toute salle. `etiquettes` : des identifiants, sans doublon, 20 au plus ; seule `principal` est réservée, les autres sont libres (l'équipe peut s'en servir : `toilettes`, `sortie`…) et ne changent rien au guide.
+
+**Un seul principal par lieu, obligatoire** :
+- deux salles étiquetées : erreur de `salles.yaml` (fichier refusé à la lecture et à l'écriture), et de `verifier_lieu` ;
+- aucune étiquette : le **principal implicite** est la salle `accueil` (lieux d'avant la vague 4 : `demo`, `demo_scan`, `bomboclat`), sans avertissement ; ni étiquette ni salle `accueil` : erreur de `verifier_lieu` (« le lieu n'a pas de point principal »), et l'Atelier refuse de lancer la simulation, la répétition ou le robot sur ce lieu (409, message en français ; livré : `exiger_point_principal` de `atelier/serveur/communs.py`, appelé par `POST /api/simulation/demarrer`) ;
+- la pose du principal doit être `accueil` de `lieu.yaml` (erreur sinon : la règle de la salle accueil, étendue) ;
+- `PUT /api/lieux/{id}/salles` refuse (422, comme toute validation) une liste à deux principaux, et, si le lieu a un principal explicite, une liste qui le perd (« choisissez d'abord un autre point principal ») ; avec `?synchroniser=true`, c'est la pose du principal (et non plus celle de la salle « accueil ») qui est recopiée dans `accueil` de `lieu.yaml`, et dans `depart_robot`.
+
+Fonctions de contrat (`atelier.lieu.principal`, livrées) : `point_principal(lieu)` (la salle, ou None), `principal_explicite`, `salles_principales`, `pose_principale(lieu)` (PoseEtage), `pose_de_reperage(lieu, etage)`, `depart_simulation(lieu, etage)`, `accueil_conforme(lieu)`. À écrire par l'agent : `definir_principal(lieu, salle?, x?, y?, theta?)` (tout ou rien : étiquette, `salles.yaml`, nœud, `accueil`, `depart_robot`), `synchroniser_depart(lieu)`, `sauvegarder_lieu(lieu, raison)`, `migrer_lieu(lieu, depuis_depart=False, a_blanc=False)`.
+
+**Lien avec `depart_robot` : il se synchronise.** Chaque écriture du principal par l'Atelier ou par `g1-lieu migrer` recopie sa pose dans `depart_robot` du monde de son étage (s'il a un monde). `verifier_lieu` avertit s'ils diffèrent (« la simulation ne partira pas de l'accueil »). `g1_sim` ne change pas : il lit toujours `depart_robot`. Dans l'onglet Monde, `depart_robot` de l'étage du principal est affiché « = point principal », sans poignée. Après `g1-scan adopter --monde` (le monde du scan a son propre départ), `synchroniser_depart` est appelé (seule modification permise à l'agent A dans `atelier/scan/commande.py`).
+
+**Lien avec le repérage.** `POST /api/robot/reperer {lieu, etage}` sans `x`, `y`, `cap` : le serveur prend `pose_de_reperage(lieu, etage)` — le point principal s'il est sur cet étage, sinon la marque au sol (origine de la carte d'Unitree) — et l'envoie toujours en entier (`x`, `y`, `theta`, repère map) dans `/reperage/demander`. Le relais la convertit vers le repère d'Unitree par `carte_vers_unitree(P, repere_unitree)` (`atelier.lieu.robot` et `conversions`, inchangés) avant 1804. Le relais garde son défaut de la vague 3 (une demande sans pose vise l'origine d'Unitree), qui ne sert plus à l'Atelier. Conséquences :
+- sur le vrai robot, plus besoin de la marque au départ du scan : on pose le robot sur le point principal, dans le sens de la flèche ;
+- pour un monde dessiné, `repere_unitree` vaut `depart_robot`, donc le principal : 1804 reçoit (0, 0, 0), comme en vague 3 ;
+- variante B du critère 18 (`repere_unitree` tourné) : le repérage par défaut réussit désormais (le robot est bien sur le principal) ; le refus se vérifie avec une pose fausse donnée explicitement. L'agent A adapte `critere_18_reperage.sh` et `critere_18_outils.py`.
+
+`GET /api/robot/etat` : `marque` devient la pose de repérage par défaut (le principal) ; champ ajouté `principal: {salle, nom, x, y, theta} | null`.
+
+**Migration et sauvegarde** (`g1-lieu migrer --lieu L [--depuis-depart] [--a-blanc]`, agent A) :
+1. sauvegarde d'abord : copie de `lieu.yaml`, `salles.yaml`, `itineraires.yaml` et `mondes/*.monde.yaml` dans `lieux/<id>/sauvegardes/AAAA-MM-JJ_HHhMM_migration/` (`-2`, `-3`… si besoin), suivie par Git comme le reste du lieu ;
+2. puis : étiquette `principal` sur la salle `accueil` ; avec `--depuis-depart`, le principal prend d'abord la pose `depart_robot` de son étage ; `accueil`, nœud et `depart_robot` alignés ;
+3. rapport en français : la sauvegarde, chaque valeur changée (avant, après), les erreurs qui existaient déjà (elles ne bloquent pas, sauf un fichier illisible) ;
+4. idempotent (un second passage ne change rien) ; `--a-blanc` n'écrit rien ;
+5. refuse `lieux/demo` (la référence des tests reste au format implicite : les tests couvrent les deux formes).
+
+`bomboclat` (le lieu de l'utilisateur) et `demo_scan` sont migrés par l'agent A, après un essai sur une copie, avec la sauvegarde, et un test : `valider_lieu` donne les mêmes erreurs avant et après. Pour `bomboclat`, le principal reste la salle `accueil` (1 ; 1 ; 0), et son `depart_robot` actuel (36 ; 25,25 ; 1,8326), différent, est gardé dans la sauvegarde et cité dans le rapport : l'utilisateur pourra déplacer le principal sur la carte.
+
+**Interface (agent A).** Onglet Salles : le principal dessiné d'une étoile et d'une flèche (theta) ; glisser la flèche le tourne (`PUT …/principal {theta}`) ; « Faire de cette salle le point principal » ; impossible de supprimer le principal sans en choisir un autre. Onglet Simulation (répétition et robot) : « Posez le robot sur le point principal « Accueil » (étoile sur la carte), tourné dans le sens de la flèche » ; l'étoile et la flèche remplacent la croix de la marque ; « Le robot n'est pas sur le point principal » garde le clic-glissé de la vague 3.
+
+API (agent A, `routes/principal.py`) : `GET /api/lieux/{id}/principal` → `{salle, nom, etage, x, y, theta, explicite, depart_synchro, repere_unitree, pose_unitree}` (`pose_unitree` : la pose que recevra 1804) ; `PUT /api/lieux/{id}/principal {salle?, x?, y?, theta?}` → `definir_principal`, réponse `{enregistre, principal, rapport}` comme les autres PUT (4.4) ; `x` et `y` vont ensemble ; 404 pour une salle inconnue.
+
+### 11.3 B. Les passants (agent Passants)
+
+Constat (banc du critère 6, vague 3) : sur 20 trajets, 13 ont eu un piéton à moins de 0,6 m de centre à centre (10 sous 0,25 m), sans aucun détour. Les piétons de Gazebo (`<actor>`) n'ont pas de collision et ne voient pas le robot.
+
+**Piétons crédibles** (`g1_sim`, nœud `pietons`, agent B). Chaque piéton du monde devient dans Gazebo un **corps qui gêne** (cylindre de `rayon_m`, 1,7 m de haut, que le LiDAR voit et que le robot proxy ne peut pas traverser), déplacé au moins 20 fois par seconde le long de son trajet, avec une **réaction simple** quand le robot est à moins de `distance_reaction_m` bord à bord, devant lui (±60° autour de sa direction de marche) :
+- `arret` : il s'arrête, et repart 1 s après que le robot s'est éloigné ;
+- `ecart` : il ralentit à 0,5 m/s et s'écarte de 0,6 m au plus du côté opposé au robot, dans l'espace libre de la carte ; s'il ne peut pas, il s'arrête ;
+- `aucune` : il ne voit pas le robot (scènes « pire cas »).
+
+Champs facultatifs d'un piéton (`monde.yaml`, schéma `monde`, défauts dans `atelier.lieu.passants.DEFAUTS_PIETON`) : `reaction` (`ecart`), `distance_reaction_m` (0,8), `corps` (true), `rayon_m` (0,25), `pauses` (`[{point, duree_s}]` : arrêt à chaque passage au point de ce rang ; un piéton immobile : une pause de 3600 s au point 0), `depart_s` (0), `repeter` (true ; false : un seul parcours, puis il reste au dernier point), `pilote` (`trajet` ; `externe` : il suit `/pietons/consigne`, pour le faux visiteur, 11.4). Le calcul du trajet prévu reste `atelier.monde.pietons` (l'agent B y ajoute pauses, départ et `repeter`).
+
+Mécanisme dans Gazebo : au choix de l'agent B (modèles déplacés par `set_pose`, ou par `VelocityControl`…), avec trois exigences : le LiDAR les voit (comme les `<actor>` aujourd'hui), le robot ne les traverse pas, et le facteur temps réel de Gazebo reste à 0,9 au moins avec 5 piétons sur le PC du projet. Nouvel argument `pietons:=corps|acteurs` de `simulation.launch.py` (défaut `corps` ; `acteurs` : les `<actor>` de la vague 1, sans nœud) ; un piéton `corps: false` reste un `<actor>`.
+
+| Sujet | Type | Sens | Rôle |
+|---|---|---|---|
+| `/pietons/etat` | std_msgs/String (JSON, schéma `pietons_etat`) | g1_sim → | positions et vitesses vraies (repère map), `etat` (`marche`, `pause`, `arret`, `ecart`, `pilote`, `fini`), 10 Hz |
+| `/pietons/consigne` | std_msgs/String (JSON, schéma `pietons_consigne`) | → g1_sim | `{id, vx, vy, theta?}` d'un piéton `pilote: externe`, repère map, 1,5 m/s au plus, valable 0,5 s ; le nœud refuse d'entrer dans un mur |
+
+Le serveur de l'Atelier montre dans `/ws/etat` les piétons de `/pietons/etat` quand il est frais (moins de 1 s), sinon il les recalcule comme avant (déjà livré).
+
+**Scènes** (fichiers `atelier/monde/scenes/<id>.scene.yaml`, schéma `scene`, chargées par `atelier.monde.scene`, agent B) : un lieu de référence (`demo`), un étage, des piétons qui remplacent (ou complètent) ceux du monde d'une **copie** du lieu, des trajets, un nombre d'essais, des réglages du guide pour la copie, et les seuils de réussite (`mesures`). `g1-banc --scene ID` copie le lieu, applique la scène, fait les trajets et vérifie les seuils. Scènes de l'agent B, dans le lieu `demo` (couloirs nord et sud de 3 m entre axes de murs, soit 2,85 m libres) :
+
+| Scène | Piétons | Trajets |
+|---|---|---|
+| `immobile_couloir` | un passant immobile au milieu du couloir nord, en (12,0 ; 13,0), `reaction: aucune` (il reste 1,18 m libre de chaque côté) | accueil → b204, 5 essais |
+| `en_face` | un passant qui remonte le couloir nord vers l'ouest, sur la ligne du robot (y = 13), à 1,0 m/s, `reaction: aucune` | accueil → b204, 5 essais |
+| `coupe_route` | un passant qui traverse le hall de part en part devant le robot (x = 2,5, de y = 11 à 12,5, va-et-vient à 1,0 m/s), `reaction: aucune` | accueil → b204, 5 essais |
+| `groupe_couloir` | trois passants côte à côte en travers du couloir nord, en x = 15,5 (y = 12,0 ; 13,0 ; 14,0), immobiles 15 s (`pauses`) puis qui partent vers l'est et sortent par b204 (`repeter: false`) | accueil → b204, 3 essais |
+| `groupe_reste` | les mêmes trois passants, immobiles 600 s | accueil → b204, 2 essais |
+| `foule` | les 5 piétons du critère 6, piétons crédibles par défaut (`ecart`) | 20 trajets tirés au sort |
+
+**Mesures** (`atelier.lieu.passants`, livrées) : distance **bord à bord** = distance des centres − `RAYON_ROBOT_CONTACT` (0,26 m, le cercle qui contient la boîte de collision 0,208 × 0,477 m du robot proxy) − `rayon_m` du piéton. **Contact** : la distance bord à bord passe sous `SEUIL_CONTACT_M` (0,05 m) ; il finit au-dessus de `SEUIL_FIN_CONTACT_M` (0,15 m). **Cause**, au début du contact (`cause_contact`) : `robot` si la vitesse du robot projetée vers le piéton dépasse `VITESSE_APPROCHE_M_S` (0,05 m/s), même si le piéton avançait aussi ; sinon `pieton` si le piéton avançait vers le robot ; sinon `aucun`. `SuiviContacts` tient le compte, au moins 20 fois par seconde. Vérités : `/odom` en simulation (Gazebo, map = odom), `/g1_jumeau/odom` en répétition ; `/pietons/etat` pour les piétons (sans lui, les positions calculées depuis le monde, et des vitesses par différences).
+
+**CSV de `g1-banc`** : les colonnes de la vague 1 restent ; s'ajoutent, dans cet ordre (`COLONNES_BANC_V4`) : `scene`, `distance_min_bord_m`, `contacts`, `contacts_robot`, `contacts_pieton`, `contacts_aucun`, `temps_arret_pres_s` (robot arrêté, moins de 0,02 m/s, à moins de 1,5 m bord à bord d'un piéton), `attentes_passage` (passages à l'état `attente_passage`), `duree_attente_passage_s`, `longueur_m` (distance parcourue), `longueur_directe_m` (longueur de l'itinéraire du départ, sans détour). `distance_min_pietons_m` (centre à centre) reste.
+
+**Réglages de Nav2 que l'agent B peut toucher**, dans `nav2_g1_simu.yaml` et `nav2_g1_reel.yaml` à l'identique (sauf les vitesses, `test_reglages.py`) :
+- carte de coûts locale : `voxel_layer` (hauteurs `min_obstacle_height` et `max_obstacle_height`, pour voir les **obstacles bas sous 1,1 m** ; sources d'observation, portées, effacement) ; il peut ajouter une source tirée de `/points` (par exemple un `/scan` de `pointcloud_to_laserscan` dans une autre tranche) ; `inflation_radius` et `cost_scaling_factor` (**distance aux personnes**) ;
+- MPPI : poids et marges des critiques (`ObstaclesCritic` : `collision_margin_distance`, `repulsion_weight`, `critical_weight`…), horizon ;
+- Collision Monitor : le cercle `ralentir` (rayon, `slowdown_ratio` : **ralentir près des personnes**) ; un polygone de plus si besoin ;
+- il ne touche pas : les repères, les sujets et la chaîne `cmd_vel` (controller → velocity_smoother → collision_monitor → `/cmd_vel`), `speed_limit_topic` (`/speed_limit` est au guide, 11.4), le filtre Keepout, l'arbre `naviguer_par_poses.xml`, `use_sim_time` ; il ne relève aucune vitesse maximale ; `robot_radius` reste à 0,35 m au moins, le cercle `arret` à 0,4 m au moins.
+Sur le vrai robot, les mêmes réglages seront à revoir au milieu de vraies personnes (11.11).
+
+**Passant qui bouche le couloir.** Règle mise dans le guide par l'agent C (11.4) : quand le robot n'avance plus et qu'une personne vue au LiDAR est devant lui, il attend `delai_passant_s` (20 s) dans l'état `attente_passage`, avec l'événement `passant_gene`, avant de déclarer le couloir bloqué. L'agent B fournit les scènes `groupe_couloir` et `groupe_reste` et vérifie la règle (critère 25).
+
+### 11.4 C. Le comportement du guide (agent Comportement du guide)
+
+**États de `/guide/etat`** (`ETATS_GUIDE`, schéma `etat_guide`) : ceux de la vague 1 restent, avec le même sens ; s'ajoutent `retour`, `attente_passage`, `attente_visiteur` et `perdu`.
+
+| État | Quand |
+|---|---|
+| `attente` | au repos ; après un retour, au point principal, tourné selon sa flèche |
+| `en_route` | visite vers la salle demandée |
+| `retour` | retour automatique vers le point principal (cible : son id) |
+| `bloque` | plus de progrès depuis 3 s (aucune personne devant) |
+| `attente_passage` | plus de progrès, et une personne vue devant à moins de 1,5 m : attente `delai_passant_s`, puis `detour` |
+| `detour` | autre chemin après un couloir bloqué |
+| `attente_visiteur` | le visiteur suivi traîne trop ou n'est plus vu : le robot l'attend, `delai_visiteur_s` au plus |
+| `perdu` | le robot ne sait plus où il est (repérage `perdu`) : arrêté, `delai_perdu_s` au plus, puis `echec` |
+| `arrive` | arrivé à la salle visée |
+| `echec` | le trajet a échoué (`message`) |
+
+Champs ajoutés, facultatifs (compatibles) : `version`, `mission` (`visite`, `retour`, ou null), `accompagner`, `visiteur` (`{vu, distance_m, age_s}` ou null), `depuis_s`. Un consommateur de la vague 1 reste juste : une visite finit toujours par `arrive` ou `echec` (`ETATS_FINAUX_VISITE`) avec la cible demandée ; le retour qui suit est un nouveau trajet, dont la cible est le principal.
+
+**`/guide/aller`** (schéma `demande_guide`, `lire_demande_aller`, livré) : l'id simple d'avant reste accepté (visite sans accompagnement, retour automatique selon le lieu) ; en JSON : `{"cible": "b204", "accompagner": true, "retour": true, "source": "dialogue"}` (`accompagner` vaut true par défaut dans ce format). La cible `principal` désigne le point principal. La passerelle livrée dans le nœud guide ne prend que la cible ; l'agent C ajoute le reste.
+
+**`/guide/evenement`** (std_msgs/String JSON, schéma `evenement_guide`, une fois par événement) : `{"version": 1, "code": "depart", "texte": "Suivez-moi, je vous emmène à Salle B204.", "salle": "b204", "nom": "Salle B204", "mission": "visite", "temps": "…"}`. Le `texte` est la phrase à dire, en français ; la partie voix de l'équipe la dit, par `/robot/dire` (11.6). Codes et textes par défaut (`CODES_EVENEMENT`, `{nom}` : nom de la salle) :
+
+| Code | Texte par défaut | Code | Texte par défaut |
+|---|---|---|---|
+| `depart` | Suivez-moi, je vous emmène à {nom}. | `detour` | Le passage est encombré : je prends un autre chemin. |
+| `seul` | Je ne vous vois pas derrière moi : je pars vers {nom}, suivez-moi. | `arrivee` | Nous sommes arrivés : voici {nom}. (ou `phrase_arrivee`) |
+| `ralentir` | Je ralentis pour vous attendre. | `retour` | Je retourne à l'accueil. |
+| `attente_visiteur` | Je vous attends. | `retour_arrive` | Je suis de retour à l'accueil. |
+| `visiteur_retrouve` | Vous voilà ! Continuons. | `perdu` | Je me suis un peu perdu : un instant, s'il vous plaît. |
+| `visiteur_perdu` | Je ne vous vois plus. Je retourne à l'accueil. | `retrouve` | C'est bon, je sais de nouveau où je suis. |
+| `passant_gene` | Pardon, puis-je passer ? | `echec` | Désolé, je ne peux pas vous y emmener. Demandez de l'aide à l'accueil. |
+| `passage_libre` | Merci ! | `arret` | Je m'arrête. |
+| | | `pilotage` | Je suis piloté à la main pour le moment. |
+
+**Comportements** :
+- **retour automatique** : `delai_avant_retour_s` (15 s) après `arrive`, après un abandon (`visiteur_perdu`) ou après un `echec` (si le robot sait où il est et n'est pas piloté), le guide passe à `retour` vers le point principal, puis à `attente` à 0,3 m et 10° au plus de sa pose (`TOLERANCE_RETOUR_M`, `TOLERANCE_RETOUR_RAD`), avec les événements `retour` et `retour_arrive`. Une nouvelle demande l'interrompt. `retour_auto: false` (lieu) ou `"retour": false` (demande) l'empêche ;
+- **accompagner** : au départ, le visiteur est la personne vue au LiDAR la plus proche du robot, à moins de 2,5 m (`DISTANCE_VISITEUR_DEPART_M`), dans les 3 s (`DELAI_VISITEUR_DEPART_S`) ; si personne, événement `seul` et visite sans accompagnement. En route : visiteur à plus de `distance_ralentir_m` (2 m) → le guide ralentit (`/speed_limit`, `nav2_msgs/SpeedLimit` en pourcentage, `ralenti` × 100, événement `ralentir` une fois) ; à plus de `distance_attendre_m` (3,5 m), ou plus vu depuis 2 s → arrêt (annulation du moteur, jamais `/speed_limit` à 0, qui veut dire « sans limite » dans Nav2), `attente_visiteur` ; revenu dans les `delai_visiteur_s` (30 s) → `visiteur_retrouve`, reprise de l'itinéraire ; sinon `visiteur_perdu`, abandon propre, puis retour ;
+- **perdu** : repérage `perdu` (relais) ou plus de TF map → base_link depuis 2 s → arrêt, `perdu`, événement `perdu` ; retrouvé dans les `delai_perdu_s` (30 s) → `retrouve`, reprise ; sinon `echec` (« Le robot est perdu depuis 30 s : replacez-le sur le point principal, puis « Repérer le robot » »), sans retour automatique. Cela remplace l'attente sans limite de la vague 3 ;
+- **passant qui bouche** : `attente_passage` (11.3), `passant_gene`, puis `passage_libre` s'il s'écarte, ou `detour` après `delai_passant_s` ;
+- **verrou** : si `/mouvement/maitre` dit `pilotage`, `/guide/aller` est refusé (`echec`, événement `pilotage`, aucun mouvement) ; `/guide/stop` est toujours accepté.
+
+**Délais** (`DELAIS_GUIDE`, section facultative `guide` de `lieu.yaml`, puis paramètres ROS du nœud guide, `reglages_guide(lieu, **parametres)`) : `retour_auto` (true), `delai_avant_retour_s` (15), `delai_visiteur_s` (30), `distance_ralentir_m` (2,0), `distance_attendre_m` (3,5, plus grand que la précédente), `ralenti` (0,5), `delai_perdu_s` (30), `delai_passant_s` (20).
+
+**Détecteur de personnes au LiDAR** : nœud `detecteur_personnes` (`g1_nav/personnes.py`, exécutable déclaré), propriétaire **l'agent C**. Entrée `/points` (repère `lidar`, base_link par TF) ; sortie `/personnes/lidar` (schéma `personnes`, `source: lidar`, 10 Hz) : groupes de points dans la tranche 0,8–1,8 m, de 0,25 à 0,8 m de large, suivis d'un message à l'autre (`id`), avec vitesse, `derriere` pour |angle| > 90°. Il voit aussi derrière le robot (le visiteur), car le MID-360 voit tout autour. Lancé par `navigation.launch.py` (argument `personnes:=true|false`, défaut true).
+
+**Faux visiteur de la simulation** : nœud `faux_visiteur` (`g1_nav/faux_visiteur.py`, exécutable déclaré), propriétaire **l'agent C**. Il conduit le piéton `pilote: externe` désigné par la scène (`visiteur`) par `/pietons/consigne`, en lisant sa position sur `/pietons/etat` et celle du robot (vérité). Il réutilise donc le corps, la collision et la visibilité au LiDAR du mécanisme de l'agent B. Modes sur `/faux_visiteur/mode` (std_msgs/String) : `suivre` (1,2 m derrière le robot, à sa vitesse), `trainer` (0,15 m/s : il se laisse distancer), `partir` (1,0 m/s, à l'opposé, jusqu'à sortir de la vue du robot), `arreter`. Scènes `atelier/monde/scenes/accompagnement*.scene.yaml` (agent C). En attendant le nœud `pietons`, l'agent C se sert d'un bouchon de `/personnes/lidar` dans ses tests sans Gazebo.
+
+### 11.5 D. Le pilotage (agent Pilotage et danses)
+
+**Paquet `ws/src/g1_pilotage`** (ament_python, livré vide et compilé), exécutable `pilote`, nœud `pilotage`. Dépendances : rclpy, std_msgs, geometry_msgs, unitree_api, unitree_hg ; Python : tornado, `atelier.lieu` (copié dans l'image). Logique sans ROS testée finement (horloge injectable), comme le pont.
+
+| Sujet | Type | Sens | Rôle |
+|---|---|---|---|
+| `/api/sport/request`, `/api/arm/request`, `/api/voice/request` | unitree_api/msg/Request | sortie | ordres aux services sport, arm et voice, remplis comme le pont (identity croissante, lease 0, priorité 0) |
+| `/api/sport/response`, `/api/arm/response`, `/api/voice/response` | unitree_api/msg/Response | entrée | réponses, appariées par `identity.id` (écoutées en best_effort) |
+| `/arm_sdk` | unitree_hg/msg/LowCmd | sortie | bras des chorégraphies (rt/arm_sdk), 50 Hz pendant une chorégraphie seulement |
+| `/lowstate` | unitree_hg/msg/LowState | entrée | angles mesurés (départ des bras, taille tenue) |
+| `/mouvement/maitre` | std_msgs/String (JSON, schéma `maitre_mouvement`), fiable, transient_local, profondeur 1 | sortie | verrou des mouvements ; publié par ce nœud seulement |
+| `/pilotage/etat` | std_msgs/String (JSON, schéma `etat_pilotage`) | sortie | 2 Hz et à chaque changement |
+| `/guide/stop` | std_msgs/Empty | sortie | quand il prend la main de force, et à chaque ARRÊT |
+| `/guide/etat`, `/pont/etat` | std_msgs/String | entrée | pour refuser de prendre la main pendant une visite |
+
+Lancement : dans le conteneur, `G1_PILOTAGE=1` (défaut en mode robot) fait lancer `pilote` par `docker/demarrer.sh` à côté de la navigation ; en simulation et en répétition, la route `POST /api/pilotage/demarrer` du serveur le lance sur le PC (rôle `pilotage` du gestionnaire de processus) et `POST /api/pilotage/arreter` l'arrête. L'API HTTP du nœud et celle de l'Atelier (`/api/pilotage/…`, `/ws/pilotage`) sont celles de l'agent D, qui les documente dans `g1_pilotage/LISEZMOI.md`.
+
+**Image du conteneur** : l'agent D a `docker/` pour cette vague. Il y ajoute `unitree_hg` (compilé comme `unitree_api`), `g1_pilotage` (`PAQUETS_WS` de `docker/jetson.py`), `python3-tornado`, et le lancement `G1_PILOTAGE` ; les critères 16, 17, 19 et 20 doivent toujours passer.
+
+**Commandes permises et interdites** (`atelier.lieu.pilotage.refus_commande` et `confirmation_requise`, livrées ; le nœud et l'Atelier s'en servent tous deux) :
+
+| Service, api | Permis | Confirmation |
+|---|---|---|
+| sport 7001 à 7006 | lectures (`GetFsmId`…) | — |
+| sport 7101 `SetFsmId {"data"}` | postures 500 (démarrer), 706 (accroupi ↔ debout), 702 (se lever depuis couché), 3 (s'asseoir) | — |
+| | 1 (amortir), 0 (couple nul) | **« portique »** : confirmation double (un premier appel rend un jeton, le second doit venir dans les 10 s avec ce jeton) et case « robot au portique » cochée |
+| | danses 550000 + n, sauf **401, 402, 403** (toujours refusées) et toute danse absente de la liste du robot | **« zone_libre »** : « zone libre de 2 à 3 m autour du robot » |
+| sport 7105 `SetVelocity` | marche plafonnée (`LIMITES_MARCHE` = 0,4 ; 0,25 ; 0,6, baissés par `G1_VITESSE_MAX`), `duration` 0,5 s au plus ; l'arrêt `[0, 0, 0]` (1 s au plus) | — |
+| sport 7106 `SetTaskId` | 0, 1 (saluer), 2, 3 (serrer la main) | — |
+| sport 7100 | seulement la liste des danses `{"fsm_id": 550, "api_id": 1}` | — |
+| sport 7102, 7103, 7104, 7107, 7110, 7111 | **interdits** (équilibre, pas, hauteur, mode de vitesse, passage en commande utilisateur) | — |
+| arm 7106 `{"action_id"}` | gestes `GESTES_BRAS` : 99 relâcher, 11, 12, 13 (à vérifier), 15, 17 à 27 | — |
+| arm 7107, 7113 ; 7108 `{"action_name"}` | liste des gestes ; gestes appris (à vérifier) | — |
+| voice 1001 TTS, 1004, 1005, 1006 volume (0–100), 1010 LED (0–255) | permis | — |
+| tout le reste, `rt/lowcmd`, mode debug, politique corps entier | **interdit** | — |
+
+Refus du robot traduits en français (`CODES_REFUS`) : 7301, 7302, 7303, 7400 (rt/arm_sdk occupé), 7401 (bras tenus : relâcher avec 99), 7402, 7404 (pas en 500, 501 ou 801), 3203, 3204, 3104.
+
+**Joystick, avec un homme mort** : la page envoie l'ordre `{vx, vy, wz}` toutes les 0,1 s (`PERIODE_JOYSTICK_S`) par le WebSocket tant que le manche est tenu ; le nœud envoie un 7105 de 0,5 s (`DUREE_ORDRE_S`) à chaque ordre ; sans ordre depuis 0,5 s (`DELAI_HOMME_MORT_S`), il envoie StopMove (`[0, 0, 0]`, 1 s) ; quand le WebSocket se ferme (page fermée, Wi-Fi coupé, Atelier arrêté), StopMove tout de suite. Le robot est arrêté au plus 0,6 s (`ARRET_MAX_S`) après le dernier ordre ou la coupure. Le relais de l'Atelier n'envoie jamais d'ordre de lui-même : il ne fait que transmettre (une coupure entre l'Atelier et le nœud arrête aussi le robot).
+
+**Le verrou entre pilotage et guide** : un seul maître des mouvements à la fois, **l'arrêt toujours permis**.
+- `/mouvement/maitre` absent ou `guide` : le pont suit `/cmd_vel`, le guide accepte `/guide/aller` ; le pilotage refuse joystick, postures, gestes, danses et chorégraphies (409 « Prenez la main dans l'onglet Pilotage ») ; LED et voix restent permises ;
+- « Prendre la main » : refusé (409) si le guide est en mission (`ETATS_EN_MISSION`) ; avec `forcer`, le pilotage envoie `/guide/stop`, attend le robot immobile, puis publie `maitre: pilotage` ;
+- `maitre: pilotage` : le pont ignore `/cmd_vel` (nouvel état `pilotage`, `mouvement_permis` faux, un StopMove s'il bougeait ; agent D dans `g1_bridge`) ; le guide refuse `/guide/aller` (11.4, agent C) ;
+- « Rendre la main » : `maitre: guide` ; le robot reste immobile jusqu'à la prochaine demande ;
+- ARRÊT (`POST /arret` du nœud, bouton de l'onglet) : toujours permis, quel que soit le maître : StopMove, chorégraphie arrêtée (poids des bras ramené à 0 en 1 s), geste relâché (99), `/guide/stop`. Pendant une **danse du robot**, aucun ordre connu ne l'interrompt (`FSM_ARRET_DANSE` = None) : ARRÊT envoie StopMove et l'onglet rappelle que la télécommande reste l'arrêt d'urgence (à vérifier sur le robot).
+
+**Danses du robot** (source communautaire non officielle, et `GetMimicMotion` du SDK C++, `g1_loco_client.hpp`) : liste par 7100 `{"fsm_id": 550, "api_id": 1}`, réponse `{"fsm_id": 550, "api_id": 1, "motion": {"604": {"name", "duration"}, …}}` (`lire_liste_danses` lit aussi la forme sans `motion`) ; lecture par 7101 `{"data": 550000 + n}`, robot debout immobile en mode 801, retour seul en 801 ; 2 à 3 m libres (les pieds bougent). Essayées par l'auteur : 602, 603, 604 ; non essayées : 502, 503, 504, 605, 574. Pendant une danse : joystick, gestes et chorégraphies refusés.
+
+**Chorégraphies « K-pop » sûres** : un fichier par chorégraphie, `~/robot-g1/choregraphies/<id>.choregraphie.yaml` (schéma `choregraphie`), musique dans `choregraphies/musique/` (ignoré par Git : **aucune musique protégée dans le dépôt**). Une ligne de temps (s) :
+- `bras.poses` : poses clés des 14 articulations des bras (`ARTICULATIONS_BRAS`, index 15 à 28 du G1 29 ddl), interpolation `douce` (cosinus) ou `lineaire`, départ et fin à la pose de repos (tous les angles à 0, `init_pos` de l'exemple d'Unitree) ; poids de rt/arm_sdk (`motor_cmd[29].q`, kNotUsedJoint) de 0 à 1 pendant `rampe_s` (1 s au moins) au début, de 1 à 0 à la fin ; angles dans `LIMITES_BRAS` (URDF `g1_29dof_rev_1_0` moins 0,05 rad) ; vitesse de chaque articulation 1,5 rad/s au plus (`VITESSE_BRAS_MAX`, au plus fort de l'interpolation) ; 50 Hz, kp 60 et kd 1,5 (exemple `g1_arm_sdk_dds_example.cpp`) ; la taille (12 à 14) est tenue à sa position mesurée au départ (gains ×4, comme l'exemple), jamais pilotée ; les jambes ne sont jamais écrites ;
+- `pas` : pas de marche d'Unitree (7105), |vx| ≤ 0,3, |vy| ≤ 0,2, |wz| ≤ 0,6, de 0,2 à 2 s, sans chevauchement ; le robot reste à 1 m au plus de son départ (`DEPLACEMENT_MAX_M`), rotation cumulée 2π au plus ;
+- `gestes` (arm 7106, interdits avec des poses de bras : 7400), `led` (1010), `paroles` (par `/robot/dire`, voix de l'équipe ; `voix: unitree` : TTS 1001) ;
+- `musique` : `fichier` fourni par l'utilisateur, ou `battement` généré (`bpm`) ; `sortie: navigateur` (la page joue la musique, calée sur le départ annoncé par le nœud) ou `robot` (lecture 1003, à vérifier) ;
+- `zone_libre_m` ≥ 2 : confirmation « zone libre » avant de jouer.
+`verifier_choregraphie` (livrée) vérifie tout cela ; `poses_bras(d, t)` et `segments_bras(d)` donnent l'interpolation (le nœud et l'aperçu 3D la suivent). Exemple livré : `exemple_kpop` (24 s, battement à 120 temps par minute, bras à 1,41 rad/s au plus, 0,15 m de pas de côté et un quart de tour aller-retour). L'onglet Pilotage montre un **aperçu 3D** de la chorégraphie (three.js, modèle simplifié du G1), avant de la jouer.
+
+**Faux G1 étendu** (`g1_jumeau`, agent D) : en plus de 7105, une machine d'états des modes (0, 1, 3, 500 puis 801, 702, 706 ; 7001 rend le mode), refus réalistes (7301 pour marcher hors de 500/801, 7302 pour un mode inconnu, **7404** pour un geste hors de 500/501/801, **7401** pour un autre geste pendant que les bras tiennent le précédent, 99 les relâche), la **liste 7100** (602, 603, 604, 574 et aussi 401, 402, 403, pour éprouver les refus) et la lecture d'une danse (durée, retour en 801, refus de 7105 pendant la danse), la **liste 7107**, les services `arm` et `voice` (`/api/arm/*`, `/api/voice/*`, réponses conformes au SDK, dernières valeurs gardées : TTS, volume, LED), **rt/arm_sdk reçu et vérifié** (poids, rampes, limites, vitesses, articulations écrites ; tout écart compté dans `/g1_jumeau/etat`) et un `/lowstate` simulé (bras qui suivent les ordres pondérés). `g1_sim` continue de lancer `g1_jumeau` avec les mêmes arguments.
+
+### 11.6 E. L'équipe (agent Équipe)
+
+**Fichiers du lieu**, facultatifs (un lieu s'en passe), avec leurs schémas et des exemples (`atelier/lieu/exemples/`) ; lecture, écriture et vérification par `atelier.lieu.equipe` (livré : `charger_equipe`, `enregistrer_equipe`, `valider_equipe`, `exemple_equipe`) :
+- `personnalites.yaml` : `{version, active, personnalites: [{id, nom, salutation, description?, voix?, led?, geste_salut?, vitesse_max?, phrases?}]}` ; `phrases` remplace les textes des événements du guide, par code ; ids uniques, `active` parmi eux ;
+- `dialogues.yaml` : `{version, langue?, repli, regles: [{id, motifs, action, reponse, accompagner?, personnalite?}]}` ; les motifs se comparent sans majuscules, accents ni ponctuation ; `{salle}` vaut une salle (id, nom ou alias de `salles.yaml`), `{*}` n'importe quels mots ; la première règle qui correspond l'emporte ; actions `guider` (`{salle}` dans chaque motif), `dire`, `personnalite`, `stop` ;
+- `camera.yaml` : `{version, camera: {modele?, peripherique, largeur, hauteur, ips, champ_horizontal_deg?, position}, detection: {actif, modele?, confiance_min, distance_max_m, frequence_hz}}` ; `position` dans base_link, à mesurer sur le robot.
+
+**Onglets** « Personnalités », « Dialogues » et « Caméra » (livrés vides, après Scan et Pilotage) : éditer chaque fichier ; choisir la personnalité active (publiée sur `/personnalite/active`) ; essayer une phrase dans l'onglet Dialogues (réponse et action, sans robot) ; voir la caméra et ses détections quand un nœud de l'équipe les publie.
+
+**Sujets entre les parties** (`SUJETS_EQUIPE`) :
+
+| Sujet | Type | De → vers | Rôle |
+|---|---|---|---|
+| `/visiteur/texte` | std_msgs/String (texte brut) | reconnaissance vocale de l'équipe → chatbot | ce que le visiteur a dit |
+| `/visiteurs/detectes` | std_msgs/String (JSON, schéma `personnes`, `source: camera`) | caméra de l'équipe → guide, personnalités | visiteurs vus par la See3CAM |
+| `/personnalite/active` | std_msgs/String (JSON, schéma `personnalite_active`), fiable, transient_local | onglet, chatbot → voix, relais | la personnalité active |
+| `/robot/dire` | std_msgs/String (JSON, schéma `robot_dire`) | chatbot, relais des événements, chorégraphies → voix de l'équipe | la seule entrée de la partie voix |
+| `/guide/aller` | std_msgs/String (JSON, schéma `demande_guide`) | chatbot → guide | demande de guidage, `accompagner: true`, `source: dialogue` |
+| `/guide/evenement` | std_msgs/String (JSON, schéma `evenement_guide`) | guide → relais | relayé vers `/robot/dire`, avec les `phrases` de la personnalité active |
+
+Paquet `ws/src/g1_equipe` (livré vide et compilé, exécutable `dialogue`) : le nœud `dialogue` (règles du lieu, relais des événements), et ce qu'il faut de bouchons pour essayer sans l'équipe (fausse caméra, voix qui écrit dans le journal). Logique sans ROS dans `atelier/equipe/` (le chatbot, aussi utilisé par l'onglet Dialogues).
+
+**Document** `docs/integration-equipe.md` (agent E), pour les coéquipiers : les trois fichiers, les sujets, comment brancher la See3CAM, le chatbot et la voix, comment essayer sans robot, et l'exemple ci-dessous.
+
+**Exemple de bout en bout** : « je cherche la salle b204 » publié sur `/visiteur/texte` → le nœud `dialogue` trouve la règle `chercher_salle` → `/robot/dire` « Je vous emmène à Salle B204. Suivez-moi ! » et `/guide/aller` `{"cible": "b204", "accompagner": true, "source": "dialogue"}` → le guide part (événement `depart`, ou `seul` sans visiteur vu) et arrive à b204.
+
+### 11.7 Les agents de la vague 4 et leurs fichiers
+
+Aucun fichier n'a deux propriétaires. Un agent n'écrit que dans ses fichiers ; s'il a besoin d'un changement ailleurs, il le note dans le journal (« demandé à l'intégrateur ») et fait sans, avec un bouchon.
+
+| Agent | Domaine | Possède (seul à y écrire) |
+|---|---|---|
+| Intégrateur | — | le plan (sections 1 à 11) ; `atelier/lieu/` sauf les modules des agents ci-dessous (donc schémas, `validation.py`, `verification.py`, `modeles.py`, `fichiers.py`, `robot.py`, `conversions.py`, `scans.py`, `__init__.py`, `exemples/`) ; `atelier/tests/test_contrats*.py` ; `atelier/web/index.html`, `js/app.js`, les modules communs `js/{api,contexte,direct,formulaire,geometrie,historique,messages,plan,vue3d,teleop,nuage3d}.js`, `css/atelier.css` ; `atelier/serveur/main.py`, `pont_ros.py`, `etat.py`, `communs.py`, `processus.py` ; `atelier/web/LISEZMOI.md`, `atelier/serveur/routes/__init__.py` ; `ws/src/g1_nav/g1_nav/moteurs.py` ; `tests_e2e/tout.sh`, `LISEZMOI.md`, `commun.sh` ; `.gitignore`, `README.md`, `setup.py` et `pytest.ini` de la racine ; `lieux/demo` ; assemblage |
+| A. Point principal | 71 (`robot_71`) | `atelier/lieu/principal.py`, `atelier/lieu/commande.py` (`g1-lieu migrer`) ; `atelier/serveur/routes/principal.py`, `routes/plan.py`, `routes/robot.py`, `routes/lieux.py` ; `atelier/web/js/ecrans/salles.js`, `ecrans/simulation.js`, `ecrans/monde.js`, `css/principal.css` ; dans `atelier/scan/commande.py`, l'appel à `synchroniser_depart` après `adopter --monde`, seulement ; `lieux/bomboclat` et `lieux/demo_scan` (migration avec sauvegarde) ; tests `atelier/tests/test_principal*.py`, et les tests existants de ses fichiers : `test_robot_serveur*.py`, `test_robot_navigateur.py`, `test_serveur_api.py`, `test_lieu_commande.py` ; `tests_e2e/critere_21_*` (et ses outils `critere_21_outils.py`), `critere_18_reperage.sh`, `critere_18_outils.py` |
+| B. Passants | 72 (`robot_72`) | `ws/src/g1_sim/` (tout : nœud `pietons`, argument `pietons`, modèles, tests) ; `atelier/monde/` (tout : sdf, pietons, scene, commande, carte, zones) et `atelier/monde/scenes/` sauf accompagnement* ; `atelier/lieu/passants.py` ; dans g1_nav : `ws/src/g1_nav/g1_nav/banc.py`, `ws/src/g1_nav/config/nav2_g1_simu.yaml`, `ws/src/g1_nav/config/nav2_g1_reel.yaml`, `ws/src/g1_nav/test/test_banc.py`, `ws/src/g1_nav/test/test_reglages.py` ; `bin/g1-banc` ; `atelier/serveur/routes/passants.py`, `atelier/serveur/pietons.py` ; `atelier/web/js/panneaux/passants.js`, `css/passants.css` ; tests `atelier/tests/test_passants*.py`, `test_monde_*.py` ; `tests_e2e/critere_06_foule.sh`, `critere_23_*` à `critere_25_*`, `tests_e2e/outils_passants_e2e.py` |
+| C. Comportement du guide | 73 (`robot_73`) | `ws/src/g1_nav/` sauf moteurs.py et les fichiers de B (donc guide, routeur, personnes, faux_visiteur, moteur_nav2, odom_vers_tf, reperage, nuages, commande, moteur_unitree, `ws/src/g1_nav/launch/navigation.launch.py`, `ws/src/g1_nav/config/amcl_g1.yaml`, `ws/src/g1_nav/setup.py`, `ws/src/g1_nav/package.xml`, et leurs tests) ; `atelier/lieu/comportement.py` ; `atelier/serveur/routes/guide.py`, `routes/simulation.py` ; `atelier/web/js/panneaux/guide.js`, `css/guide.css` ; `atelier/monde/scenes/accompagnement*.scene.yaml` ; tests `atelier/tests/test_guide*.py` ; `tests_e2e/critere_22_*`, `critere_26_*`, `critere_27_*`, `tests_e2e/outils_guide_e2e.py`, et les critères existants qui suivent le guide s'il faut les adapter (4, 5, 19) |
+| D. Pilotage et danses | 74 (`robot_74`) | `ws/src/g1_pilotage/`, `ws/src/g1_jumeau/`, `ws/src/g1_bridge/` (tout) ; `docker/` (tout), `bin/g1-jetson`, `bin/gl-jetson`, et les nouvelles commandes `bin/g1-pilotage`, `bin/gl-pilotage` ; `atelier/lieu/pilotage.py` ; `choregraphies/` ; `atelier/serveur/routes/pilotage.py` ; `atelier/web/js/ecrans/pilotage.js` et ses nouveaux modules (`js/pilotage/*.js` : joystick, aperçu 3D, chorégraphie), `css/pilotage.css` ; tests `atelier/tests/test_pilotage*.py` ; `tests_e2e/critere_28_*`, `critere_29_*`, `tests_e2e/outils_pilotage_e2e.py`, et les critères 16, 17, 20 et leurs outils s'il faut les adapter ; `docs/jetson.md`, `docs/seance-robot.md` (ajouts du pilotage) |
+| E. Équipe | 75 (`robot_75`) | `atelier/lieu/equipe.py` ; `atelier/equipe/` ; `ws/src/g1_equipe/` (tout) ; `atelier/serveur/routes/equipe.py` ; `atelier/web/js/ecrans/personnalites.js`, `ecrans/dialogues.js`, `ecrans/camera.js` et leurs nouveaux modules (`js/equipe/*.js`), `css/equipe.css` ; `docs/integration-equipe.md` ; tests `atelier/tests/test_equipe*.py` ; `tests_e2e/critere_30_*`, `tests_e2e/outils_equipe_e2e.py` |
+
+Fichiers que personne ne touche dans cette vague (tous les agents s'en servent) : `atelier/scan/` (sauf l'appel de A), `atelier/web/js/ecrans/{lieux,carte,itineraires,zones,scan}.js`, `css/scan.css`, `atelier/serveur/routes/{monde,scan}.py`, les autres commandes de `bin/`, `tests_e2e/critere_01` à `critere_15`, `outils_e2e.py`, `outils_scan_e2e.py`, `outils_pont_e2e.py`, `critere_16_outils.py`, `critere_19_outils.py`, `critere_20_outils.py` (sauf adaptation par D de ceux du pont, ou par C du critère 19). Un nouveau fichier de test ou d'outil porte le préfixe de son agent.
+
+### 11.8 Dépendances entre agents : contrats et bouchons
+
+| Qui a besoin | De quoi | Chez qui | Contrat | En attendant |
+|---|---|---|---|---|
+| C | le principal (retour, cible `principal`) | A | `point_principal`, `pose_principale` (livrés) | — |
+| C | le corps du visiteur dans Gazebo | B | `pilote: externe`, `/pietons/consigne`, `/pietons/etat` | bouchon de `/personnes/lidar` dans les tests sans Gazebo ; critère 26 « en attente » (77) sans le nœud `pietons` |
+| B | l'attente du passant (critère 25) | C | état `attente_passage`, événement `passant_gene`, `delai_passant_s` | critère 25 « en attente » (77) tant que le guide ne connaît pas `attente_passage` ; scènes et mesures prêtes |
+| C | le verrou des mouvements | D | `/mouvement/maitre` (schéma, QoS) | publier un faux message dans les tests |
+| D | refuser de prendre la main pendant une visite | C | `ETATS_EN_MISSION` de `/guide/etat` | un faux `/guide/etat` dans les tests |
+| E | le guidage JSON | C | `/guide/aller` JSON (passerelle livrée : la cible) | la passerelle suffit pour l'exemple de bout en bout |
+| E | les textes des événements | C | `/guide/evenement`, `CODES_EVENEMENT` (livrés) | publier de faux événements |
+| A | l'image du conteneur | D | aucune (A ne touche pas `docker/`) | — |
+| D | `/robot/dire` pour les paroles des chorégraphies | E | schéma `robot_dire` (livré) | publier sans écouteur |
+
+### 11.9 Critères de recette 21 à 30
+
+Ils sont dans la section 7 (ce qu'on mesure, le seuil, et qui écrit le script) ; `tests_e2e/tout.sh` les lance et affiche « N / 30 ». Un critère dont une pièce d'un autre agent manque répond « en attente » (77) en disant laquelle. Les critères 1 à 20 doivent toujours passer : chaque agent relance ceux qu'il peut casser (A : 1, 4, 9, 13, 18, 19 ; B : 2, 3, 5, 6, 7 ; C : 4, 5, 8, 19, 20 ; D : 16, 17, 19, 20 ; E : 9, 10).
+
+### 11.10 Règles communes de la vague 4
+
+Celles des sections 9.9 et 10.10, plus :
+- domaines et partitions : A 71 (`robot_71`), B 72, C 73, D 74, E 75, y compris dans les conteneurs ; les critères se lancent avec `E2E_DOMAINE` et `E2E_PARTITION` ; ports du serveur et du nœud pilotage : libres, choisis par les tests ;
+- compilations dans `ws/build_<agent>` et `ws/install_<agent>` (avec `--log-base log_<agent>`), jamais dans `ws/build` ni `ws/install` ; `tests_e2e/commun.sh` charge en repli `ws/install_<paquet>` pour `g1_sim`, `g1_nav`, `g1_bridge`, `g1_jumeau`, `g1_pilotage` et `g1_equipe` ;
+- **jamais rien sur eno2, jamais de ssh vers 192.168.123.x** ; le pilotage ne s'essaie que contre le faux G1 ;
+- `lieux/bomboclat` est à l'utilisateur : seul l'agent A y écrit, pour la migration, avec la sauvegarde et un test ; `lieux/demo` est la référence des tests : personne n'y écrit (on travaille sur des copies : `ATELIER_LIEUX`, `copier_demo`) ;
+- jamais de mouvement non voulu : plafonds, homme mort, confirmations et verrou sont testés avant tout le reste ;
+- à la fin : tous les processus et conteneurs arrêtés (`ps`, `docker ps -a`), tests réels sans écran ni robot rapportés honnêtement, une section dans `docs/journal-atelier.md` avec ce qui reste à vérifier sur le robot.
+
+### 11.11 Ce qui reste à vérifier sur le robot (vague 4)
+
+En plus de la liste de 10.9, robot au portique et télécommande en main :
+1. **point principal** : robot posé sur le principal dans le sens de la flèche, « Repérer le robot » : 1804 avec la pose convertie, écart au mètre ruban ; le principal loin de l'origine du scan, et tourné ;
+2. **pilotage** : le service `sport` accepte nos 7101 (postures 500, 706, 702, 3) depuis le conteneur, sans bail ; temps de chaque transition ; la télécommande reste prioritaire et arrête tout ;
+3. amortir (1) et couple nul (0) : **seulement au portique**, robot tenu ;
+4. joystick : arrêt seul 0,5 s après le dernier ordre (Wi-Fi coupé exprès, page fermée), latence par le Wi-Fi, plafonds ;
+5. le format des gestes : `{"action_id": n}` (SDK C++) ou `{"data": n}` (SDK Python) ; codes 7400, 7401, 7402, 7404 réels ; geste 13 ; gestes appris (7108) ;
+6. TTS 1001 (langue, `speaker_id`), volume, LED 1010 (format `{"R","G","B"}`) ;
+7. **danses** : la liste 7100 (format exact, ids présents sur ce micrologiciel), 7101 550604 au portique d'abord, durée, retour en 801, comportement si on envoie un 7105 ou un autre 7101 pendant la danse, et **ce qui interrompt une danse** ; 401, 402, 403 jamais essayées ;
+8. **rt/arm_sdk** : le poids dans `motor_cmd[29].q`, les rampes, la tenue de la taille (12 à 14), les gains (kp 60, kd 1,5), la vitesse réelle des bras, la reprise par le contrôleur à la fin ; d'abord une pose lente au portique, puis l'exemple K-pop à mi-vitesse ;
+9. musique sur le haut-parleur du robot (1003) : format du flux ;
+10. **passants** : `voxel_layer` et Collision Monitor avec le MID-360 réel (obstacles bas, jambes, sacs), distances aux personnes et ralentissement au milieu de vraies personnes, avec des volontaires ; le détecteur de personnes au LiDAR sur de vraies personnes (et derrière le robot) ;
+11. **guide** : retour au principal sur une vraie carte, accompagnement avec un vrai visiteur, délai et message quand le repérage se perd ;
+12. **équipe** : la See3CAM (périphérique, position réelle dans base_link), le chatbot et la voix sur le Jetson ou le PC.

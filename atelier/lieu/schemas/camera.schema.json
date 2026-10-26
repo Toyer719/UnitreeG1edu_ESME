@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "camera.yaml",
+  "description": "Caméra du robot pour voir les visiteurs (vague 4, section 11.6 du plan) : fichier facultatif lieux/<id>/camera.yaml, écrit par l'onglet Caméra. La caméra See3CAM de l'équipe, sa position sur le robot et la détection de personnes, publiée sur /visiteurs/detectes (schéma personnes). Exemple : atelier/lieu/exemples/camera.yaml.",
+  "type": "object",
+  "required": ["version", "camera", "detection"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"description": "Version du format. Toujours 1.", "const": 1},
+    "camera": {
+      "description": "La caméra et sa pose dans le repère base_link du robot (x vers l'avant, y à gauche, z vers le haut ; mètres et radians).",
+      "type": "object",
+      "required": ["peripherique", "largeur", "hauteur", "ips", "position"],
+      "additionalProperties": false,
+      "properties": {
+        "modele": {"description": "Facultatif : modèle, texte libre (ex. « See3CAM_CU27 »).", "type": "string", "maxLength": 100},
+        "peripherique": {"description": "Périphérique vidéo Linux, ex. /dev/video0.", "type": "string", "pattern": "^/dev/[A-Za-z0-9_./-]+$"},
+        "largeur": {"description": "Largeur de l'image, en pixels.", "type": "integer", "minimum": 160, "maximum": 4096},
+        "hauteur": {"description": "Hauteur de l'image, en pixels.", "type": "integer", "minimum": 120, "maximum": 3072},
+        "ips": {"description": "Images par seconde.", "type": "integer", "minimum": 1, "maximum": 120},
+        "champ_horizontal_deg": {"description": "Facultatif : champ de vision horizontal, en degrés.", "type": "number", "exclusiveMinimum": 0, "maximum": 200},
+        "position": {
+          "description": "Pose de la caméra dans base_link.",
+          "type": "object",
+          "required": ["x", "y", "z", "roulis", "tangage", "lacet"],
+          "additionalProperties": false,
+          "properties": {
+            "x": {"type": "number", "minimum": -1, "maximum": 1},
+            "y": {"type": "number", "minimum": -1, "maximum": 1},
+            "z": {"type": "number", "minimum": 0, "maximum": 2},
+            "roulis": {"type": "number", "minimum": -3.1416, "maximum": 3.1416},
+            "tangage": {"type": "number", "minimum": -3.1416, "maximum": 3.1416},
+            "lacet": {"type": "number", "minimum": -3.1416, "maximum": 3.1416}
+          }
+        }
+      }
+    },
+    "detection": {
+      "description": "Détection des personnes dans l'image.",
+      "type": "object",
+      "required": ["actif", "confiance_min", "distance_max_m", "frequence_hz"],
+      "additionalProperties": false,
+      "properties": {
+        "actif": {"description": "false : la caméra n'est pas utilisée.", "type": "boolean"},
+        "modele": {"description": "Facultatif : fichier du modèle de détection, dans ~/robot-g1/modeles/ (ex. yolov8n.pt).", "type": "string", "pattern": "^[^/]+$"},
+        "confiance_min": {"description": "Seuil de confiance, de 0 à 1.", "type": "number", "minimum": 0, "maximum": 1},
+        "distance_max_m": {"description": "Personnes plus loin ignorées, en mètres.", "type": "number", "exclusiveMinimum": 0, "maximum": 20},
+        "frequence_hz": {"description": "Fréquence de publication sur /visiteurs/detectes.", "type": "number", "exclusiveMinimum": 0, "maximum": 60}
+      }
+    }
+  }
+}

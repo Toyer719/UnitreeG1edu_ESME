@@ -32,6 +32,9 @@ setup(
             'guide = g1_nav.guide:main',
             'banc = g1_nav.banc:main',
             'odom_vers_tf = g1_nav.odom_vers_tf:main',
+            # vague 4 (section 11.4 du plan), agent Comportement du guide
+            'detecteur_personnes = g1_nav.personnes:main',
+            'faux_visiteur = g1_nav.faux_visiteur:main',
         ],
     },
 )

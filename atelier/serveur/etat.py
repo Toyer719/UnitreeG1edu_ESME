@@ -11,7 +11,7 @@ noté dans simulation["mode"] :
 import time
 
 from .pietons import positions_pietons
-from .pont_ros import PERIMEE_S, PontRos
+from .pont_ros import PERIMEE_S, PIETONS_FRAIS_S, PontRos
 from .processus import Gestionnaire
 
 
@@ -69,6 +69,16 @@ class EtatServeur:
                     "perimee": age > PERIMEE_S or not reperage.get("repere", False)}
         return pont["robot"]
 
+    def pietons(self, en_cours, t):
+        """Piétons à l'écran : ceux de /pietons/etat s'il est frais (piétons crédibles, vague 4), sinon
+        recalculés depuis le monde et le temps simulé (contrat 4.4)."""
+        if not en_cours:
+            return []
+        recu = self.pont.dernier("/pietons/etat")
+        if recu is not None and recu["age_recu_s"] <= PIETONS_FRAIS_S and isinstance(recu.get("pietons"), list):
+            return [p for p in recu["pietons"] if isinstance(p, dict) and {"id", "x", "y"} <= set(p)]
+        return positions_pietons(self.simulation["monde"], t)
+
     def etat_direct(self):
         """Message du WebSocket /ws/etat : {robot, guide, pietons, processus, ...} (contrat 4.4)."""
         pont = self.pont.etat()
@@ -80,7 +90,7 @@ class EtatServeur:
         return {
             "robot": self.position_robot(pont),
             "guide": pont["guide"],
-            "pietons": positions_pietons(self.simulation["monde"], t) if en_cours else [],
+            "pietons": self.pietons(en_cours, t),
             "processus": self.gestionnaire.etat(),
             "simulation": sim,
             "temps_sim": None if t is None else round(t, 2),
@@ -89,4 +99,9 @@ class EtatServeur:
             "mode": self.mode() if en_cours or self.mode_navigation() else None,
             "reperage": self.pont.reperage(),
             "pont": self.pont.etat_pont(),
+            # vague 4 (section 11) : derniers événements du guide, verrou des mouvements, personnes vues
+            "evenements": self.pont.historique("/guide/evenement")[-10:],
+            "maitre": self.pont.dernier("/mouvement/maitre"),
+            "personnes": self.pont.dernier("/personnes/lidar"),
+            "visiteurs": self.pont.dernier("/visiteurs/detectes"),
         }

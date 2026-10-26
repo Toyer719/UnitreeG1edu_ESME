@@ -61,6 +61,13 @@ seul), **Répétition sans robot** (comme avec le vrai robot, mais contre un fau
 repérage, pont vers la marche) et **Robot** (section « Le vrai robot »).
 Ctrl+C dans le terminal arrête le serveur, et avec lui la simulation et la navigation.
 
+**En construction (vague 4, section 11 du plan)** : le point principal du lieu (accueil, départ de la
+simulation, pose du repérage et retour après chaque visite), des passants que le robot contourne, le
+retour automatique et l'accompagnement du visiteur, l'onglet **Pilotage** (postures, joystick, gestes,
+voix, LED, danses du robot, chorégraphies) et les onglets **Personnalités**, **Dialogues** et
+**Caméra** pour l'équipe. Les onglets existent, encore vides ; les formats sont fixés dans
+`atelier/lieu/schemas/` et dans la section 11 du plan.
+
 ### Les mêmes étapes en ligne de commande
 
 Sur le lieu fourni `demo` (lycée de 30 × 20 m, deux couloirs, accueil et cinq salles) :
@@ -177,9 +184,12 @@ lieux/<id>/
 ├── mondes/<etage>.sdf                 monde Gazebo (généré)
 ├── cartes/<etage>.pgm + .yaml         carte de navigation (générée, ou issue du scan)
 ├── cartes/<etage>_interdit.pgm + .yaml   masque des zones interdites (généré)
-├── salles.yaml                        salles : nom, alias, position devant la porte, phrase d'arrivée
+├── salles.yaml                        salles : nom, alias, position devant la porte, phrase d'arrivée ;
+│                                      la salle qui porte l'étiquette « principal » est le point principal
 ├── itineraires.yaml                   nœuds et couloirs du guide
 ├── zones.yaml                         zones interdites et lentes
+├── personnalites.yaml, dialogues.yaml, camera.yaml   pour l'équipe (vague 4, facultatifs)
+├── sauvegardes/<date>_<raison>/       copies faites avant une migration (g1-lieu migrer, vague 4)
 └── scans/<date>_<heure>/              un dossier par scan (session.json, carte, reconnaissance, monde…)
 ```
 
@@ -191,7 +201,7 @@ Les formats exacts sont dans `atelier/lieu/schemas/` et dans la section 4 du pla
 cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q    # bibliothèques, scan, serveur, interface : 4 min environ
 cd ~/robot-g1 && .venv-projet/bin/python -m pytest docker/tests -q    # conteneur du Jetson : 30 s
 cd ~/robot-g1/ws && colcon test --executor sequential --packages-select g1_sim g1_nav g1_bridge g1_jumeau && colcon test-result --all   # paquets ROS 2 : 3 min
-~/robot-g1/tests_e2e/tout.sh            # les 20 critères de recette, sans fenêtre : environ 1 h 15
+~/robot-g1/tests_e2e/tout.sh            # les 30 critères de recette, sans fenêtre (21 à 30 : vague 4, en construction)
 ~/robot-g1/tests_e2e/tout.sh 1 2 3 4    # seulement certains (11 à 15 : le scan ; 16 à 20 : le vrai robot en répétition)
 ```
 
@@ -450,7 +460,9 @@ robot-g1/
 ├── docs/           plan de l'Atelier, journal, séance robot, installation du Jetson, relevés
 ├── setup/          installation et environnement (env.sh, robot.sh)
 ├── third_party/    dépôts Unitree, versions dans VERSIONS.txt
-├── ws/            espace de travail ROS 2 : pilote LiDAR, FAST-LIO2, g1_sim, g1_nav, g1_bridge (pont), g1_jumeau (faux G1)
+├── ws/            espace de travail ROS 2 : pilote LiDAR, FAST-LIO2, g1_sim, g1_nav, g1_bridge (pont), g1_jumeau (faux G1),
+│                  g1_pilotage (pilotage, vague 4), g1_equipe (chatbot et personnalités, vague 4)
+├── choregraphies/ chorégraphies du G1 (vague 4) ; musique/ : vos musiques, jamais dans Git
 ├── modeles/       YOLO, Vosk, voix Piper, Whisper
 ├── opt/           SDK C++ Unitree et SDK Livox compilés
 ├── .venv-sim/     Python de simulation (MuJoCo, PyTorch processeur)

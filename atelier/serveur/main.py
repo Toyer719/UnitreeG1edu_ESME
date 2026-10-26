@@ -4,7 +4,7 @@
 
   /api/...     API REST en JSON (contrat 4.4 du plan), voir atelier/serveur/routes/
   /ws/etat     WebSocket, environ 10 messages par seconde : {robot, guide, pietons, processus,
-               mode, reperage, pont}
+               mode, reperage, pont} ; vague 4 (section 11) : evenements, maitre, personnes, visiteurs
   /            l'interface web (atelier/web), servie telle quelle
 
 Variables d'environnement :
@@ -31,6 +31,8 @@ from .communs import ErreurAtelier
 from .etat import EtatServeur
 from .processus import commande, dossier_bin
 from .routes import lieux, monde, plan, robot, scan, simulation
+# vague 4 (section 11 du plan) : une route par agent (point principal, passants, guide, pilotage, équipe)
+from .routes import equipe, guide, passants, pilotage, principal
 
 DOSSIER_WEB = Path(__file__).resolve().parent.parent / "web"
 PERIODE_DIRECT = 0.1      # s entre deux messages du WebSocket (10 par seconde)
@@ -109,7 +111,7 @@ def creer_app(ros=None):
         reponse.headers.setdefault("Cache-Control", "no-cache")
         return reponse
 
-    for module in (lieux, monde, plan, simulation, scan, robot):
+    for module in (lieux, monde, plan, simulation, scan, robot, principal, passants, guide, pilotage, equipe):
         app.include_router(module.routeur)
 
     @app.get("/api/etat", tags=["serveur"])

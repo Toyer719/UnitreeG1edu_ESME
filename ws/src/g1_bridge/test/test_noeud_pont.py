@@ -58,11 +58,19 @@ def demarre(robot, lancer, *arguments, repere=True):
 
 
 def marcher(robot, consigne, duree):
-    """/cmd_vel à 20 Hz pendant duree ; renvoie (début, fin) en temps monotone."""
+    """
+    /cmd_vel à 20 Hz pendant duree, puis un dernier /cmd_vel publié par le test.
+
+    Renvoie (début, fin) en temps monotone ; fin suit de quelques µs le dernier /cmd_vel. Les
+    délais du pont se mesurent donc depuis le vrai dernier message : avant, fin était l'instant où
+    le test arrêtait le fil de publication, dont le dernier envoi pouvait dater de 50 ms ou plus
+    (sous charge, l'arrêt du pont arrivait alors moins de 0,24 s après fin).
+    """
     debut = time.monotonic()
     robot.cmd_vel = consigne
     time.sleep(duree)
-    robot.cmd_vel = None
+    robot.cesser('cmd_vel')
+    robot.publier_cmd_vel(*consigne)
     return debut, time.monotonic()
 
 
@@ -73,8 +81,20 @@ def test_lancement_arret_puis_pret(robot, lancer):
     _, premiere = robot.requetes[0]
     assert vitesses(premiere) == (0.0, 0.0, 0.0, 1.0)
     assert premiere.header.identity.api_id == 7105
-    etat = robot.attendre_etat('attente_reperage')
-    assert etat['reponses'] == 1 and etat['code'] == 0 and not etat['mouvement_permis']
+    # « non repéré » passe avant « demarrage » (test_logique) : attente_reperage peut être publié
+    # avant la réponse à l'arrêt de vérification. On attend donc que la réponse soit comptée. Sous
+    # charge, une réponse lente (plus de 0,3 s) fait repartir l'arrêt de vérification, 2 fois au
+    # plus (règle 9 de 10.3) : 1 à 3 envois, tous répondus.
+
+    def lien_verifie():
+        e = robot.dernier_etat() or {}
+        if e.get('etat') == 'attente_reperage' and 1 <= e.get('reponses', 0) == e.get('envoyees'):
+            return e
+        return None
+    etat = robot.attendre(lien_verifie, DEMARRAGE_S, 'arrêt de vérification sans réponse comptée '
+                          'en attente_reperage')
+    assert etat['envoyees'] <= 3, etat
+    assert etat['code'] == 0 and not etat['mouvement_permis']
     robot.reperage = True
     robot.attendre_etat('pret')
     # 2 Hz au repos, et plus aucune requête
@@ -207,7 +227,7 @@ def test_sans_reperage_cmd_vel_ignore(robot, lancer):
     robot.attendre_etat('pret')
     robot.cmd_vel = (0.3, 0.0, 0.0)
     time.sleep(1.0)
-    robot.reperage = None
+    robot.cesser('reperage')          # plus aucun « repéré » ne peut partir après le « perdu »
     t_perdu = time.monotonic()
     robot.publier_reperage(False)
     time.sleep(1.0)
@@ -221,7 +241,11 @@ def test_reperage_qui_se_tait_arrete_le_robot(robot, lancer):
     demarre(robot, lancer)
     robot.cmd_vel = (0.3, 0.0, 0.0)
     time.sleep(1.0)
-    robot.reperage = None
+    # Le dernier /reperage/etat est publié par le test, et daté juste après : le fil de
+    # publication (5 Hz) pouvait sinon avoir envoyé le sien jusqu'à 0,25 s avant t_dernier, et
+    # l'arrêt (1 s après le dernier message) arriver moins de 0,8 s après t_dernier
+    robot.cesser('reperage')
+    robot.publier_reperage(True)
     t_dernier = time.monotonic()
     time.sleep(2.0)
     robot.cmd_vel = None

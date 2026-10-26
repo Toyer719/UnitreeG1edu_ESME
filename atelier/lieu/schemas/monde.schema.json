@@ -184,7 +184,7 @@
       ]
     },
     "pieton": {
-      "description": "Piéton qui marche en boucle pendant toute la simulation. Il part de trajet[0] et suit les points dans l'ordre, en ligne droite entre deux points.",
+      "description": "Piéton qui marche en boucle pendant toute la simulation. Il part de trajet[0] et suit les points dans l'ordre, en ligne droite entre deux points. Vague 4 (section 11.3 du plan) : champs facultatifs du piéton crédible, un corps qui gêne le robot et une réaction simple (absents du fichier quand ils ont leur valeur par défaut ; un monde d'avant reste valide et garde son trajet).",
       "type": "object",
       "required": ["id", "trajet", "vitesse", "aller_retour"],
       "additionalProperties": false,
@@ -205,6 +205,55 @@
         "aller_retour": {
           "description": "true : il va du premier au dernier point, puis revient en sens inverse, sans fin. false : arrivé au dernier point, il retourne directement au premier, sans fin (boucle).",
           "type": "boolean"
+        },
+        "reaction": {
+          "description": "Facultatif, défaut ecart. Ce que fait le piéton quand le robot est à moins de distance_reaction_m de lui (bord à bord), devant lui : arret (il s'arrête, et repart 1 s après que le robot s'est éloigné), ecart (il ralentit et s'écarte sur le côté, dans l'espace libre ; s'il ne peut pas, il s'arrête), aucune (il ne voit pas le robot : scènes « pire cas »).",
+          "type": "string",
+          "enum": ["aucune", "arret", "ecart"]
+        },
+        "distance_reaction_m": {
+          "description": "Facultatif, défaut 0.8. Distance bord à bord (m) entre le corps du piéton et le robot, sous laquelle il réagit.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 3
+        },
+        "corps": {
+          "description": "Facultatif, défaut true. true : dans Gazebo, un corps solide (cylindre de rayon_m, 1,7 m de haut) que le robot ne peut pas traverser et que le LiDAR voit. false : silhouette seule (<actor> de la vague 1), traversable.",
+          "type": "boolean"
+        },
+        "rayon_m": {
+          "description": "Facultatif, défaut 0.25. Rayon du corps du piéton (m), pour Gazebo et pour la distance bord à bord.",
+          "type": "number",
+          "minimum": 0.15,
+          "maximum": 0.5
+        },
+        "pauses": {
+          "description": "Facultatif, liste vide par défaut. Arrêts sur le trajet, à chaque passage : {point: rang du point dans trajet (0 = le premier), duree_s}. Un piéton immobile : une pause de 3600 s au point 0.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["point", "duree_s"],
+            "additionalProperties": false,
+            "properties": {
+              "point": {"description": "Rang du point dans trajet, à partir de 0.", "type": "integer", "minimum": 0},
+              "duree_s": {"description": "Durée de l'arrêt, en secondes.", "type": "number", "exclusiveMinimum": 0, "maximum": 3600}
+            }
+          }
+        },
+        "depart_s": {
+          "description": "Facultatif, défaut 0. Le piéton attend à trajet[0] jusqu'à ce temps simulé (s), puis part.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3600
+        },
+        "repeter": {
+          "description": "Facultatif, défaut true. false : un seul parcours (l'aller, ou l'aller et le retour avec aller_retour), puis le piéton reste au dernier point atteint.",
+          "type": "boolean"
+        },
+        "pilote": {
+          "description": "Facultatif, défaut trajet. externe : le piéton ne suit pas son trajet (il part de trajet[0]) ; il est conduit par /pietons/consigne (ex. le faux visiteur de la simulation, section 11.4).",
+          "type": "string",
+          "enum": ["trajet", "externe"]
         }
       }
     }

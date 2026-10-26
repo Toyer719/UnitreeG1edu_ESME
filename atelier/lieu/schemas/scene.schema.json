@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "scène de passants",
+  "description": "Scène d'essai des passants (vague 4, section 11.3 du plan) : fichier atelier/monde/scenes/<id>.scene.yaml. Elle s'applique à une COPIE d'un lieu de référence (jamais au lieu lui-même) : ses piétons remplacent (ou complètent) ceux du monde de l'étage, puis g1-banc --scene ID fait ses trajets et ses mesures. Les piétons ont le format de monde.yaml (vérifiés avec ses règles par atelier.lieu).",
+  "type": "object",
+  "required": ["version", "id", "nom", "lieu", "etage", "pietons", "trajets"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"description": "Version du format. Toujours 1.", "const": 1},
+    "id": {"description": "Identifiant de la scène : le nom du fichier sans .scene.yaml.", "$ref": "#/definitions/id"},
+    "nom": {"description": "Nom affiché.", "type": "string", "minLength": 1, "maxLength": 100},
+    "description": {"description": "Facultatif : ce que la scène éprouve.", "type": "string", "maxLength": 1000},
+    "lieu": {"description": "Lieu de référence copié par l'essai (un id de $ATELIER_LIEUX, en général demo).", "$ref": "#/definitions/id"},
+    "etage": {"$ref": "#/definitions/id"},
+    "pietons": {
+      "description": "Piétons de la scène, au format de monde.yaml (champs de la vague 4 compris).",
+      "type": "array",
+      "maxItems": 30,
+      "items": {"type": "object"}
+    },
+    "ajouter": {"description": "Facultatif, défaut false : false, les piétons de la scène remplacent ceux du monde ; true, ils s'y ajoutent.", "type": "boolean"},
+    "trajets": {
+      "description": "Trajets [départ, arrivée] (ids de salle ou de nœud), faits dans l'ordre ; vide si hasard est donné.",
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {"$ref": "#/definitions/id"}
+      }
+    },
+    "hasard": {"description": "Facultatif : nombre de trajets tirés au sort entre les salles (comme g1-banc --trajets), en plus de trajets.", "type": "integer", "minimum": 1, "maximum": 200},
+    "graine": {"description": "Facultatif, défaut 1 : graine du tirage.", "type": "integer", "minimum": 0},
+    "essais": {"description": "Facultatif, défaut 1 : chaque trajet est fait ce nombre de fois.", "type": "integer", "minimum": 1, "maximum": 50},
+    "visiteur": {"description": "Facultatif : id du piéton « pilote: externe » conduit par le faux visiteur (section 11.4).", "$ref": "#/definitions/id"},
+    "reglages_guide": {"description": "Facultatif : réglages du guide pour la copie du lieu (section guide de lieu.yaml), ex. {delai_passant_s: 20}.", "type": "object"},
+    "mesures": {
+      "description": "Facultatif : seuils de réussite de la scène, vérifiés par g1-banc (code de sortie 1 si l'un manque).",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reussite_min": {"description": "Part des trajets réussis, de 0 à 1.", "type": "number", "minimum": 0, "maximum": 1},
+        "distance_bord_min_m": {"description": "Distance bord à bord minimale entre le robot et un piéton, sur tous les trajets.", "type": "number"},
+        "contacts_robot_max": {"description": "Contacts causés par le robot, au plus, sur tous les trajets.", "type": "integer", "minimum": 0},
+        "detours_max": {"description": "Détours au plus, par trajet.", "type": "integer", "minimum": 0},
+        "duree_max_s": {"description": "Durée maximale d'un trajet, en secondes.", "type": "number", "exclusiveMinimum": 0},
+        "longueur_max_m": {"description": "Longueur parcourue au plus, par trajet, en mètres (détour raisonnable).", "type": "number", "exclusiveMinimum": 0}
+      }
+    }
+  },
+  "definitions": {
+    "id": {
+      "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, commence par une lettre ou un chiffre.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+    }
+  }
+}

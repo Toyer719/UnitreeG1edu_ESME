@@ -325,4 +325,5 @@ def test_plan_section_10_et_vingt_criteres():
     for n in range(16, 21):
         assert re.search(rf"^{n}\. \*\*", plan, re.M), f"critère {n} absent de la section 7"
     tout = TOUT.read_text(encoding="utf-8")
-    assert re.search(r"^TOUS=\(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20\)$", tout, re.M)
+    # les 20 premiers critères restent (la vague 4 en ajoute dix : test_contrats_vague4.py)
+    assert re.search(r"^TOUS=\(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20( \d+)*\)$", tout, re.M)

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/guide/evenement",
+  "description": "Message au visiteur, publié en JSON (std_msgs/String) sur /guide/evenement par le guide (paquet g1_nav), une fois par événement (vague 4, section 11.4 du plan). texte est la phrase à dire, en français : la partie voix de l'équipe la dit (par /robot/dire, section 11.6). Codes et textes par défaut : atelier.lieu.comportement.CODES_EVENEMENT. Des champs en plus sont permis.",
+  "type": "object",
+  "required": ["version", "code", "texte"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Version du format. Toujours 1.", "const": 1},
+    "code": {
+      "description": "Ce qui arrive. depart : départ d'une visite ; seul : visite accompagnée, mais personne n'est vu derrière le robot (il part quand même) ; ralentir : le visiteur traîne ; attente_visiteur : arrêt pour l'attendre ; visiteur_retrouve ; visiteur_perdu : abandon, retour au point principal ; passant_gene : une personne bouche le passage ; passage_libre ; detour ; arrivee ; retour : départ du retour automatique ; retour_arrive : de retour au point principal ; perdu : le robot ne sait plus où il est ; retrouve ; echec ; arret : /guide/stop ; pilotage : demande refusée, le robot est piloté à la main (verrou, section 11.5).",
+      "type": "string",
+      "enum": ["depart", "seul", "ralentir", "attente_visiteur", "visiteur_retrouve", "visiteur_perdu", "passant_gene",
+               "passage_libre", "detour", "arrivee", "retour", "retour_arrive", "perdu", "retrouve", "echec", "arret",
+               "pilotage"]
+    },
+    "texte": {"description": "La phrase à dire, en français.", "type": "string", "minLength": 1, "maxLength": 300},
+    "salle": {"description": "Facultatif : id de la salle visée, ou null.", "type": ["string", "null"]},
+    "nom": {"description": "Facultatif : nom de la salle visée (salles.yaml).", "type": "string"},
+    "mission": {"description": "Facultatif : visite ou retour.", "type": ["string", "null"], "enum": ["visite", "retour", null]},
+    "temps": {"description": "Facultatif : heure ISO 8601 locale avec décalage, à la seconde.", "type": "string"}
+  }
+}

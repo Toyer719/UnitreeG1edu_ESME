@@ -12,6 +12,10 @@
            /pont/arret (std_msgs/Bool)      verrou du pont (fiable, transient_local, profondeur 1)
   demande  /bt_navigator/get_state          Nav2 est-il actif ? (sinon un but envoyé trop tôt,
                                             juste après le lancement, est refusé)
+  vague 4  les sujets JSON de SUJETS_JSON (événements du guide, piétons, verrou des mouvements,
+  (11)     personnes vues, pilotage, équipe) : dernier(sujet), historique(sujet) ; et les
+           publications de PUBLICATIONS_JSON : publier_json(sujet, donnees). Les routes des agents de
+           la vague 4 s'en servent sans modifier ce fichier.
 
 Le nœud a son propre contexte rclpy : il n'installe pas de gestionnaire de Ctrl+C (c'est
 uvicorn qui s'en occupe) et ne gêne pas un autre nœud du même processus. Il respecte
@@ -28,6 +32,28 @@ from atelier.lieu import quaternion_vers_cap
 PERIMEE_S = 2.0      # s : au-delà, la position du robot est signalée comme ancienne
 REPERAGE_PERIME_S = 2.0   # s : au-delà, /reperage/etat et /pont/etat sont tenus pour muets
 FINS_REPERAGE = ("repere", "echec")
+
+# Vague 4 (section 11 du plan) : sujets JSON (std_msgs/String) écoutés, avec le nombre de messages
+# gardés (0 : le dernier seulement) et la QoS : « ecoute » (au mieux, compatible avec tout éditeur)
+# ou « verrou » (fiable et transient_local : on reçoit le dernier message publié avant notre arrivée)
+SUJETS_JSON = {
+    "/guide/evenement": (50, "ecoute"),        # comportement du guide (11.4)
+    "/pietons/etat": (0, "ecoute"),            # piétons crédibles de g1_sim (11.3)
+    "/personnes/lidar": (0, "ecoute"),         # détecteur de personnes au LiDAR (11.4)
+    "/mouvement/maitre": (0, "verrou"),        # verrou des mouvements (11.5)
+    "/pilotage/etat": (0, "ecoute"),           # nœud pilotage (11.5)
+    "/visiteurs/detectes": (0, "ecoute"),      # caméra de l'équipe (11.6)
+    "/personnalite/active": (0, "verrou"),     # personnalité active (11.6)
+    "/robot/dire": (20, "ecoute"),             # phrases à dire (11.6)
+}
+# Publications possibles par les routes : sujet → (forme, QoS). « texte » : le texte brut ;
+# « json » : un dict, envoyé en JSON
+PUBLICATIONS_JSON = {
+    "/visiteur/texte": ("texte", "defaut"),
+    "/robot/dire": ("json", "defaut"),
+    "/personnalite/active": ("json", "verrou"),
+}
+PIETONS_FRAIS_S = 1.0     # s : /pietons/etat plus vieux, l'Atelier recalcule les piétons depuis le monde
 
 
 class PontRos:
@@ -55,6 +81,8 @@ class PontRos:
         self._pub_demande = None
         self._pub_arret = None
         self._Bool = None
+        self._json = {}              # sujet → [(dict, instant de réception)], le plus récent à la fin
+        self._pubs_json = {}         # sujet → publieur
 
     # ------------------------------------------------------------ démarrage et arrêt
 
@@ -117,6 +145,12 @@ class PontRos:
                             durability=DurabilityPolicy.TRANSIENT_LOCAL, history=HistoryPolicy.KEEP_LAST)
         self._pub_arret = noeud.create_publisher(Bool, "/pont/arret", verrou)
         self._Bool = Bool
+        # vague 4 : sujets JSON écoutés et publiés (section 11)
+        for sujet, (_, qos) in SUJETS_JSON.items():
+            noeud.create_subscription(String, sujet, self._recepteur_json(sujet),
+                                      verrou if qos == "verrou" else ecoute)
+        for sujet, (_, qos) in PUBLICATIONS_JSON.items():
+            self._pubs_json[sujet] = noeud.create_publisher(String, sujet, verrou if qos == "verrou" else 10)
         self._client_nav2 = noeud.create_client(GetState, "/bt_navigator/get_state")
         self._DemandeEtat = GetState.Request
         noeud.create_timer(1.0, self._sonder_nav2)
@@ -182,6 +216,19 @@ class PontRos:
         donnees = self._lire_json(msg.data)
         if donnees is not None:
             self._etat_pont = (donnees, time.monotonic())
+
+    def _recepteur_json(self, sujet):
+        garder = max(1, SUJETS_JSON[sujet][0])
+
+        def recevoir(msg):
+            donnees = self._lire_json(msg.data)
+            if donnees is None:
+                return
+            with self._condition:
+                liste = self._json.setdefault(sujet, [])
+                liste.append((donnees, time.monotonic()))
+                del liste[:-garder]
+        return recevoir
 
     def _recevoir_horloge(self, msg):
         self._temps_sim = (msg.clock.sec + msg.clock.nanosec * 1e-9, time.monotonic())
@@ -266,6 +313,35 @@ class PontRos:
         age = time.monotonic() - instant
         return dict(donnees, age_recu_s=round(age, 2), perime=age > REPERAGE_PERIME_S)
 
+    # ------------------------------------------------------------ vague 4 : sujets JSON (section 11)
+
+    def dernier(self, sujet):
+        """Dernier message JSON reçu sur un sujet de SUJETS_JSON, avec age_recu_s et perime ; None si rien."""
+        with self._condition:
+            liste = self._json.get(sujet)
+            recu = liste[-1] if liste else None
+        return self._avec_age(recu)
+
+    def historique(self, sujet):
+        """Messages gardés d'un sujet de SUJETS_JSON (le plus ancien d'abord), chacun avec age_recu_s."""
+        maintenant = time.monotonic()
+        with self._condition:
+            liste = list(self._json.get(sujet, []))
+        return [dict(d, age_recu_s=round(maintenant - t, 2)) for d, t in liste]
+
+    def publier_json(self, sujet, donnees):
+        """Publie sur un sujet de PUBLICATIONS_JSON (texte brut, ou dict en JSON). Renvoie le nombre
+        de nœuds qui écoutent. KeyError pour un autre sujet ; RuntimeError sans pont ROS 2."""
+        if sujet not in PUBLICATIONS_JSON:
+            raise KeyError(f"sujet non prévu pour le serveur : {sujet} ({', '.join(PUBLICATIONS_JSON)})")
+        if not self.actif:
+            raise RuntimeError(self.erreur or "le pont ROS 2 n'est pas démarré")
+        forme = PUBLICATIONS_JSON[sujet][0]
+        texte = str(donnees) if forme == "texte" else json.dumps(donnees, ensure_ascii=False)
+        publieur = self._pubs_json[sujet]
+        publieur.publish(self._Chaine(data=texte))
+        return publieur.get_subscription_count()
+
     def abonnes_aller(self):
         """Nombre de nœuds abonnés à /guide/aller (0 : le guide n'est pas lancé)."""
         return self._pub_aller.get_subscription_count() if self.actif else 0
@@ -306,3 +382,7 @@ class PontRos:
         self._reperage = self._etat_pont = None
         with self._condition:
             self._fins.clear()
+            # le verrou des mouvements et la personnalité active ne dépendent pas de la simulation
+            for sujet in list(self._json):
+                if SUJETS_JSON[sujet][1] != "verrou":
+                    del self._json[sujet]

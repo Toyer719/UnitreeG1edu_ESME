@@ -16,7 +16,8 @@ from . import geometrie
 from .conversions import dans_image, monde_vers_pixel
 from .fichiers import (FICHE, ITINERAIRES, SALLES, ZONES, ErreurLieu, chemin_carte, chemin_monde,
                        charger_carte, charger_info_carte, charger_lieu, dossier_lieu)
-from .modeles import Lieu
+from .modeles import ETIQUETTE_PRINCIPAL, Lieu
+from .principal import point_principal, salles_principales
 from .validation import IDS_BOOLEENS, REGLE_ID, nombre
 
 COULOIR_MAX = 8.0          # m : la navigation du vrai robot (1102) va par tronçons de 8 m au plus
@@ -137,15 +138,38 @@ def _verifier_salles(lieu, r):
             r.erreur(f"{ou} : le nœud « {s.id} » de itineraires.yaml n'est pas au même endroit "
                      f"(salle : {s.etage} {_pt(s.pose.x, s.pose.y)} ; nœud : {n.etage} {_pt(n.x, n.y)}) ; "
                      "mettez-les à la même position")
-    accueil = lieu.salle("accueil")
-    a = lieu.accueil
-    if accueil is None:
-        r.avertir("salles.yaml : pas de salle « accueil » ; ajoutez-la, à la pose accueil de lieu.yaml, "
-                  "pour que le guide puisse y revenir")
-    elif (accueil.etage != a.etage or math.hypot(accueil.pose.x - a.x, accueil.pose.y - a.y) > TOLERANCE_POSITION
-          or abs(accueil.pose.theta - a.theta) > TOLERANCE_ANGLE):
-        r.erreur(f"salles.yaml, salle « accueil » : sa pose doit être celle de accueil dans lieu.yaml "
-                 f"(etage: {a.etage}, x: {nombre(a.x)}, y: {nombre(a.y)}, theta: {nombre(a.theta)})")
+    _verifier_principal(lieu, r)
+
+
+def _verifier_principal(lieu, r):
+    """Un seul point principal par lieu, obligatoire (vague 4, section 11.2 du plan)."""
+    marquees = salles_principales(lieu)
+    if len(marquees) > 1:
+        r.erreur(f"salles.yaml : {len(marquees)} salles portent l'étiquette « {ETIQUETTE_PRINCIPAL} » "
+                 f"({', '.join(s.id for s in marquees)}) ; un lieu n'a qu'un point principal")
+        return
+    principal = point_principal(lieu)
+    if principal is None:
+        r.erreur(f"salles.yaml : le lieu n'a pas de point principal ; donnez l'étiquette « {ETIQUETTE_PRINCIPAL} » "
+                 "à la salle où le robot accueille les visiteurs (onglet Salles), ou ajoutez une salle « accueil »")
+        return
+    # Sans étiquette (lieu d'avant la vague 4), le principal implicite est la salle « accueil » :
+    # c'est valide, sans avertissement (lieux/demo, la référence des tests, reste ainsi).
+    # « g1-lieu migrer » écrit l'étiquette, avec une sauvegarde.
+    a, p = lieu.accueil, principal.pose
+    if (principal.etage != a.etage or math.hypot(p.x - a.x, p.y - a.y) > TOLERANCE_POSITION
+            or abs(p.theta - a.theta) > TOLERANCE_ANGLE):
+        r.erreur(f"salles.yaml, salle « {principal.id} » : sa pose doit être celle de accueil dans lieu.yaml "
+                 f"(etage: {a.etage}, x: {nombre(a.x)}, y: {nombre(a.y)}, theta: {nombre(a.theta)}), "
+                 "car c'est le point principal du lieu")
+    monde = lieu.mondes.get(principal.etage)
+    if monde is not None:
+        d = monde.depart_robot
+        if math.hypot(d.x - p.x, d.y - p.y) > TOLERANCE_POSITION or abs(d.theta - p.theta) > TOLERANCE_ANGLE:
+            r.avertir(f"mondes/{principal.etage}.monde.yaml, depart_robot ({nombre(d.x)}, {nombre(d.y)}, "
+                      f"{nombre(d.theta)}) n'est pas le point principal « {principal.id} » ({nombre(p.x)}, "
+                      f"{nombre(p.y)}, {nombre(p.theta)}) : la simulation ne partira pas de l'accueil ; "
+                      "enregistrez le point principal dans l'onglet Salles, ou g1-lieu migrer")
 
 
 def _verifier_itineraires(lieu, r):

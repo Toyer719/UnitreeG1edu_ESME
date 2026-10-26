@@ -38,6 +38,11 @@ CATEGORIES_HORS_CARTE = ("personne",)
 SOURCES_ELEMENT = ("dessin", "scan")      # champ facultatif source d'un mur ou d'un objet
 CATEGORIE_PAR_TYPE = {"boite": "meuble", "cylindre": "poteau"}   # type modele : le nom du modèle
 
+# Vague 4 (section 11 du plan) : étiquette du point principal d'un lieu (salles.yaml), et champs
+# facultatifs simples d'un piéton crédible (monde.yaml), dans l'ordre où on les écrit (pauses à part)
+ETIQUETTE_PRINCIPAL = "principal"
+CHAMPS_PIETON_V4 = ("reaction", "distance_reaction_m", "corps", "rayon_m", "depart_s", "repeter", "pilote")
+
 Point = Tuple[float, float]
 
 
@@ -137,22 +142,35 @@ class Etage:
 
 @dataclass
 class Salle:
-    """Destination du guide. pose : où le robot s'arrête, tourné vers la salle."""
+    """Destination du guide. pose : où le robot s'arrête, tourné vers la salle.
+
+    etiquettes (vague 4, section 11.2 du plan) : liste d'identifiants, absente du fichier quand elle
+    est vide. ETIQUETTE_PRINCIPAL (« principal ») désigne le point principal du lieu.
+    """
     id: str
     nom: str
     etage: str
     pose: Pose
     alias: List[str] = field(default_factory=list)
     phrase_arrivee: str = ""     # vide : le guide annonce le nom de la salle
+    etiquettes: List[str] = field(default_factory=list)
+
+    @property
+    def principale(self):
+        """Vrai si la salle porte l'étiquette du point principal."""
+        return ETIQUETTE_PRINCIPAL in self.etiquettes
 
     def vers_dict(self):
-        return {"id": self.id, "nom": self.nom, "alias": list(self.alias), "etage": self.etage,
-                "pose": self.pose.vers_dict(), "phrase_arrivee": self.phrase_arrivee}
+        d = {"id": self.id, "nom": self.nom, "alias": list(self.alias), "etage": self.etage,
+             "pose": self.pose.vers_dict(), "phrase_arrivee": self.phrase_arrivee}
+        if self.etiquettes:
+            d["etiquettes"] = list(self.etiquettes)
+        return d
 
     @classmethod
     def depuis_dict(cls, d):
         return cls(d["id"], d["nom"], d["etage"], Pose.depuis_dict(d["pose"]),
-                   list(d.get("alias", [])), d.get("phrase_arrivee", ""))
+                   list(d.get("alias", [])), d.get("phrase_arrivee", ""), list(d.get("etiquettes", [])))
 
 
 # ---------------------------------------------------------------- itineraires.yaml
@@ -420,19 +438,42 @@ class Objet:
 
 @dataclass
 class Pieton:
-    """Personne qui marche : part de trajet[0]. aller_retour False : boucle (retour direct au début)."""
+    """Personne qui marche : part de trajet[0]. aller_retour False : boucle (retour direct au début).
+
+    Champs facultatifs du piéton crédible (vague 4, section 11.3 du plan), absents du fichier quand
+    ils valent None (valeurs par défaut : atelier.lieu.passants.reglages_pieton) : reaction
+    (aucune, arret, ecart), distance_reaction_m, corps, rayon_m, pauses ([{point, duree_s}]),
+    depart_s, repeter, pilote (trajet ou externe).
+    """
     id: str
     trajet: List[Point]
     vitesse: float = 1.0
     aller_retour: bool = True
+    reaction: Optional[str] = None
+    distance_reaction_m: Optional[float] = None
+    corps: Optional[bool] = None
+    rayon_m: Optional[float] = None
+    pauses: Optional[List[dict]] = None
+    depart_s: Optional[float] = None
+    repeter: Optional[bool] = None
+    pilote: Optional[str] = None
 
     def vers_dict(self):
-        return {"id": self.id, "trajet": [_liste(p) for p in self.trajet],
-                "vitesse": _nombre(self.vitesse), "aller_retour": bool(self.aller_retour)}
+        d = {"id": self.id, "trajet": [_liste(p) for p in self.trajet],
+             "vitesse": _nombre(self.vitesse), "aller_retour": bool(self.aller_retour)}
+        _ajouter_facultatifs(d, self, CHAMPS_PIETON_V4)
+        if self.pauses is not None:
+            d["pauses"] = [{"point": int(p["point"]), "duree_s": _nombre(p["duree_s"])} for p in self.pauses]
+        return d
 
     @classmethod
     def depuis_dict(cls, d):
-        return cls(d["id"], [_point(p) for p in d["trajet"]], _nombre(d["vitesse"]), d["aller_retour"])
+        pauses = d.get("pauses")
+        return cls(d["id"], [_point(p) for p in d["trajet"]], _nombre(d["vitesse"]), d["aller_retour"],
+                   reaction=d.get("reaction"), distance_reaction_m=_nombre(d.get("distance_reaction_m")),
+                   corps=d.get("corps"), rayon_m=_nombre(d.get("rayon_m")),
+                   pauses=None if pauses is None else [dict(p) for p in pauses],
+                   depart_s=_nombre(d.get("depart_s")), repeter=d.get("repeter"), pilote=d.get("pilote"))
 
 
 @dataclass
@@ -518,7 +559,8 @@ class InfoCarte:
 class Lieu:
     """Un paquet de lieu chargé en mémoire.
 
-    Les champs nom, etages, accueil, langue, carte_unitree et version sont ceux de lieu.yaml ;
+    Les champs nom, etages, accueil, langue, carte_unitree, version et guide (facultatif, vague 4)
+    sont ceux de lieu.yaml ;
     vers_dict() et depuis_dict() ne concernent que ce fichier. Les autres fichiers sont dans
     salles, itineraires, zones et mondes (par id d'étage, seulement ceux qui existent).
     dossier : dossier du lieu ; son nom est l'identifiant du lieu.
@@ -534,6 +576,7 @@ class Lieu:
     zones: Zones = field(default_factory=Zones)
     mondes: Dict[str, Monde] = field(default_factory=dict)
     dossier: Optional[Path] = None
+    guide: Optional[dict] = None      # section guide de lieu.yaml (vague 4, 11.4), absente si None
 
     @property
     def id(self):
@@ -549,12 +592,17 @@ class Lieu:
         return next((s for s in self.salles if s.id == id), None)
 
     def vers_dict(self):
-        return {"version": self.version, "nom": self.nom, "langue": self.langue,
-                "etages": [e.vers_dict() for e in self.etages],
-                "accueil": self.accueil.vers_dict(), "carte_unitree": self.carte_unitree}
+        d = {"version": self.version, "nom": self.nom, "langue": self.langue,
+             "etages": [e.vers_dict() for e in self.etages],
+             "accueil": self.accueil.vers_dict(), "carte_unitree": self.carte_unitree}
+        if self.guide is not None:
+            d["guide"] = {k: _nombre(v) for k, v in self.guide.items()}
+        return d
 
     @classmethod
     def depuis_dict(cls, d, dossier=None):
+        guide = d.get("guide")
         return cls(d["nom"], [Etage.depuis_dict(e) for e in d["etages"]],
                    PoseEtage.depuis_dict(d["accueil"]), d["langue"], d.get("carte_unitree"),
-                   d.get("version", VERSION), dossier=Path(dossier) if dossier else None)
+                   d.get("version", VERSION), dossier=Path(dossier) if dossier else None,
+                   guide=None if guide is None else dict(guide))

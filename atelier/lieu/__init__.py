@@ -134,6 +134,21 @@ Vrai robot (robot.py, section 10 du plan) : repère d'Unitree, marque au sol, me
     CARTE_REPETITION, DELAI_REPERAGE_S, DELAI_PERDU_S, ECART_MAX_M, ECART_MAX_RAD, ETATS_PONT,
     ETATS_REPERAGE, LOCALISATIONS, MODES_NAVIGATION, EXEMPLE_ETAT_PONT, EXEMPLE_ETAT_REPERAGE...
 
+Vague 4 (section 11 du plan) : modules de contrat, un par agent (importer le module pour le reste)
+---------------------------------------------------------------------------------------------------
+    principal.py   (A) point_principal(lieu) -> Salle | None, pose_principale(lieu), principal_explicite,
+                   pose_de_reperage(lieu, etage), depart_simulation(lieu, etage), ETIQUETTE_PRINCIPAL ;
+                   à écrire : definir_principal, synchroniser_depart, sauvegarder_lieu, migrer_lieu
+    passants.py    (B) reglages_pieton, distance_bord, cause_contact, SuiviContacts, COLONNES_BANC_V4…
+    comportement.py (C) ETATS_GUIDE, CODES_EVENEMENT, DELAIS_GUIDE, reglages_guide(lieu),
+                   lire_demande_aller(texte), evenement(code, ...)
+    pilotage.py    (D) refus_commande, confirmation_requise, POSTURES, DANSES_INTERDITES, GESTES_BRAS,
+                   LIMITES_BRAS, verifier_choregraphie, charger_choregraphie, poses_bras…
+    equipe.py      (E) charger_equipe / enregistrer_equipe / valider_equipe (personnalites, dialogues,
+                   camera), SUJETS_EQUIPE
+    Champs ajoutés : Salle.etiquettes, Pieton (reaction, distance_reaction_m, corps, rayon_m, pauses,
+    depart_s, repeter, pilote), Lieu.guide ; valider_message connaît les messages de la vague 4.
+
 Sessions de scan intégré (scans.py, section 9 du plan) : LIEU/scans/<session>/
 --------------------------------------------------------------------------------
 Identifiant de session : AAAA-MM-JJ_HHhMM (suffixe -2, -3... si la minute est prise). Fichiers :
@@ -197,8 +212,17 @@ from .robot import (API_RELOCALISER, API_SPORT_SET_VELOCITY, CARTE_REPETITION, D
                     EXEMPLE_ETAT_REPERAGE, FREQUENCE_PONT_HZ, GARDE_APRES_STOP_S, HAUTEUR_PELVIS, LIMITES_PONT,
                     LOCALISATIONS, MODES_NAVIGATION, SAUT_M, SAUT_RAD, carte_pour_reperage, marque_au_sol,
                     pose_carte_depuis_unitree, pose_unitree_depuis_carte, repere_unitree, valider_message)
-from .validation import DOSSIER_SCHEMAS, TYPES_FICHIERS, valider_donnees
+from .validation import DOSSIER_SCHEMAS, TYPES_FICHIERS, TYPES_MESSAGES, valider_donnees
 from .verification import COULOIR_MAX, RAYON_ROBOT, Rapport, valider_lieu, verifier_lieu
+# vague 4 (section 11 du plan) : l'essentiel des modules de contrat
+from .modeles import ETIQUETTE_PRINCIPAL
+from .principal import (depart_simulation, point_principal, pose_de_reperage, pose_principale,
+                        principal_explicite)
+from .comportement import CODES_EVENEMENT, DELAIS_GUIDE, ETATS_GUIDE, lire_demande_aller, reglages_guide
+from .passants import distance_bord, cause_contact
+from .pilotage import confirmation_requise, refus_commande, verifier_choregraphie
+from .equipe import FICHIERS_EQUIPE, charger_equipe, enregistrer_equipe, valider_equipe
+from . import comportement, equipe, passants, pilotage, principal
 
 __all__ = ["bornes_carte", "cap_vers_quaternion", "centres_pixels", "dans_image",
            "carte_vers_unitree", "composer_poses", "inverser_pose", "unitree_vers_carte",
@@ -237,4 +261,10 @@ __all__ = ["bornes_carte", "cap_vers_quaternion", "centres_pixels", "dans_image"
            "ETATS_PONT", "ETATS_REPERAGE", "EXEMPLE_DEMANDE_REPERAGE", "EXEMPLE_ETAT_PONT",
            "EXEMPLE_ETAT_REPERAGE", "FREQUENCE_PONT_HZ", "GARDE_APRES_STOP_S", "HAUTEUR_PELVIS", "LIMITES_PONT",
            "LOCALISATIONS", "MODES_NAVIGATION", "SAUT_M", "SAUT_RAD", "carte_pour_reperage", "marque_au_sol",
-           "pose_carte_depuis_unitree", "pose_unitree_depuis_carte", "repere_unitree", "valider_message"]
+           "pose_carte_depuis_unitree", "pose_unitree_depuis_carte", "repere_unitree", "valider_message",
+           # vague 4 (section 11 du plan)
+           "TYPES_MESSAGES", "ETIQUETTE_PRINCIPAL", "depart_simulation", "point_principal", "pose_de_reperage",
+           "pose_principale", "principal_explicite", "CODES_EVENEMENT", "DELAIS_GUIDE", "ETATS_GUIDE",
+           "lire_demande_aller", "reglages_guide", "distance_bord", "cause_contact", "confirmation_requise",
+           "refus_commande", "verifier_choregraphie", "FICHIERS_EQUIPE", "charger_equipe", "enregistrer_equipe",
+           "valider_equipe", "comportement", "equipe", "passants", "pilotage", "principal"]

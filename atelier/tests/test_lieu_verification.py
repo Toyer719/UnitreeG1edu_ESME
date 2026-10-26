@@ -67,8 +67,10 @@ def test_accueil_different_de_lieu_yaml(demo):
 
 
 def test_pas_de_salle_accueil(demo):
+    # Vague 4 (section 11.2 du plan) : sans étiquette « principal » ni salle « accueil », le lieu n'a pas
+    # de point principal, et c'est une erreur (avant : un avertissement)
     demo.salles = [s for s in demo.salles if s.id != "accueil"]
-    assert un_message(L.verifier_lieu(demo).avertissements, "pas de salle « accueil »")
+    assert un_message(L.verifier_lieu(demo).erreurs, "le lieu n'a pas de point principal")
 
 
 def test_etage_inconnu(demo):

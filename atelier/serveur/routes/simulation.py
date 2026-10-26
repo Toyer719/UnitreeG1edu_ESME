@@ -32,7 +32,7 @@ from pydantic import BaseModel
 from atelier.lieu import (MODES_NAVIGATION, ErreurLieu, charger_itineraires, charger_monde, charger_salles,
                           chemin_carte, chemin_monde, chemin_sdf)
 
-from ..communs import ErreurAtelier, dossier_du_lieu, etage_du_lieu, verifier_id
+from ..communs import ErreurAtelier, dossier_du_lieu, etage_du_lieu, exiger_point_principal, verifier_id
 from ..processus import CommandeAbsente, commande, lancer_et_attendre
 from .scan import cable_branche, interface_robot, scan_robot_simule_actif
 
@@ -120,6 +120,7 @@ async def demarrer(demande: DemandeSimulation, request: Request):
     etat = _etat(request)
     dossier = dossier_du_lieu(demande.lieu)
     etage_du_lieu(dossier, demande.etage)
+    exiger_point_principal(dossier)          # vague 4 (section 11.2) : livré par l'intégrateur
     mode = demande.mode
     if mode not in MODES_NAVIGATION:
         raise ErreurAtelier(400, f"Mode « {mode} » inconnu : simu (simulation), repetition (répétition sans "

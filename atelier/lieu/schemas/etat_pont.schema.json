@@ -10,9 +10,9 @@
   "properties": {
     "version": {"description": "Version du format. Toujours 1.", "const": 1},
     "etat": {
-      "description": "demarrage : pas encore de réponse à l'arrêt envoyé au lancement ; attente_reperage : le robot n'est pas repéré (ou /reperage/etat muet depuis 1 s), /cmd_vel est ignoré ; pret : mouvement permis, robot immobile ; en_mouvement : consignes non nulles envoyées ; arret : arrêt demandé par /guide/stop, /cmd_vel ignoré pendant 1 s ; arret_verrouille : /pont/arret vaut true ; robot_muet : aucune réponse du service sport depuis 1 s ; refus : la dernière réponse a un code non nul. Si plusieurs valent, la première de cet ordre l'emporte : arret_verrouille, robot_muet, refus, attente_reperage, arret, demarrage, en_mouvement, pret.",
+      "description": "demarrage : pas encore de réponse à l'arrêt envoyé au lancement ; attente_reperage : le robot n'est pas repéré (ou /reperage/etat muet depuis 1 s), /cmd_vel est ignoré ; pret : mouvement permis, robot immobile ; en_mouvement : consignes non nulles envoyées ; arret : arrêt demandé par /guide/stop, /cmd_vel ignoré pendant 1 s ; arret_verrouille : /pont/arret vaut true ; robot_muet : aucune réponse du service sport depuis 1 s ; refus : la dernière réponse a un code non nul ; pilotage (vague 4, section 11.5) : le pilotage de l'Atelier a la main (/mouvement/maitre), /cmd_vel est ignoré. Si plusieurs valent, la première de cet ordre l'emporte : arret_verrouille, robot_muet, refus, pilotage, attente_reperage, arret, demarrage, en_mouvement, pret.",
       "type": "string",
-      "enum": ["demarrage", "attente_reperage", "pret", "en_mouvement", "arret", "arret_verrouille", "robot_muet", "refus"]
+      "enum": ["demarrage", "attente_reperage", "pret", "en_mouvement", "arret", "arret_verrouille", "robot_muet", "refus", "pilotage"]
     },
     "message": {"description": "Phrase en français pour l'utilisateur, qui dit quoi faire si le robot ne peut pas bouger.", "type": "string"},
     "mouvement_permis": {"description": "Vrai si une consigne /cmd_vel non nulle reçue maintenant serait envoyée au robot.", "type": "boolean"},

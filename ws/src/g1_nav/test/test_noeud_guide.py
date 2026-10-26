@@ -109,6 +109,31 @@ def test_aller_stop_etat(dossier):
     assert 'guide prêt' in sortie + erreurs
 
 
+def test_aller_en_json_et_vers_le_principal(dossier):
+    """Vague 4 (section 11.4) : /guide/aller en JSON, et la cible « principal »."""
+    guide = lancer_guide(dossier)
+    ecoute = Ecoute()
+    try:
+        assert ecoute.attendre(lambda: ecoute.etats and ecoute.pub_aller.get_subscription_count(),
+                               20.0), 'le guide ne publie pas /guide/etat'
+        demande = {'cible': 'b204', 'accompagner': True, 'source': 'dialogue'}
+        ecoute.pub_aller.publish(String(data=json.dumps(demande)))
+        assert ecoute.attendre(lambda: ecoute.etats[-1]['etat'] == 'arrive', 20.0)
+        assert ecoute.etats[-1]['cible'] == 'b204'
+        ecoute.pub_aller.publish(String(data='principal'))
+        assert ecoute.attendre(lambda: ecoute.etats[-1]['etat'] == 'arrive'
+                               and ecoute.etats[-1]['cible'] == 'accueil', 20.0)
+        # JSON faux : la demande échoue proprement
+        ecoute.pub_aller.publish(String(data='{"cible": 3}'))
+        assert ecoute.attendre(lambda: ecoute.etats[-1]['etat'] == 'echec', 5.0)
+    finally:
+        ecoute.fermer()
+        os.killpg(guide.pid, signal.SIGINT)
+        sortie, erreurs = guide.communicate(timeout=10)
+    assert guide.returncode == 0, erreurs
+    assert 'Traceback' not in erreurs
+
+
 @pytest.mark.skipif((PAQUET / 'g1_nav' / 'moteur_unitree.py').exists(),
                     reason='moteur_unitree.py existe : l\'agent Scan l\'a écrit')
 def test_moteur_unitree_absent(dossier):

@@ -25,3 +25,7 @@ ws/log_*/
 lieux/*/scans/*/enregistrement/
 lieux/*/scans/*/.session.lock
 lieux/*/scans/*/.processus.json
+# Vague 4 (section 11.5 du plan) : les musiques des chorégraphies sont fournies par l'utilisateur et
+# restent sur le PC ; aucune musique protégée dans le dépôt
+choregraphies/musique/*
+!choregraphies/musique/LISEZMOI.md

@@ -60,8 +60,11 @@ MEMOIRE_IDENTIFIANTS = 1000
 # (pas() est appelé toutes les 20 ms par le nœud : la cadence reste de 10 Hz malgré le jitter)
 TOLERANCE_ENVOI_S = 0.008
 
+# 'pilotage' (vague 4, section 11.5 du plan) : le pilotage de l'Atelier a la main
+# (/mouvement/maitre), /cmd_vel est ignoré. Le contrat le déclare ; le comportement est à écrire
+# par l'agent Pilotage.
 ETATS = ('demarrage', 'attente_reperage', 'pret', 'en_mouvement', 'arret', 'arret_verrouille',
-         'robot_muet', 'refus')
+         'robot_muet', 'refus', 'pilotage')
 
 # Messages des refus connus du service sport (codes d'unitree_ros2 et du SDK)
 MESSAGES_REFUS = {

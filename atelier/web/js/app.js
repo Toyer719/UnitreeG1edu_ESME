@@ -12,6 +12,12 @@ import * as salles from './ecrans/salles.js';
 import * as scan from './ecrans/scan.js';
 import * as simulation from './ecrans/simulation.js';
 import * as zones from './ecrans/zones.js';
+// Vague 4 (section 11 du plan) : pilotage du robot (agent Pilotage et danses) et emplacements de
+// l'équipe (agent Équipe)
+import * as pilotage from './ecrans/pilotage.js';
+import * as personnalites from './ecrans/personnalites.js';
+import * as dialogues from './ecrans/dialogues.js';
+import * as camera from './ecrans/camera.js';
 
 // Dans l'ordre du travail : créer le lieu, dessiner, fabriquer la carte, placer, simuler
 const ECRANS = [
@@ -23,6 +29,10 @@ const ECRANS = [
   { id: 'zones', texte: 'Zones', module: zones },
   { id: 'simulation', texte: 'Simulation', module: simulation },
   { id: 'scan', texte: 'Scan', module: scan },
+  { id: 'pilotage', texte: 'Pilotage', module: pilotage, sansLieu: true },
+  { id: 'personnalites', texte: 'Personnalités', module: personnalites },
+  { id: 'dialogues', texte: 'Dialogues', module: dialogues },
+  { id: 'camera', texte: 'Caméra', module: camera },
 ];
 
 let ecranOuvert = null;     // {id, instance}
@@ -152,7 +162,11 @@ async function demarrer() {
     try {
       await choisirLieu(lieuMemorise, souvenir('etage'));
     } catch (e) {
-      memoriser('lieu', null);     // lieu supprimé depuis : on repart de la liste
+      // Lieu supprimé depuis (404) : on repart de la liste. Toute autre erreur (serveur
+      // injoignable, requête coupée parce que la page se recharge) garde le lieu mémorisé :
+      // l'oublier ici effaçait le choix fait entre-temps par un autre onglet ou par un test.
+      if (e && e.statut === 404) memoriser('lieu', null);
+      else afficherErreur(e);
     }
   }
   remplirChoix();

@@ -15,6 +15,9 @@ import * as G from '../geometrie.js';
 import { afficherErreur, afficherMessage } from '../messages.js';
 import { creerPlan, iconeOrientee, ll, lls, suivrePointeur } from '../plan.js';
 import { Vue3D } from '../vue3d.js';
+// Vague 4 (section 11 du plan) : panneaux des agents Comportement du guide et Passants
+import * as panneauGuide from '../panneaux/guide.js';
+import * as panneauPassants from '../panneaux/passants.js';
 
 const L = window.L;
 
@@ -116,12 +119,17 @@ export function ouvrir(racine) {
             <div data-role="processus"></div>
           </details>
         </div>
+        <div class="panneau panneau-comportement" data-role="panneau-comportement"></div>
+        <div class="panneau panneau-passants" data-role="panneau-passants"></div>
       </div>
     </div>`;
   const $ = (r) => racine.querySelector('[data-role="' + r + '"]');
   const plan = creerPlan($('plan'));
   const carte = plan.carte;
   const vue = new Vue3D($('vue3d'));
+  const outilsPanneaux = { lieu: lieu, etage: etage, plan: plan, carte: carte };
+  const panneaux = [panneauGuide.monter($('panneau-comportement'), outilsPanneaux),
+    panneauPassants.monter($('panneau-passants'), outilsPanneaux)];
   const calqueSalles = L.layerGroup().addTo(carte);
   const calqueMarque = L.layerGroup().addTo(carte);
   const calqueItineraire = L.layerGroup().addTo(carte);
@@ -577,6 +585,7 @@ export function ouvrir(racine) {
     modifie: () => false,
     fermer: () => {
       if (desabonner) desabonner();
+      panneaux.forEach((p) => p.fermer());
       arreterPointeur();
       vue.detruire();
       plan.detruire();

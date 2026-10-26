@@ -28,13 +28,28 @@
       "items": {"$ref": "#/definitions/etage"}
     },
     "accueil": {
-      "description": "Pose du robot au point d'accueil, où il attend les visiteurs. etage est l'id d'un étage de la liste etages. La salle « accueil » de salles.yaml et le nœud « accueil » de itineraires.yaml sont à la même position.",
+      "description": "Pose du point principal du lieu (vague 4, section 11.2 du plan) : l'accueil, où le robot attend les visiteurs et revient seul après chaque visite, où on le pose au démarrage (dans le sens de theta) pour « Repérer le robot », et où il apparaît en simulation (depart_robot du monde de cet étage). C'est la copie de la pose de la salle qui porte l'étiquette « principal » dans salles.yaml (à défaut, la salle « accueil ») ; cette salle a un nœud de même id dans itineraires.yaml. etage est l'id d'un étage de la liste etages.",
       "$ref": "#/definitions/pose_etage"
     },
     "carte_unitree": {
       "description": "Facultatif, null par défaut. Nom du nuage .pcd enregistré sur le robot par la commande 1802 de slam_operate (ex. « test1.pcd »), utilisé pour la relocalisation 1804. null tant que le lieu n'a pas été scanné.",
       "type": ["string", "null"],
       "pattern": "^[^/]+\\.pcd$"
+    },
+    "guide": {
+      "description": "Facultatif (vague 4, section 11.4 du plan) : réglages du comportement du guide dans ce lieu. Chaque champ absent prend sa valeur par défaut (atelier.lieu.comportement.DELAIS_GUIDE) ; un paramètre ROS du nœud guide l'emporte sur ce fichier.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "retour_auto": {"description": "Défaut true : après chaque visite (arrivée, échec, visiteur perdu), le robot revient seul au point principal.", "type": "boolean"},
+        "delai_avant_retour_s": {"description": "Défaut 15 : secondes passées à destination avant le retour automatique.", "type": "number", "minimum": 0, "maximum": 600},
+        "delai_visiteur_s": {"description": "Défaut 30 : attente du visiteur qui ne suit plus (état attente_visiteur), avant d'abandonner et de rentrer.", "type": "number", "minimum": 1, "maximum": 600},
+        "distance_ralentir_m": {"description": "Défaut 2.0 : visiteur plus loin que cela derrière le robot : le robot ralentit.", "type": "number", "minimum": 0.5, "maximum": 10},
+        "distance_attendre_m": {"description": "Défaut 3.5 : visiteur plus loin que cela (ou plus vu depuis 2 s) : le robot s'arrête et l'attend. Plus grand que distance_ralentir_m.", "type": "number", "minimum": 1, "maximum": 15},
+        "ralenti": {"description": "Défaut 0.5 : fraction de la vitesse permise quand le visiteur traîne (/speed_limit en pourcentage).", "type": "number", "minimum": 0.1, "maximum": 1},
+        "delai_perdu_s": {"description": "Défaut 30 : le robot perdu (repérage perdu, plus de position sur la carte) attend ce temps qu'on le retrouve, puis le trajet échoue.", "type": "number", "minimum": 1, "maximum": 600},
+        "delai_passant_s": {"description": "Défaut 20 : un passant qui bouche le passage (état attente_passage) est attendu ce temps avant que le couloir soit marqué bloqué (détour).", "type": "number", "minimum": 0, "maximum": 300}
+      }
     }
   },
   "definitions": {

@@ -1,13 +1,14 @@
 # Tests de bout en bout de l'Atelier G1
 
-Scripts sans fenêtre qui reprennent les critères de recette (sections 7, 9.10 et 10 du plan),
+Scripts sans fenêtre qui reprennent les critères de recette (sections 7, 9.10, 10 et 11 du plan),
 et `tout.sh` qui les lance tous et affiche un bilan (agents Intégrateur et Testeur).
 
 ```bash
-~/robot-g1/tests_e2e/tout.sh            # les 20 critères, puis « N / 20 »
+~/robot-g1/tests_e2e/tout.sh            # les 30 critères, puis « N / 30 »
 ~/robot-g1/tests_e2e/tout.sh 7 8        # seulement les critères 7 et 8
 ~/robot-g1/tests_e2e/tout.sh 11 12 13   # le scan intégré (le 11 garde sa session pour le 12 et le 13)
 ~/robot-g1/tests_e2e/tout.sh 16 17 18 19 20   # le vrai robot en répétition (vague 3, section 10 du plan)
+~/robot-g1/tests_e2e/tout.sh 21 22 23 24 25 26 27 28 29 30   # la vague 4 (section 11 du plan)
 ~/robot-g1/tests_e2e/critere_08_service_robot.sh    # un critère seul, sortie à l'écran
 ```
 
@@ -33,6 +34,16 @@ et `tout.sh` qui les lance tous et affiche un bilan (agents Intégrateur et Test
 | `critere_18_reperage.sh` | répétition par l'Atelier : non repéré avant, « Repérer le robot » (1804 en (0, 0, 0), `repetition.pcd`), TF à moins de 0,1 m de la vérité malgré la dérive, perte puis reprise ; repère d'Unitree tourné (refus à la marque, puis repérage converti) | 1 min |
 | `critere_19_niveau2.sh` | niveau 2 complet depuis l'Atelier : « Y aller » refusé avant le repérage, repérage, Nav2 actif, accueil → b204 à moins de 0,3 m en moins de 180 s, tout par le pont (7105 comptés, seul `pont_g1` écoute `/cmd_vel`), boîte dans le couloir nord puis b204 → accueil : `bloque → detour → arrive` ; aucun processus restant | 4 à 5 min |
 | `critere_20_securite.sh` | sécurité sur la vraie chaîne de répétition, avec un témoin (jamais plus de 5 cm hors d'une consigne permise) : pont sans repérage, guide avant le repérage, consignes absurdes (NaN, infini, 1e9) par `/cmd_vel` et par les flèches, faux G1 muet, relocalisation perdue, ARRÊT et verrou pendant « Y aller », faux G1 arrêté (SIGTERM) puis relancé, pont tué (SIGKILL) puis relancé, demandes absurdes à l'API (français, jamais d'erreur 500) | 1 min 30 |
+| `critere_21_point_principal.sh` | à écrire (agent Point principal) : lieu sans principal refusé, migration avec sauvegarde (le demo refusé), orientation par l'API, simulation et repérage qui partent du principal | — |
+| `critere_22_retour.sh` | à écrire (agent Comportement du guide) : après b204, retour seul au principal à 0,3 m et 10° ; événements ; `retour: false` | — |
+| `critere_23_passant_immobile.sh` | à écrire (agent Passants) : scène `immobile_couloir`, contourné à 0,20 m bord à bord au moins, 0 contact | — |
+| `critere_24_passants_croises.sh` | à écrire (agent Passants) : scènes `en_face` et `coupe_route` en pire cas, 0 contact causé par le robot sur 10 essais | — |
+| `critere_25_groupe.sh` | à écrire (agent Passants, avec le guide de l'agent Comportement) : `attente_passage` puis passage, ou détour raisonnable ; banc `foule` à 90 % et 0 contact causé par le robot | — |
+| `critere_26_accompagnement.sh` | à écrire (agent Comportement du guide) : faux visiteur qui suit, traîne (ralentir, attendre) ou s'en va (abandon, retour) | — |
+| `critere_27_perdu.sh` | à écrire (agent Comportement du guide) : repérage perdu en route : arrêt, événement, reprise, ou échec propre après le délai | — |
+| `critere_28_pilotage.sh` | à écrire (agent Pilotage et danses) : postures, joystick avec homme mort, gestes, voix, LED, verrou avec le guide, refus contre le faux G1 | — |
+| `critere_29_danses.sh` | à écrire (agent Pilotage et danses) : liste des danses, 604 envoyée comme 550604, interdits refusés, chorégraphie `exemple_kpop` dans les limites, aperçu 3D | — |
+| `critere_30_equipe.sh` | à écrire (agent Équipe) : les trois fichiers validés, les onglets, « je cherche la salle b204 » → b204 | — |
 
 Critères 16 à 20 (vague 3, le vrai robot en répétition, section 10 du plan) : en répétition, la vérité terrain
 est `/g1_jumeau/odom` (et non `/odom`, l'odométrie du relais). Options :
@@ -47,6 +58,11 @@ est `/g1_jumeau/odom` (et non `/odom`, l'odométrie du relais). Options :
 Outils : `critere_16_outils.py` (faux service sport minimal, observation depuis l'hôte), `outils_pont_e2e.py`
 (relais simple, témoin du pont, mesures), `critere_18_outils.py`, `critere_19_outils.py` et
 `critere_20_outils.py` (témoin des mouvements permis, pannes, relances).
+
+Critères 21 à 30 (vague 4, section 11 du plan) : chacun est écrit par l'agent nommé ; tant que la pièce d'un
+autre agent manque, il répond « en attente » (77) en disant laquelle. Nouveaux outils, un par agent :
+`critere_21_outils.py`, `outils_passants_e2e.py`, `outils_guide_e2e.py`, `outils_pilotage_e2e.py`,
+`outils_equipe_e2e.py`.
 
 Codes de sortie : 0 réussi, 1 échoué, 77 pas encore possible (une commande, une route ou un module manque).
 

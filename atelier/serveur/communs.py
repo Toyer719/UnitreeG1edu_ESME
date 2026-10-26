@@ -72,6 +72,22 @@ def etage_du_lieu(dossier, etage):
     return fiche, trouve
 
 
+def exiger_point_principal(dossier):
+    """Vague 4 (section 11.2 du plan) : 409 si le lieu n'a pas de point principal (ni salle étiquetée
+    « principal », ni salle « accueil », ou deux principaux) ; 422 si salles.yaml est illisible. Appelé
+    avant de lancer la simulation, la répétition ou le robot sur un lieu."""
+    from atelier.lieu.principal import point_principal
+    try:
+        principal = point_principal(dossier)
+    except ErreurLieu as e:
+        raise ErreurAtelier(422, "Le fichier salles.yaml est invalide : corrigez les points ci-dessous.",
+                            e.erreurs) from None
+    if principal is None:
+        raise ErreurAtelier(409, "Ce lieu n'a pas de point principal (l'accueil, où le robot démarre et revient "
+                                 "après chaque visite) : dans l'onglet Salles, faites d'une salle le point principal.")
+    return principal
+
+
 def erreur_validation(fichier, erreurs):
     """ErreurAtelier 422 pour un fichier refusé par la validation."""
     return ErreurAtelier(422, f"{fichier} n'a pas été enregistré : corrigez les points ci-dessous.", erreurs)

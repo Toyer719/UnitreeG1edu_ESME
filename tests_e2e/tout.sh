@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Lance les critères de recette (sections 7, 9.10 et 10 du plan), sans fenêtre, et affiche « N / 20 ».
-#   tests_e2e/tout.sh            les 20 critères, dans l'ordre
+# Lance les critères de recette (sections 7, 9.10, 10 et 11 du plan), sans fenêtre, et affiche « N / 30 ».
+#   tests_e2e/tout.sh            les 30 critères, dans l'ordre
 #   tests_e2e/tout.sh 1 2 8      seulement ceux-là
 #   tests_e2e/tout.sh 11 12 13   le scan intégré : le 11 garde sa session pour le 12 et le 13
 #   tests_e2e/tout.sh 16 17 18 19 20   le vrai robot en répétition : conteneur, pont, repérage, niveau 2
+#   tests_e2e/tout.sh 21 22 23 24 25 26 27 28 29 30   la vague 4 : point principal, retour, passants,
+#                                accompagnement, robot perdu, pilotage, danses, équipe
 # Un critère dont le script n'existe pas encore est « absent » : il compte comme non réussi.
 # Journal de chaque critère : ~/robot-g1/journaux/e2e_<date>/critere_NN.log
 # Le critère 10 n'est compté que si son script réussit ET que les critères 1 à 9 réussissent.
@@ -11,13 +13,15 @@
 E2E="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 JOURNAUX="$(cd "$E2E/.." && pwd)/journaux/e2e_$(date +%Y-%m-%d_%Hh%M)"
 mkdir -p "$JOURNAUX"
-TOUS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20)
+TOUS=(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30)
 
 # Délai maximal de chaque critère, en secondes (le 13 relance le 11 s'il n'a pas de session gardée ;
 # le 16 construit l'image du conteneur si elle manque : environ 15 min la première fois, avec Internet)
 declare -A DELAI=([1]=300 [2]=600 [3]=300 [4]=900 [5]=1200 [6]=3600 [7]=1800 [8]=1200 [9]=1200 [10]=300
                   [11]=1800 [12]=900 [13]=3000 [14]=1800 [15]=900
-                  [16]=3600 [17]=1200 [18]=1500 [19]=2400 [20]=1800)
+                  [16]=3600 [17]=1200 [18]=1500 [19]=2400 [20]=1800
+                  [21]=1200 [22]=900 [23]=1800 [24]=3000 [25]=3600 [26]=1800 [27]=1500 [28]=1200 [29]=1200
+                  [30]=1200)
 CHOIX=("$@")
 [ ${#CHOIX[@]} -eq 0 ] && CHOIX=("${TOUS[@]}")
 

@@ -175,7 +175,7 @@ def test_parcours_principal_dans_le_navigateur(sans_ros, serveur, navigateur, li
 
     # Lieux : la liste, puis la création d'un lieu
     nav.ouvrir(base + "/#lieux")
-    nav.attendre("return document.querySelectorAll('.onglet').length === 8", message="onglets construits")
+    nav.attendre("return document.querySelectorAll('.onglet').length === 12", message="onglets construits")  # 8 + 4 de la vague 4
     nav.attendre("return document.querySelector('.liste-lieux').textContent.includes('Lycée démo')")
     nav.js("""const i = document.querySelector('.ecran-lieux form input[type=text]');
               i.value = 'Essai nav'; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change'));""")

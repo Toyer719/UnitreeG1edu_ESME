@@ -23,11 +23,12 @@ l'Atelier passent tous par ces fonctions : il n'y a qu'une seule façon de passe
 
 Messages JSON (std_msgs/String) : schémas etat_pont, etat_reperage, demande_reperage dans
 atelier/lieu/schemas ; valider_message(type, donnees) renvoie la liste des erreurs (vide : conforme).
+Elle connaît aussi les messages de la vague 4 (section 11 du plan, TYPES_MESSAGES).
 """
 from .conversions import carte_vers_unitree, unitree_vers_carte
 from .fichiers import ErreurLieu, chemin_monde, charger_fiche, charger_monde
 from .modeles import Pose
-from .validation import valider_donnees
+from .validation import TYPES_MESSAGES, valider_donnees
 
 # ---------------------------------------------------------------- valeurs du contrat (section 10)
 
@@ -58,7 +59,7 @@ DERIVE_LACET_PAR_M = 0.01       # rad de lacet ajoutés par mètre parcouru
 HAUTEUR_PELVIS = 0.75           # m, z de odom_pelvis (le relais projette au sol)
 
 ETATS_PONT = ("demarrage", "attente_reperage", "pret", "en_mouvement", "arret", "arret_verrouille",
-              "robot_muet", "refus")
+              "robot_muet", "refus", "pilotage")     # pilotage : vague 4 (section 11.5), verrou des mouvements
 ETATS_REPERAGE = ("non_repere", "en_cours", "repere", "perdu", "echec")
 LOCALISATIONS = ("simu", "unitree", "amcl", "externe")     # argument localisation de navigation.launch.py
 MODES_NAVIGATION = ("simu", "repetition", "robot")          # champ mode de POST /api/simulation/demarrer
@@ -80,9 +81,10 @@ EXEMPLE_DEMANDE_REPERAGE = {"id": "atelier-1", "x": 2.5, "y": 10.0, "theta": 0.0
 
 
 def valider_message(type_message, donnees):
-    """Erreurs d'un message JSON du vrai robot : etat_pont, etat_reperage ou demande_reperage."""
-    if type_message not in ("etat_pont", "etat_reperage", "demande_reperage"):
-        raise ValueError(f"type de message inconnu : {type_message}")
+    """Erreurs d'un message JSON (std_msgs/String) : etat_pont, etat_reperage, demande_reperage
+    (section 10), ou un message de la vague 4 (section 11 : TYPES_MESSAGES de validation.py)."""
+    if type_message not in TYPES_MESSAGES:
+        raise ValueError(f"type de message inconnu : {type_message} (types : {', '.join(TYPES_MESSAGES)})")
     return valider_donnees(type_message, donnees)
 
 

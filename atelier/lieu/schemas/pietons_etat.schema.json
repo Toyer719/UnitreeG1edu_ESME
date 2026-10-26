@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/pietons/etat",
+  "description": "Positions et vitesses vraies des piétons crédibles de la simulation, publiées en JSON (std_msgs/String) sur /pietons/etat par le nœud pietons (paquet g1_sim), 10 fois par seconde (vague 4, section 11.3 du plan). Repère map de l'étage (celui du monde Gazebo). Sert à l'Atelier (affichage), au banc (mesures des contacts) et au faux visiteur. Des champs en plus sont permis.",
+  "type": "object",
+  "required": ["version", "temps_sim", "pietons"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Version du format. Toujours 1.", "const": 1},
+    "temps_sim": {"description": "Temps simulé de ces positions (s), ou null s'il est inconnu.", "type": ["number", "null"], "minimum": 0},
+    "pietons": {
+      "description": "Un élément par piéton du monde, ids uniques.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "x", "y", "theta", "vx", "vy", "rayon_m", "etat"],
+        "additionalProperties": true,
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"},
+          "x": {"type": "number"},
+          "y": {"type": "number"},
+          "theta": {"description": "Direction du corps (rad).", "type": "number", "minimum": -6.2832, "maximum": 6.2832},
+          "vx": {"description": "Vitesse dans le repère map (m/s).", "type": "number", "minimum": -3, "maximum": 3},
+          "vy": {"type": "number", "minimum": -3, "maximum": 3},
+          "rayon_m": {"type": "number", "minimum": 0.15, "maximum": 0.5},
+          "etat": {
+            "description": "marche : suit son trajet ; pause : arrêt prévu (pauses) ou attente du départ (depart_s) ; arret : s'est arrêté pour le robot ; ecart : s'écarte du robot ; pilote : conduit par /pietons/consigne ; fini : parcours terminé (repeter: false).",
+            "type": "string",
+            "enum": ["marche", "pause", "arret", "ecart", "pilote", "fini"]
+          },
+          "reaction": {"type": "string", "enum": ["aucune", "arret", "ecart"]},
+          "corps": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

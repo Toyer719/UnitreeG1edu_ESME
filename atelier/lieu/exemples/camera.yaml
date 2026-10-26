@@ -1,0 +1,18 @@
+# Exemple de réglages de la caméra (vague 4, section 11.6 du plan), à copier dans lieux/<id>/.
+# Format : atelier/lieu/schemas/camera.schema.json. Position dans base_link (m, rad) : à mesurer
+# sur le robot, une fois la See3CAM montée.
+version: 1
+camera:
+  modele: See3CAM
+  peripherique: /dev/video0
+  largeur: 1280
+  hauteur: 720
+  ips: 30
+  champ_horizontal_deg: 90.0
+  position: {x: 0.08, y: 0.0, z: 1.30, roulis: 0.0, tangage: 0.2, lacet: 0.0}
+detection:
+  actif: true
+  modele: yolov8n.pt
+  confiance_min: 0.5
+  distance_max_m: 4.0
+  frequence_hz: 10

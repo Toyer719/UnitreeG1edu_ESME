@@ -16,7 +16,7 @@ RACINE="$(cd "$E2E/.." && pwd)"
 source "$HOME/robot-g1/setup/env.sh"
 # Paquets ROS du projet : dans ws/install (chargé par env.sh) ; à défaut, compilés à part dans
 # ws/install_<paquet> (copie de travail d'un agent)
-for _paquet in g1_sim g1_nav g1_bridge g1_jumeau; do
+for _paquet in g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe; do
   if [ ! -d "$RACINE/ws/install/$_paquet" ] && [ -f "$RACINE/ws/install_$_paquet/local_setup.bash" ]; then
     source "$RACINE/ws/install_$_paquet/local_setup.bash"
   fi

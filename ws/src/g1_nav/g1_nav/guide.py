@@ -404,6 +404,14 @@ class NoeudGuide(Node):
                                '(ex. --ros-args -p lieu:=demo -p etage:=rdc)')
 
         routeur = Routeur.depuis_lieu(lieu, etage)
+        self.id_principal = None         # salle du point principal (vague 4, section 11.2)
+        try:
+            from atelier.lieu.principal import point_principal
+            from atelier import chemin_lieu
+            principal = point_principal(chemin_lieu(lieu))
+            self.id_principal = principal.id if principal is not None else None
+        except Exception as e:     # lieu illisible ici : le routeur l'a déjà lu, on s'en passe
+            self.get_logger().warn(f'point principal inconnu : {e}')
         if not routeur.noeuds:
             raise ErreurMoteur(f'aucun nœud sur l\'étage « {etage} » dans itineraires.yaml')
         depart = routeur.pose_arrivee('accueil') if 'accueil' in routeur.noeuds else (0, 0, 0)
@@ -491,7 +499,21 @@ class NoeudGuide(Node):
                                                           ensure_ascii=False)))
 
     def _sur_aller(self, msg):
-        self.guide.aller(msg.data)
+        # Vague 4 (section 11.4) : /guide/aller accepte aussi du JSON {cible, accompagner?,
+        # retour?} (atelier.lieu.comportement.lire_demande_aller) ; « principal » désigne le
+        # point principal. Passerelle de l'intégrateur : seule la cible est prise en compte,
+        # l'agent Comportement du guide ajoute l'accompagnement et le retour.
+        try:
+            from atelier.lieu.comportement import lire_demande_aller
+            cible = lire_demande_aller(msg.data)['cible']
+        except ImportError:
+            cible = msg.data
+        except ValueError as e:
+            self.get_logger().warn(f'/guide/aller illisible : {e}')
+            cible = msg.data
+        if cible == 'principal' and self.id_principal:
+            cible = self.id_principal
+        self.guide.aller(cible)
         self.publier()
 
     def _sur_stop(self, _msg):

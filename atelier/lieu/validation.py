@@ -23,17 +23,33 @@ from pathlib import Path
 from typing import Optional
 
 from . import geometrie
+from .modeles import ETIQUETTE_PRINCIPAL
 
 DOSSIER_SCHEMAS = Path(__file__).resolve().parent / "schemas"
 TYPES_FICHIERS = ("lieu", "monde", "salles", "itineraires", "zones", "carte", "session_scan", "reconnaissance",
-                  "etat_pont", "etat_reperage", "demande_reperage")
-# Les trois derniers ne sont pas des fichiers : ce sont les messages JSON (std_msgs/String) du pont
-# et du repérage du vrai robot (section 10 du plan) ; le nom affiché est celui du sujet ROS 2.
+                  "etat_pont", "etat_reperage", "demande_reperage",
+                  # vague 4 (section 11 du plan) : fichiers du lieu pour l'équipe, scènes de passants,
+                  # chorégraphies, puis messages JSON (std_msgs/String) des nouveaux sujets
+                  "personnalites", "dialogues", "camera", "scene", "choregraphie",
+                  "etat_guide", "evenement_guide", "demande_guide", "pietons_etat", "pietons_consigne",
+                  "personnes", "maitre_mouvement", "etat_pilotage", "robot_dire", "personnalite_active")
+# Les messages ne sont pas des fichiers : ce sont les messages JSON (std_msgs/String) du pont, du
+# repérage (section 10 du plan) et des sujets de la vague 4 ; le nom affiché est celui du sujet ROS 2.
 NOMS_FICHIERS = {"lieu": "lieu.yaml", "monde": "monde.yaml", "salles": "salles.yaml",
                  "itineraires": "itineraires.yaml", "zones": "zones.yaml", "carte": "carte.yaml",
                  "session_scan": "session.json", "reconnaissance": "reconnaissance.yaml",
                  "etat_pont": "/pont/etat", "etat_reperage": "/reperage/etat",
-                 "demande_reperage": "/reperage/demander"}
+                 "demande_reperage": "/reperage/demander",
+                 "personnalites": "personnalites.yaml", "dialogues": "dialogues.yaml", "camera": "camera.yaml",
+                 "scene": "scène", "choregraphie": "chorégraphie",
+                 "etat_guide": "/guide/etat", "evenement_guide": "/guide/evenement", "demande_guide": "/guide/aller",
+                 "pietons_etat": "/pietons/etat", "pietons_consigne": "/pietons/consigne",
+                 "personnes": "/personnes/lidar", "maitre_mouvement": "/mouvement/maitre",
+                 "etat_pilotage": "/pilotage/etat", "robot_dire": "/robot/dire",
+                 "personnalite_active": "/personnalite/active"}
+TYPES_MESSAGES = ("etat_pont", "etat_reperage", "demande_reperage", "etat_guide", "evenement_guide",
+                  "demande_guide", "pietons_etat", "pietons_consigne", "personnes", "maitre_mouvement",
+                  "etat_pilotage", "robot_dire", "personnalite_active")
 IDS_RESERVES = ("sol", "g1_proxy")                 # noms de modèles Gazebo déjà pris
 IDS_BOOLEENS = ("yes", "no", "on", "off", "y", "n", "true", "false")
 REGLE_ID = ("lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, "
@@ -217,7 +233,9 @@ TYPES_FR = {"number": "un nombre", "integer": "un nombre entier", "string": "un 
             "array": "une liste [ … ]", "object": "un ensemble de champs { … }",
             "boolean": "true ou false", "null": "null"}
 MOTS_ELEMENTS = {"murs": "mur", "objets": "objet", "pietons": "piéton", "etages": "étage",
-                 "interdites": "zone interdite", "lentes": "zone lente", "passages": "passage"}
+                 "interdites": "zone interdite", "lentes": "zone lente", "passages": "passage",
+                 "personnalites": "personnalité", "regles": "règle", "pas": "pas", "gestes": "geste",
+                 "led": "couleur", "paroles": "parole"}
 UNITES = {"polygone": "sommet", "trajet": "point", "alias": "alias", "etages": "étage",
           "taille": "valeur", "origin": "valeur", "centre": "coordonnée", "de": "coordonnée",
           "a": "coordonnée", "min": "coordonnée", "max": "coordonnée"}
@@ -453,8 +471,14 @@ def regles_lieu(d, fichier="lieu.yaml"):
 
 def regles_salles(d, fichier="salles.yaml"):
     ids = [s["id"] for s in d]
-    return [f"{fichier} : la salle « {i} » apparaît {ids.count(i)} fois ; chaque salle doit avoir un id différent"
-            for i in _doublons(ids)]
+    messages = [f"{fichier} : la salle « {i} » apparaît {ids.count(i)} fois ; chaque salle doit avoir un id différent"
+                for i in _doublons(ids)]
+    # vague 4 (section 11.2) : un seul point principal par lieu
+    principales = [s["id"] for s in d if ETIQUETTE_PRINCIPAL in s.get("etiquettes", [])]
+    if len(principales) > 1:
+        messages.append(f"{fichier} : {len(principales)} salles portent l'étiquette « {ETIQUETTE_PRINCIPAL} » "
+                        f"({', '.join(principales)}) ; un lieu n'a qu'un point principal : retirez-la des autres")
+    return messages
 
 
 def regles_itineraires(d, fichier="itineraires.yaml"):
@@ -541,6 +565,14 @@ def regles_monde(d, fichier="monde.yaml"):
         if not p["aller_retour"] and len(trajet) > 2 and list(trajet[0]) == list(trajet[-1]):
             messages.append(f"{fichier}, piéton « {p['id']} » : le dernier point répète le premier ; "
                             "retirez-le (avec aller_retour: false, le piéton revient seul au départ)")
+        # vague 4 (section 11.3) : pauses sur des points du trajet, une au plus par point
+        points_pauses = [q["point"] for q in p.get("pauses", [])]
+        for rang in points_pauses:
+            if rang >= len(trajet):
+                messages.append(f"{fichier}, piéton « {p['id']} » : une pause est au point n°{rang}, mais le trajet "
+                                f"n'a que {len(trajet)} points (numérotés de 0 à {len(trajet) - 1})")
+        for rang in _doublons(points_pauses):
+            messages.append(f"{fichier}, piéton « {p['id']} » : deux pauses au point n°{rang} ; gardez-en une seule")
     depart = d["depart_robot"]
     if emprise_ok and hors((depart["x"], depart["y"])):
         messages.append(f"{fichier}, depart_robot : {_point_texte((depart['x'], depart['y']))} sort de "
@@ -656,7 +688,7 @@ def regles_etat_pont(d, fichier="/pont/etat"):
     messages = []
     if d["etat"] == "en_mouvement" and not d["mouvement_permis"]:
         messages.append(f"{fichier} : etat en_mouvement alors que mouvement_permis est faux")
-    if d["etat"] in ("attente_reperage", "arret", "arret_verrouille") and d["mouvement_permis"]:
+    if d["etat"] in ("attente_reperage", "arret", "arret_verrouille", "pilotage") and d["mouvement_permis"]:
         messages.append(f"{fichier} : etat {d['etat']} alors que mouvement_permis est vrai")
     if d["verrou"] != (d["etat"] == "arret_verrouille"):
         messages.append(f"{fichier} : verrou doit être vrai si et seulement si etat vaut arret_verrouille")
@@ -688,18 +720,101 @@ def regles_demande_reperage(d, fichier="/reperage/demander"):
     return []
 
 
-REGLES = {"lieu": regles_lieu, "monde": regles_monde, "salles": regles_salles,
+# ---------------------------------------------------------------- vague 4 (section 11 du plan)
+
+def _ids_uniques(elements, fichier, mot):
+    ids = [e["id"] for e in elements]
+    return [f"{fichier} : {mot} « {i} » apparaît {ids.count(i)} fois ; chaque id doit être différent"
+            for i in _doublons(ids)]
+
+
+def regles_lieu_v4(d, fichier="lieu.yaml"):
+    messages = regles_lieu(d, fichier)
+    guide = d.get("guide") or {}
+    ralentir = guide.get("distance_ralentir_m", 2.0)
+    attendre = guide.get("distance_attendre_m", 3.5)
+    if attendre <= ralentir:
+        messages.append(f"{fichier}, guide : distance_attendre_m ({nombre(attendre)}) doit être plus grande que "
+                        f"distance_ralentir_m ({nombre(ralentir)}) : le robot ralentit d'abord, puis s'arrête")
+    return messages
+
+
+def regles_personnalites(d, fichier="personnalites.yaml"):
+    messages = _ids_uniques(d["personnalites"], fichier, "la personnalité")
+    ids = [p["id"] for p in d["personnalites"]]
+    if d["active"] not in ids:
+        messages.append(f"{fichier} : la personnalité active « {d['active']} » n'existe pas ; personnalités : "
+                        f"{', '.join(ids)}")
+    return messages
+
+
+def regles_dialogues(d, fichier="dialogues.yaml"):
+    messages = _ids_uniques(d["regles"], fichier, "la règle")
+    for r in d["regles"]:
+        ou = f"{fichier}, règle « {r['id']} »"
+        if r["action"] == "guider":
+            sans = [m for m in r["motifs"] if "{salle}" not in m]
+            if sans:
+                messages.append(f"{ou} : l'action guider a besoin de {{salle}} dans chaque motif (pas dans "
+                                f"« {sans[0]} »)")
+        if r["action"] == "personnalite" and "personnalite" not in r:
+            messages.append(f"{ou} : l'action personnalite a besoin du champ personnalite (l'id à activer)")
+        if r["action"] != "personnalite" and "personnalite" in r:
+            messages.append(f"{ou} : le champ personnalite ne sert qu'avec l'action personnalite")
+    return messages
+
+
+def regles_scene(d, fichier="scène"):
+    messages = []
+    if not d["trajets"] and not d.get("hasard"):
+        messages.append(f"{fichier} « {d['id']} » : il faut des trajets, ou hasard (un nombre de trajets tirés au sort)")
+    # les piétons de la scène ont le format de monde.yaml, et ses règles
+    monde = {"version": 1, "emprise": {"min": [-1e6, -1e6], "max": [1e6, 1e6]}, "pietons": d["pietons"],
+             "depart_robot": {"x": 0.0, "y": 0.0, "theta": 0.0}}
+    messages += [m.replace("monde.yaml", f"{fichier} « {d['id']} »", 1)
+                 for m in valider_donnees("monde", monde, "monde.yaml")]
+    ids = {p.get("id") for p in d["pietons"] if isinstance(p, dict)}
+    if d.get("visiteur") and d["visiteur"] not in ids:
+        messages.append(f"{fichier} « {d['id']} » : le visiteur « {d['visiteur']} » n'est pas un des piétons de la scène")
+    for p in d["pietons"]:
+        if isinstance(p, dict) and d.get("visiteur") == p.get("id") and p.get("pilote") != "externe":
+            messages.append(f"{fichier} « {d['id']} », piéton « {p['id']} » : le visiteur doit avoir pilote: externe")
+    return messages
+
+
+def regles_choregraphie(d, fichier="chorégraphie"):
+    from .pilotage import regles_choregraphie as regles     # import ici : pilotage importe ce module
+    return regles(d, fichier)
+
+
+def regles_pietons_etat(d, fichier="/pietons/etat"):
+    return _ids_uniques(d["pietons"], fichier, "le piéton")
+
+
+def _sans_regle(d, fichier=""):
+    return []
+
+
+REGLES = {"lieu": regles_lieu_v4, "monde": regles_monde, "salles": regles_salles,
           "itineraires": regles_itineraires, "zones": regles_zones, "carte": regles_carte,
           "session_scan": regles_session_scan, "reconnaissance": regles_reconnaissance,
           "etat_pont": regles_etat_pont, "etat_reperage": regles_etat_reperage,
-          "demande_reperage": regles_demande_reperage}
+          "demande_reperage": regles_demande_reperage,
+          "personnalites": regles_personnalites, "dialogues": regles_dialogues, "camera": _sans_regle,
+          "scene": regles_scene, "choregraphie": regles_choregraphie,
+          "etat_guide": _sans_regle, "evenement_guide": _sans_regle, "demande_guide": _sans_regle,
+          "pietons_etat": regles_pietons_etat, "pietons_consigne": _sans_regle, "personnes": _sans_regle,
+          "maitre_mouvement": _sans_regle, "etat_pilotage": _sans_regle, "robot_dire": _sans_regle,
+          "personnalite_active": _sans_regle}
 
 
 def valider_donnees(type_fichier, donnees, fichier=None):
     """Erreurs d'un fichier (déjà lu), en français : schéma, puis règles propres au fichier.
 
     type_fichier : lieu, monde, salles, itineraires, zones, carte, session_scan, reconnaissance,
-    ou un message du vrai robot : etat_pont, etat_reperage, demande_reperage (section 10 du plan).
+    ou un message du vrai robot : etat_pont, etat_reperage, demande_reperage (section 10 du plan) ;
+    vague 4 (section 11) : personnalites, dialogues, camera, scene, choregraphie, et les messages de
+    TYPES_MESSAGES.
     fichier : nom affiché au début de chaque message (par défaut : salles.yaml, monde.yaml...).
     Renvoie une liste vide si tout va bien.
     """

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "salles.yaml",
-  "description": "Destinations du guide : l'accueil et les salles du lieu, dans une liste. Les id sont uniques dans le fichier (vérifié par atelier.lieu). La salle d'id « accueil » a la pose de accueil dans lieu.yaml. Chaque salle a dans itineraires.yaml un nœud de même id, à la même position x, y : le guide y mène le robot puis le tourne vers theta.",
+  "description": "Destinations du guide : l'accueil et les salles du lieu, dans une liste. Les id sont uniques dans le fichier (vérifié par atelier.lieu). Chaque salle a dans itineraires.yaml un nœud de même id, à la même position x, y : le guide y mène le robot puis le tourne vers theta. Vague 4 (section 11.2 du plan) : une salle, et une seule, porte l'étiquette « principal » : c'est le point principal du lieu (accueil, départ de la simulation, pose du repérage, retour après chaque visite), dont la pose est recopiée dans accueil de lieu.yaml. Un fichier d'avant la vague 4, sans étiquette, a pour point principal implicite la salle « accueil ».",
   "type": "array",
   "items": {"$ref": "#/definitions/salle"},
   "definitions": {
@@ -56,6 +56,13 @@
           "description": "Facultatif, vide par défaut. Ce que le robot dit en arrivant. Vide : le guide annonce le nom de la salle.",
           "type": "string",
           "maxLength": 500
+        },
+        "etiquettes": {
+          "description": "Facultatif, liste vide par défaut (absente du fichier). Étiquettes de la salle : des identifiants (même forme que les id), sans doublon. « principal » est réservée au point principal du lieu, porté par une seule salle (vérifié par atelier.lieu). Les autres sont libres (ex. toilettes, sortie) et ne changent rien au guide.",
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 20,
+          "items": {"$ref": "#/definitions/id"}
         }
       }
     }

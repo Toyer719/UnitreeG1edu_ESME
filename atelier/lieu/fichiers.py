@@ -20,8 +20,8 @@ import numpy as np
 import yaml
 
 import atelier
-from .modeles import (Emprise, Etage, InfoCarte, Itineraires, Lieu, Monde, Mur, Noeud, PoseEtage, Salle,
-                      Zones)
+from .modeles import (ETIQUETTE_PRINCIPAL, Emprise, Etage, InfoCarte, Itineraires, Lieu, Monde, Mur, Noeud,
+                      PoseEtage, Salle, Zones)
 from .validation import REGLE_ID, valider_donnees
 
 FICHE = "lieu.yaml"
@@ -517,7 +517,9 @@ def creer_lieu(lieu, nom, etage="rdc", nom_etage="Rez-de-chaussée", largeur=20.
 
     lieu : id (ex. « lycee », dans $ATELIER_LIEUX) ou chemin du dossier, qui ne doit pas exister
     (ou être vide). Contenu : un étage, l'accueil en (1, 1) tourné vers x, la salle et le nœud
-    « accueil », aucune zone, et un monde de largeur × profondeur mètres entouré de 4 murs.
+    « accueil », aucune zone, et un monde de largeur × profondeur mètres entouré de 4 murs. La salle
+    « accueil » porte l'étiquette « principal » : c'est le point principal du lieu (vague 4, section
+    11.2 du plan), et depart_robot du monde a sa pose.
     """
     dossier = dossier_lieu(lieu)
     if not atelier.MOTIF_ID.match(dossier.name):
@@ -532,7 +534,7 @@ def creer_lieu(lieu, nom, etage="rdc", nom_etage="Rez-de-chaussée", largeur=20.
             Mur("ext_nord", (x, y), (0.0, y), 0.2, 2.5), Mur("ext_ouest", (0.0, y), (0.0, 0.0), 0.2, 2.5)]
     nouveau = Lieu(
         nom=nom, etages=[Etage(etage, nom_etage, "monde")], accueil=accueil, langue=langue,
-        salles=[Salle("accueil", "Accueil", etage, accueil.pose(), ["accueil"], "")],
+        salles=[Salle("accueil", "Accueil", etage, accueil.pose(), ["accueil"], "", [ETIQUETTE_PRINCIPAL])],
         itineraires=Itineraires({"accueil": Noeud(etage, accueil.x, accueil.y)}, []),
         zones=Zones(),
         mondes={etage: Monde(Emprise(0.0, 0.0, x, y), accueil.pose(), murs)})

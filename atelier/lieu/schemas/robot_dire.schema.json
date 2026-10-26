@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/robot/dire",
+  "description": "Phrase à dire par le robot, en JSON (std_msgs/String) sur /robot/dire (vague 4, section 11.6 du plan) : la seule entrée de la partie voix de l'équipe. Publiée par le chatbot (réponses), par le relais des événements du guide (/guide/evenement, avec les phrases de la personnalité active) et par les chorégraphies. Des champs en plus sont permis.",
+  "type": "object",
+  "required": ["texte"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Facultatif : version du format, 1.", "const": 1},
+    "texte": {"description": "La phrase, en français.", "type": "string", "minLength": 1, "maxLength": 500},
+    "source": {"description": "Facultatif : guide, dialogue, personnalite, choregraphie, atelier ou autre.", "type": "string", "enum": ["guide", "dialogue", "personnalite", "choregraphie", "atelier", "autre"]},
+    "code": {"description": "Facultatif : code de l'événement du guide (source guide).", "type": "string"},
+    "priorite": {"description": "Facultatif, défaut normale : haute coupe la phrase en cours.", "type": "string", "enum": ["normale", "haute"]},
+    "langue": {"description": "Facultatif, défaut fr.", "type": "string", "pattern": "^[a-z]{2}$"}
+  }
+}

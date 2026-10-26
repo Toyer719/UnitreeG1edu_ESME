@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/mouvement/maitre",
+  "description": "Verrou des mouvements du robot (vague 4, section 11.5 du plan) : qui commande les mouvements, le guide (navigation, pont) ou le pilotage (onglet Pilotage). En JSON (std_msgs/String) sur /mouvement/maitre, QoS fiable, transient_local, profondeur 1, pour le publieur comme pour chaque abonné. Publié seulement par le nœud pilotage (paquet g1_pilotage). Aucun message reçu : le maître est le guide (comme avant la vague 4). L'arrêt est toujours permis, quel que soit le maître.",
+  "type": "object",
+  "required": ["version", "maitre", "par", "depuis", "message"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Version du format. Toujours 1.", "const": 1},
+    "maitre": {"description": "guide : le pont suit /cmd_vel et le guide accepte /guide/aller ; pilotage : le pont ignore /cmd_vel et le guide refuse /guide/aller.", "type": "string", "enum": ["guide", "pilotage"]},
+    "par": {"description": "Qui a pris ou rendu la main (ex. « atelier », « atelier (forcé) »).", "type": "string", "maxLength": 80},
+    "depuis": {"description": "Heure ISO 8601 locale avec décalage, à la seconde.", "type": "string", "minLength": 1},
+    "message": {"description": "Phrase en français pour l'utilisateur.", "type": "string"}
+  }
+}

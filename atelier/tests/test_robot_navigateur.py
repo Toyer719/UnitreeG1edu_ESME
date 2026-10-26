@@ -58,6 +58,10 @@ def test_reperage_dans_l_onglet_simulation(serveur, navigateur, relais, faux_bin
     nav = navigateur
     _api(base, "/api/lieux/demo/etages/rdc/monde/generer", {})
     nav.ouvrir(base + "/")
+    # La page démarre en asynchrone (GET /api/etat, puis le lieu mémorisé) : on attend qu'elle ait
+    # ouvert son premier écran avant d'écrire le lieu, sinon son démarrage en cours, coupé par le
+    # rechargement ci-dessous, pouvait encore relire et changer ce qu'on vient d'écrire.
+    nav.attendre("return document.querySelector('.onglet.actif') !== null", message="premier écran ouvert")
     nav.js("localStorage.setItem('atelier.lieu', 'demo'); localStorage.setItem('atelier.etage', 'rdc');"
            "localStorage.setItem('atelier.mode-simulation', 'simu');")
     nav.ouvrir(base + "/?recharger=1#simulation")      # autre adresse : la page se recharge

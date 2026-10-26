@@ -156,12 +156,26 @@ class FauxRobot:
         prochain_rep = 0.0
         while self._actif:
             t = time.monotonic()
-            if self.reperage is not None and t >= prochain_rep:
-                self.publier_reperage(self.reperage)
+            # Une seule lecture de chaque réglage : le test peut le remettre à None entre deux
+            # lectures (une consigne None ferait sinon tomber ce fil, un repérage None
+            # publierait « non repéré »)
+            reperage, consigne = self.reperage, self.cmd_vel
+            if reperage is not None and t >= prochain_rep:
+                self.publier_reperage(reperage)
                 prochain_rep = t + 0.2
-            if self.cmd_vel is not None:
-                self.publier_cmd_vel(*self.cmd_vel)
+            if consigne is not None:
+                self.publier_cmd_vel(*consigne)
             time.sleep(0.05)
+
+    def cesser(self, nom):
+        """
+        Arrête la publication continue de « cmd_vel » ou « reperage ».
+
+        Attend ensuite que le fil de publication (pas de 50 ms) ait fini son tour : plus rien de
+        ce sujet ne part après le retour de cette méthode.
+        """
+        setattr(self, nom, None)
+        time.sleep(0.07)
 
     def _sur_requete(self, msg):
         with self.verrou:
