@@ -3,8 +3,9 @@
 
   g1-monde generer --lieu L --etage E
       mondes/E.monde.yaml → mondes/E.sdf, cartes/E.pgm et .yaml, cartes/E_interdit.pgm et .yaml
-  g1-monde simuler --lieu L --etage E [--sans-fenetre]
-      Gazebo, robot proxy et piétons : ros2 launch g1_sim simulation.launch.py (section 4.5 du plan)
+  g1-monde simuler --lieu L --etage E [--sans-fenetre] [--jumeau]
+      Gazebo, robot proxy et piétons : ros2 launch g1_sim simulation.launch.py (section 4.5 du plan) ;
+      --jumeau : répétition du vrai robot, avec le faux G1 (jumeau:=true, section 10.4)
 
 L : chemin du lieu, ou id seul (demo désigne ~/robot-g1/lieux/demo). Lancé par bin/g1-monde avec
 le Python de .venv-projet. Code de sortie : 0 si tout va bien, 1 en cas d'erreur, 2 si la commande
@@ -70,6 +71,8 @@ def commande_ros2(args, dossier):
                 f"sans_fenetre:={'true' if args.sans_fenetre else 'false'}"]
     if args.monde:
         commande.append(f"monde:={os.path.abspath(args.monde)}")
+    if getattr(args, "jumeau", False):
+        commande.append("jumeau:=true")
     return commande
 
 
@@ -117,6 +120,11 @@ def commande_simuler(args):
               "l'environnement :\n  cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_sim"
               "\n  source ~/robot-g1/setup/env.sh")
         return 1
+    if args.jumeau and not paquet_ros_trouve("g1_jumeau"):
+        print("Simulation non lancée : --jumeau demande le paquet ROS 2 g1_jumeau (faux G1), introuvable. "
+              "Compilez-le, puis rechargez l'environnement :\n  cd ~/robot-g1/ws && colcon build "
+              "--symlink-install --packages-select g1_bridge g1_jumeau\n  source ~/robot-g1/setup/env.sh")
+        return 1
     print("Lancement :", " ".join(commande))
     sys.stdout.flush()
     # ros2 launch remplace ce programme : Ctrl+C et l'arrêt par l'Atelier lui parviennent directement
@@ -138,6 +146,9 @@ def main(argv=None):
     s.add_argument("--etage", required=True, help="id de l'étage (ex. rdc)")
     s.add_argument("--sans-fenetre", action="store_true", help="Gazebo sans fenêtre (serveur seul)")
     s.add_argument("--monde", help="autre monde .sdf à charger (par défaut : mondes/<etage>.sdf du lieu)")
+    s.add_argument("--jumeau", action="store_true",
+                   help="répétition du vrai robot : le faux G1 reçoit les ordres de marche (7105) et pilote "
+                        "le robot proxy ; rien sur /cmd_vel, /odom ni /tf")
     s.add_argument("--afficher", action="store_true", help="afficher la commande ros2 launch sans la lancer")
     s.set_defaults(fonction=commande_simuler)
 

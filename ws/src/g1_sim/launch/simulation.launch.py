@@ -2,7 +2,7 @@
 Simulation Gazebo d'un étage d'un lieu de l'Atelier G1 (contrat : section 4.5 du plan).
 
   ros2 launch g1_sim simulation.launch.py lieu:=DOSSIER etage:=ID sans_fenetre:=true|false
-      [monde:=FICHIER.sdf]
+      [monde:=FICHIER.sdf] [jumeau:=true|false]
 
 Ce que lance ce fichier :
   - Gazebo Fortress sur <lieu>/mondes/<etage>.sdf (ou sur monde:=FICHIER.sdf) ;
@@ -11,6 +11,14 @@ Ce que lance ce fichier :
     lu dans <lieu>/mondes/<etage>.monde.yaml ;
   - le pont ros_gz_bridge (config/pont_gz.yaml) : /cmd_vel, /odom, /tf, /clock et /points ;
   - robot_state_publisher : le repère fixe base_link → lidar.
+
+jumeau:=true (répétition du vrai robot, section 10.4 du plan ; défaut false : rien ne change) :
+  - le robot proxy n'est plus relié à /cmd_vel, /odom ni /tf : sur le vrai robot, ce sont le pont
+    et le relais qui les tiennent. Le pont ros_gz_bridge lit config/pont_gz_jumeau.yaml :
+    /g1_jumeau/cmd_vel (vitesses), /g1_jumeau/odom (vérité terrain, repère du monde = map),
+    /g1_jumeau/points (nuage, repère lidar) et /clock ;
+  - le nœud g1_jumeau (paquet g1_jumeau), faux service « sport » du G1 : il reçoit les ordres
+    7105 sur /api/sport/request et pilote le robot proxy par /g1_jumeau/cmd_vel.
 
 Le repère map → odom n'est pas publié ici : c'est le lancement de g1_nav qui s'en charge
 (identité en simulation, car le repère odom de Gazebo est le repère du monde, donc de la carte).
@@ -155,6 +163,38 @@ def description_urdf(modele_sdf):
 """
 
 
+def fichier_pont(partage, jumeau):
+    """
+    Réglages de ros_gz_bridge : config/pont_gz.yaml, ou pont_gz_jumeau.yaml avec jumeau.
+
+    Repli pour pont_gz_jumeau.yaml : le dossier config/ à côté du vrai fichier de lancement,
+    tant que le paquet installé avec --symlink-install n'a pas été recompilé depuis l'ajout.
+    """
+    if not jumeau:
+        return partage / 'config' / 'pont_gz.yaml'
+    installe = partage / 'config' / 'pont_gz_jumeau.yaml'
+    if installe.is_file():
+        return installe
+    source = Path(__file__).resolve().parent.parent / 'config' / 'pont_gz_jumeau.yaml'
+    if source.is_file():
+        return source
+    raise ErreurSimulation(f'{installe} est introuvable : recompilez g1_sim (cd ~/robot-g1/ws && '
+                           'colcon build --symlink-install --packages-select g1_sim)')
+
+
+def noeud_jumeau():
+    """Le faux service sport du G1 (paquet g1_jumeau) ; ErreurSimulation s'il n'est pas compilé."""
+    from ament_index_python.packages import PackageNotFoundError, get_package_prefix
+    try:
+        get_package_prefix('g1_jumeau')
+    except PackageNotFoundError:
+        raise ErreurSimulation(
+            'jumeau:=true, mais le paquet g1_jumeau est introuvable. Compilez-le, puis rechargez '
+            "l'environnement : cd ~/robot-g1/ws && colcon build --symlink-install "
+            '--packages-select g1_bridge g1_jumeau && source ~/robot-g1/setup/env.sh') from None
+    return Node(package='g1_jumeau', executable='jumeau', name='g1_jumeau', output='screen')
+
+
 def commande_gazebo(sdf, sans_fenetre):
     """Commande ign gazebo : serveur seul sans fenêtre, ou serveur et fenêtre."""
     if sans_fenetre:
@@ -168,10 +208,11 @@ def _lancer(context):
     etage = LaunchConfiguration('etage').perform(context)
     sans_fenetre = LaunchConfiguration('sans_fenetre').perform(context) == 'true'
     monde = LaunchConfiguration('monde').perform(context)
+    jumeau = LaunchConfiguration('jumeau').perform(context) == 'true'
 
     partage = dossier_partage()
     modele = partage / 'models' / NOM_ROBOT / 'model.sdf'
-    pont = partage / 'config' / 'pont_gz.yaml'
+    pont = fichier_pont(partage, jumeau)
 
     dossier = chemin_lieu(lieu)
     sdf = fichier_monde(dossier, etage, monde)
@@ -192,6 +233,14 @@ def _lancer(context):
         name='robot_state_publisher', output='screen',
         parameters=[{'robot_description': description_urdf(modele), 'use_sim_time': True}])
 
+    # Répétition : le faux G1 tient la place du service de marche du robot
+    jumeaux = []
+    if jumeau:
+        jumeaux = [LogInfo(msg='g1_sim : répétition (jumeau:=true) : vitesses par le faux G1 '
+                               '(/api/sport/request → /g1_jumeau/cmd_vel), vérité terrain sur '
+                               '/g1_jumeau/odom, rien sur /cmd_vel, /odom ni /tf'),
+                   noeud_jumeau()]
+
     return [
         LogInfo(msg=f'g1_sim : monde {sdf} (« {nom} »)'),
         LogInfo(msg=f'g1_sim : robot en x={x:.2f} y={y:.2f} theta={theta:.2f} '
@@ -200,6 +249,7 @@ def _lancer(context):
         apparition,
         pont_gz,
         etat_robot,
+    ] + jumeaux + [
         # Gazebo fermé (fenêtre fermée, plantage) : on arrête tout le lancement
         RegisterEventHandler(OnProcessExit(
             target_action=gazebo,
@@ -230,5 +280,11 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'monde', default_value='',
             description='Monde .sdf à charger. Vide : <lieu>/mondes/<etage>.sdf.'),
+        # Argument de la vague 3 (sections 4.5 et 10.4) ; défaut false : rien ne change
+        DeclareLaunchArgument(
+            'jumeau', default_value='false', choices=['true', 'false'],
+            description='true : répétition du vrai robot. Le faux G1 (g1_jumeau) reçoit les '
+                        'ordres 7105 et pilote le robot proxy ; rien sur /cmd_vel, /odom '
+                        'ni /tf.'),
         OpaqueFunction(function=_lancer),
     ])

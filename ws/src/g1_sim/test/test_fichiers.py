@@ -205,15 +205,16 @@ def test_commande_gazebo(lancement):
 
 
 def test_arguments_du_contrat(lancement):
-    """Les 4 arguments de la section 4.5, avec leurs valeurs par défaut."""
+    """Les arguments de la section 4.5 (jumeau : vague 3), avec leurs valeurs par défaut."""
     from launch.actions import DeclareLaunchArgument
     arguments = {a.name: a for a in lancement.generate_launch_description().entities
                  if isinstance(a, DeclareLaunchArgument)}
-    assert set(arguments) == {'lieu', 'etage', 'sans_fenetre', 'monde'}
+    assert set(arguments) == {'lieu', 'etage', 'sans_fenetre', 'monde', 'jumeau'}
     assert arguments['lieu'].default_value is None
     assert arguments['etage'].default_value is None
     assert arguments['sans_fenetre'].default_value[0].text == 'false'
     assert arguments['monde'].default_value[0].text == ''
+    assert arguments['jumeau'].default_value[0].text == 'false'
 
 
 @pytest.mark.skipif(shutil.which('ros2') is None, reason='ROS 2 non chargé')

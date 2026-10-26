@@ -1,0 +1,38 @@
+# Correspondances de ros_gz_bridge en répétition du vrai robot (jumeau:=true, section 10.4 du plan).
+# Fichier lu par parameter_bridge à la place de pont_gz.yaml quand g1_sim est lancé avec jumeau:=true.
+#
+# Le robot proxy n'est relié ni à /cmd_vel, ni à /odom, ni à /tf : sur le vrai robot, ce sont le
+# pont (g1_bridge) et le relais (odom_vers_tf) qui les tiennent. Les vitesses viennent du faux G1
+# (g1_jumeau), qui reçoit les ordres 7105 sur /api/sport/request comme le vrai service « sport ».
+#
+#   GZ_TO_ROS : Gazebo publie, ROS 2 reçoit ; ROS_TO_GZ : l'inverse.
+#   Types Gazebo de Fortress : ignition.msgs.*
+
+# Horloge de la simulation, pour use_sim_time
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "ignition.msgs.Clock"
+  direction: GZ_TO_ROS
+
+# Vitesses du faux G1 vers le plugin VelocityControl du robot (il garde la dernière consigne)
+- ros_topic_name: "/g1_jumeau/cmd_vel"
+  gz_topic_name: "/model/g1_proxy/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "ignition.msgs.Twist"
+  direction: ROS_TO_GZ
+
+# Vérité terrain : la pose du robot dans le repère du monde Gazebo (= map). Lue par le faux G1
+# (odométrie qui dérive), le faux slam_operate et les tests ; jamais par la navigation.
+- ros_topic_name: "/g1_jumeau/odom"
+  gz_topic_name: "/model/g1_proxy/odometry"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "ignition.msgs.Odometry"
+  direction: GZ_TO_ROS
+
+# Nuage du LiDAR gpu_lidar, dans le repère lidar (lu par le faux slam_operate)
+- ros_topic_name: "/g1_jumeau/points"
+  gz_topic_name: "/model/g1_proxy/lidar/points"
+  ros_type_name: "sensor_msgs/msg/PointCloud2"
+  gz_type_name: "ignition.msgs.PointCloudPacked"
+  direction: GZ_TO_ROS
