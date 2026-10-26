@@ -11,14 +11,16 @@ import math
 from atelier import RACINE
 from atelier.lieu import copier_lieu, valider_message
 from atelier.lieu.comportement import DELAIS_GUIDE, ETATS_GUIDE
-from g1_nav.guide import (DELAI_BLOQUE_S, DELAI_DETOUR_S, DELAI_TF_PERDU_S, ecart_angle, Guide,
-                          SEUIL_ORIENTATION_RAD)
+from g1_nav.guide import (DELAI_BLOQUE_S, DELAI_DEPART_S, DELAI_DETOUR_S, DELAI_PASSANT_PARTI_S,
+                          DELAI_TF_PERDU_S, DISTANCE_PASSANT_M, ecart_angle, Guide,
+                          PERSISTANCE_DEVANT_S, SEUIL_ORIENTATION_RAD)
 from g1_nav.moteurs import etat_repos, MoteurFactice
 from g1_nav.routeur import Routeur
 from g1_nav.visiteur import lire_personnes, Personne, personne_devant, SuiviVisiteur
 import pytest
 
 PAS_S = 0.2     # le nœud ROS appelle pas() 5 fois par seconde
+LIBRE_S = DELAI_PASSANT_PARTI_S + PERSISTANCE_DEVANT_S + 0.6    # passage libre : reprise en moins
 PRINCIPAL = (2.5, 10.0, 0.0)
 
 
@@ -407,12 +409,17 @@ def test_passant_qui_s_ecarte(dossier):
     assert etat['etat'] == 'attente_passage' and banc.codes()[-1] == 'passant_gene'
     assert banc.evenements[-1]['texte'] == 'Pardon, puis-je passer ?'
     assert 'bloque' not in banc.etats()
+    # Pendant l'attente, le robot est arrêté (moteur annulé : Nav2 ne contourne pas de lui-même)
+    assert not banc.moteur.etat()['en_cours']
+    position = banc.moteur.position
     banc.tourner(12.0, jusqu_a=('detour',))
     assert banc.guide.etat()['etat'] == 'attente_passage' and banc.guide.detours == 0
+    assert banc.moteur.position == position
     banc.vues = []
     banc.moteur.bloquer(False)
-    banc.tourner(2.0, jusqu_a=('en_route',))
+    banc.tourner(LIBRE_S, jusqu_a=('en_route',))
     assert banc.guide.etat()['etat'] == 'en_route' and banc.codes()[-1] == 'passage_libre'
+    assert banc.moteur.etat()['en_cours']
     assert banc.tourner(80.0)['etat'] == 'arrive' and banc.guide.detours == 0
     assert banc.etats() == ['en_route', 'attente_passage', 'en_route', 'arrive']
     assert banc.guide.attentes_passage == 1
@@ -453,8 +460,8 @@ def test_passant_parti_mais_obstacle_bloque_puis_detour(dossier):
     banc.moteur.bloquer(True)
     banc.tourner(DELAI_BLOQUE_S + 1.4, jusqu_a=('attente_passage',))
     banc.vues = []                      # parti, mais le robot n'avance pas (une boîte)
-    banc.tourner(DELAI_DETOUR_S, jusqu_a=('detour',))
-    assert banc.etats() == ['en_route', 'attente_passage', 'bloque', 'detour']
+    banc.tourner(LIBRE_S + DELAI_DEPART_S + DELAI_DETOUR_S, jusqu_a=('detour',))
+    assert banc.etats() == ['en_route', 'attente_passage', 'en_route', 'bloque', 'detour']
 
 
 def test_passants_desactives(dossier):
@@ -471,7 +478,8 @@ def test_personne_sur_le_cote_ou_derriere_n_est_pas_un_passant(dossier):
     banc = Banc(dossier)
     banc.guide.aller('b204')
     banc.tourner(4.0, jusqu_a=())
-    banc.vues = [personne(1, 0.3, 1.2), personne(2, -1.0, 0.0), personne(3, 2.5, 0.0)]
+    banc.vues = [personne(1, 0.3, 1.2), personne(2, -1.0, 0.0),
+                 personne(3, DISTANCE_PASSANT_M + 0.3, 0.0)]
     banc.moteur.bloquer(True)
     banc.tourner(DELAI_BLOQUE_S + 1.4, jusqu_a=('bloque',))
     assert banc.guide.etat()['etat'] == 'bloque'
@@ -693,16 +701,128 @@ def test_ralenti_sur_la_vitesse_mesuree(dossier):
 
 
 def test_passant_annonce_sans_repetition(dossier):
-    """Le robot avance un peu puis se rebloque devant le même passant : une annonce en 20 s."""
+    """Le passant s'écarte puis revient bloquer le robot, trois fois : une annonce en 20 s."""
+    banc = Banc(dossier)
+    banc.guide.aller('b204')
+    banc.tourner(4.0, jusqu_a=())
+    for _ in range(3):
+        banc.vues = passant_devant
+        banc.moteur.bloquer(True)
+        banc.tourner(DELAI_DEPART_S + DELAI_BLOQUE_S + 1.4, jusqu_a=('attente_passage',))
+        assert banc.guide.etat()['etat'] == 'attente_passage'
+        banc.vues = []
+        banc.moteur.bloquer(False)
+        banc.tourner(LIBRE_S, jusqu_a=('en_route',))
+        assert banc.guide.etat()['etat'] == 'en_route'
+    assert banc.codes().count('passant_gene') == 1 and banc.codes().count('passage_libre') <= 3
+    assert banc.guide.attentes_passage == 3
+
+
+def groupe_sur_la_carte(centre, guide, moteur):
+    """Personnes vues depuis le robot : celles du groupe (sur la carte) à moins de 5 m."""
+    x, y, cap = moteur.position
+    vues = []
+    for i, (gx, gy) in enumerate(centre):
+        dx, dy = gx - x, gy - y
+        if math.hypot(dx, dy) < 5.0:
+            c, s = math.cos(-cap), math.sin(-cap)
+            vues.append(personne(20 + i, c * dx - s * dy, s * dx + c * dy))
+    return vues
+
+
+def test_groupe_vu_dans_la_direction_du_couloir_robot_tourne(dossier):
+    """
+    Nav2 a fait pivoter le robot vers un autre chemin, à 2,4 m du groupe.
+
+    C'est la direction du couloir qui compte : le robot s'arrête et attend, puis repart quand le
+    groupe s'en va.
+    """
+    banc = Banc(dossier, delai_passant_s=20.0)
+    banc.guide.aller('b204')
+    groupe = [(15.5, 12.0), (15.5, 13.0), (15.5, 14.0)]
+    banc.vues = lambda guide, moteur: groupe_sur_la_carte(groupe, guide, moteur)
+
+    def devant_le_groupe(guide, moteur):
+        x, y, _ = moteur.position
+        return 12.9 < x < 14.0 and y > 12
+
+    banc.tourner(60.0, obstacle=devant_le_groupe, jusqu_a=('attente_passage', 'bloque'))
+    assert banc.guide.etat()['etat'] == 'attente_passage'
+    x, y, _ = banc.moteur.position
+    banc.moteur.position = (x, y, math.radians(150))       # Nav2 l'a fait pivoter vers l'ouest
+    position = banc.moteur.position
+    banc.tourner(10.0, jusqu_a=('detour', 'bloque', 'en_route'))
+    assert banc.guide.etat()['etat'] == 'attente_passage' and banc.moteur.position == position
+    groupe[:] = [(21.0, 15.2)]                              # le groupe part vers b204
+    banc.moteur.bloquer(False)
+    banc.tourner(LIBRE_S, jusqu_a=('en_route',))
+    assert banc.guide.etat()['etat'] == 'en_route' and banc.codes()[-1] == 'passage_libre'
+    assert banc.tourner(80.0)['etat'] == 'arrive' and banc.guide.detours == 0
+    assert banc.etats() == ['en_route', 'attente_passage', 'en_route', 'arrive']
+    banc.conformes()
+
+
+def test_passant_qui_s_eloigne_libere_le_passage(dossier):
+    """
+    Robot arrêté devant un passant : dès qu'il s'éloigne, le passage est libre.
+
+    Vitesse lue sur /personnes/lidar ; libre même s'il est encore à moins de 3 m.
+    """
     banc = Banc(dossier)
     banc.guide.aller('b204')
     banc.tourner(4.0, jusqu_a=())
     banc.vues = passant_devant
-    for _ in range(3):
-        banc.moteur.bloquer(True)
-        banc.tourner(DELAI_BLOQUE_S + 1.4, jusqu_a=('attente_passage',))
-        assert banc.guide.etat()['etat'] == 'attente_passage'
-        banc.moteur.bloquer(False)
-        banc.tourner(1.2, jusqu_a=('en_route',))
-    assert banc.codes().count('passant_gene') == 1 and banc.codes().count('passage_libre') <= 3
-    assert banc.guide.attentes_passage == 3
+    banc.moteur.bloquer(True)
+    banc.tourner(DELAI_BLOQUE_S + 1.4, jusqu_a=('attente_passage',))
+    assert banc.guide.etat()['etat'] == 'attente_passage'
+    loin = {'id': 3, 'x': 1.6, 'y': 0.1, 'vx': 0.9, 'vy': 0.0}
+    banc.vues = lire_personnes({'personnes': [loin]})
+    banc.moteur.bloquer(False)
+    banc.tourner(DELAI_PASSANT_PARTI_S + 0.6, jusqu_a=('en_route',))
+    assert banc.guide.etat()['etat'] == 'en_route' and banc.codes()[-1] == 'passage_libre'
+    # immobile à la même place : il bouche encore
+    banc2 = Banc(dossier)
+    banc2.guide.aller('b204')
+    banc2.tourner(4.0, jusqu_a=())
+    banc2.vues = passant_devant
+    banc2.moteur.bloquer(True)
+    banc2.tourner(DELAI_BLOQUE_S + 1.4, jusqu_a=('attente_passage',))
+    reste = {'id': 3, 'x': 1.6, 'y': 0.1, 'vx': 0.05, 'vy': 0.0}
+    banc2.vues = lire_personnes({'personnes': [reste]})
+    banc2.tourner(5.0, jusqu_a=('en_route',))
+    assert banc2.guide.etat()['etat'] == 'attente_passage'
+
+
+def test_personne_devant_autour_d_un_cap():
+    gens = [personne(1, -2.0, 0.0)]                         # derrière le robot, à 2 m
+    assert personne_devant(gens, 2.5) is None
+    assert personne_devant(gens, 2.5, cap=math.pi).id == 1
+    assert personne_devant(gens, 2.5, cap=-math.pi + 0.1).id == 1
+    assert personne_devant(gens, 1.5, cap=math.pi) is None
+
+
+# ---------------------------------------------------------------- personnalité active
+
+def test_vitesse_max_de_la_personnalite_plus_petite_limite(dossier):
+    banc = Banc(dossier, vitesse_max_nav2=0.5, distance_ralentir_m=2.0, distance_attendre_m=3.5)
+    banc.guide.fixer_vitesse_max(0.25, 'Discret')
+    assert banc.limites[-1] == pytest.approx(50.0)
+    banc.guide.aller('b204')
+    assert banc.limites[-1] == pytest.approx(50.0)          # la nouvelle mission garde le plafond
+    banc.guide._limiter(80.0)                       # le visiteur traîne : 80 %, plafond 50 %
+    assert banc.limites[-1] == pytest.approx(50.0)
+    banc.guide._limiter(30.0)
+    assert banc.limites[-1] == pytest.approx(30.0)
+    banc.guide._limiter(None)
+    assert banc.limites[-1] == pytest.approx(50.0)
+    banc.guide.fixer_vitesse_max(None, 'Accueillant')
+    assert banc.limites[-1] is None                         # levée : 100 % pour Nav2
+    banc.guide.fixer_vitesse_max(0.6, 'Rapide')             # au-delà de Nav2 : pas de plafond
+    assert banc.limites[-1] is None
+
+
+def test_vitesse_max_sans_vitesse_nav2_ignoree(dossier):
+    banc = Banc(dossier)
+    banc.guide.fixer_vitesse_max(0.25, 'Discret')
+    assert all(v is None for v in banc.limites)
+    assert any('vitesse_max_nav2 inconnue' in m for m in banc.messages)

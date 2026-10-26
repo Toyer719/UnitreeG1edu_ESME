@@ -127,6 +127,20 @@ copier_demo() {
   rm -f "$ATELIER_LIEUX/$id"/cartes/*.pcd
 }
 
+# sans_pieton_nord ID : retire pieton_nord du monde de la copie (critères 5 et 19). Son va-et-vient
+# le long du couloir nord le fait buter contre la boîte de ces critères, posée dans Gazebo seulement :
+# collé à la boîte, devant le robot, il ferait attendre le guide (attente_passage, vague 4) au lieu
+# de « bloque » (assemblage de la vague 4). Les passants ont leurs critères (6, 23 à 25).
+sans_pieton_nord() {
+  "$PY" - "$ATELIER_LIEUX/${1:-essai}" <<'FIN' || echoue "impossible de retirer pieton_nord de la copie"
+import sys
+from atelier import lieu as L
+monde = L.charger_monde(sys.argv[1], "rdc")
+monde.pietons = [p for p in monde.pietons if p.id != "pieton_nord"]
+L.enregistrer_monde(sys.argv[1], "rdc", monde)
+FIN
+}
+
 # generer ID : g1-monde generer sur l'étage rdc
 generer() {
   exiger_commande g1-monde

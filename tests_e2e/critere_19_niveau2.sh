@@ -63,6 +63,7 @@ SCRIPT
 fi
 
 copier_demo essai
+sans_pieton_nord essai
 generer essai
 serveur
 

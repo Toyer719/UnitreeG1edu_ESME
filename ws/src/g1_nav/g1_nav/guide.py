@@ -15,9 +15,11 @@ Sujets ROS 2 :
                                      changement
   /guide/evenement  std_msgs/String  JSON (schéma evenement_guide), une fois par événement : la
                                      phrase à dire au visiteur (départ, détour, arrivée, retour...)
-  /speed_limit      nav2_msgs/SpeedLimit  en pourcentage : le robot ralentit si le visiteur traîne
+  /speed_limit      nav2_msgs/SpeedLimit  en pourcentage : le robot ralentit si le visiteur traîne,
+                                     et ne dépasse pas la vitesse_max de la personnalité active
   écoutés : /reperage/etat (relais odom_vers_tf), /personnes/lidar (detecteur_personnes),
-            /mouvement/maitre (verrou du pilotage, fiable et transient_local)
+            /mouvement/maitre (verrou du pilotage, fiable et transient_local),
+            /personnalite/active (fiable, transient_local ; au démarrage : personnalites.yaml)
 
 États (atelier.lieu.comportement.ETATS_GUIDE) :
   attente          au repos ; après un retour, au point principal, tourné selon sa flèche ; aussi
@@ -28,9 +30,10 @@ Sujets ROS 2 :
                    delai_avant_retour_s après une arrivée, un abandon ou un échec ; à l'arrivée, le
                    robot se tourne dans le sens de la flèche (TOLERANCE_RETOUR_RAD), puis attente ;
   bloque           plus de progrès depuis 3 s (5 s juste après le départ), personne devant ;
-  attente_passage  plus de progrès et une personne vue devant à 1,5 m au plus : le guide attend
-                   delai_passant_s (« Pardon, puis-je passer ? ») avant de déclarer le couloir
-                   bloqué ;
+  attente_passage  plus de progrès et une personne vue devant à 2,5 m au plus (devant le robot ou
+                   dans la direction du couloir) : le robot s'arrête et attend delai_passant_s
+                   (« Pardon, puis-je passer ? ») ; passage libre : il repart (« Merci ! ») ;
+                   sinon, couloir déclaré bloqué (détour) ;
   detour           couloir marqué bloqué (120 s), autre chemin, jusqu'à l'arrivée. Un détour
                    déraisonnable (plus de detour_facteur_max fois le trajet direct et plus de
                    detour_marge_m de plus) est refusé : le guide attend encore le passant, ou
@@ -57,6 +60,7 @@ import math
 import signal
 import sys
 import time
+from pathlib import Path
 
 from atelier.lieu.comportement import (DELAI_VISITEUR_DEPART_S, DELAIS_GUIDE,
                                        DISTANCE_VISITEUR_DEPART_M, ETATS_GUIDE, evenement,
@@ -107,15 +111,22 @@ REGLAGES_NOEUD = {
     'vitesse_max_nav2': 0.0,        # vx_max du contrôleur de Nav2 (m/s) ; 0 : inconnue
 }
 REGLAGES_DEFAUT = dict(DELAIS_GUIDE, **REGLAGES_NOEUD)
-# Passant qui bouche : personne vue devant (±60°) à moins de DISTANCE_PASSANT_M, dans la dernière
-# seconde ; partie depuis DELAI_PASSANT_PARTI_S alors que le robot n'avance toujours pas : bloque
-DISTANCE_PASSANT_M = 1.5
+# Passant qui bouche : personne vue à moins de DISTANCE_PASSANT_M, dans un cône de ±60° autour de
+# l'avant du robot ou de la direction du couloir de l'itinéraire, dans la dernière seconde.
+# Assemblage de la vague 4 (critère 25) : 2,5 m et non 1,5 m, car Nav2 arrête le robot à 2,4 m
+# environ d'un groupe qui bouche le couloir (les personnes sont dans sa carte globale), et le cône
+# du couloir, car Nav2 le fait alors pivoter vers un autre chemin. Pendant l'attente, le robot est
+# arrêté (moteur annulé) : sinon Nav2 contournerait lui-même le groupe par un autre couloir. Le
+# passage est libre quand, depuis DELAI_PASSANT_PARTI_S, personne n'est vu à moins de
+# DISTANCE_PASSANT_M + MARGE_PASSANT_M dans ces cônes, sauf qui s'éloigne du robot à plus de
+# VITESSE_ELOIGNEMENT_M_S : le trajet reprend.
+DISTANCE_PASSANT_M = 2.5
+MARGE_PASSANT_M = 0.5
+VITESSE_ELOIGNEMENT_M_S = 0.3
 PERSISTANCE_DEVANT_S = 1.0
-DELAI_PASSANT_PARTI_S = 2.0
+DELAI_PASSANT_PARTI_S = 1.5
 # Détour refusé à cause d'un passant : le guide attend encore, au plus ce nombre de fois
 MAX_PROLONGATIONS_PASSANT = 2
-# Nav2 renonce pendant l'attente du passant : nouvel essai, au plus toutes les DELAI_REPRISE_S
-DELAI_REPRISE_S = 5.0
 # « Pardon, puis-je passer ? » au plus une fois par ANNONCE_PASSANT_S (le robot qui avance un peu
 # puis se rebloque devant la même personne ne le répète pas)
 ANNONCE_PASSANT_S = 20.0
@@ -225,6 +236,8 @@ class Guide:
         self._demande = {}
         self._retour_prevu = None        # instant du retour automatique
         self._limite = 'inconnue'        # limite de vitesse envoyée (None : aucune)
+        self._limite_visiteur = None     # limite demandée pour le visiteur qui traîne (%)
+        self._plafond_personnalite = None    # plafond de la personnalité active (%)
         self._suivi = SuiviVisiteur()
         self._accompagner = False
         self._nouvelle_mission(None, None)
@@ -325,17 +338,18 @@ class Guide:
         if self._orientation is not None:
             self._suivre_orientation(maintenant)
             return self.etat()
+        if self._etat == 'attente_passage':
+            self._attendre_passage(maintenant)
+            return self.etat()
         e = self.moteur.etat()
         if e['reste_m'] is not None:
             self._reste = e['reste_m']
         if e['arrive']:
             self._arriver()
         elif e['echec']:
-            if self._etat == 'attente_passage':
-                self._reprendre_pendant_passage(maintenant)
             # Premier abandon sur ce trajet : on relance depuis le couloir actuel ; ensuite,
             # détour (un abandon isolé de Nav2 ne doit pas fermer un couloir)
-            elif self._relances < 1:
+            if self._relances < 1:
                 self._relances += 1
                 self._reprendre()
             else:
@@ -402,7 +416,6 @@ class Guide:
         self._passant_annonce = None     # instant du dernier « Pardon, puis-je passer ? »
         self._devant_vu_a = None
         self._prolongations = 0
-        self._derniere_reprise = None
         self._attente_visiteur_debut = None
         self._recherche_jusqu_a = None
         self._ralenti = False
@@ -677,31 +690,19 @@ class Guide:
             self._dernier_progres = maintenant
             if self._etat == 'bloque':
                 self._changer(self._etat_route, 'le robot avance de nouveau')
-            elif self._etat == 'attente_passage':
-                self._changer(self._etat_route, 'le passant s\'est écarté')
-                if self._passant_annonce is not None:      # « Merci ! » après « Pardon... »
-                    self._evenement('passage_libre')
             return
         immobile = maintenant - self._dernier_progres
         devant = self._passant_devant(maintenant)
-        if self._etat == 'attente_passage':
-            if devant:
-                self._passage_vu = maintenant
-            if maintenant - self._passage_debut >= float(self.reglages['delai_passant_s']):
-                self._detourner(f'le passant bouche le passage depuis '
-                                f'{maintenant - self._passage_debut:.0f} s', passant=True)
-            elif maintenant - self._passage_vu >= DELAI_PASSANT_PARTI_S:
-                # Plus personne devant, et le robot n'avance toujours pas : un autre obstacle
-                self._dernier_progres = maintenant - DELAI_BLOQUE_S
-                self.arrets += 1
-                self._changer('bloque', 'plus personne devant, mais le robot n\'avance pas')
-            return
         if immobile >= DELAI_BLOQUE_S and devant:
+            # Le robot attend sur place : sans cela, Nav2, qui voit les personnes dans sa carte
+            # globale, les contournerait de lui-même par un autre couloir
+            self.moteur.annuler()
             self._passage_debut = self._passage_vu = maintenant
             self.attentes_passage += 1
             delai = float(self.reglages['delai_passant_s'])
             self._changer('attente_passage', 'une personne bouche le passage (aucun progrès '
-                          f'depuis {immobile:.0f} s)', 'Une personne bouche le passage : le robot '
+                          f'depuis {immobile:.0f} s) : le robot s\'arrête et attend',
+                          'Une personne bouche le passage : le robot '
                           f'attend qu\'elle s\'écarte ({delai:.0f} s au plus).')
             self._annoncer_passant(maintenant)
         elif immobile >= DELAI_DETOUR_S:
@@ -722,24 +723,59 @@ class Guide:
         """Vrai si une personne (autre que le visiteur) a été vue devant depuis une seconde."""
         if not self.reglages['passants'] or self.personnes is None:
             return False
-        p = personne_devant(self._personnes_fraiches(), DISTANCE_PASSANT_M,
-                            sauf=self._suivi.id if self._accompagner else None)
-        if p is not None:
+        if self._personne_qui_bouche(self._personnes_fraiches(), DISTANCE_PASSANT_M) is not None:
             self._devant_vu_a = maintenant
         return (self._devant_vu_a is not None
                 and maintenant - self._devant_vu_a <= PERSISTANCE_DEVANT_S)
 
-    def _reprendre_pendant_passage(self, maintenant):
-        """Nav2 a renoncé pendant l'attente du passant : nouvel essai, sans fermer de couloir."""
-        if self._derniere_reprise is not None \
-                and maintenant - self._derniere_reprise < DELAI_REPRISE_S:
-            return
-        self._derniere_reprise = maintenant
+    def _personne_qui_bouche(self, personnes, distance):
+        """
+        La personne (autre que le visiteur) la plus proche devant, ou None.
+
+        Devant : à moins de distance, dans le cône avant du robot ou dans celui de la direction
+        du couloir où il est (Nav2 a pu le faire pivoter pour contourner les personnes).
+        """
+        if not personnes:
+            return None
+        sauf = self._suivi.id if self._accompagner else None
+        p = personne_devant(personnes, distance, sauf=sauf)
+        if p is None:
+            cap = self._cap_du_couloir()
+            if cap is not None:
+                p = personne_devant(personnes, distance, sauf=sauf, cap=cap)
+        return p
+
+    def _cap_du_couloir(self):
+        """Direction du couloir de l'itinéraire où est le robot, dans son repère (rad), ou None."""
         couloir = self._couloir_actuel()
-        reste = self._itineraire[self._itineraire.index(couloir[1]):] if couloir \
-            else self._itineraire
-        if reste and not self.moteur.demarrer(self.routeur.poses(reste)):
-            self._echouer('le moteur a refusé le déplacement')
+        pose = self.position()
+        if couloir is None or pose is None:
+            return None
+        (ax, ay), (bx, by) = self.routeur.noeuds[couloir[0]], self.routeur.noeuds[couloir[1]]
+        if math.hypot(bx - ax, by - ay) < 1e-6:
+            return None
+        return ecart_angle(math.atan2(by - ay, bx - ax), float(pose[2]))
+
+    def _attendre_passage(self, maintenant):
+        """
+        Robot arrêté devant des passants : le passage se libère, ou il reste bouché.
+
+        Libre : reprise du trajet. Bouché delai_passant_s : détour, s'il est raisonnable ; sinon
+        attente prolongée.
+        """
+        personnes = self._personnes_fraiches() if self.personnes is not None else None
+        restent = [p for p in personnes or () if not p.s_eloigne(VITESSE_ELOIGNEMENT_M_S)]
+        # sans message frais du détecteur, on ne sait pas : le passage n'est pas libre
+        if personnes is None or self._personne_qui_bouche(
+                restent, DISTANCE_PASSANT_M + MARGE_PASSANT_M) is not None:
+            self._passage_vu = maintenant
+        if maintenant - self._passage_vu >= DELAI_PASSANT_PARTI_S:
+            if self._passant_annonce is not None:          # « Merci ! » après « Pardon... »
+                self._evenement('passage_libre')
+            self._relancer('le passage est libre')
+        elif maintenant - self._passage_debut >= float(self.reglages['delai_passant_s']):
+            self._detourner(f'le passant bouche le passage depuis '
+                            f'{maintenant - self._passage_debut:.0f} s', passant=True)
 
     # ------------------------------------------------------------ interne
 
@@ -957,8 +993,37 @@ class Guide:
             self._programmer_retour()
         return False
 
+    def fixer_vitesse_max(self, vitesse, nom=None):
+        """
+        Vitesse maximale de la personnalité active (m/s, /personnalite/active), ou None : aucune.
+
+        Elle devient un plafond de /speed_limit, en pourcentage de vitesse_max_nav2 ; la limite
+        envoyée est toujours la plus petite des deux (visiteur qui traîne, personnalité).
+        """
+        vmax = float(self.reglages.get('vitesse_max_nav2') or 0.0)
+        plafond = None
+        if vitesse is not None:
+            if vmax <= 0:
+                self.journal('vitesse maximale de la personnalité ignorée : vitesse_max_nav2 '
+                             'inconnue')
+            elif float(vitesse) < vmax:
+                plafond = round(max(POURCENTAGE_MIN, 100.0 * float(vitesse) / vmax), 1)
+        if plafond != self._plafond_personnalite:
+            self._plafond_personnalite = plafond
+            self.journal(f'personnalité « {nom or "?"} » : '
+                         + (f'vitesse plafonnée à {plafond:.0f} %' if plafond is not None
+                            else 'pas de plafond de vitesse'))
+        self._appliquer_limite()
+
     def _limiter(self, pourcentage):
-        """Limite de vitesse (pourcentage), ou None pour la lever ; envoyée si elle change."""
+        """Limite du visiteur (pourcentage), ou None pour la lever ; voir _appliquer_limite."""
+        self._limite_visiteur = pourcentage
+        self._appliquer_limite()
+
+    def _appliquer_limite(self):
+        """Envoie la plus petite des limites (visiteur, personnalité), ou None, si elle change."""
+        limites = [v for v in (self._limite_visiteur, self._plafond_personnalite) if v is not None]
+        pourcentage = min(limites) if limites else None
         if pourcentage == self._limite:
             return
         self._limite = pourcentage
@@ -1121,6 +1186,11 @@ class NoeudGuide(Node):
                             durability=DurabilityPolicy.TRANSIENT_LOCAL,
                             history=HistoryPolicy.KEEP_LAST)
         self.create_subscription(String, '/mouvement/maitre', self._sur_maitre, verrou)
+        # Personnalité active (section 11.6) : sa vitesse_max plafonne /speed_limit. Celle du
+        # fichier du lieu au démarrage, puis chaque /personnalite/active (fiable, transient_local)
+        self.lieu = lieu
+        self._personnalite_du_fichier(chemin_lieu(lieu))
+        self.create_subscription(String, '/personnalite/active', self._sur_personnalite, verrou)
         # Horloge murale : le guide continue de répondre même si la simulation est en pause
         self.create_timer(1.0 / frequence, self._sur_minuterie,
                           clock=Clock(clock_type=ClockType.STEADY_TIME))
@@ -1235,6 +1305,32 @@ class NoeudGuide(Node):
         donnees = self._lire(msg.data)
         if donnees is not None:
             self._personnes = (lire_personnes(donnees), time.monotonic())
+
+    def _personnalite_du_fichier(self, dossier):
+        try:
+            from atelier.lieu.equipe import charger_equipe, personnalite_active
+            perso = personnalite_active(charger_equipe(dossier, 'personnalites'))
+        except Exception as e:     # noqa: BLE001 : fichier de l'équipe faux, le guide s'en passe
+            self.get_logger().warn(f'personnalites.yaml illisible : {e}')
+            return
+        if perso is not None:
+            self._appliquer_personnalite(perso)
+
+    def _appliquer_personnalite(self, perso):
+        vitesse = perso.get('vitesse_max')
+        if isinstance(vitesse, bool) or not isinstance(vitesse, (int, float)) \
+                or not 0 < vitesse <= 0.4:
+            vitesse = None
+        self.guide.fixer_vitesse_max(vitesse, perso.get('nom') or perso.get('id'))
+
+    def _sur_personnalite(self, msg):
+        donnees = self._lire(msg.data)
+        if donnees is None or not isinstance(donnees.get('id'), str):
+            return
+        lieu = donnees.get('lieu')
+        if lieu and lieu != self.lieu and lieu != Path(str(self.lieu)).name:
+            return      # personnalité d'un autre lieu
+        self._appliquer_personnalite(donnees)
 
     def _sur_maitre(self, msg):
         donnees = self._lire(msg.data)

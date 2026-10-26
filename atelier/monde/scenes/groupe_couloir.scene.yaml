@@ -5,18 +5,21 @@ nom: "Groupe qui bouche le couloir nord, puis s'en va"
 description: >-
   Trois passants discutent côte à côte en travers du couloir nord, en x = 15,5 (y = 12,0 ; 13,0 ;
   14,0) : le couloir est bouché. Ils ne voient pas le robot (reaction: aucune). Ils partent vers
-  l'est environ 15 s après que le robot est arrivé devant eux (pause de 50 s depuis le départ du
-  robot, qui met 35 s environ à les atteindre), l'un après l'autre, et entrent dans la salle b204
-  (un seul parcours). Le guide doit attendre (attente_passage) sans prendre de détour, puis passer.
+  l'est environ 15 s après que le robot est arrivé devant eux (pauses de 47 à 49 s depuis le départ
+  du robot, qui s'arrête devant eux vers 33 s et commence à attendre vers 36 s), l'un après
+  l'autre, et entrent dans la salle b204 (un seul parcours). Le guide doit attendre
+  (attente_passage) sans prendre de détour, puis passer. Assemblage de la vague 4 : pauses de 50 à
+  53 s avant, le dernier partait 17 à 18 s après le début de l'attente, trop près des 20 s de
+  delai_passant_s.
 lieu: demo
 etage: rdc
 pietons:
   - {id: groupe_nord, trajet: [[15.5, 14.0], [21.0, 14.0], [21.0, 15.2], [23.5, 17.5]], vitesse: 1.0,
-     aller_retour: false, repeter: false, reaction: aucune, pauses: [{point: 0, duree_s: 50.0}]}
+     aller_retour: false, repeter: false, reaction: aucune, pauses: [{point: 0, duree_s: 47.0}]}
   - {id: groupe_milieu, trajet: [[15.5, 13.0], [21.0, 13.0], [21.0, 15.2], [18.5, 17.5]], vitesse: 1.0,
-     aller_retour: false, repeter: false, reaction: aucune, pauses: [{point: 0, duree_s: 51.5}]}
+     aller_retour: false, repeter: false, reaction: aucune, pauses: [{point: 0, duree_s: 48.0}]}
   - {id: groupe_sud, trajet: [[15.5, 12.0], [21.0, 12.0], [21.0, 15.2], [25.5, 15.5]], vitesse: 1.0,
-     aller_retour: false, repeter: false, reaction: aucune, pauses: [{point: 0, duree_s: 53.0}]}
+     aller_retour: false, repeter: false, reaction: aucune, pauses: [{point: 0, duree_s: 49.0}]}
 trajets: [[accueil, b204]]
 essais: 3
 reglages_guide: {retour_auto: false, delai_passant_s: 20}

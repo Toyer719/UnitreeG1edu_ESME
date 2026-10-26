@@ -11,8 +11,9 @@ Logique sans ROS, utilisée par guide.py. Les personnes viennent du détecteur a
                                  l'autre : même numéro de suivi, sinon la personne la plus proche
                                  de sa dernière position sur la carte ; dit s'il est vu, à quelle
                                  distance, et depuis quand il ne l'est plus ;
-  personne_devant(personnes, …)  la personne la plus proche dans le cône avant du robot (un
-                                 passant qui bouche le passage), ou None.
+  personne_devant(personnes, …)  la personne la plus proche dans le cône avant du robot, ou
+                                 autour d'une autre direction (cap : celle du couloir), ou None :
+                                 un passant qui bouche le passage.
 """
 import math
 
@@ -30,10 +31,11 @@ DEMI_ANGLE_DEVANT_RAD = math.pi / 3
 class Personne:
     """Une personne vue : numéro de suivi, position dans base_link et, si connue, sur la carte."""
 
-    __slots__ = ('id', 'x', 'y', 'distance', 'angle', 'x_map', 'y_map', 'derriere', 'confiance')
+    __slots__ = ('id', 'x', 'y', 'distance', 'angle', 'x_map', 'y_map', 'derriere', 'confiance',
+                 'vx', 'vy')
 
     def __init__(self, ident, x, y, distance=None, angle=None, x_map=None, y_map=None,
-                 derriere=None, confiance=1.0):
+                 derriere=None, confiance=1.0, vx=None, vy=None):
         self.id = int(ident)
         self.x, self.y = float(x), float(y)
         self.distance = math.hypot(self.x, self.y) if distance is None else float(distance)
@@ -42,6 +44,14 @@ class Personne:
         self.y_map = None if y_map is None else float(y_map)
         self.derriere = abs(self.angle) > math.pi / 2 if derriere is None else bool(derriere)
         self.confiance = float(confiance)
+        self.vx = None if vx is None else float(vx)      # vitesse (m/s), axes de base_link
+        self.vy = None if vy is None else float(vy)
+
+    def s_eloigne(self, seuil=0.3):
+        """Vrai si la personne s'éloigne du robot à plus de seuil m/s (vitesse connue)."""
+        if self.vx is None or self.vy is None or self.distance < 1e-6:
+            return False
+        return (self.x * self.vx + self.y * self.vy) / self.distance > seuil
 
     def sur_la_carte(self, robot=None):
         """(x, y) dans map : celle du message, sinon depuis la pose du robot, sinon None."""
@@ -73,7 +83,7 @@ def lire_personnes(donnees):
     for p in donnees['personnes']:
         if not isinstance(p, dict) or not all(_nombre(p.get(c)) for c in ('id', 'x', 'y')):
             continue
-        facultatif = {c: p[c] for c in ('x_map', 'y_map') if _nombre(p.get(c))}
+        facultatif = {c: p[c] for c in ('x_map', 'y_map', 'vx', 'vy') if _nombre(p.get(c))}
         personnes.append(Personne(
             p['id'], p['x'], p['y'],
             distance=p['distance_m'] if _nombre(p.get('distance_m')) else None,
@@ -83,15 +93,19 @@ def lire_personnes(donnees):
     return personnes
 
 
-def personne_devant(personnes, distance_max=1.5, demi_angle=DEMI_ANGLE_DEVANT_RAD, sauf=None):
+def personne_devant(personnes, distance_max=1.5, demi_angle=DEMI_ANGLE_DEVANT_RAD, sauf=None,
+                    cap=0.0):
     """
     Renvoie la personne la plus proche dans le cône avant du robot, ou None.
 
-    Cône : |angle| ≤ demi_angle et distance ≤ distance_max. sauf : numéro de suivi à ignorer
-    (le visiteur).
+    Cône : écart à cap ≤ demi_angle et distance ≤ distance_max. cap : direction de l'axe du cône
+    dans base_link (rad ; 0 : l'avant du robot ; le guide donne aussi la direction du couloir).
+    sauf : numéro de suivi à ignorer (le visiteur).
     """
+    def ecart(angle):
+        return abs(math.atan2(math.sin(angle - cap), math.cos(angle - cap)))
     candidats = [p for p in personnes or ()
-                 if p.id != sauf and p.distance <= distance_max and abs(p.angle) <= demi_angle]
+                 if p.id != sauf and p.distance <= distance_max and ecart(p.angle) <= demi_angle]
     return min(candidats, key=lambda p: p.distance) if candidats else None
 
 

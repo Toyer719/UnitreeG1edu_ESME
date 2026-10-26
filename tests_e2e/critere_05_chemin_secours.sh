@@ -5,6 +5,7 @@ source "$(dirname "$0")/commun.sh"
 exiger_commande g1-monde g1-guide
 exiger_paquet_ros g1_sim g1_nav
 copier_demo essai
+sans_pieton_nord essai
 generer essai
 simuler essai
 lancer_fond navigation g1-guide navigation --lieu essai --etage rdc --simu
