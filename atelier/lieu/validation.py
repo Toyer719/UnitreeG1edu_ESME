@@ -32,7 +32,8 @@ TYPES_FICHIERS = ("lieu", "monde", "salles", "itineraires", "zones", "carte", "s
                   # chorégraphies, puis messages JSON (std_msgs/String) des nouveaux sujets
                   "personnalites", "dialogues", "camera", "scene", "choregraphie",
                   "etat_guide", "evenement_guide", "demande_guide", "pietons_etat", "pietons_consigne",
-                  "personnes", "maitre_mouvement", "etat_pilotage", "robot_dire", "personnalite_active")
+                  "personnes", "maitre_mouvement", "etat_pilotage", "robot_dire", "personnalite_active",
+                  "robot_geste")
 # Les messages ne sont pas des fichiers : ce sont les messages JSON (std_msgs/String) du pont, du
 # repérage (section 10 du plan) et des sujets de la vague 4 ; le nom affiché est celui du sujet ROS 2.
 NOMS_FICHIERS = {"lieu": "lieu.yaml", "monde": "monde.yaml", "salles": "salles.yaml",
@@ -46,10 +47,10 @@ NOMS_FICHIERS = {"lieu": "lieu.yaml", "monde": "monde.yaml", "salles": "salles.y
                  "pietons_etat": "/pietons/etat", "pietons_consigne": "/pietons/consigne",
                  "personnes": "/personnes/lidar", "maitre_mouvement": "/mouvement/maitre",
                  "etat_pilotage": "/pilotage/etat", "robot_dire": "/robot/dire",
-                 "personnalite_active": "/personnalite/active"}
+                 "personnalite_active": "/personnalite/active", "robot_geste": "/robot/geste"}
 TYPES_MESSAGES = ("etat_pont", "etat_reperage", "demande_reperage", "etat_guide", "evenement_guide",
                   "demande_guide", "pietons_etat", "pietons_consigne", "personnes", "maitre_mouvement",
-                  "etat_pilotage", "robot_dire", "personnalite_active")
+                  "etat_pilotage", "robot_dire", "personnalite_active", "robot_geste")
 IDS_RESERVES = ("sol", "g1_proxy")                 # noms de modèles Gazebo déjà pris
 IDS_BOOLEENS = ("yes", "no", "on", "off", "y", "n", "true", "false")
 REGLE_ID = ("lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, "
@@ -716,7 +717,8 @@ def regles_demande_reperage(d, fichier="/reperage/demander"):
     if donnes and len(donnes) != 3:
         manque = [c for c in ("x", "y", "theta") if c not in d]
         return [f"{fichier} : x, y et theta vont ensemble ; il manque {', '.join(manque)} "
-                "(sans aucun des trois : le robot est sur la marque au sol)"]
+                "(sans aucun des trois : le robot est supposé à l'origine de la carte d'Unitree ; l'Atelier "
+                "envoie toujours la pose du point principal)"]
     return []
 
 
@@ -761,6 +763,10 @@ def regles_dialogues(d, fichier="dialogues.yaml"):
             messages.append(f"{ou} : l'action personnalite a besoin du champ personnalite (l'id à activer)")
         if r["action"] != "personnalite" and "personnalite" in r:
             messages.append(f"{ou} : le champ personnalite ne sert qu'avec l'action personnalite")
+        if r["action"] == "geste" and "geste" not in r:
+            messages.append(f"{ou} : l'action geste a besoin du champ geste (le numéro du geste des bras)")
+        if r["action"] != "geste" and "geste" in r:
+            messages.append(f"{ou} : le champ geste ne sert qu'avec l'action geste")
     return messages
 
 
@@ -805,7 +811,7 @@ REGLES = {"lieu": regles_lieu_v4, "monde": regles_monde, "salles": regles_salles
           "etat_guide": _sans_regle, "evenement_guide": _sans_regle, "demande_guide": _sans_regle,
           "pietons_etat": regles_pietons_etat, "pietons_consigne": _sans_regle, "personnes": _sans_regle,
           "maitre_mouvement": _sans_regle, "etat_pilotage": _sans_regle, "robot_dire": _sans_regle,
-          "personnalite_active": _sans_regle}
+          "personnalite_active": _sans_regle, "robot_geste": _sans_regle}
 
 
 def valider_donnees(type_fichier, donnees, fichier=None):

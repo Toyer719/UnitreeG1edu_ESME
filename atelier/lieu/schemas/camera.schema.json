@@ -28,9 +28,9 @@
             "x": {"type": "number", "minimum": -1, "maximum": 1},
             "y": {"type": "number", "minimum": -1, "maximum": 1},
             "z": {"type": "number", "minimum": 0, "maximum": 2},
-            "roulis": {"type": "number", "minimum": -3.1416, "maximum": 3.1416},
-            "tangage": {"type": "number", "minimum": -3.1416, "maximum": 3.1416},
-            "lacet": {"type": "number", "minimum": -3.1416, "maximum": 3.1416}
+            "roulis": {"description": "Roulis (rad), autour de x : positif, la caméra penche vers sa droite.", "type": "number", "minimum": -3.1416, "maximum": 3.1416},
+            "tangage": {"description": "Tangage (rad), autour de y, convention de ROS : positif, la caméra regarde vers le bas ; négatif, vers le haut (12° vers le haut : -0.21).", "type": "number", "minimum": -3.1416, "maximum": 3.1416},
+            "lacet": {"description": "Lacet (rad), autour de z : positif, la caméra regarde vers la gauche du robot.", "type": "number", "minimum": -3.1416, "maximum": 3.1416}
           }
         }
       }

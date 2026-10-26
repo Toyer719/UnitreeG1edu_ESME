@@ -20,13 +20,16 @@ Il publie :
   /guide/aller          std_msgs/String JSON (demande_guide) : {"cible", "accompagner", "source"} ;
   /guide/stop           std_msgs/Empty : la règle stop ;
   /personnalite/active  la personnalité choisie par une règle, ou celle du fichier au démarrage
-                        si personne ne l'a encore annoncée.
+                        si personne ne l'a encore annoncée ;
+  /robot/geste          std_msgs/String JSON (robot_geste) : le geste d'une règle « geste », et le
+                        geste_salut de la personnalité active quand il salue un visiteur.
 
 Sécurité : ce nœud ne fait jamais bouger le robot lui-même. Il demande au guide (/guide/aller),
 qui décide et conduit ; il ne le demande pas quand le robot est piloté à la main
 (/mouvement/maitre : pilotage), ni pendant une visite (sauf remplacer_visite) ; l'arrêt
-(/guide/stop) est toujours envoyé. Les gestes et la LED d'une personnalité ne sont pas commandés
-ici (voir docs/integration-equipe.md).
+(/guide/stop) est toujours envoyé. Les gestes passent par le nœud pilotage (/robot/geste), qui ne
+les fait que robot au repos ; la LED de la personnalité est mise par le nœud pilotage, qui écoute
+/personnalite/active (voir docs/integration-equipe.md).
 
 Paramètres : lieu (obligatoire : id ou chemin), etage (vide : toutes les salles), repondre
 (true ; false : le chatbot de l'équipe répond à sa place, ce nœud ne garde que le relais et la
@@ -148,6 +151,7 @@ class NoeudDialogue(Node):
         self.pub_aller = self.create_publisher(String, '/guide/aller', 10)
         self.pub_stop = self.create_publisher(Empty, '/guide/stop', 10)
         self.pub_perso = self.create_publisher(String, '/personnalite/active', VERROU)
+        self.pub_geste = self.create_publisher(String, '/robot/geste', 10)
         self.create_subscription(String, '/visiteur/texte', self.sur_texte, 10)
         self.create_subscription(String, '/guide/evenement', self.sur_evenement, 20)
         self.create_subscription(String, '/guide/etat', self.sur_etat_guide, 10)
@@ -257,6 +261,9 @@ class NoeudDialogue(Node):
             publier(self.pub_aller, d['guide'])
         if d['personnalite'] is not None:
             self.annoncer(d['personnalite'])
+        if d['geste'] is not None:
+            publier(self.pub_geste, E.message_robot_geste(d['geste'], 'dialogue',
+                                                          raison=f'règle « {r["regle"]} »'))
 
     def sur_evenement(self, msg):
         """Relaie un événement du guide vers /robot/dire."""
@@ -278,6 +285,10 @@ class NoeudDialogue(Node):
         if message is not None:
             publier(self.pub_dire, message)
             self.get_logger().info(f'salutation : « {message["texte"]} »')
+            geste = (self.personnalite or {}).get('geste_salut')
+            if isinstance(geste, int) and not isinstance(geste, bool):
+                publier(self.pub_geste, E.message_robot_geste(geste, 'personnalite',
+                                                              raison='salutation'))
 
     def dire(self, texte, source, priorite='normale'):
         """Publie une phrase sur /robot/dire."""

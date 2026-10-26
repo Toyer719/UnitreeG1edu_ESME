@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/robot/geste",
+  "description": "Geste des bras demandé au robot, en JSON (std_msgs/String) sur /robot/geste (vague 4, assemblage, section 11.12 du plan) : publié par le nœud dialogue (action geste d'une règle, geste_salut de la personnalité quand il salue), écouté par le nœud pilotage, qui ne le fait que robot au repos (guide maître et sans mission, aucune danse ni chorégraphie, pas plus d'un toutes les 10 s). Des champs en plus sont permis.",
+  "type": "object",
+  "required": ["geste"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Facultatif : version du format, 1.", "const": 1},
+    "geste": {"description": "Geste d'Unitree (action_id du service arm, atelier.lieu.pilotage.GESTES_BRAS, sans 99).", "type": "integer", "enum": [11, 12, 13, 15, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]},
+    "source": {"description": "Facultatif : dialogue, personnalite, atelier ou autre.", "type": "string", "enum": ["dialogue", "personnalite", "atelier", "autre"]},
+    "raison": {"description": "Facultatif : pourquoi (ex. salutation, règle « merci »).", "type": "string", "maxLength": 200}
+  }
+}

@@ -11,8 +11,8 @@
 #   docker/               demarrer.sh, env.sh, reseau.py, presence.py, cyclonedds.xml.modele
 #   unitree_api/          messages Unitree (third_party/unitree_ros2/.../unitree/unitree_api)
 #   unitree_hg/           messages du G1 (rt/arm_sdk, /lowstate), pour le nœud pilotage (vague 4)
-#   python/atelier/       atelier/__init__.py, atelier/lieu/, atelier/scan/{__init__,slam_client}.py
-#   ws/g1_nav/, ws/g1_bridge/, ws/g1_pilotage/   copiés de ws/src au moment de la construction
+#   python/atelier/       atelier/__init__.py, atelier/lieu/, atelier/scan/{__init__,slam_client}.py, atelier/equipe/
+#   ws/g1_nav/, ws/g1_bridge/, ws/g1_pilotage/, ws/g1_equipe/   copiés de ws/src au moment de la construction
 #   VERSION               date de construction, commit Git, empreinte du contexte
 #
 # Les couches vont de la plus stable à la plus changeante. Une modification de g1_nav ou de
@@ -89,9 +89,10 @@ RUN chmod 755 /opt/g1/demarrer.sh /opt/g1/reseau.py /opt/g1/presence.py \
 #    atelier.dossier_journaux() vise /opt/g1/python/journaux : c'est le dossier monté.
 COPY python /opt/g1/python
 RUN ln -s /journaux /opt/g1/python/journaux \
- && python3 -c "import sys; sys.path.insert(0, '/opt/g1/python'); import atelier.lieu, atelier.scan.slam_client"
+ && python3 -c "import sys; sys.path.insert(0, '/opt/g1/python'); import atelier.lieu, atelier.scan.slam_client, atelier.equipe.dialogue, atelier.equipe.relais"
 
-# 5. Paquets du projet, copiés de ws/src au moment de la construction : g1_nav, g1_bridge, g1_pilotage
+# 5. Paquets du projet, copiés de ws/src au moment de la construction : g1_nav, g1_bridge, g1_pilotage,
+#    g1_equipe (nœuds dialogue, fausse_camera et voix_journal de l'équipe, non lancés d'office)
 COPY ws /opt/g1/src/ws
 RUN source /opt/ros/humble/setup.bash \
  && source /opt/g1/install/local_setup.bash \

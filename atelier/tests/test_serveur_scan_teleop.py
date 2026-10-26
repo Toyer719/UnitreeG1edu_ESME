@@ -83,28 +83,43 @@ def test_teleop_limites_et_homme_mort(faux_robot, lieux_scan, faux_scan):
         r = c.post("/api/simulation/teleop", json={"vx": 2.0, "vy": -1.0, "wz": 0.3})
         assert r.status_code == 200 and r.json()["envoye"] == {"vx": 0.5, "vy": -0.25, "wz": 0.3}
         assert faux_robot.tourner(3, lambda: (0.5, -0.25, 0.3) in [x[1:] for x in faux_robot.recus])
-        # on lâche la flèche sans rien envoyer : le serveur publie lui-même l'arrêt après 0,5 s
+        # on lâche la flèche sans rien envoyer : le serveur publie lui-même l'arrêt après 0,5 s.
+        # Délai compté depuis la réception de la consigne (et non depuis l'appel à l'API, qui peut
+        # tarder quand le PC est chargé : instable à l'assemblage de la vague 4)
         assert faux_robot.tourner(3, lambda: faux_robot.recus[-1][1:] == (0.0, 0.0, 0.0)), faux_robot.recus
-        delai = faux_robot.recus[-1][0] - envoi
-        assert 0.45 <= delai <= 1.2, f"arrêt de l'homme mort après {delai:.2f} s"
+        consigne = max(x[0] for x in faux_robot.recus if x[1:] == (0.5, -0.25, 0.3))
+        delai = faux_robot.recus[-1][0] - consigne
+        assert 0.4 <= delai <= 1.2, f"arrêt de l'homme mort {delai:.2f} s après la consigne"
+        assert faux_robot.recus[-1][0] - envoi >= 0.45
         assert c.app.state.teleop.arrets_auto == 1
         assert faux_robot.tourner(1.0) is False and faux_robot.recus[-1][1:] == (0.0, 0.0, 0.0)   # une seule fois
         n = len(faux_robot.recus)
         faux_robot.tourner(0.5)
         assert len(faux_robot.recus) == n
 
-        # flèche appuyée : consigne répétée toutes les 0,2 s pendant 2 s, sans arrêt au milieu
-        faux_robot.recus.clear()
-        fin = time.monotonic() + 2.0
-        while time.monotonic() < fin:
-            assert c.post("/api/simulation/teleop", json={"wz": -0.6}).status_code == 200
-            faux_robot.tourner(0.2)
+        # flèche appuyée : consigne répétée toutes les 0,2 s pendant 2 s, sans arrêt au milieu.
+        # Un PC très chargé peut espacer deux appels de plus de 0,5 s : l'homme mort a alors raison
+        # d'arrêter ; on recommence (3 essais au plus), et on ne juge que des appels assez serrés
+        for _essai in range(3):
+            faux_robot.recus.clear()
+            arrets_avant = c.app.state.teleop.arrets_auto
+            appels = []
+            fin = time.monotonic() + 2.0
+            while time.monotonic() < fin:
+                appels.append(time.monotonic())
+                assert c.post("/api/simulation/teleop", json={"wz": -0.6}).status_code == 200
+                faux_robot.tourner(0.2)
+            if max(b - a for a, b in zip(appels, appels[1:])) < 0.45:
+                break
+            c.post("/api/simulation/teleop", json={"vx": 0, "vy": 0, "wz": 0})
+            faux_robot.tourner(1.0)
         assert faux_robot.recus and all(x[1:] == (0.0, 0.0, -0.6) for x in faux_robot.recus), faux_robot.recus
-        assert len(faux_robot.recus) >= 8
+        assert len(faux_robot.recus) >= len(appels) - 2
+        assert c.app.state.teleop.arrets_auto == arrets_avant
         # relâchée : l'interface envoie {0, 0, 0}, reçu tout de suite ; l'homme mort n'a plus rien à faire
         assert c.post("/api/simulation/teleop", json={"vx": 0, "vy": 0, "wz": 0}).json()["envoye"] == \
             {"vx": 0.0, "vy": 0.0, "wz": 0.0}
         assert faux_robot.tourner(2, lambda: faux_robot.recus[-1][1:] == (0.0, 0.0, 0.0))
         faux_robot.tourner(1.0)
-        assert c.app.state.teleop.arrets_auto == 1
+        assert c.app.state.teleop.arrets_auto == arrets_avant
     assert not c.app.state.atelier.pont.actif

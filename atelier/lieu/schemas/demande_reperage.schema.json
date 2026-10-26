@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "/reperage/demander",
-  "description": "Demande de repérage, en JSON (std_msgs/String) sur /reperage/demander, écoutée par odom_vers_tf (paquet g1_nav). x, y et theta (repère map de l'étage, base_link du robot) vont ensemble ; sans eux, le robot est supposé posé sur la marque au sol (atelier.lieu.marque_au_sol). Section 10 du plan.",
+  "description": "Demande de repérage, en JSON (std_msgs/String) sur /reperage/demander, écoutée par odom_vers_tf (paquet g1_nav). x, y et theta (repère map de l'étage, base_link du robot) vont ensemble ; sans eux, le robot est supposé posé à l'origine de la carte d'Unitree (atelier.lieu.marque_au_sol). L'Atelier les envoie toujours : la pose du point principal de l'étage (atelier.lieu.principal.pose_de_reperage), ou celle que l'utilisateur a cliquée. Sections 10 et 11.2 du plan.",
   "type": "object",
   "required": ["id"],
   "additionalProperties": false,

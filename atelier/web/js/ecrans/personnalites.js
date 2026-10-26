@@ -152,6 +152,9 @@ export function ouvrir(racine) {
 
     F.titre(z, 'Voix');
     note(z, 'Réglages pour la partie voix de l\'équipe : 1 = normal ; volume de 0 à 100. Vides : ceux de la voix.');
+    F.champTexte(z, 'Nom de la voix', (p.voix || {}).nom || '', (v) => modifier((x) => {
+      majVoix(x, 'nom', v.trim() || null);
+    }), { indice: 'ex. fr_FR-siwis-medium (vide : la voix par défaut)' });
     ['vitesse', 'hauteur'].forEach((c) => {
       champNombreFacultatif(z, c === 'vitesse' ? 'Vitesse de parole' : 'Hauteur', (p.voix || {})[c],
         { pas: 0.05, min: 0.5, max: 2, indice: '1' }, (v) => modifier((x) => majVoix(x, c, v)));

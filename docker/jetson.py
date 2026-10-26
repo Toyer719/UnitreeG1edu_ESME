@@ -81,13 +81,14 @@ LIGNE_DEMARRAGE = 'g1-jetson : domaine'
 FICHIERS_DOCKER = ['demarrer.sh', 'env.sh', 'reseau.py', 'presence.py', 'cyclonedds.xml.modele']
 UNITREE_API = RACINE / 'third_party' / 'unitree_ros2' / 'cyclonedds_ws' / 'src' / 'unitree' / 'unitree_api'
 UNITREE_HG = UNITREE_API.parent / 'unitree_hg'          # vague 4 : rt/arm_sdk et /lowstate (pilotage)
-PAQUETS_WS = ['g1_nav', 'g1_bridge', 'g1_pilotage']
+PAQUETS_WS = ['g1_nav', 'g1_bridge', 'g1_pilotage', 'g1_equipe']   # g1_equipe : à l'assemblage
 # Pilotage (vague 4, section 11.5 du plan) : nœud lancé dans le conteneur avec G1_PILOTAGE=1 (défaut
 # avec le robot), joint par l'Atelier sur le Wi-Fi avec un jeton partagé
 FICHIER_JETON = RACINE / 'opt' / 'jetson' / 'jeton_pilotage'
 PORT_PILOTAGE = '8010'
 PYTHON_ATELIER = ['atelier/__init__.py', 'atelier/lieu', 'atelier/scan/__init__.py',
-                  'atelier/scan/slam_client.py']
+                  'atelier/scan/slam_client.py',
+                  'atelier/equipe']     # chatbot d'exemple et relais (nœuds de g1_equipe), sans ROS
 IGNORES = shutil.ignore_patterns('__pycache__', '*.pyc', '.pytest_cache', 'test', 'tests',
                                  '*.egg-info', '.gitkeep')
 DOSSIER_ARCHIVES = RACINE / 'opt' / 'jetson'

@@ -40,7 +40,7 @@ ENTETES_EQUIPE = {
     "dialogues": "Chatbot à règles du lieu. Format : atelier/lieu/schemas/dialogues.schema.json.",
     "camera": "Caméra du robot et détection des visiteurs. Format : atelier/lieu/schemas/camera.schema.json.",
 }
-ACTIONS_DIALOGUE = ("guider", "dire", "personnalite", "stop")
+ACTIONS_DIALOGUE = ("guider", "dire", "personnalite", "stop", "geste")
 
 # Sujets ROS 2 entre les parties (section 11.6) : sujet → (type, schéma JSON ou None, qui publie)
 SUJETS_EQUIPE = {
@@ -50,6 +50,8 @@ SUJETS_EQUIPE = {
     "/robot/dire": ("std_msgs/String", "robot_dire", "chatbot, relais des événements du guide, chorégraphies"),
     "/guide/aller": ("std_msgs/String", "demande_guide", "chatbot (JSON {cible, accompagner, source})"),
     "/guide/evenement": ("std_msgs/String", "evenement_guide", "guide (relayé vers /robot/dire)"),
+    # assemblage de la vague 4 : gestes des bras demandés par le chatbot, faits par le nœud pilotage
+    "/robot/geste": ("std_msgs/String", "robot_geste", "chatbot (action geste, geste_salut de la personnalité)"),
 }
 
 EXEMPLE_ROBOT_DIRE = {"version": 1, "texte": "Je vous emmène à la Salle B204. Suivez-moi !", "source": "dialogue",
@@ -209,6 +211,15 @@ def message_personnalite_active(personnalite, lieu=None):
     if lieu:
         message["lieu"] = str(lieu)
     message["temps"] = maintenant_iso()
+    return message
+
+
+def message_robot_geste(geste, source, raison=None):
+    """Message de /robot/geste (schéma robot_geste) : le geste des bras à faire (GESTES_BRAS, sans 99),
+    écouté par le nœud pilotage, qui ne le fait que robot au repos."""
+    message = {"version": 1, "geste": int(geste), "source": source, "temps": maintenant_iso()}
+    if raison:
+        message["raison"] = str(raison)[:200]
     return message
 
 
@@ -394,5 +405,6 @@ __all__ = ["ACTIONS_DIALOGUE", "DOSSIER_EXEMPLES", "ENTETES_EQUIPE", "EXEMPLE_PE
            # agent Équipe
            "MODES_IMAGE_11CUG", "PREREGLAGES_CAMERA", "REPERES_MOTIF", "REPERES_PHRASE", "REPERES_REPONSE",
            "REPERE_JOKER", "REPERE_SALLE", "SOURCES_DIRE", "formes_salles", "jetons_motif", "maintenant_iso",
-           "message_personnalite_active", "message_robot_dire", "normaliser", "personnalite_active", "reperes",
+           "message_personnalite_active", "message_robot_dire", "message_robot_geste", "normaliser",
+           "personnalite_active", "reperes",
            "verifier_equipe"]

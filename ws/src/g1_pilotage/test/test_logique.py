@@ -270,6 +270,50 @@ def test_gestes_et_bras_tenus(p, h):
     assert p.dernier_refus['code'] == 7404 and 'debout' in p.dernier_refus['message']
 
 
+# ---------------------------------------------------------------- équipe : personnalité, gestes demandés
+
+def test_personnalite_active_met_la_led_sans_la_main(p, h):
+    r = p.appliquer_personnalite({'id': 'accueillant', 'nom': 'Accueillant', 'led': {'r': 0, 'g': 120, 'b': 255}})
+    assert r.ok and 'LED' in r.corps['detail']
+    assert [e.api_id for e in envois(r, 'voice')] == [1010]
+    assert not p.a_la_main()
+    r = p.appliquer_personnalite({'id': 'discret', 'nom': 'Discret'})
+    assert r.ok and not envois(r)
+    assert p.appliquer_personnalite('pas un dict').statut == 400
+
+
+def test_geste_demande_seulement_robot_au_repos(p, h):
+    r = p.geste_auto({'geste': 26, 'source': 'personnalite'})
+    assert r.ok and json.loads(envois(r, 'arm', 7106)[0].parametre) == {'action_id': 26}
+    repondre(p, r)
+    assert p.bras_tenus
+    # un second geste avant le relâchement : refusé ; puis 99 envoyé tout seul 5 s après
+    assert p.geste_auto({'geste': 25}).statut == 409
+    sorties = [s for _, s in avancer(p, h, 5.1) if isinstance(s, Envoi) and s.service == 'arm']
+    assert [json.loads(s.parametre) for s in sorties] == [{'action_id': 99}]
+    repondre(p, sorties)
+    assert not p.bras_tenus
+    assert p.geste_auto({'geste': 25}).statut == 429         # un toutes les 10 s
+    h.t += 5.0
+    assert p.geste_auto({'geste': 25}).ok
+
+
+@pytest.mark.parametrize('geste', [99, 7, 'x', True, None])
+def test_geste_demande_interdit(p, h, geste):
+    r = p.geste_auto({'geste': geste})
+    assert r.statut in (400, 403) and not r.sorties
+
+
+def test_geste_demande_refuse_pilote_visite_danse(p, h):
+    p.sur_guide_etat({'etat': 'en_route'})
+    r = p.geste_auto({'geste': 26})
+    assert r.statut == 409 and 'visite' in r.corps['detail'] and not r.sorties
+    p.sur_guide_etat({'etat': 'attente'})
+    prendre(p, h)
+    r = p.geste_auto({'geste': 26})
+    assert r.statut == 409 and 'main' in r.corps['detail'] and not r.sorties
+
+
 # ---------------------------------------------------------------- danses
 
 def liste_robot():

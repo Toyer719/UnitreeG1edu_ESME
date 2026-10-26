@@ -954,6 +954,13 @@ def adopter(lieu, session, avec_monde=False):
             messages.append(f"Ancien monde gardé dans scans/{session}/{garde.name}")
         enregistrer_fichier(ancien, "monde", charger_fichier(fichier_monde, "monde"))
         messages.append(f"Monde de l'étage remplacé par le monde du scan : mondes/{etage}.monde.yaml")
+        # Vague 4 (section 11.2) : le monde du scan a son propre départ ; la simulation part du point principal
+        from atelier.lieu.principal import synchroniser_depart
+        try:
+            if synchroniser_depart(lieu):
+                messages.append(f"mondes/{etage}.monde.yaml : départ du robot remis sur le point principal")
+        except Exception as e:  # noqa: BLE001 : l'adoption est faite ; valider_lieu dira ce qui ne va pas
+            messages.append(f"Départ du robot non remis sur le point principal ({e}) : voyez g1-lieu valider")
     generation = generer(lieu, etage)
     messages.append("Génération : " + generation.texte().replace("\n", " ; "))
     maj_session(lieu, session, adoption={"quand": instant(), "monde": bool(avec_monde)})

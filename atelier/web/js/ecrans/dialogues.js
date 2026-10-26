@@ -21,8 +21,9 @@ const ACTIONS = [
   { id: 'dire', texte: 'Répondre seulement' },
   { id: 'personnalite', texte: 'Changer de personnalité' },
   { id: 'stop', texte: 'Arrêter le robot' },
+  { id: 'geste', texte: 'Répondre et faire un geste des bras' },
 ];
-const TEXTE_ACTION = { guider: 'guider', dire: 'répondre', personnalite: 'personnalité', stop: 'arrêt', repli: 'repli' };
+const TEXTE_ACTION = { guider: 'guider', dire: 'répondre', personnalite: 'personnalité', stop: 'arrêt', geste: 'geste', repli: 'repli' };
 const SYNTAXE = [
   ['{salle}', 'une salle du lieu : son identifiant, son nom ou un de ses autres noms (onglet Salles), avec ou sans '
     + '« la », « au », « l’ »… devant. Obligatoire dans chaque motif d\'une règle « Guider ».'],
@@ -70,7 +71,8 @@ export function ouvrir(racine) {
       const nom = F.el('td');
       F.bouton(nom, r.id, () => { choisie = i; editeur.rafraichir(); }, 'bouton-lien');
       tr.appendChild(nom);
-      tr.appendChild(F.el('td', '', TEXTE_ACTION[r.action] + (r.action === 'personnalite' ? ' ' + r.personnalite : '')));
+      tr.appendChild(F.el('td', '', TEXTE_ACTION[r.action] + (r.action === 'personnalite' ? ' ' + r.personnalite : '')
+        + (r.action === 'geste' ? ' ' + r.geste : '')));
       tr.appendChild(F.el('td', 'equipe-motifs', r.motifs.join(' · ')));
       const actions = F.el('td', 'equipe-deplacer');
       const haut = F.bouton(actions, '↑', () => deplacer(i, -1), 'bouton bouton-petit');
@@ -142,6 +144,8 @@ export function ouvrir(racine) {
       x.action = v;
       if (v !== 'personnalite') delete x.personnalite;
       else x.personnalite = x.personnalite || (personnalites && personnalites[0]) || 'discret';
+      if (v !== 'geste') delete x.geste;
+      else x.geste = x.geste || 26;
       if (v !== 'guider') delete x.accompagner;
     }));
     const motifs = F.champTexte(z, 'Motifs (un par ligne)', r.motifs.join('\n'), (v) => modifier((x) => {
@@ -168,6 +172,14 @@ export function ouvrir(racine) {
         F.champTexte(z, 'Personnalité (id)', r.personnalite || '', (v) => modifier((x) => { x.personnalite = v.trim(); }));
         note(z, 'Le lieu n\'a pas encore de personnalites.yaml (onglet Personnalités).');
       }
+    }
+    if (r.action === 'geste') {
+      const gestes = (etat.infos && etat.infos.gestes) || {};
+      const choix = Object.keys(gestes).map((k) => ({ id: k, texte: k + ' — ' + gestes[k] }));
+      F.listeDeroulante(z, 'Geste', String(r.geste || 26), choix.length ? choix : [{ id: '26', texte: '26' }],
+        (v) => modifier((x) => { x.geste = parseInt(v, 10); }));
+      note(z, 'Le nœud pilotage fait le geste (/robot/geste) seulement robot au repos : ni piloté à la main, ni en '
+        + 'visite, ni pendant une danse ; un toutes les 10 s au plus, puis les bras sont relâchés.');
     }
     if (r.action === 'stop') note(z, 'Le robot s\'arrête aussitôt (/guide/stop), quoi qu\'il fasse.');
     const bas = F.el('div', 'formulaire-ligne');
@@ -251,6 +263,8 @@ export function ouvrir(racine) {
       ajouter('Action : passer à la personnalité « ' + r.personnalite + ' » (/personnalite/active).');
     } else if (r.action === 'stop') {
       ajouter('Action : arrêter le robot (/guide/stop).');
+    } else if (r.action === 'geste') {
+      ajouter('Action : répondre, puis le geste ' + r.geste + ' (/robot/geste, fait par le nœud pilotage, robot au repos).');
     } else {
       ajouter('Action : répondre seulement.');
     }

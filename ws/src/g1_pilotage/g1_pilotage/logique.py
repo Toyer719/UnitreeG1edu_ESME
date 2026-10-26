@@ -24,7 +24,12 @@ horloge injectable (temps mural monotone, en secondes) pour les tester finement 
     taille tenue à sa position mesurée au départ, jambes jamais écrites ; pas de marche d'Unitree
     plafonnés ; LED, gestes et paroles à leur temps ;
   - ARRÊT : toujours permis. StopMove, chorégraphie arrêtée (poids ramené à 0 en 1 s), geste
-    relâché (99) si les bras tiennent un geste, /guide/stop.
+    relâché (99) si les bras tiennent un geste, /guide/stop ;
+  - personnalité active (/personnalite/active, assemblage de la vague 4) : sa LED est mise (voice
+    1010, toujours permise) ; un geste demandé par l'équipe (/robot/geste : règle « geste » du
+    chatbot, geste_salut de la personnalité) n'est fait que robot au repos (le guide a la main et
+    n'est pas en mission, aucune danse, chorégraphie ni prise de main, bras libres), un toutes les
+    10 s au plus, puis les bras sont relâchés (99) 5 s après.
 
 Chaque entrée renvoie un Resultat : un statut HTTP, un corps JSON (detail en français) et les
 sorties à exécuter (Envoi d'une requête unitree_api, Bras pour /arm_sdk, ArretGuide, Maitre,
@@ -63,6 +68,8 @@ IMMOBILE_APRES_S = D.ARRET_MAX_S
 FIN_DANSE_MARGE_S = 10.0        # au-delà de la durée annoncée, la danse est supposée finie
 TOLERANCE_POIDS = 1e-6
 GUIDE_PERIME_S = 30.0           # /guide/etat plus vieux : le guide ne compte plus comme en mission
+ECART_GESTE_AUTO_S = 10.0       # gestes demandés par l'équipe (/robot/geste) : un au plus par 10 s
+RELACHER_GESTE_AUTO_S = 5.0     # ... puis les bras sont relâchés (99) après ce temps
 
 STOP_MOVE = D.parametre_vitesse(0.0, 0.0, 0.0, 1.0)
 
@@ -177,6 +184,10 @@ class Pilotage:
         self.pont = None                      # (dernier /pont/etat, instant)
         self.batterie = None                  # (soc en %, instant)
         self.prise = None                     # prise de la main en cours : {t, par, force}
+        # équipe (assemblage de la vague 4) : personnalité active, gestes automatiques
+        self.personnalite = None              # dernier /personnalite/active (dict)
+        self.t_geste_auto = None              # dernier geste demandé par /robot/geste
+        self.relacher_geste_a = None          # instant du relâchement (99) qui suit ce geste
 
     # ------------------------------------------------------------ outils
 
@@ -612,6 +623,68 @@ class Pilotage:
         envoi = self._envoi('voice', 1010, D.parametre_led(r, g, b), 'led')
         return Resultat(200, {'detail': 'Couleur envoyée.'}, [envoi], attendre=envoi.identifiant)
 
+    # ---------------------------------------------------- équipe : personnalité et gestes demandés
+
+    def appliquer_personnalite(self, donnees):
+        """/personnalite/active : met la LED de la personnalité (voice 1010, toujours permise)."""
+        if not isinstance(donnees, dict) or not isinstance(donnees.get('id'), str):
+            return refus(400, 'personnalité active illisible (schéma personnalite_active).')
+        self.personnalite = dict(donnees)
+        nom = donnees.get('nom') or donnees['id']
+        led = donnees.get('led')
+        if not isinstance(led, dict):
+            return Resultat(200, {'detail': f'Personnalité « {nom} » : pas de couleur de LED.'})
+        resultat = self.led(led.get('r'), led.get('g'), led.get('b'))
+        if resultat.ok:
+            resultat.corps['detail'] = f'Personnalité « {nom} » : LED mise.'
+        return resultat
+
+    def geste_auto(self, donnees):
+        """
+        /robot/geste : un geste des bras demandé par l'équipe (chatbot, salutation).
+
+        Fait seulement robot au repos : le guide a la main et n'est pas en mission, aucune danse,
+        chorégraphie ni prise de main, bras libres, pas plus d'un toutes les ECART_GESTE_AUTO_S ;
+        les bras sont relâchés (99) RELACHER_GESTE_AUTO_S après. Refus 400, 403, 409 ou 429 sinon.
+        """
+        action = donnees.get('geste') if isinstance(donnees, dict) else None
+        if isinstance(action, bool) or not isinstance(action, int):
+            return refus(400, 'geste demandé : « geste » doit être un nombre entier.')
+        if action == D.GESTE_RELACHER \
+                or D.refus_commande('arm', 7106, {'action_id': action}) is not None:
+            return refus(403, f'Geste demandé refusé : geste {action} inconnu ou interdit.')
+        t = self.maintenant()
+        if self.a_la_main():
+            return refus(409, 'Geste demandé ignoré : le robot est piloté à la main (onglet '
+                              'Pilotage).')
+        if self.guide_en_mission(t):
+            return refus(409, 'Geste demandé ignoré : le guide est en visite.')
+        occupe = self._occupe('Geste demandé')
+        if occupe is not None:
+            return occupe
+        if self.prise is not None or self.bras_tenus or self.relacher_geste_a is not None:
+            return refus(409, 'Geste demandé ignoré : les bras sont déjà occupés.')
+        if self.t_geste_auto is not None and t - self.t_geste_auto < ECART_GESTE_AUTO_S:
+            return refus(429, f'Geste demandé ignoré : un seul toutes les '
+                              f'{ECART_GESTE_AUTO_S:.0f} s.')
+        envoi = self._envoi('arm', 7106, D.parametre_geste(action), f'geste:{action}')
+        self.t_geste = self.t_geste_auto = t
+        self.relacher_geste_a = t + RELACHER_GESTE_AUTO_S
+        source = donnees.get('source') or 'équipe'
+        self.message = f'Geste demandé ({source}) : {D.GESTES_BRAS[action]}.'
+        return Resultat(200, {'detail': self.message, 'action': action}, [envoi],
+                        attendre=envoi.identifiant)
+
+    def _relacher_geste_auto(self, t):
+        """Le temps du geste demandé est passé : bras relâchés (99), s'ils ne sont pas pilotés."""
+        if self.relacher_geste_a is None or t < self.relacher_geste_a:
+            return []
+        self.relacher_geste_a = None
+        if self.a_la_main() or self.danse is not None or self.lecture is not None:
+            return []           # le pilote ou une danse a repris les bras entre-temps
+        return [self._envoi('arm', 7106, D.parametre_geste(D.GESTE_RELACHER),
+                            f'geste:{D.GESTE_RELACHER}')]
+
     # ------------------------------------------------------------ danses du robot
 
     def lister_danses(self):
@@ -961,6 +1034,7 @@ class Pilotage:
             sorties.append(self._envoi('sport', 7001, '{}', 'lecture_fsm'))
         if self.danse is not None:
             self._suivre_danse(t)
+        sorties += self._relacher_geste_auto(t)
         if self.lecture is not None:
             sorties += self._pas_lecture(t)
         elif self.descente is not None:

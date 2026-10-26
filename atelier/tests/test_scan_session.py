@@ -16,6 +16,7 @@ import socket
 import subprocess
 import sys
 import textwrap
+import time
 from pathlib import Path
 
 import numpy as np
@@ -499,7 +500,18 @@ def test_arreter_session_interrompue_avec_enregistrement(session_enregistree, mo
     assert "traitement relancé" in sortie and "Terminé" in sortie
     s = L.lire_session(lieu, ident)
     assert s["etat"] == "termine" and s["processus"]["pid"] != os.getpid()
-    assert processus_fini(s["processus"]["pid"])
+    # Le traitement relancé écrit « termine » puis se ferme : sous charge, sa fin peut suivre de
+    # quelques secondes (instable à l'assemblage de la vague 4) ; on lui laisse 30 s
+    assert attendre_fin(s["processus"]["pid"], 30.0)
+
+
+def attendre_fin(pid, delai_s):
+    fin = time.monotonic() + delai_s
+    while not processus_fini(pid):
+        if time.monotonic() > fin:
+            return False
+        time.sleep(0.1)
+    return True
 
 
 def processus_fini(pid):

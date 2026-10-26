@@ -154,18 +154,18 @@ class Chatbot:
 
     def repondre(self, texte):
         """Ce que le chatbot répond à une phrase : dict
-          texte, regle (id ou None : le repli), action (guider, dire, personnalite, stop, repli),
+          texte, regle (id ou None : le repli), action (guider, dire, personnalite, stop, geste, repli),
           reponse (la phrase à dire), motif et passe (entiere, partielle ou None), salle et nom_salle
           (action guider), guide (la demande pour /guide/aller, schéma demande_guide, ou None),
-          personnalite (id à activer, action personnalite), raison (pourquoi une règle guider ne guide
-          pas : autre_etage).
+          personnalite (id à activer, action personnalite), geste (numéro du geste des bras, action
+          geste), raison (pourquoi une règle guider ne guide pas : autre_etage).
         None pour une phrase vide (rien à répondre)."""
         if not normaliser(str(texte)):
             return None
         regle, motif, passe, salle = self.trouver(texte)
         r = {"texte": str(texte)[:TEXTE_MAX], "regle": None, "action": "repli", "reponse": self.repli,
              "motif": None, "passe": None, "salle": None, "nom_salle": None, "guide": None,
-             "personnalite": None, "raison": None}
+             "personnalite": None, "geste": None, "raison": None}
         if regle is None:
             return r
         r.update(regle=regle["id"], action=regle["action"], motif=motif, passe=passe, reponse=regle["reponse"])
@@ -178,6 +178,8 @@ class Chatbot:
                 r["guide"] = {"cible": salle.id, "accompagner": regle.get("accompagner", True), "source": "dialogue"}
         elif regle["action"] == "personnalite":
             r["personnalite"] = regle["personnalite"]
+        elif regle["action"] == "geste":
+            r["geste"] = regle.get("geste")
         return r
 
     def nom_salle(self, ident):
@@ -198,15 +200,18 @@ def decider(chatbot, resultat, etat_guide=None, maitre=None, remplacer_visite=Fa
     """Ce que le nœud dialogue fait d'une réponse du chatbot, selon l'instant. Renvoie un dict
       dire (phrase à publier sur /robot/dire, ou None), guide (demande pour /guide/aller, ou None),
       stop (publier /guide/stop), personnalite (dict de la personnalité à annoncer sur
-      /personnalite/active, ou None), raison (pourquoi une demande n'est pas envoyée, ou None).
+      /personnalite/active, ou None), geste (numéro du geste à demander sur /robot/geste, ou None),
+      raison (pourquoi une demande n'est pas envoyée, ou None).
 
     etat_guide : dernier /guide/etat (dict) ; maitre : dernier /mouvement/maitre (dict) ;
     personnalites : contenu de personnalites.yaml ; phrases : celles de la personnalité active
     (pour le texte « pilotage »).
     Règles : robot piloté à la main (maitre pilotage) → pas de /guide/aller, le robot le dit (le guide
     refuserait de toute façon) ; visite déjà en cours → pas de /guide/aller (sauf remplacer_visite),
-    un retour au point principal, lui, est interrompu ; stop → toujours envoyé."""
-    d = {"dire": None, "guide": None, "stop": False, "personnalite": None, "raison": None}
+    un retour au point principal, lui, est interrompu ; stop → toujours envoyé ; geste → seulement robot
+    au repos (ni piloté à la main, ni en visite : la réponse est dite, sans le geste), et le nœud
+    pilotage vérifie encore."""
+    d = {"dire": None, "guide": None, "stop": False, "personnalite": None, "geste": None, "raison": None}
     if resultat is None:
         return d
     d["dire"] = resultat["reponse"]
@@ -228,6 +233,13 @@ def decider(chatbot, resultat, etat_guide=None, maitre=None, remplacer_visite=Fa
             d.update(dire=MESSAGES["personnalite_inconnue"], raison="personnalite_inconnue")
         else:
             d["personnalite"] = perso
+    elif action == "geste" and resultat.get("geste") is not None:
+        if maitre and maitre.get("maitre") == "pilotage":
+            d["raison"] = "pilotage"
+        elif etat_guide and etat_guide.get("etat") in ETATS_EN_MISSION:
+            d["raison"] = "visite_en_cours"
+        else:
+            d["geste"] = int(resultat["geste"])
     return d
 
 

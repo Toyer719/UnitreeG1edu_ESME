@@ -47,7 +47,8 @@ URDF = (RACINE / "third_party" / "unitree_rl_gym" / "resources" / "robots" / "g1
 
 NOUVEAUX_FICHIERS = ("personnalites", "dialogues", "camera", "scene", "choregraphie")
 NOUVEAUX_MESSAGES = ("etat_guide", "evenement_guide", "demande_guide", "pietons_etat", "pietons_consigne",
-                     "personnes", "maitre_mouvement", "etat_pilotage", "robot_dire", "personnalite_active")
+                     "personnes", "maitre_mouvement", "etat_pilotage", "robot_dire", "personnalite_active",
+                     "robot_geste")
 
 EXEMPLE_SCENE = {
     "version": 1, "id": "immobile_couloir", "nom": "Passant immobile au milieu du couloir nord", "lieu": "demo",
@@ -83,7 +84,8 @@ def exemples():
         "demande_guide": C.EXEMPLE_DEMANDE_ALLER, "pietons_etat": B.EXEMPLE_PIETONS_ETAT,
         "pietons_consigne": B.EXEMPLE_CONSIGNE, "personnes": C.EXEMPLE_PERSONNES,
         "maitre_mouvement": D.EXEMPLE_MAITRE, "etat_pilotage": D.EXEMPLE_ETAT_PILOTAGE,
-        "robot_dire": E.EXEMPLE_ROBOT_DIRE, "personnalite_active": E.EXEMPLE_PERSONNALITE_ACTIVE}
+        "robot_dire": E.EXEMPLE_ROBOT_DIRE, "personnalite_active": E.EXEMPLE_PERSONNALITE_ACTIVE,
+        "robot_geste": E.message_robot_geste(26, "personnalite", raison="salutation")}
 
 
 @pytest.fixture
@@ -281,12 +283,6 @@ def test_un_lieu_neuf_a_son_principal(tmp_path):
     assert A.principal_explicite(lieu) and A.point_principal(lieu).id == "accueil"
     rapport = L.valider_lieu(tmp_path / "neuf")
     assert rapport.erreurs == [] and not any("point principal" in m for m in rapport.avertissements)
-
-
-def test_principal_fonctions_de_l_agent_pas_encore_ecrites():
-    for fonction in (A.definir_principal, A.synchroniser_depart, A.migrer_lieu):
-        with pytest.raises(NotImplementedError):
-            fonction(DEMO)
 
 
 # ---------------------------------------------------------------- B. passants
@@ -517,6 +513,10 @@ REFUS_CHOREGRAPHIE = {
     "gestes avec les bras": (lambda d: d.update(gestes=[{"t": 3.0, "action": 26}]), "7400"),
     "LED après la fin": (lambda d: d["led"].append({"t": 30.0, "r": 0, "g": 0, "b": 0}), "après la fin"),
     "rampes trop longues": (lambda d: (d["bras"].update(rampe_s=10.0), d.update(duree_s=19.0)), "rampes"),
+    # assemblage : première pose collée à la fin de la rampe, ou dernière au début de la rampe de fin
+    "pose collée à la rampe": (lambda d: d["bras"]["poses"][0].update(t=d["bras"]["rampe_s"]), "d'un coup"),
+    "pose collée à la rampe de fin": (lambda d: d["bras"]["poses"][-1].update(t=d["duree_s"] - d["bras"]["rampe_s"]),
+                                      "d'un coup"),
 }
 
 
@@ -561,6 +561,60 @@ def test_regles_de_l_equipe(cas):
     quoi, changement, attendu = REFUS_EQUIPE[cas]
     erreurs = E.valider_equipe(quoi, modifie(E.exemple_equipe(quoi), changement))
     assert any(attendu in m for m in erreurs), erreurs
+
+
+# ---------------------------------------------------------------- assemblage de la vague 4 : équipe
+
+def test_regle_geste_des_dialogues():
+    d = E.exemple_equipe("dialogues")
+    d["regles"].insert(0, {"id": "coucou", "motifs": ["coucou"], "action": "geste", "reponse": "Coucou !",
+                           "geste": 25})
+    assert L.valider_donnees("dialogues", d) == [] and erreurs_js("dialogues", d) == []
+    sans = modifie(d, lambda x: x["regles"][0].pop("geste"))
+    assert any("besoin du champ geste" in m for m in L.valider_donnees("dialogues", sans))
+    mal_place = modifie(d, lambda x: x["regles"][1].update(geste=26))
+    assert any("ne sert qu'avec l'action geste" in m for m in L.valider_donnees("dialogues", mal_place))
+    interdit = modifie(d, lambda x: x["regles"][0].update(geste=99))
+    assert L.valider_donnees("dialogues", interdit) and erreurs_js("dialogues", interdit)
+    from atelier.equipe.dialogue import Chatbot, decider
+    bot = Chatbot(d, L.charger_salles(DEMO))
+    r = bot.repondre("Coucou")
+    assert r["action"] == "geste" and r["geste"] == 25
+    assert decider(bot, r)["geste"] == 25
+    assert decider(bot, r, maitre={"maitre": "pilotage"})["geste"] is None
+    en_visite = decider(bot, r, etat_guide={"etat": "en_route", "cible": "b204"})
+    assert en_visite["geste"] is None and en_visite["dire"] == "Coucou !"
+
+
+def test_voix_nommee_d_une_personnalite():
+    p = E.exemple_equipe("personnalites")
+    p["personnalites"][0]["voix"]["nom"] = "fr_FR-siwis-medium"
+    assert L.valider_donnees("personnalites", p) == [] and erreurs_js("personnalites", p) == []
+    message = E.message_robot_dire("Bonjour", "dialogue", personnalite=p["personnalites"][0])
+    assert message["voix"]["nom"] == "fr_FR-siwis-medium" and L.valider_message("robot_dire", message) == []
+    faux = modifie(p, lambda x: x["personnalites"][0]["voix"].update(nom="voix avec espaces"))
+    assert L.valider_donnees("personnalites", faux) and erreurs_js("personnalites", faux)
+
+
+def test_exemple_camera_tangage_vers_le_haut():
+    c = E.exemple_equipe("camera")
+    assert c["camera"]["modele"] == "See3CAM_11CUG" and c["camera"]["position"]["tangage"] < 0
+    assert "vers le bas" in schema("camera")["properties"]["camera"]["properties"]["position"]["properties"][
+        "tangage"]["description"]
+
+
+def test_valider_lieu_couvre_les_fichiers_de_l_equipe(tmp_path):
+    copie = L.copier_lieu(DEMO, tmp_path / "demo")
+    assert L.valider_lieu(copie).ok
+    d = E.exemple_equipe("dialogues")
+    d["regles"].append({"id": "mode_fantome", "motifs": ["mode fantome"], "action": "personnalite",
+                        "reponse": "D'accord.", "personnalite": "fantome"})
+    (copie / E.FICHIERS_EQUIPE["dialogues"]).write_text(yaml.safe_dump(d, allow_unicode=True), encoding="utf-8")
+    E.enregistrer_equipe(copie, "personnalites", E.exemple_equipe("personnalites"))
+    r = L.valider_lieu(copie)
+    assert not r.ok and any("fantome" in m for m in r.erreurs), r.erreurs
+    (copie / E.FICHIERS_EQUIPE["camera"]).write_text("version: 1\ncamera: 3\n", encoding="utf-8")
+    assert any("camera.yaml" in m for m in L.valider_lieu(copie).erreurs)
 
 
 def test_sujets_de_l_equipe_ont_un_schema():

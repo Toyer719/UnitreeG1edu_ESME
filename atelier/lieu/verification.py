@@ -399,6 +399,8 @@ def verifier_lieu(lieu):
     apparaît dans un mur, masque Keepout d'une autre taille que la carte.
     Avertissements : pas de salle accueil, nœud isolé, salle inaccessible, passage étroit,
     monde ou carte pas encore faits, carte plus ancienne que le monde, id lu comme un booléen.
+    Vague 4 : les fichiers facultatifs de l'équipe (personnalites.yaml, dialogues.yaml, camera.yaml),
+    par atelier.lieu.equipe.verifier_equipe, quand le lieu a un dossier.
     """
     r = Rapport(lieu=lieu)
     for e in lieu.etages:
@@ -409,7 +411,18 @@ def verifier_lieu(lieu):
     _verifier_mondes(lieu, r)
     if lieu.dossier is not None:
         _verifier_cartes(lieu, r)
+        _verifier_equipe(lieu, r)
     return r
+
+
+def _verifier_equipe(lieu, r):
+    """Fichiers de l'équipe (vague 4, section 11.6) : absents, rien à dire ; sinon leurs erreurs et avertissements."""
+    from .equipe import verifier_equipe      # ici : equipe importe les modules que ce module importe aussi
+    v = verifier_equipe(lieu.dossier)
+    for m in v["erreurs"]:
+        r.erreur(m)
+    for m in v["avertissements"]:
+        r.avertir(m)
 
 
 def valider_lieu(lieu):

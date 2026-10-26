@@ -49,6 +49,7 @@ apt-get install "${APT_OPTS[@]}" \
   ros-humble-pcl-ros ros-humble-pointcloud-to-laserscan ros-humble-rtabmap-ros \
   ros-humble-librealsense2 ros-humble-realsense2-camera \
   ros-humble-rosbridge-suite ros-humble-joint-state-publisher-gui \
+  python3-tornado \
   libportaudio2 portaudio19-dev ffmpeg alsa-utils \
   joystick v4l-utils net-tools \
   docker.io qemu-user-static binfmt-support

@@ -217,7 +217,8 @@ def test_decider_personnalite(bot):
 
 
 def test_decider_rien(bot):
-    assert decider(bot, None) == {"dire": None, "guide": None, "stop": False, "personnalite": None, "raison": None}
+    assert decider(bot, None) == {"dire": None, "guide": None, "stop": False, "personnalite": None, "geste": None,
+                                  "raison": None}
     d = decider(bot, bot.repondre("quelle heure est-il"))
     assert d["dire"] and d["guide"] is None and not d["stop"]
 

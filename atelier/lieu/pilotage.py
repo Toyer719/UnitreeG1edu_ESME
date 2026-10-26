@@ -405,6 +405,13 @@ def regles_choregraphie(d, fichier="chorégraphie"):
         if not any(b <= a for a, b in zip(temps, temps[1:])):
             for t0, q0, t1, q1 in segments_bras(d):
                 if t1 <= t0:
+                    # segment de durée nulle (première pose à la fin de la rampe, ou dernière au
+                    # début de la rampe de fin) : les bras sauteraient d'un coup s'il change
+                    saut = [n for n in ARTICULATIONS_BRAS if abs(q1[n] - q0[n]) > 1e-9]
+                    if saut:
+                        messages.append(f"{ou}, bras à {t0:g} s : {saut[0]} sauterait d'un coup de {q0[saut[0]]:g} à "
+                                        f"{q1[saut[0]]:g} rad (pose collée à une rampe) ; laissez du temps entre la "
+                                        "rampe et la pose")
                     continue
                 for nom in ARTICULATIONS_BRAS:
                     v = facteur * abs(q1[nom] - q0[nom]) / (t1 - t0)

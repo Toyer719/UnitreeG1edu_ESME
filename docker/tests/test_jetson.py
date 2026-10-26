@@ -183,11 +183,13 @@ def test_hote_du_jetson(monkeypatch):
 def test_contexte_de_construction(tmp_path):
     a = tmp_path / 'a'
     paquets = jetson.assembler_contexte(a)
-    assert paquets == ['g1_bridge', 'g1_nav', 'g1_pilotage']
+    assert paquets == ['g1_bridge', 'g1_equipe', 'g1_nav', 'g1_pilotage']
     for chemin in ['Dockerfile', 'docker/demarrer.sh', 'docker/env.sh', 'docker/reseau.py',
                    'docker/presence.py', 'docker/cyclonedds.xml.modele', 'unitree_api/package.xml',
                    'unitree_api/msg/Request.msg', 'unitree_hg/package.xml', 'unitree_hg/msg/LowCmd.msg',
                    'ws/g1_pilotage/package.xml', 'python/atelier/lieu/pilotage.py',
+                   'ws/g1_equipe/package.xml', 'python/atelier/equipe/dialogue.py',
+                   'python/atelier/equipe/relais.py',
                    'python/atelier/__init__.py',
                    'python/atelier/lieu/robot.py', 'python/atelier/lieu/schemas/etat_pont.schema.json',
                    'python/atelier/scan/__init__.py', 'python/atelier/scan/slam_client.py',

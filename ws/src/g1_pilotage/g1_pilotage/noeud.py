@@ -10,6 +10,8 @@ Nœud ROS 2 « pilotage » : passe les messages au cœur (coeur.py) et publie se
            /lowstate (unitree_hg/LowState),
            /guide/etat, /pont/etat (std_msgs/String JSON), /lf/bmsstate (unitree_hg/BmsState,
            batterie, à vérifier sur le robot)
+           /personnalite/active (std_msgs/String JSON, fiable, transient_local) : LED du mode ;
+           /robot/geste (std_msgs/String JSON) : geste demandé par l'équipe, robot au repos
 
 Le pas de la logique (homme mort, lecture du mode, chorégraphie) tourne dans un fil à 50 Hz, à
 échéances absolues sur l'horloge monotone (jamais le temps simulé).
@@ -97,6 +99,10 @@ def creer_noeud(coeur):
                                      ecoute)
             self.create_subscription(String, '/pont/etat', self._recepteur('sur_pont_etat'),
                                      ecoute)
+            # Équipe (assemblage de la vague 4) : LED de la personnalité active, gestes demandés
+            self.create_subscription(String, '/personnalite/active',
+                                     self._demande('appliquer_personnalite'), verrou)
+            self.create_subscription(String, '/robot/geste', self._demande('geste_auto'), 10)
             self.commande_bras = LowCmd()
             self.bras_publies = 0
             self.dernier_etat = None
@@ -150,6 +156,22 @@ def creer_noeud(coeur):
 
         def _sur_batterie(self, msg):
             self.coeur.entree('sur_batterie', msg.soc)
+
+        def _demande(self, nom):
+            """Message JSON de l'équipe → entrée de la logique qui envoie des ordres (journalisée)."""
+            def recevoir(msg):
+                try:
+                    donnees = json.loads(msg.data)
+                except ValueError:
+                    self.get_logger().warn(f'{nom} : message illisible')
+                    return
+                resultat = self.coeur.faire(nom, donnees)
+                detail = resultat.corps.get('detail', '')
+                if resultat.ok:
+                    self.get_logger().info(detail)
+                else:
+                    self.get_logger().warn(f'{detail} ({resultat.statut})')
+            return recevoir
 
         def _recepteur(self, nom):
             def recevoir(msg):
