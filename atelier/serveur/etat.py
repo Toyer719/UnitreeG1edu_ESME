@@ -1,8 +1,17 @@
-"""État du serveur partagé par les routes : processus lancés, pont ROS 2, simulation en cours."""
+"""État du serveur partagé par les routes : processus lancés, pont ROS 2, simulation en cours.
+
+Vague 3 (section 10.8 du plan) : la navigation tourne dans un des trois modes de MODES_NAVIGATION,
+noté dans simulation["mode"] :
+  simu        Gazebo et la navigation de la simulation (rôles simulation et navigation) ;
+  repetition  Gazebo avec le faux G1, le faux slam_operate et la navigation du vrai robot
+              (rôles simulation, faux_slam et navigation) ;
+  robot       le conteneur g1-jetson sur le Jetson (lancé par g1-jetson demarrer, qui rend la main :
+              simulation["en_cours"] dit s'il tourne, jusqu'à « Arrêter »).
+"""
 import time
 
 from .pietons import positions_pietons
-from .pont_ros import PontRos
+from .pont_ros import PERIMEE_S, PontRos
 from .processus import Gestionnaire
 
 
@@ -11,7 +20,7 @@ class EtatServeur:
         self.ros = ros                    # False : pas de pont ROS 2 (tests de l'API)
         self.gestionnaire = Gestionnaire()
         self.pont = PontRos()
-        # simulation en cours : {lieu, etage, dossier, monde (Monde ou None), debut}
+        # simulation en cours : {lieu, etage, dossier, monde (Monde ou None), debut, mode, ...}
         self.simulation = None
 
     def demarrer(self):
@@ -23,7 +32,21 @@ class EtatServeur:
         self.pont.arreter()
 
     def simulation_en_cours(self):
+        """Vrai si Gazebo tourne (modes simu et repetition)."""
         return self.simulation is not None and self.gestionnaire.en_cours("simulation")
+
+    def mode(self):
+        """Mode de la dernière navigation lancée par l'Atelier (simu, repetition, robot), ou None."""
+        return None if self.simulation is None else self.simulation.get("mode", "simu")
+
+    def mode_navigation(self):
+        """Mode de la navigation qui tourne maintenant, ou None si aucune ne tourne."""
+        mode = self.mode()
+        if mode == "robot":
+            return mode if self.simulation.get("en_cours") else None
+        if mode is not None and self.gestionnaire.en_cours("navigation"):
+            return mode
+        return None
 
     def temps_simulation(self):
         """Temps simulé (/clock) ; à défaut, secondes écoulées depuis le lancement."""
@@ -31,6 +54,20 @@ class EtatServeur:
         if t is None and self.simulation is not None:
             t = time.time() - self.simulation["debut"]
         return t
+
+    def position_robot(self, pont=None):
+        """Position du robot sur la carte : la pose de /reperage/etat en répétition et sur le robot
+        (/odom y est l'odométrie locale, pas une position sur la carte) ; /odom sinon."""
+        pont = pont or self.pont.etat()
+        if self.mode() in ("repetition", "robot"):
+            reperage = self.pont.reperage()
+            if not reperage or not isinstance(reperage.get("pose"), dict):
+                return None
+            p = reperage["pose"]
+            age = reperage.get("age_recu_s", 0.0) + (reperage.get("age_s") or 0.0)
+            return {"x": p["x"], "y": p["y"], "theta": p["theta"], "age_s": round(age, 2),
+                    "perimee": age > PERIMEE_S or not reperage.get("repere", False)}
+        return pont["robot"]
 
     def etat_direct(self):
         """Message du WebSocket /ws/etat : {robot, guide, pietons, processus, ...} (contrat 4.4)."""
@@ -41,11 +78,15 @@ class EtatServeur:
         if self.simulation is not None:
             sim = {"lieu": self.simulation["lieu"], "etage": self.simulation["etage"], "en_cours": en_cours}
         return {
-            "robot": pont["robot"],
+            "robot": self.position_robot(pont),
             "guide": pont["guide"],
             "pietons": positions_pietons(self.simulation["monde"], t) if en_cours else [],
             "processus": self.gestionnaire.etat(),
             "simulation": sim,
             "temps_sim": None if t is None else round(t, 2),
             "ros": {"actif": pont["actif"], "erreur": pont["erreur"], "nav2": pont["nav2"]},
+            # vague 3 (section 10.8)
+            "mode": self.mode() if en_cours or self.mode_navigation() else None,
+            "reperage": self.pont.reperage(),
+            "pont": self.pont.etat_pont(),
         }

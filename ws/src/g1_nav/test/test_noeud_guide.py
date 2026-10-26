@@ -123,3 +123,37 @@ def test_lieu_introuvable(tmp_path):
     sortie, erreurs = guide.communicate(timeout=20)
     assert guide.returncode == 1 and erreurs.startswith('guide : ')
     assert 'Traceback' not in erreurs
+
+
+def test_nav2_absent_attente_puis_non_repere(dossier):
+    """
+    Moteur nav2 sans Nav2 : /guide/aller donne attente avec un message (plus d'echec aussitôt).
+
+    Puis le relais dit « non repéré » : echec tout de suite, avec le message du repérage.
+    """
+    guide = lancer_guide(dossier, moteur='nav2')
+    ecoute = Ecoute()
+    pub_reperage = ecoute.noeud.create_publisher(String, '/reperage/etat', 10)
+    try:
+        assert ecoute.attendre(lambda: ecoute.etats and ecoute.pub_aller.get_subscription_count(),
+                               20.0), 'le guide ne publie pas /guide/etat'
+        ecoute.pub_aller.publish(String(data='b204'))
+        assert ecoute.attendre(lambda: ecoute.etats[-1].get('cible') == 'b204', 5.0)
+        assert ecoute.etats[-1]['etat'] == 'attente'
+        assert ecoute.etats[-1]['message'].startswith('La navigation démarre')
+        assert not ecoute.attendre(lambda: ecoute.etats[-1]['etat'] == 'echec', 3.0)
+        etat = {'version': 1, 'etat': 'non_repere', 'repere': False, 'localisation': 'unitree',
+                'message': 'Robot non repéré', 'pose': None, 'precision_m': None, 'age_s': None,
+                'demande': None, 'carte': 'repetition.pcd',
+                'repere_unitree': {'x': 2.5, 'y': 10.0, 'theta': 0.0}, 'sauts': 0}
+
+        def publier_reperage():
+            pub_reperage.publish(String(data=json.dumps(etat)))
+            return ecoute.etats[-1]['etat'] == 'echec'
+        assert ecoute.attendre(publier_reperage, 5.0), 'le guide ne voit pas « non repéré »'
+        assert 'Repérer le robot' in ecoute.etats[-1]['message']
+    finally:
+        ecoute.fermer()
+        os.killpg(guide.pid, signal.SIGINT)
+        sortie, erreurs = guide.communicate(timeout=15)
+    assert 'Traceback' not in erreurs

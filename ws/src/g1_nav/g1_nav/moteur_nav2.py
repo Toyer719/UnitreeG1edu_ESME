@@ -20,6 +20,7 @@ from g1_nav.moteurs import etat_repos, Moteur, SuiviProgres, verifier_poses
 # Attente maximale du serveur d'action de Nav2 et de la réponse à une annulation, en secondes
 DELAI_SERVEUR_S = 0.5
 DELAI_ANNULATION_S = 0.5
+DELAI_ETAT_S = 0.3        # réponse de /bt_navigator/get_state (pret)
 
 
 class MoteurNav2(Moteur):
@@ -44,6 +45,28 @@ class MoteurNav2(Moteur):
         self._etat = etat_repos()
         self._poses = []
         self._en_tache = False
+        self._client_etat = None
+
+    def pret(self):
+        """
+        Dit si Nav2 peut recevoir un but : bt_navigator actif.
+
+        Juste après le lancement (ou tant que le robot n'est pas repéré : la carte des coûts
+        globale attend map → base_link), Nav2 refuserait le but. Rend la main en 0,3 s au plus.
+        """
+        creer = getattr(self.nav, 'create_client', None)
+        if creer is None:
+            return True               # faux navigateur des tests
+        from lifecycle_msgs.srv import GetState
+        if self._client_etat is None:
+            self._client_etat = creer(GetState, '/bt_navigator/get_state')
+        if not self._client_etat.service_is_ready():
+            return False
+        futur = self._client_etat.call_async(GetState.Request())
+        self._attendre(futur, DELAI_ETAT_S)
+        if not futur.done() or futur.result() is None:
+            return False
+        return futur.result().current_state.label == 'active'
 
     # ------------------------------------------------------------ interface Moteur
 

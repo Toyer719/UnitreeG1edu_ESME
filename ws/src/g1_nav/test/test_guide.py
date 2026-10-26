@@ -278,3 +278,115 @@ def test_moteur_unitree_absent_echoue_proprement(monkeypatch):
     monkeypatch.setattr(builtins, '__import__', faux_import)
     with pytest.raises(ErreurMoteur, match='MoteurUnitree est absent'):
         fabriquer_moteur('unitree')
+
+
+# ---------------------------------------------------------------- attente de la navigation (10.7)
+
+class Preparation:
+    """Fausse préparation : verdict changé par le test (None : la navigation est prête)."""
+
+    def __init__(self, verdict=('attendre', 'La navigation démarre.')):
+        self.verdict = verdict
+        self.appels = 0
+
+    def __call__(self):
+        self.appels += 1
+        return self.verdict
+
+
+def banc_avec_preparation(dossier, preparation):
+    banc = Banc(dossier)
+    banc.guide.preparation = preparation
+    return banc
+
+
+def test_attend_nav2_puis_part(dossier):
+    """Nav2 pas encore actif : attente avec un message, pas d'echec ; départ dès qu'il est prêt."""
+    prep = Preparation()
+    banc = banc_avec_preparation(dossier, prep)
+    assert banc.guide.aller('b204')
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'attente' and etat['cible'] == 'b204'
+    assert etat['message'] == 'La navigation démarre.'
+    assert banc.guide.en_attente and not banc.moteur.etat()['en_cours']
+    banc.tourner(20.0, jusqu_a=())
+    assert banc.guide.etat()['etat'] == 'attente' and prep.appels > 50
+    prep.verdict = None
+    etat = banc.tourner(PAS_S, jusqu_a=())
+    assert etat['etat'] == 'en_route' and 'message' not in etat
+    assert etat['itineraire'] == ['accueil', 'hall_nord', 'amphi', 'couloir_nord_1', 'b204']
+    assert banc.moteur.etat()['en_cours']
+    assert banc.tourner(60.0)['etat'] == 'arrive'
+    assert banc.etats()[:2] == ['attente', 'en_route']
+
+
+def test_attente_trop_longue_donne_echec(dossier):
+    banc = banc_avec_preparation(dossier, Preparation())
+    banc.guide.aller('b204')
+    banc.tourner(89.0, jusqu_a=('echec',))
+    assert banc.guide.etat()['etat'] == 'attente'
+    etat = banc.tourner(2.0)
+    assert etat['etat'] == 'echec' and 'pas prête après 90 s' in etat['message']
+    assert not banc.guide.en_attente
+
+
+def test_robot_non_repere_echec_tout_de_suite(dossier):
+    banc = banc_avec_preparation(dossier, Preparation(
+        ('echec', 'Robot non repéré : cliquez sur « Repérer le robot ».')))
+    assert not banc.guide.aller('b204')
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'echec' and 'Repérer le robot' in etat['message']
+    assert not banc.moteur.etat()['en_cours']
+
+
+def test_repere_pendant_l_attente_puis_echec(dossier):
+    """Pendant l'attente, le message suit ; un échec du repérage arrête l'attente."""
+    prep = Preparation(('attendre', 'Repérage en cours : départ dès que le robot est repéré.'))
+    banc = banc_avec_preparation(dossier, prep)
+    banc.guide.aller('cdi')
+    assert banc.guide.etat()['message'].startswith('Repérage en cours')
+    prep.verdict = ('attendre', 'La navigation démarre : départ dès qu\'elle est prête.')
+    banc.tourner(PAS_S, jusqu_a=())
+    assert banc.guide.etat()['message'].startswith('La navigation démarre')
+    assert banc.changements[-1]['message'].startswith('La navigation démarre')
+    prep.verdict = ('echec', 'Robot non repéré : cliquez sur « Repérer le robot ».')
+    assert banc.tourner(PAS_S)['etat'] == 'echec'
+
+
+def test_stop_pendant_l_attente(dossier):
+    prep = Preparation()
+    banc = banc_avec_preparation(dossier, prep)
+    banc.guide.aller('b204')
+    banc.guide.stop()
+    assert banc.guide.etat() == {'etat': 'attente', 'cible': None, 'reste_m': None,
+                                 'itineraire': []}
+    prep.verdict = None
+    banc.tourner(5.0, jusqu_a=())
+    assert not banc.moteur.etat()['en_cours'] and banc.guide.etat()['cible'] is None
+
+
+def test_cible_inconnue_sans_attendre(dossier):
+    prep = Preparation()
+    banc = banc_avec_preparation(dossier, prep)
+    assert not banc.guide.aller('grenier')
+    assert banc.guide.etat()['etat'] == 'echec' and prep.appels == 0
+    assert banc.guide.etat()['message'].startswith('Cible inconnue')
+
+
+def test_reperage_perdu_en_route_n_est_pas_un_obstacle(dossier):
+    """Le pont arrête le robot (repérage perdu) : ni bloque, ni détour ; reprise ensuite."""
+    banc = Banc(dossier)
+    perdu = []
+    banc.guide.suspension = lambda: perdu[0] if perdu else None
+    banc.guide.aller('b204')
+    banc.tourner(5.0, jusqu_a=())
+    perdu.append('Repérage perdu : le robot est arrêté.')
+    banc.tourner(20.0, obstacle=lambda g, m: True, jusqu_a=('echec', 'detour'))
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'en_route'
+    assert etat['message'] == 'Repérage perdu : le robot est arrêté.'
+    assert 'bloque' not in banc.etats() and banc.guide.detours == 0
+    assert banc.changements[-1]['message'].startswith('Repérage perdu')
+    perdu.clear()
+    etat = banc.tourner(60.0, obstacle=lambda g, m: False)      # le pont laisse repartir
+    assert etat['etat'] == 'arrive' and 'message' not in etat and banc.guide.detours == 0

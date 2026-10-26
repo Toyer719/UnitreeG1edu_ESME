@@ -330,6 +330,36 @@ body {
 }
 .boutons-scan { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
 
+/* répétition et vrai robot (vague 3) : mode, repérage, pont, marque au sol */
+.modes-simulation .outil { min-height: 52px; }
+.modes-simulation .outil:disabled { opacity: 0.45; cursor: not-allowed; }
+.panneau-reperage { display: flex; flex-direction: column; gap: 6px; }
+.panneau-reperage > * { flex-shrink: 0; }
+.panneau-reperage .bouton { margin: 0; }
+.bouton-reperer { min-height: 60px; font-size: 1.15rem; }
+.etat-reperage { font-size: 1.05rem; font-weight: 700; padding: 8px 10px; border-radius: 6px; background: #eef1f5; }
+.reperage-repere { background: #e2f3e3; color: var(--succes); }
+.reperage-en_cours { background: #e3edff; color: var(--principal-fonce); }
+.reperage-perdu { background: #fff1d6; color: var(--avertissement); }
+.reperage-echec { background: #fde4e4; color: var(--danger); }
+.pastille-pont { font-size: 0.9rem; padding: 6px 10px; border-radius: 6px; background: #eef1f5; color: var(--texte-doux); }
+.pont-ok { background: #e2f3e3; color: var(--succes); }
+.pont-attente { background: #fff1d6; color: var(--avertissement); }
+.pont-ko { background: #fde4e4; color: var(--danger); font-weight: 600; }
+.boutons-verrou { display: flex; flex-wrap: wrap; gap: 8px; }
+.marque-sol { display: flex; align-items: center; justify-content: center; }
+.marque-sol-croix { position: relative; width: 34px; height: 34px; }
+.marque-sol-croix::before, .marque-sol-croix::after {
+  content: ""; position: absolute; left: 50%; top: 50%; background: #111;
+}
+.marque-sol-croix::before { width: 30px; height: 4px; margin: -2px 0 0 -15px; box-shadow: 0 0 0 2px #fff; }
+.marque-sol-croix span { position: absolute; left: 50%; top: 50%; width: 4px; height: 30px; margin: -15px 0 0 -2px;
+  background: #111; box-shadow: 0 0 0 2px #fff; }
+.marque-sol-croix::after {
+  width: 0; height: 0; background: none; margin: -8px 0 0 13px;
+  border-left: 14px solid #111; border-top: 8px solid transparent; border-bottom: 8px solid transparent;
+}
+
 /* ------------------------------------------------------------------ messages */
 
 .messages {

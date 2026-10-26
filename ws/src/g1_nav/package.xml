@@ -13,6 +13,12 @@
   <depend>nav_msgs</depend>
   <depend>nav2_simple_commander</depend>
   <depend>tf2_ros</depend>
+  <depend>sensor_msgs</depend>
+  <depend>tf2_msgs</depend>
+  <depend>lifecycle_msgs</depend>
+  <depend>std_srvs</depend>
+  <!-- Repérage (vague 3) : 1804 en ROS 2 sur /api/slam_operate/request -->
+  <depend>unitree_api</depend>
 
   <!-- Lancement de la navigation (launch/navigation.launch.py) -->
   <exec_depend>launch</exec_depend>
@@ -29,6 +35,8 @@
   <exec_depend>nav2_mppi_controller</exec_depend>
   <exec_depend>nav2_smac_planner</exec_depend>
   <exec_depend>nav2_costmap_2d</exec_depend>
+  <exec_depend>nav2_amcl</exec_depend>
+  <exec_depend>pointcloud_to_laserscan</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <exec_depend>python3-numpy</exec_depend>
 

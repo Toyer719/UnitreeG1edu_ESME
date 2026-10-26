@@ -151,3 +151,25 @@ def test_trajet_avec_detour_et_trajet_trop_long(dossier, poses):
     r = executer(client2, [('accueil', 'cdi')], poses, delai_s=5.0, journal=lambda m: None)[0]
     assert not r.reussite and r.etat_final == 'delai_depasse'
     assert client2.guide.etat()['etat'] == 'attente'
+
+
+def test_pause_apres_un_arret(dossier, poses):
+    """Après un trajet trop long, le banc laisse au guide le temps de traiter l'arrêt."""
+    class Client(ClientFactice):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.ordres = []
+
+        def aller(self, cible):
+            self.ordres.append(('aller', self.t))
+            super().aller(cible)
+
+        def stop(self):
+            self.ordres.append(('stop', self.t))
+            super().stop()
+
+    client = Client(dossier)
+    executer(client, [('accueil', 'cdi'), ('cdi', 'b204')], poses, delai_s=5.0,
+             journal=lambda m: None)
+    assert [o for o, _ in client.ordres[:3]] == ['aller', 'stop', 'aller']
+    assert client.ordres[2][1] - client.ordres[1][1] >= 1.0

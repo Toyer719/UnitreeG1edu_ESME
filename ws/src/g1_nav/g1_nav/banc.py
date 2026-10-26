@@ -28,6 +28,8 @@ import time
 
 # Le robot doit s'arrêter à TOLERANCE_ARRIVEE_M au plus de la pose de la salle (critère 4)
 TOLERANCE_ARRIVEE_M = 0.3
+# Pause après l'arrêt d'un trajet trop long, avant le suivant (s)
+PAUSE_APRES_STOP_S = 1.0
 ETATS_FINAUX = ('arrive', 'echec')
 
 
@@ -148,6 +150,11 @@ def executer(client, trajets, poses_salles, pietons=(), position_pieton=None, de
                 f'{"réussi" if resultat.reussite else "raté (" + resultat.etat_final + ")"}, '
                 f'{resultat.duree_s:.0f} s, {resultat.arrets} arrêt(s), '
                 f'{resultat.detours} détour(s)')
+        if suivi.etat == 'delai_depasse':
+            # /guide/stop et /guide/aller sont deux sujets : DDS ne garde pas leur ordre. Sans
+            # cette pause, le guide pouvait recevoir le trajet suivant avant l'arrêt de celui-ci,
+            # puis l'arrêter aussitôt (trajet « cdi → cdi » raté sans bouger, le 26/10).
+            client.attendre(PAUSE_APRES_STOP_S)
     return resultats
 
 

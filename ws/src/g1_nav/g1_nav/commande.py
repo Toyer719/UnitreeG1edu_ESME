@@ -2,7 +2,13 @@
 Commande g1-guide : lancer la navigation, envoyer le robot, l'arrêter.
 
   g1-guide navigation --lieu L --etage E [--simu] [--moteur nav2|unitree]
-      Nav2, routeur et guide sur la carte du lieu (ros2 launch g1_nav navigation.launch.py)
+                      [--localisation simu|unitree|amcl|externe] [--pont auto|oui|non]
+                      [--vitesse-max M_PAR_S]
+      Nav2, routeur et guide sur la carte du lieu (ros2 launch g1_nav navigation.launch.py) ;
+      --localisation : défaut simu avec --simu, unitree sinon (repérage par 1804, section 10.5) ;
+      --pont : /cmd_vel → ordres de marche du robot (défaut auto : avec Nav2, sauf en simu) ;
+      --vitesse-max : plafonds du pont abaissés (premiers essais, ex. 0.2) ; défaut : la
+      variable G1_VITESSE_MAX, sinon les plafonds du contrat
   g1-guide aller ID [--sans-suivre]
       envoie le robot vers la salle ou le nœud ID, puis affiche l'état du guide jusqu'à
       l'arrivée (Ctrl+C arrête l'affichage, pas le robot)
@@ -28,6 +34,8 @@ TRADUCTIONS = [('the following arguments are required:', 'il manque :'),
 
 # Délai pour trouver le guide sur le réseau ROS 2, en secondes
 DELAI_DECOUVERTE_S = 5.0
+# --pont de g1-guide → argument pont:= du lancement
+PONTS = {'auto': 'auto', 'oui': 'true', 'non': 'false'}
 
 
 class Analyseur(argparse.ArgumentParser):
@@ -55,14 +63,24 @@ def texte_etat(etat):
         morceaux.append(f'reste {etat["reste_m"]:.1f} m')
     if etat.get('itineraire'):
         morceaux.append('par ' + ' → '.join(etat['itineraire']))
-    return ', '.join(morceaux)
+    texte = ', '.join(morceaux)
+    return f'{texte} : {etat["message"]}' if etat.get('message') else texte
 
 
 def commande_navigation(args):
     """Arguments de ros2 launch pour g1-guide navigation (section 4.5 du plan)."""
-    return ['ros2', 'launch', 'g1_nav', 'navigation.launch.py', f'lieu:={args.lieu}',
-            f'etage:={args.etage}', f'simu:={"true" if args.simu else "false"}',
-            f'moteur:={args.moteur}']
+    commande = ['ros2', 'launch', 'g1_nav', 'navigation.launch.py', f'lieu:={args.lieu}',
+                f'etage:={args.etage}', f'simu:={"true" if args.simu else "false"}',
+                f'moteur:={args.moteur}']
+    if getattr(args, 'localisation', None):
+        commande.append(f'localisation:={args.localisation}')
+    pont = getattr(args, 'pont', 'auto') or 'auto'
+    if pont != 'auto':
+        commande.append(f'pont:={PONTS[pont]}')
+    vitesse = getattr(args, 'vitesse_max', None) or os.environ.get('G1_VITESSE_MAX', '').strip()
+    if vitesse:
+        commande.append(f'vitesse_max:={vitesse}')
+    return commande
 
 
 class Client:
@@ -175,6 +193,16 @@ def main(argv=None):
     nav.add_argument('--simu', action='store_true', help='simulation Gazebo (temps simulé)')
     nav.add_argument('--moteur', default='nav2', choices=['nav2', 'unitree'],
                      help='nav2 (défaut) ou unitree (commande 1102 du robot)')
+    nav.add_argument('--localisation', choices=['simu', 'unitree', 'amcl', 'externe'],
+                     help='simu (défaut avec --simu), unitree (défaut sinon : repérage par la '
+                          'relocalisation d\'Unitree), amcl (secours : carte et LiDAR), externe')
+    nav.add_argument('--pont', default='auto', choices=['auto', 'oui', 'non'],
+                     help='pont /cmd_vel → ordres de marche du robot (auto : avec Nav2, sauf en '
+                          'simulation)')
+    nav.add_argument('--vitesse-max', metavar='M_PAR_S',
+                     help='premiers essais : vitesse maximale en m/s (ex. 0.2), les plafonds du '
+                          'pont baissent dans la même proportion (défaut : $G1_VITESSE_MAX, sinon '
+                          '0,4 / 0,25 / 0,6)')
     va = sous.add_parser('aller', help='envoie le robot vers une salle ou un nœud')
     va.add_argument('cible', help='id de la salle ou du nœud (ex. b204, accueil)')
     va.add_argument('--sans-suivre', action='store_true',

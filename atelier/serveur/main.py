@@ -3,7 +3,8 @@
   uvicorn atelier.serveur.main:app --port 8000
 
   /api/...     API REST en JSON (contrat 4.4 du plan), voir atelier/serveur/routes/
-  /ws/etat     WebSocket, environ 10 messages par seconde : {robot, guide, pietons, processus}
+  /ws/etat     WebSocket, environ 10 messages par seconde : {robot, guide, pietons, processus,
+               mode, reperage, pont}
   /            l'interface web (atelier/web), servie telle quelle
 
 Variables d'environnement :
@@ -29,7 +30,7 @@ from atelier.lieu import ErreurLieu
 from .communs import ErreurAtelier
 from .etat import EtatServeur
 from .processus import commande, dossier_bin
-from .routes import lieux, monde, plan, scan, simulation
+from .routes import lieux, monde, plan, robot, scan, simulation
 
 DOSSIER_WEB = Path(__file__).resolve().parent.parent / "web"
 PERIODE_DIRECT = 0.1      # s entre deux messages du WebSocket (10 par seconde)
@@ -108,7 +109,7 @@ def creer_app(ros=None):
         reponse.headers.setdefault("Cache-Control", "no-cache")
         return reponse
 
-    for module in (lieux, monde, plan, simulation, scan):
+    for module in (lieux, monde, plan, simulation, scan, robot):
         app.include_router(module.routeur)
 
     @app.get("/api/etat", tags=["serveur"])

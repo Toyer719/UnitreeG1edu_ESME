@@ -4,8 +4,12 @@
                                             map → odom est l'identité, contrat 4.2)
            /guide/etat (std_msgs/String)    état du guide, en JSON
            /clock (rosgraph_msgs/Clock)     temps simulé, pour placer les piétons à l'écran
+           /reperage/etat (std_msgs/String) état du repérage (JSON, relais odom_vers_tf, vague 3)
+           /pont/etat (std_msgs/String)     état du pont vers la marche (JSON, g1_bridge, vague 3)
   publie   /guide/aller (std_msgs/String)   id de la salle ou du nœud où aller
            /guide/stop (std_msgs/Empty)     arrêt immédiat
+           /reperage/demander (String)      « Repérer le robot » (JSON {id, x?, y?, theta?})
+           /pont/arret (std_msgs/Bool)      verrou du pont (fiable, transient_local, profondeur 1)
   demande  /bt_navigator/get_state          Nav2 est-il actif ? (sinon un but envoyé trop tôt,
                                             juste après le lancement, est refusé)
 
@@ -22,6 +26,8 @@ import time
 from atelier.lieu import quaternion_vers_cap
 
 PERIMEE_S = 2.0      # s : au-delà, la position du robot est signalée comme ancienne
+REPERAGE_PERIME_S = 2.0   # s : au-delà, /reperage/etat et /pont/etat sont tenus pour muets
+FINS_REPERAGE = ("repere", "echec")
 
 
 class PontRos:
@@ -42,6 +48,13 @@ class PontRos:
         self._pub_stop = None
         self._Chaine = None
         self._Vide = None
+        self._reperage = None        # (dernier /reperage/etat, instant de réception)
+        self._etat_pont = None       # (dernier /pont/etat, instant de réception)
+        self._fins = {}              # id de demande → (état final repere ou echec, instant)
+        self._condition = threading.Condition()
+        self._pub_demande = None
+        self._pub_arret = None
+        self._Bool = None
 
     # ------------------------------------------------------------ démarrage et arrêt
 
@@ -72,11 +85,11 @@ class PontRos:
     def _boucle(self):
         import rclpy
         from rclpy.executors import SingleThreadedExecutor
-        from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+        from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
         from lifecycle_msgs.srv import GetState
         from nav_msgs.msg import Odometry
         from rosgraph_msgs.msg import Clock
-        from std_msgs.msg import Empty, String
+        from std_msgs.msg import Bool, Empty, String
 
         contexte = rclpy.Context()
         try:
@@ -95,6 +108,15 @@ class PontRos:
         self._pub_aller = noeud.create_publisher(String, "/guide/aller", 10)
         self._pub_stop = noeud.create_publisher(Empty, "/guide/stop", 10)
         self._Chaine, self._Vide = String, Empty
+        # vague 3 : repérage et pont (section 10 du plan)
+        noeud.create_subscription(String, "/reperage/etat", self._recevoir_reperage, ecoute)
+        noeud.create_subscription(String, "/pont/etat", self._recevoir_pont, ecoute)
+        self._pub_demande = noeud.create_publisher(String, "/reperage/demander", 10)
+        # verrou : transient_local des deux côtés, sinon le pont ne l'entend pas (règle DDS)
+        verrou = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                            durability=DurabilityPolicy.TRANSIENT_LOCAL, history=HistoryPolicy.KEEP_LAST)
+        self._pub_arret = noeud.create_publisher(Bool, "/pont/arret", verrou)
+        self._Bool = Bool
         self._client_nav2 = noeud.create_client(GetState, "/bt_navigator/get_state")
         self._DemandeEtat = GetState.Request
         noeud.create_timer(1.0, self._sonder_nav2)
@@ -135,6 +157,32 @@ class PontRos:
             donnees = {"etat": "inconnu", "texte": msg.data}
         self._guide = (donnees, time.monotonic())
 
+    @staticmethod
+    def _lire_json(texte):
+        try:
+            donnees = json.loads(texte)
+        except ValueError:
+            return None
+        return donnees if isinstance(donnees, dict) else None
+
+    def _recevoir_reperage(self, msg):
+        donnees = self._lire_json(msg.data)
+        if donnees is None:
+            return
+        maintenant = time.monotonic()
+        with self._condition:
+            self._reperage = (donnees, maintenant)
+            if donnees.get("etat") in FINS_REPERAGE and donnees.get("demande"):
+                self._fins[str(donnees["demande"])] = (donnees, maintenant)
+                if len(self._fins) > 50:
+                    self._fins.pop(next(iter(self._fins)))
+            self._condition.notify_all()
+
+    def _recevoir_pont(self, msg):
+        donnees = self._lire_json(msg.data)
+        if donnees is not None:
+            self._etat_pont = (donnees, time.monotonic())
+
     def _recevoir_horloge(self, msg):
         self._temps_sim = (msg.clock.sec + msg.clock.nanosec * 1e-9, time.monotonic())
 
@@ -168,6 +216,55 @@ class PontRos:
             raise RuntimeError(self.erreur or "le pont ROS 2 n'est pas démarré")
         self._pub_stop.publish(self._Vide())
         return self._pub_stop.get_subscription_count()
+
+    def reperer(self, demande):
+        """Publie une demande de repérage (dict {id, x?, y?, theta?}) sur /reperage/demander.
+        Renvoie le nombre de nœuds qui écoutent (0 : le relais odom_vers_tf ne tourne pas)."""
+        if not self.actif:
+            raise RuntimeError(self.erreur or "le pont ROS 2 n'est pas démarré")
+        with self._condition:
+            self._fins.pop(str(demande.get("id")), None)
+        self._pub_demande.publish(self._Chaine(data=json.dumps(demande)))
+        return self._pub_demande.get_subscription_count()
+
+    def abonnes_reperage(self):
+        """Nombre de nœuds abonnés à /reperage/demander (le relais du repérage)."""
+        return self._pub_demande.get_subscription_count() if self.actif else 0
+
+    def attendre_reperage(self, ident, delai):
+        """Attend l'état final (repere ou echec) de la demande ident, au plus delai secondes.
+        Renvoie le message /reperage/etat, ou None."""
+        fin = time.monotonic() + delai
+        with self._condition:
+            while str(ident) not in self._fins:
+                reste = fin - time.monotonic()
+                if reste <= 0:
+                    return None
+                self._condition.wait(min(reste, 0.2))
+            return dict(self._fins[str(ident)][0])
+
+    def bloquer(self, verrou):
+        """Publie le verrou du pont sur /pont/arret. Renvoie le nombre de nœuds qui écoutent."""
+        if not self.actif:
+            raise RuntimeError(self.erreur or "le pont ROS 2 n'est pas démarré")
+        self._pub_arret.publish(self._Bool(data=bool(verrou)))
+        return self._pub_arret.get_subscription_count()
+
+    def reperage(self):
+        """Dernier /reperage/etat, avec age_recu_s et perime ; None si jamais reçu."""
+        return self._avec_age(self._reperage)
+
+    def etat_pont(self):
+        """Dernier /pont/etat, avec age_recu_s et perime ; None si jamais reçu."""
+        return self._avec_age(self._etat_pont)
+
+    @staticmethod
+    def _avec_age(recu):
+        if recu is None:
+            return None
+        donnees, instant = recu
+        age = time.monotonic() - instant
+        return dict(donnees, age_recu_s=round(age, 2), perime=age > REPERAGE_PERIME_S)
 
     def abonnes_aller(self):
         """Nombre de nœuds abonnés à /guide/aller (0 : le guide n'est pas lancé)."""
@@ -206,3 +303,6 @@ class PontRos:
     def oublier(self):
         """Efface la dernière position et le dernier état du guide (nouvelle simulation)."""
         self._robot = self._guide = self._temps_sim = self._nav2 = None
+        self._reperage = self._etat_pont = None
+        with self._condition:
+            self._fins.clear()

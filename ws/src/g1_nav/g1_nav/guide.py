@@ -4,13 +4,22 @@ Guide : emmène le robot jusqu'à une salle ou un nœud, et change de couloir s'
 Sujets ROS 2 (section 4.2 du plan) :
   /guide/aller  std_msgs/String  id de salle ou de nœud (« b204 », « accueil »)
   /guide/stop   std_msgs/Empty   arrêt immédiat
-  /guide/etat   std_msgs/String  JSON {"etat", "cible", "reste_m", "itineraire"}, 5 fois par
-                                 seconde et à chaque changement d'état
+  /guide/etat   std_msgs/String  JSON {"etat", "cible", "reste_m", "itineraire", "message"?}, 5
+                                 fois par seconde et à chaque changement d'état ; message
+                                 (facultatif, section 10.7) : phrase pour l'utilisateur
+  /reperage/etat std_msgs/String JSON du relais odom_vers_tf (section 10.5), écouté
 
 États : attente, en_route, bloque, detour, arrive, echec.
   - bloque : la distance restante ne baisse plus depuis 3 s (5 s juste après le départ) ;
   - detour : coincé depuis 8 s, le guide a annulé, marqué le couloir bloqué (120 s), puis
     il est reparti par un autre chemin. L'état reste « detour » jusqu'à l'arrivée.
+  - attente avec un message, après /guide/aller : la navigation n'est pas encore prête (Nav2
+    démarre, ou le robot n'a pas encore de position sur la carte). Le guide réessaie à chaque
+    pas, DELAI_PREPARATION_S au plus, puis echec. Sans position sur la carte et si le relais dit
+    que le robot n'est pas repéré : echec tout de suite (« Robot non repéré... »).
+  - en route, repérage perdu : le pont arrête le robot. Ce n'est pas un couloir bouché : le guide
+    ne compte pas ce temps-là (ni bloque, ni détour) et le dit dans le message ; il reprend seul
+    quand le robot est de nouveau repéré.
 
 Le guide ne parle jamais directement à Nav2 : il passe par un Moteur (moteurs.py). Le
 paramètre ROS « moteur » le choisit : nav2 (MoteurNav2), unitree (MoteurUnitree, écrit par
@@ -48,6 +57,15 @@ DELAI_DEPART_S = 2.0
 MAX_DETOURS = 3
 # Près du but, le robot peut tourner sur place sans gagner de distance : ce n'est pas bloqué
 DISTANCE_APPROCHE_M = 0.5
+# Attente de la navigation (Nav2 qui démarre, repérage) après /guide/aller, au plus
+DELAI_PREPARATION_S = 90.0
+MESSAGE_PREPARATION = 'La navigation démarre : départ dès qu\'elle est prête.'
+MESSAGE_NON_REPERE = 'Robot non repéré : cliquez sur « Repérer le robot ».'
+MESSAGE_REPERAGE_EN_COURS = 'Repérage en cours : départ dès que le robot est repéré.'
+MESSAGE_PERDU = ('Repérage perdu : le robot est arrêté, il repartira dès qu\'il aura retrouvé sa '
+                 'position.')
+# /reperage/etat plus vieux : on ne s'y fie plus
+DELAI_REPERAGE_PERIME_S = 2.0
 
 
 def distance_segment(p, a, b):
@@ -66,7 +84,8 @@ class Guide:
     """Machine à états du guide, sans ROS : routeur + moteur + position du robot."""
 
     def __init__(self, routeur, moteur, position=None, horloge=time.monotonic,
-                 journal=None, au_changement=None, depart_defaut='accueil'):
+                 journal=None, au_changement=None, depart_defaut='accueil', preparation=None,
+                 delai_preparation=DELAI_PREPARATION_S, suspension=None):
         """
         Prépare le guide.
 
@@ -76,7 +95,13 @@ class Guide:
         horloge       : temps en secondes (fausse horloge des tests) ;
         journal       : fonction qui reçoit les messages pour l'utilisateur (print par défaut) ;
         au_changement : fonction appelée avec etat() à chaque changement d'état ;
-        depart_defaut : nœud de départ quand la position du robot est inconnue.
+        depart_defaut : nœud de départ quand la position du robot est inconnue ;
+        preparation   : fonction sans argument : None si la navigation est prête, sinon
+                        ('attendre', message) ou ('echec', message) ;
+        delai_preparation : attente maximale de la navigation après /guide/aller, en s ;
+        suspension    : fonction sans argument : None si le robot peut avancer, sinon le message
+                        qui dit pourquoi il est arrêté (repérage perdu) ; ce temps ne
+                        compte pas pour bloque ni détour.
         """
         self.routeur = routeur
         self.moteur = moteur
@@ -85,7 +110,12 @@ class Guide:
         self.journal = journal or print
         self.au_changement = au_changement
         self.depart_defaut = depart_defaut
+        self.preparation = preparation
+        self.delai_preparation = delai_preparation
+        self.suspension = suspension
         self._etat = 'attente'
+        self._message = ''
+        self._en_attente = None          # (cible, fin de l'attente) : départ dès que prêt
         self._cible = None
         self._itineraire = []
         self._reste = None
@@ -98,16 +128,30 @@ class Guide:
     # ------------------------------------------------------------ commandes
 
     def aller(self, cible):
-        """Part vers une salle ou un nœud. Renvoie True si le robot est parti."""
+        """Part vers une salle ou un nœud. Renvoie True si le robot est parti (ou va partir)."""
         self.detours = 0
         self.arrets = 0
         self._etat_route = 'en_route'
+        self._en_attente = None
         try:
             but = self.routeur.resoudre(cible)
         except CibleInconnue as e:
             self._cible, self._itineraire, self._reste = str(cible).strip(), [], None
             return self._echouer(f'cible inconnue : {e}')
         self._cible = but
+        verdict = self.preparation() if self.preparation else None
+        if verdict is not None:
+            genre, message = verdict
+            if genre == 'echec':
+                return self._echouer(message)
+            self._en_attente = (but, self.horloge() + self.delai_preparation)
+            self._itineraire, self._reste = [], None
+            self._changer('attente', message, message)
+            return True
+        return self._partir_vers(but)
+
+    def _partir_vers(self, but):
+        """Itinéraire depuis la position du robot, envoyé au moteur."""
         depart, position = self._depart()
         if depart is None:
             return self._echouer('le graphe des itinéraires est vide')
@@ -122,12 +166,16 @@ class Guide:
 
     def stop(self):
         """Arrête le robot tout de suite ; le guide revient en attente."""
+        self._en_attente = None
         self.moteur.annuler()
         self._cible, self._itineraire, self._reste = None, [], None
         self._changer('attente', 'arrêt demandé')
 
     def pas(self):
         """Lit l'état du moteur et fait avancer la machine à états. Renvoie etat()."""
+        if self._en_attente is not None:
+            self._attendre_preparation()
+            return self.etat()
         if self._etat not in ('en_route', 'bloque', 'detour'):
             return self.etat()
         e = self.moteur.etat()
@@ -147,6 +195,8 @@ class Guide:
                 self._detourner('le moteur a renoncé deux fois')
         elif not e['en_cours']:
             self._echouer('le moteur s\'est arrêté sans arriver')
+        elif self._suspendre(maintenant):
+            pass
         else:
             approche = self._reste is not None and self._reste < DISTANCE_APPROCHE_M
             if e['progresse'] or approche:
@@ -162,12 +212,49 @@ class Guide:
         return self.etat()
 
     def etat(self):
-        """Renvoie l'état à publier sur /guide/etat, au format de la section 4.2 du plan."""
+        """Renvoie l'état à publier sur /guide/etat, au format des sections 4.2 et 10.7 du plan."""
         reste = None if self._reste is None else round(float(self._reste), 2)
-        return {'etat': self._etat, 'cible': self._cible, 'reste_m': reste,
+        etat = {'etat': self._etat, 'cible': self._cible, 'reste_m': reste,
                 'itineraire': list(self._itineraire)}
+        if self._message:
+            etat['message'] = self._message
+        return etat
+
+    @property
+    def en_attente(self):
+        """Vrai si une destination attend que la navigation soit prête."""
+        return self._en_attente is not None
 
     # ------------------------------------------------------------ interne
+
+    def _suspendre(self, maintenant):
+        """Vrai si le robot est arrêté sans obstacle (repérage perdu) : le temps ne compte pas."""
+        pause = self.suspension() if self.suspension else None
+        if pause:
+            self._dernier_progres = maintenant
+            if pause != self._message:
+                self._changer(self._etat, pause, pause)
+            return True
+        if self._message:
+            self._changer(self._etat, 'le robot peut de nouveau avancer')
+        return False
+
+    def _attendre_preparation(self):
+        """Une destination attend : part si la navigation est prête, renonce après le délai."""
+        but, fin = self._en_attente
+        verdict = self.preparation() if self.preparation else None
+        if verdict is None:
+            self._en_attente = None
+            self._partir_vers(but)
+        elif verdict[0] == 'echec':
+            self._en_attente = None
+            self._echouer(verdict[1])
+        elif self.horloge() > fin:
+            self._en_attente = None
+            self._echouer(f'la navigation n\'est pas prête après {self.delai_preparation:.0f} s '
+                          f'({verdict[1]}) : vérifiez « Ce qui tourne » dans l\'onglet Simulation')
+        elif verdict[1] != self._message:
+            self._changer('attente', verdict[1], verdict[1])
 
     def _depart(self):
         """Nœud de départ (le plus proche du robot) et position (x, y) du robot, ou None."""
@@ -243,15 +330,21 @@ class Guide:
     def _echouer(self, raison):
         """Arrête le robot (un trajet précédent ne doit pas continuer) et passe en echec."""
         self.moteur.annuler()
-        self._changer('echec', raison)
+        self._changer('echec', raison, raison[:1].upper() + raison[1:])
         return False
 
-    def _changer(self, etat, raison=''):
-        """Change d'état, prévient l'utilisateur et appelle au_changement."""
-        ancien, self._etat = self._etat, etat
+    def _changer(self, etat, raison='', message=''):
+        """
+        Change d'état, prévient l'utilisateur et appelle au_changement.
+
+        message : phrase du champ message de /guide/etat (vide : pas de champ).
+        """
+        ancien, ancien_message = self._etat, self._message
+        self._etat, self._message = etat, message
         if raison:
             self.journal(f'{etat} : {raison}')
-        if self.au_changement is not None and (etat != ancien or etat == 'detour'):
+        if self.au_changement is not None and (etat != ancien or etat == 'detour'
+                                               or message != ancien_message):
             self.au_changement(self.etat())
 
 
@@ -320,10 +413,13 @@ class NoeudGuide(Node):
         self.ecoute_tf = tf2_ros.TransformListener(self.tampon_tf, self)
         self.String = String
         self.pub_etat = self.create_publisher(String, '/guide/etat', 10)
+        self._reperage = None            # (dernier /reperage/etat, instant de réception)
         self.guide = Guide(routeur, self.moteur, position=self.position,
-                           journal=self.get_logger().info, au_changement=self.publier)
+                           journal=self.get_logger().info, au_changement=self.publier,
+                           preparation=self.preparation, suspension=self.suspension)
         self.create_subscription(String, '/guide/aller', self._sur_aller, 10)
         self.create_subscription(Empty, '/guide/stop', self._sur_stop, 10)
+        self.create_subscription(String, '/reperage/etat', self._sur_reperage, 10)
         # Horloge murale : le guide continue de répondre même si la simulation est en pause
         self.create_timer(1.0 / frequence, self._sur_minuterie,
                           clock=Clock(clock_type=ClockType.STEADY_TIME))
@@ -345,6 +441,50 @@ class NoeudGuide(Node):
             return None
         return (t.transform.translation.x, t.transform.translation.y,
                 quaternion_vers_cap(t.transform.rotation))
+
+    def reperage(self):
+        """Dernier /reperage/etat s'il est frais (DELAI_REPERAGE_PERIME_S), sinon None."""
+        if self._reperage is None:
+            return None
+        if time.monotonic() - self._reperage[1] > DELAI_REPERAGE_PERIME_S:
+            return None
+        return self._reperage[0]
+
+    def preparation(self):
+        """
+        Dit si la navigation peut partir (section 10.7 du plan).
+
+        None : prête. ('attendre', message) : Nav2 démarre, ou pas encore de position sur la
+        carte. ('echec', message) : le relais dit que le robot n'est pas repéré. Seul le moteur
+        nav2 a besoin de tout cela ; les autres partent tout de suite.
+        """
+        from g1_nav.moteur_nav2 import MoteurNav2
+
+        if not isinstance(self.moteur, MoteurNav2):
+            return None
+        reperage = self.reperage()
+        if reperage is not None and not reperage.get('repere'):
+            if reperage.get('etat') == 'en_cours':
+                return ('attendre', MESSAGE_REPERAGE_EN_COURS)
+            return ('echec', MESSAGE_NON_REPERE)
+        if self.position() is None or not self.moteur.pret():
+            return ('attendre', MESSAGE_PREPARATION)
+        return None
+
+    def suspension(self):
+        """Message si le relais dit le repérage perdu (le pont a arrêté le robot), sinon None."""
+        reperage = self.reperage()
+        if reperage is not None and reperage.get('etat') == 'perdu':
+            return MESSAGE_PERDU
+        return None
+
+    def _sur_reperage(self, msg):
+        try:
+            donnees = json.loads(msg.data)
+        except ValueError:
+            return
+        if isinstance(donnees, dict):
+            self._reperage = (donnees, time.monotonic())
 
     def publier(self, etat=None):
         self.pub_etat.publish(self.String(data=json.dumps(etat or self.guide.etat(),

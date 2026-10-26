@@ -43,3 +43,27 @@ en simulation, bouton « Fin », progression du traitement, revue des éléments
 catégorie, case « garder », confiance), adoption (« Utiliser cette carte pour l'étage », « Ouvrir dans
 l'éditeur du monde ») et scans précédents. L'état est relu chaque seconde (`/api/scan/etat`), l'aperçu
 toutes les 2 s. Routes : section 9.7 du plan, `atelier/serveur/routes/scan.py`.
+
+## Onglet Simulation : répétition et vrai robot (vague 3)
+
+Trois modes en haut de l'onglet (section 10.8 du plan), retenus par le navigateur :
+- **Simulation** : comme avant (« Lancer la simulation ») ;
+- **Répétition sans robot** (« Lancer la répétition ») : Gazebo avec le faux G1, le faux service de
+  cartographie et la navigation du vrai robot (repérage, pont vers la marche) ;
+- **Robot** (« Lancer sur le robot ») : la navigation tourne dans le conteneur du Jetson
+  (`g1-jetson demarrer`) ; une confirmation rappelle le câble, `source ~/robot-g1/setup/robot.sh` et la
+  télécommande en main.
+
+En répétition et avec le robot, le panneau **Repérage** :
+- la consigne « Posez le robot sur la marque au sol (croix sur la carte), tourné dans le sens de la
+  flèche » ; la marque (croix et flèche) est dessinée sur la carte (`GET /api/robot/etat`, champ `marque`) ;
+- le gros bouton **« Repérer le robot »** (`POST /api/robot/reperer`) ; le lien « Le robot n'est pas sur
+  la marque » : un clic sur la carte là où il est, puis un glissé vers son avant, envoie sa pose ;
+- l'état du repérage (`/ws/etat`, champ `reperage`) : Repéré (précision, âge), Non repéré, Repérage perdu,
+  Échec avec son message ;
+- la pastille du pont (`/ws/etat`, champ `pont`), et « Bloquer le robot » / « Débloquer »
+  (`POST /api/robot/arret`).
+
+« Y aller » reste grisé tant que le robot n'est pas repéré ou que Nav2 n'est pas prêt. Le robot affiché
+est alors la pose du repérage (et non `/odom`, qui est l'odométrie locale). Tests :
+`atelier/tests/test_robot_serveur*.py` (API) et `test_robot_navigateur.py` (Firefox sans fenêtre).

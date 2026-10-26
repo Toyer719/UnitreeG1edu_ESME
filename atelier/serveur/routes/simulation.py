@@ -1,16 +1,27 @@
 """Routes de la simulation et du guide.
 
-  POST /api/simulation/demarrer {lieu, etage, fenetre?, navigation?}
-        g1-monde simuler --lieu L --etage E --sans-fenetre  (Gazebo, robot proxy, piétons)
-        puis g1-guide navigation --lieu L --etage E --simu  (Nav2, routeur, guide)
-  POST /api/simulation/arreter      arrête les deux, avec tout ce qu'ils ont lancé
+  POST /api/simulation/demarrer {lieu, etage, fenetre?, navigation?, mode?}
+        mode simu (défaut) :
+          g1-monde simuler --lieu L --etage E --sans-fenetre  (Gazebo, robot proxy, piétons)
+          puis g1-guide navigation --lieu L --etage E --simu  (Nav2, routeur, guide)
+        mode repetition (le niveau 2 du vrai robot, sans robot, section 10.8 du plan) :
+          g1-monde simuler ... --jumeau (Gazebo et le faux G1), g1-slam faux-service --jumeau
+          --bruit 0.01 (faux slam_operate, 1 cm de bruit), g1-guide navigation ... --simu
+          --localisation unitree (relais,
+          pont, Nav2, guide) : aucune vitesse ne va directement à Gazebo
+        mode robot : g1-jetson demarrer --lieu L --etage E (navigation dans le conteneur du
+          Jetson) ; seulement au câble, serveur lancé après source ~/robot-g1/setup/robot.sh
+  POST /api/simulation/arreter      arrête tout ce qui a été lancé (mode robot : g1-jetson arreter)
   GET  /api/simulation/etat         processus, simulation en cours, pont ROS 2
-  POST /api/guide/aller {cible}     publie l'id sur /guide/aller
+  POST /api/guide/aller {cible}     publie l'id sur /guide/aller (répétition et robot : 409 tant que
+                                    le robot n'est pas repéré)
   POST /api/guide/stop              publie sur /guide/stop (à défaut : g1-guide stop)
   POST /api/simulation/teleop {vx, vy, wz}   pilote le robot simulé (flèches de l'onglet Scan) :
-        publie /cmd_vel par le pont ROS 2, avec un homme mort (vitesse nulle après 0,5 s sans consigne)
+        publie /cmd_vel par le pont ROS 2, avec un homme mort (vitesse nulle après 0,5 s sans consigne) ;
+        en répétition, /cmd_vel passe par le pont vers le faux G1 ; refusée avec le vrai robot
 """
 import math
+import os
 import threading
 import time
 
@@ -18,17 +29,25 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
-from atelier.lieu import (ErreurLieu, charger_itineraires, charger_monde, charger_salles, chemin_carte,
-                          chemin_monde, chemin_sdf)
+from atelier.lieu import (MODES_NAVIGATION, ErreurLieu, charger_itineraires, charger_monde, charger_salles,
+                          chemin_carte, chemin_monde, chemin_sdf)
 
 from ..communs import ErreurAtelier, dossier_du_lieu, etage_du_lieu, verifier_id
 from ..processus import CommandeAbsente, commande, lancer_et_attendre
-from .scan import scan_robot_simule_actif
+from .scan import cable_branche, interface_robot, scan_robot_simule_actif
 
 routeur = APIRouter(tags=["simulation et guide"])
 
 LIMITES_TELEOP = {"vx": 0.5, "vy": 0.25, "wz": 0.8}     # m/s, m/s, rad/s (contrat 9.7)
 HOMME_MORT_S = 0.5      # s sans consigne : le serveur publie lui-même une vitesse nulle
+DELAI_JETSON_S = 90.0   # g1-jetson demarrer rend la main quand le conteneur tourne (30 s au plus)
+# Rôles des processus, dans l'ordre de lancement (arrêtés dans l'ordre inverse)
+ROLES = ("simulation", "faux_slam", "navigation")
+# Répétition : écart-type de position ajouté par le faux slam_operate à la relocalisation (m), pour
+# que la correction map → odom soit éprouvée comme avec le vrai robot (g1-slam ... --bruit)
+BRUIT_REPETITION_M = 0.01
+MESSAGE_REPERER = ("Repérez d'abord le robot : posez-le sur la marque au sol, tourné dans le sens de la "
+                   "flèche, puis cliquez sur « Repérer le robot ».")
 
 
 class DemandeSimulation(BaseModel):
@@ -36,6 +55,7 @@ class DemandeSimulation(BaseModel):
     etage: str
     fenetre: bool = False        # True : fenêtre de Gazebo en plus (jamais pendant les tests)
     navigation: bool = True      # False : Gazebo seul, sans Nav2 ni guide
+    mode: str = "simu"           # simu, repetition ou robot (section 10.8)
 
 
 class DemandeAller(BaseModel):
@@ -56,10 +76,43 @@ def etat_simulation(etat):
     pont = etat.pont.etat()
     return {"simulation": None if etat.simulation is None else
             {"lieu": etat.simulation["lieu"], "etage": etat.simulation["etage"],
-             "en_cours": etat.simulation_en_cours(), "avertissements": etat.simulation["avertissements"]},
+             "en_cours": etat.simulation_en_cours() or etat.mode_navigation() == "robot",
+             "mode": etat.mode(), "avertissements": etat.simulation["avertissements"]},
             "processus": etat.gestionnaire.etat(),
             "ros": {"actif": pont["actif"], "erreur": pont["erreur"],
                     "guide_ecoute": etat.pont.abonnes_aller()}}
+
+
+def verifier_terminal_robot():
+    """Mode robot : le câble (carrier, rien n'est envoyé) et le terminal relié au robot. 409 sinon."""
+    interface = interface_robot()
+    if os.environ.get("G1_SLAM_FAUX") == "1":
+        raise ErreurAtelier(409, "Le vrai robot est interdit pendant les essais (G1_SLAM_FAUX=1) : utilisez "
+                                 "la répétition sans robot.")
+    if not cable_branche(interface):
+        raise ErreurAtelier(409, f"Robot non détecté : branchez le câble Ethernet entre le PC et le robot (port "
+                                 f"{interface}), puis réessayez. Pour essayer sans robot : « Répétition sans robot ».")
+    uri = os.environ.get("CYCLONEDDS_URI", "")
+    domaine = os.environ.get("ROS_DOMAIN_ID", "0") or "0"
+    if f'"{interface}"' not in uri or domaine != "0":
+        raise ErreurAtelier(409, "Le serveur de l'Atelier n'a pas été lancé dans un terminal relié au robot : "
+                                 "fermez-le (Ctrl+C), puis dans un terminal : source ~/robot-g1/setup/robot.sh, "
+                                 "puis g1-atelier.")
+
+
+async def _demarrer_robot(etat, demande, dossier):
+    verifier_terminal_robot()
+    if commande("g1-jetson") is None:
+        raise ErreurAtelier(503, "Impossible de lancer la navigation du robot : la commande g1-jetson n'est pas "
+                                 "installée (agent Jetson).")
+    r = await run_in_threadpool(lancer_et_attendre, "g1-jetson",
+                                ["demarrer", "--lieu", dossier, "--etage", demande.etage], DELAI_JETSON_S)
+    if r["code"] != 0:
+        lignes = [x for x in r["sortie"].strip().splitlines() if x.strip()]
+        raise ErreurAtelier(502, "Le conteneur du robot n'a pas démarré : "
+                                 + (lignes[-1] if lignes else "g1-jetson demarrer a échoué") + ".",
+                            sortie=r["sortie"])
+    return r["sortie"]
 
 
 @routeur.post("/api/simulation/demarrer")
@@ -67,13 +120,35 @@ async def demarrer(demande: DemandeSimulation, request: Request):
     etat = _etat(request)
     dossier = dossier_du_lieu(demande.lieu)
     etage_du_lieu(dossier, demande.etage)
-    if etat.simulation_en_cours():
+    mode = demande.mode
+    if mode not in MODES_NAVIGATION:
+        raise ErreurAtelier(400, f"Mode « {mode} » inconnu : simu (simulation), repetition (répétition sans "
+                                 "robot) ou robot.")
+    if mode != "simu" and not demande.navigation:
+        raise ErreurAtelier(400, "La répétition et le mode robot font toujours tourner la navigation "
+                                 "(navigation: false n'est possible qu'en simulation).")
+    if etat.simulation_en_cours() or etat.mode_navigation() == "robot":
         s = etat.simulation
         raise ErreurAtelier(409, f"Une simulation tourne déjà (lieu « {s['lieu']} », étage « {s['etage']} ») : "
                                  "arrêtez-la d'abord avec « Arrêter la simulation ».")
+    if mode == "robot":
+        if not chemin_carte(dossier, demande.etage).is_file():
+            raise ErreurAtelier(409, "Cet étage n'a pas de carte 2D : le guide ne peut pas naviguer. Faites d'abord "
+                                     "un scan avec le robot (onglet Scan).")
+        etat.pont.oublier()
+        sortie = await _demarrer_robot(etat, demande, dossier)
+        etat.simulation = {"lieu": demande.lieu, "etage": demande.etage, "dossier": str(dossier), "monde": None,
+                           "debut": time.time(), "avertissements": [], "mode": "robot", "en_cours": True,
+                           "sortie": sortie}
+        return etat_simulation(etat)
     if commande("g1-monde") is None:
         raise ErreurAtelier(503, "Impossible de lancer la simulation : la commande g1-monde n'est pas "
                                  "encore installée (agent Monde).")
+    if mode == "repetition":
+        for nom in ("g1-slam", "g1-guide"):
+            if commande(nom) is None:
+                raise ErreurAtelier(503, f"Impossible de lancer la répétition : la commande {nom} n'est pas "
+                                         "installée.")
     if not chemin_sdf(dossier, demande.etage).is_file():
         raise ErreurAtelier(409, "Le monde Gazebo de cet étage n'existe pas encore : dans l'onglet Carte, "
                                  "cliquez sur « Fabriquer la carte », puis relancez la simulation.")
@@ -82,7 +157,7 @@ async def demarrer(demande: DemandeSimulation, request: Request):
     if navigation and not chemin_carte(dossier, demande.etage).is_file():
         raise ErreurAtelier(409, "Cet étage n'a pas de carte 2D : le guide ne peut pas naviguer. Dans "
                                  "l'onglet Carte, cliquez sur « Fabriquer la carte ».")
-    if navigation and commande("g1-guide") is None:
+    if navigation and mode == "simu" and commande("g1-guide") is None:
         navigation = False
         avertissements.append("La commande g1-guide n'est pas encore installée : la simulation tourne "
                               "sans guide (le bouton « Y aller » ne fera rien).")
@@ -97,27 +172,42 @@ async def demarrer(demande: DemandeSimulation, request: Request):
     arguments = ["simuler", "--lieu", dossier, "--etage", demande.etage]
     if not demande.fenetre:
         arguments.append("--sans-fenetre")
-    infos = {"lieu": demande.lieu, "etage": demande.etage}
+    navigation_args = ["navigation", "--lieu", dossier, "--etage", demande.etage, "--simu"]
+    if mode == "repetition":
+        arguments.append("--jumeau")
+        navigation_args += ["--localisation", "unitree"]
+    infos = {"lieu": demande.lieu, "etage": demande.etage, "mode": mode}
     try:
         await run_in_threadpool(etat.gestionnaire.lancer, "simulation", "g1-monde", arguments, infos)
-        if navigation:
-            await run_in_threadpool(etat.gestionnaire.lancer, "navigation", "g1-guide",
-                                    ["navigation", "--lieu", dossier, "--etage", demande.etage, "--simu"],
+        if mode == "repetition":
+            await run_in_threadpool(etat.gestionnaire.lancer, "faux_slam", "g1-slam",
+                                    ["faux-service", "--jumeau", "--lieu", dossier, "--etage", demande.etage,
+                                     "--bruit", f"{BRUIT_REPETITION_M:g}"],
                                     infos)
+        if navigation:
+            await run_in_threadpool(etat.gestionnaire.lancer, "navigation", "g1-guide", navigation_args, infos)
     except CommandeAbsente as e:
-        for role in ("navigation", "simulation"):
+        for role in reversed(ROLES):
             await run_in_threadpool(etat.gestionnaire.arreter, role)
         raise ErreurAtelier(503, f"Impossible de lancer la simulation : {e}.") from None
     etat.simulation = {"lieu": demande.lieu, "etage": demande.etage, "dossier": str(dossier),
-                       "monde": monde, "debut": time.time(), "avertissements": avertissements}
+                       "monde": monde, "debut": time.time(), "avertissements": avertissements, "mode": mode}
     return etat_simulation(etat)
 
 
 @routeur.post("/api/simulation/arreter")
 async def arreter(request: Request):
     etat = _etat(request)
-    # la navigation d'abord, puis Gazebo (le faux service du scan, lui, continue)
-    for role in ("navigation", "simulation"):
+    if etat.mode() == "robot" and etat.simulation.get("en_cours"):
+        r = await run_in_threadpool(lancer_et_attendre, "g1-jetson", ["arreter"], 60.0) \
+            if commande("g1-jetson") is not None else {"code": None, "sortie": "g1-jetson absent"}
+        etat.simulation["en_cours"] = False
+        if r["code"] != 0:
+            raise ErreurAtelier(502, "Le conteneur du robot ne s'est pas arrêté proprement : vérifiez avec "
+                                     "g1-jetson etat, puis g1-jetson arreter.", sortie=r["sortie"])
+        return etat_simulation(etat)
+    # la navigation d'abord, puis le faux slam_operate, puis Gazebo (le faux service du scan continue)
+    for role in reversed(ROLES):
         await run_in_threadpool(etat.gestionnaire.arreter, role)
     return etat_simulation(etat)
 
@@ -127,10 +217,18 @@ def lire_etat(request: Request):
     return etat_simulation(_etat(request))
 
 
+def robot_repere(etat):
+    """Vrai si le dernier /reperage/etat (frais) dit le robot repéré."""
+    reperage = etat.pont.reperage()
+    return bool(reperage and reperage.get("repere") and not reperage.get("perime"))
+
+
 @routeur.post("/api/guide/aller")
 def aller(demande: DemandeAller, request: Request):
     etat = _etat(request)
     cible = verifier_id(demande.cible.strip(), "identifiant de salle ou de nœud")
+    if etat.mode_navigation() in ("repetition", "robot") and not robot_repere(etat):
+        raise ErreurAtelier(409, MESSAGE_REPERER)
     if etat.simulation is not None:
         # cible connue du lieu simulé ? (sinon le guide la refuserait sans rien dire)
         dossier = dossier_du_lieu(etat.simulation["lieu"])
@@ -248,6 +346,8 @@ def teleop(demande: DemandeTeleop, request: Request):
     for nom, v in valeurs.items():
         if not math.isfinite(v):
             raise ErreurAtelier(400, f"« {nom} » doit être un nombre fini (m/s ou rad/s), pas {v}.")
+    if etat.mode_navigation() == "robot":
+        raise ErreurAtelier(409, "Le vrai robot se pilote à sa télécommande, pas depuis l'Atelier.")
     if not (etat.simulation_en_cours() or scan_robot_simule_actif(request.app)):
         raise ErreurAtelier(409, "Il n'y a pas de robot simulé à piloter : lancez la simulation (onglet Simulation), "
                                  "ou un scan en mode simulation ou en répétition sans robot (onglet Scan). Le vrai "

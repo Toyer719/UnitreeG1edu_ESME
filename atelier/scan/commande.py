@@ -2,7 +2,7 @@
 """Commandes du scan : g1-slam, g1-carte-3d, g1-carte-2d et g1-salle.
 
   g1-slam scan-debut | scan-fin --nom N | relocaliser | aller X Y [THETA] | pause | reprendre
-          | arreter | etat | faux-service      [--faux]
+          | arreter | etat | faux-service [--jumeau --lieu L --etage E]      [--faux]
   g1-carte-3d --lieu L --etage E --enregistrement DOSSIER
   g1-carte-2d --lieu L --etage E
   g1-salle ajouter NOM [--type salle|noeud] --lieu L
@@ -11,6 +11,7 @@ Lancé par les scripts de bin/ : python -m atelier.scan.commande slam|carte-3d|c
 Code de sortie : 0 si tout va bien, 1 en cas d'échec, 2 si la commande est mal tapée.
 """
 import argparse
+import os
 import signal
 import sys
 import time
@@ -185,9 +186,44 @@ def slam_etat(args):
     return 0
 
 
+def slam_faux_service_jumeau(args):
+    """Répétition du niveau 2 (section 10.6 du plan) : robot proxy commandé par le faux G1, frontal ROS 2."""
+    from atelier.lieu import ErreurLieu, repere_unitree
+    from atelier.scan.faux_slam import fermer_jumeau, lancer_jumeau
+    if not args.lieu:
+        print("Avec --jumeau, il faut --lieu L (et --etage E) : le repère d'Unitree vient du lieu.")
+        return 2
+    if args.gazebo or args.relocalise or args.depart:
+        print("--jumeau ne se combine pas avec --gazebo, --relocalise ou --depart : le robot est celui du faux G1.")
+        return 2
+    try:
+        repere = repere_unitree(args.lieu, args.etage)
+        faux, frontal = lancer_jumeau(args.lieu, args.etage, bruit=args.bruit, retard=args.retard)
+    except ErreurLieu as e:
+        return _erreur_lieu(e)
+    except ImportError as e:
+        print(f"Erreur : ROS 2 ou les messages unitree_api sont introuvables ({e}) : source ~/robot-g1/setup/env.sh")
+        return 1
+    print(f"Faux service slam_operate prêt (répétition du niveau 2) : frontal ROS 2 sur /api/slam_operate/*, "
+          f"domaine {os.environ.get('ROS_DOMAIN_ID', '0')} ; robot proxy de Gazebo (/g1_jumeau/odom) ; "
+          f"repère d'Unitree ({repere.x:g} ; {repere.y:g} ; {repere.theta:g}) ; bruit {args.bruit:g} m, "
+          f"retard {args.retard:g} s.", flush=True)
+    print("Relocalisation publiée après un 1804 réussi. Ctrl+C pour arrêter.", flush=True)
+    arret = []
+    signal.signal(signal.SIGTERM, lambda *_: arret.append(1))
+    signal.signal(signal.SIGINT, lambda *_: arret.append(1))
+    while not arret:
+        time.sleep(0.2)
+    fermer_jumeau(faux, frontal)
+    print("Faux service arrêté.", flush=True)
+    return 0
+
+
 def slam_faux_service(args):
     from atelier.scan import slam_client as sc
     from atelier.scan.faux_slam import DeplacementGazebo, FauxSlam
+    if args.jumeau:
+        return slam_faux_service_jumeau(args)
     interface, domaine = sc.connexion(True)
     depart = tuple(args.depart) if args.depart else (0.0, 0.0, 0.0)
     if args.lieu and not args.depart:
@@ -284,6 +320,13 @@ def principal_slam(argv):
     s.add_argument("--vitesse", type=float, default=0.5, help="m/s (défaut 0,5)")
     s.add_argument("--publication", choices=["periodique", "evenement"], default="periodique",
                    help="slam_key_info à 2 Hz (défaut) ou seulement à l'arrivée")
+    s.add_argument("--jumeau", action="store_true",
+                   help="répétition du niveau 2 : robot proxy commandé par le faux G1 (/g1_jumeau/*), 1804 en "
+                        "ROS 2 et /unitree/slam_relocation/* ; demande --lieu et --etage")
+    s.add_argument("--bruit", type=float, default=0.0, metavar="M",
+                   help="avec --jumeau : écart-type ajouté à la position publiée, en m (défaut 0)")
+    s.add_argument("--retard", type=float, default=0.0, metavar="S",
+                   help="avec --jumeau : retard de publication de la relocalisation, en s (défaut 0)")
     s.set_defaults(fonction=slam_faux_service)
 
     args = p.parse_args(argv)

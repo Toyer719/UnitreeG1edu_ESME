@@ -44,10 +44,12 @@ def dossier(tmp_path):
     return dossier
 
 
-def actions(module, lieu, etage='rdc', simu='true', moteur='nav2'):
+def actions(module, lieu, etage='rdc', simu='true', moteur='nav2', localisation='', pont='auto',
+            nuage='', vitesse_max=''):
     contexte = LaunchContext()
     contexte.launch_configurations.update(
-        {'lieu': str(lieu), 'etage': etage, 'simu': simu, 'moteur': moteur})
+        {'lieu': str(lieu), 'etage': etage, 'simu': simu, 'moteur': moteur,
+         'localisation': localisation, 'pont': pont, 'nuage': nuage, 'vitesse_max': vitesse_max})
     return module._lancer(contexte)
 
 
@@ -80,10 +82,17 @@ def texte(valeur):
 def test_arguments_du_contrat(lancement):
     description = lancement.generate_launch_description()
     arguments = {a.name: a for a in description.entities if isinstance(a, DeclareLaunchArgument)}
-    assert set(arguments) == {'lieu', 'etage', 'simu', 'moteur'}
+    # sections 4.5 et 10.7 ; nuage et vitesse_max : ajouts (source du nuage du relais, premiers
+    # essais à vitesse réduite)
+    assert set(arguments) == {'lieu', 'etage', 'simu', 'moteur', 'localisation', 'pont', 'nuage',
+                              'vitesse_max'}
+    assert texte(arguments['vitesse_max'].default_value) == ''
     assert texte(arguments['simu'].default_value) == 'false'
     assert texte(arguments['moteur'].default_value) == 'nav2'
     assert {'nav2', 'unitree'} <= set(arguments['moteur'].choices)
+    assert texte(arguments['localisation'].default_value) == ''
+    assert texte(arguments['pont'].default_value) == 'auto'
+    assert set(arguments['pont'].choices) == {'auto', 'true', 'false'}
 
 
 def test_simulation_avec_nav2(lancement, dossier):
@@ -116,9 +125,13 @@ def test_simulation_avec_nav2(lancement, dossier):
 
 def test_vrai_robot_avec_moteur_unitree(lancement, dossier):
     n = noeuds(actions(lancement, dossier, simu='false', moteur='unitree'))
-    assert {'map_server', 'odom_vers_tf', 'repere_map_odom', 'guide'} <= set(n)
+    assert {'map_server', 'odom_vers_tf', 'repere_base_lidar', 'guide'} <= set(n)
+    # map → odom vient du relais (relocalisation d'Unitree), plus d'identité fixe
+    assert 'repere_map_odom' not in n
     for nom in ['controller_server', 'bt_navigator', 'collision_monitor', 'filter_mask_server']:
         assert nom not in n, f'{nom} ne devrait pas être lancé avec moteur:=unitree'
+    # sans Nav2, pas de pont (pont:=auto)
+    assert 'pont_g1' not in n
     assert texte(parametres(n['guide'])['moteur']) == 'unitree'
     assert parametres(n['guide'])['use_sim_time'] is False
 
@@ -155,3 +168,127 @@ def test_masque_absent_remplace_par_un_masque_vide(lancement, dossier):
     assert image.shape == (402, 602) and (image == 254).all()
     messages = [texte(a.msg) for a in liste if isinstance(a, LogInfo)]
     assert any('aucune zone interdite' in m for m in messages)
+
+
+# ---------------------------------------------------------------- vague 3 : localisation et pont
+
+def _fichiers(noeud):
+    return [texte(f) for f in noeud._Node__parameters if not isinstance(f, dict)]
+
+
+def test_simulation_sans_relais_ni_pont(lancement, dossier):
+    n = noeuds(actions(lancement, dossier, simu='true'))
+    assert 'repere_map_odom' in n
+    for nom in ('odom_vers_tf', 'pont_g1', 'amcl', 'repere_base_lidar'):
+        assert nom not in n
+
+
+def test_repetition_unitree(lancement, dossier):
+    """Répétition : temps simulé, relais avec le repère du lieu, pont, réglages du vrai robot."""
+    n = noeuds(actions(lancement, dossier, simu='true', localisation='unitree'))
+    assert {'odom_vers_tf', 'pont_g1', 'bt_navigator', 'guide'} <= set(n)
+    assert 'repere_map_odom' not in n
+    # base_link → lidar : publié par g1_sim en répétition
+    assert 'repere_base_lidar' not in n
+    relais = parametres(n['odom_vers_tf'])
+    assert texte(relais['localisation']) == 'unitree'
+    assert [float(v) for v in relais['repere_unitree']] == [2.5, 10.0, 0.0]   # départ du robot
+    assert texte(relais['carte']) == 'repetition.pcd'
+    assert texte(relais['nuage']) == '/unitree/slam_relocation/points'
+    assert relais['use_sim_time'] is True
+    assert any('nav2_g1_reel.yaml' in f for f in _fichiers(n['controller_server']))
+    assert parametres(n['controller_server'])['use_sim_time'] is True
+    # le pont compte en temps mural : pas de use_sim_time
+    assert 'use_sim_time' not in parametres(n['pont_g1'])
+
+
+def test_repetition_repere_unitree_tourne(lancement, dossier):
+    from atelier.lieu import charger_fiche, enregistrer_fiche, Pose
+    fiche = charger_fiche(dossier)
+    fiche.etages[0].repere_unitree = Pose(3.0, 9.0, 0.5)
+    fiche.carte_unitree = 'rdc_e2e.pcd'
+    enregistrer_fiche(fiche)
+    n = noeuds(actions(lancement, dossier, localisation='unitree'))
+    relais = parametres(n['odom_vers_tf'])
+    assert [float(v) for v in relais['repere_unitree']] == [3.0, 9.0, 0.5]
+    assert texte(relais['carte']) == 'rdc_e2e.pcd'
+
+
+def test_robot_unitree(lancement, dossier):
+    """Vrai robot : relais, base_link → lidar fixe, pont, sans carte_unitree le relais le dira."""
+    liste = actions(lancement, dossier, simu='false')
+    n = noeuds(liste)
+    assert {'odom_vers_tf', 'repere_base_lidar', 'pont_g1'} <= set(n)
+    assert yaml.safe_load(texte(parametres(n['odom_vers_tf'])['carte'])) in ('', None)
+    arguments = [texte(a) for a in n['repere_base_lidar']._Node__arguments]
+    assert arguments[arguments.index('--z') + 1] == '1.245'
+    assert arguments[-4:] == ['--frame-id', 'base_link', '--child-frame-id', 'lidar']
+    messages = [texte(a.msg) for a in liste if isinstance(a, LogInfo)]
+    assert any('pas de carte_unitree' in m for m in messages)
+
+
+def test_amcl_en_repetition(lancement, dossier):
+    n = noeuds(actions(lancement, dossier, simu='true', localisation='amcl'))
+    assert {'odom_vers_tf', 'nuage_vers_scan', 'amcl', 'lifecycle_manager_localisation',
+            'pont_g1'} <= set(n)
+    relais = parametres(n['odom_vers_tf'])
+    assert texte(relais['localisation']) == 'amcl'
+    assert texte(relais['nuage']) == '/g1_jumeau/points'
+    assert texte(relais['points_repere']) == 'capteur'
+    scan = parametres(n['nuage_vers_scan'])
+    assert (scan['min_height'], scan['max_height']) == (0.1, 1.5)
+    assert texte(scan['target_frame']) == 'base_link'
+    assert dict((texte(a), texte(b)) for a, b in n['nuage_vers_scan']._Node__remappings) == \
+        {'cloud_in': '/points', 'scan': '/scan'}
+    assert any(f.endswith('amcl_g1.yaml') and Path(f).is_file() for f in _fichiers(n['amcl']))
+    gestion = parametres(n['lifecycle_manager_localisation'])
+    assert [texte(x) for x in gestion['node_names']] == ['amcl']
+
+
+def test_externe(lancement, dossier):
+    n = noeuds(actions(lancement, dossier, simu='true', localisation='externe', pont='true'))
+    for nom in ('odom_vers_tf', 'repere_map_odom', 'amcl'):
+        assert nom not in n
+    assert 'pont_g1' in n
+
+
+def test_pont_force(lancement, dossier):
+    assert 'pont_g1' not in noeuds(actions(lancement, dossier, localisation='unitree',
+                                           pont='false'))
+    assert 'pont_g1' in noeuds(actions(lancement, dossier, localisation='simu', pont='true'))
+
+
+def test_pont_absent(lancement, dossier, monkeypatch):
+    monkeypatch.setattr(lancement, 'partage', lambda paquet: None)
+    with pytest.raises(lancement.ErreurNavigation, match='g1_bridge'):
+        actions(lancement, dossier, localisation='unitree')
+    # sans pont, rien ne manque
+    assert 'odom_vers_tf' in noeuds(actions(lancement, dossier, localisation='unitree',
+                                            pont='false'))
+
+
+@pytest.mark.parametrize('localisation, simu, message', [
+    ('gps', 'true', 'inconnue'), ('simu', 'false', 'simu:=true')])
+def test_localisation_refusee(lancement, dossier, localisation, simu, message):
+    with pytest.raises(lancement.ErreurNavigation, match=message):
+        actions(lancement, dossier, simu=simu, localisation=localisation)
+
+
+def test_vitesse_reduite(lancement, dossier):
+    """vitesse_max:=0.2 : plafonds du pont abaissés dans la même proportion (premiers essais)."""
+    sans = parametres(noeuds(actions(lancement, dossier, localisation='unitree'))['pont_g1'])
+    assert not {'vx_max', 'vy_max', 'wz_max'} & set(sans)      # ceux de config/pont.yaml
+    pont = noeuds(actions(lancement, dossier, localisation='unitree',
+                          vitesse_max='0.2'))['pont_g1']
+    assert {k: parametres(pont)[k] for k in ('vx_max', 'vy_max', 'wz_max')} == {
+        'vx_max': 0.2, 'vy_max': 0.125, 'wz_max': 0.3}
+    assert lancement.plafonds_pont('0,1') == {'vx_max': 0.1, 'vy_max': 0.062, 'wz_max': 0.15}
+    assert lancement.plafonds_pont('0.4') == {'vx_max': 0.4, 'vy_max': 0.25, 'wz_max': 0.6}
+    assert lancement.plafonds_pont(' ') is None
+
+
+@pytest.mark.parametrize('valeur', ['0', '-0.1', '0.5', '1e9', 'nan', 'inf', 'vite'])
+def test_vitesse_reduite_refusee(lancement, dossier, valeur):
+    """Jamais au-delà des plafonds du contrat, jamais nulle, négative ou illisible."""
+    with pytest.raises(lancement.ErreurNavigation, match='vitesse_max'):
+        actions(lancement, dossier, localisation='unitree', vitesse_max=valeur)

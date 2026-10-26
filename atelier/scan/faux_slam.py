@@ -488,3 +488,353 @@ def faux_partage(**options):
         defauts.update(options)
         _PARTAGE.reinitialiser(depart, relocalise, carte, **defauts)
     return _PARTAGE
+
+
+# ---------------------------------------------------------------- répétition du niveau 2 (section 10.6 du plan)
+#
+# g1-slam faux-service --jumeau --lieu L --etage E : le robot est le robot proxy de Gazebo, commandé
+# par le faux G1 (paquet g1_jumeau) et non par ce service. Sa vérité terrain est /g1_jumeau/odom
+# (repère du monde Gazebo = map de l'étage) et son nuage /g1_jumeau/points (repère lidar). En plus du
+# serveur du SDK sur lo (pour g1-slam --faux), un frontal ROS 2 répond sur /api/slam_operate/* comme le
+# vrai robot, et publie la relocalisation une fois repéré.
+
+ERREUR_RELOCALISATION = 5           # 1804 : le robot n'est pas à la position donnée
+FREQUENCE_RELOCALISATION = 10.0     # Hz, /unitree/slam_relocation/odom et /points
+COVARIANCE_XY = 0.0004              # m², covariance de la relocalisation publiée (x et y)
+COVARIANCE_LACET = 0.0001           # rad²
+POSE_LIDAR = (-0.004, 0.0, 1.245)   # LiDAR dans base_link (model.sdf de g1_proxy)
+SUJETS_JUMEAU = {"requete": "/api/slam_operate/request", "reponse": "/api/slam_operate/response",
+                 "verite": "/g1_jumeau/odom", "nuage": "/g1_jumeau/points",
+                 "relocalisation": "/unitree/slam_relocation/odom", "points": "/unitree/slam_relocation/points",
+                 "info": "/slam_info", "panne": "/faux_slam/panne"}
+
+
+class DeplacementJumeau:
+    """Robot proxy commandé par le faux G1 : ce service ne le fait jamais bouger.
+
+    position() est la vérité terrain (/g1_jumeau/odom, repère map) exprimée dans le repère d'Unitree
+    (atelier.lieu.carte_vers_unitree avec le repère de l'étage) ; placer() et commander() ne font rien.
+    """
+
+    def __init__(self, repere):
+        self.repere = tuple(float(v) for v in repere)
+        self.bloque = False
+        self._verite = None          # (horodatage en s, pose map)
+        self._verrou = threading.Lock()
+
+    def noter(self, horodatage, pose_carte):
+        with self._verrou:
+            self._verite = (horodatage, tuple(float(v) for v in pose_carte))
+
+    def verite(self):
+        """(horodatage, pose dans map) de la dernière vérité terrain, ou None."""
+        with self._verrou:
+            return self._verite
+
+    def position(self):
+        from atelier.lieu import carte_vers_unitree
+        verite = self.verite()
+        return None if verite is None else carte_vers_unitree(verite[1], self.repere)
+
+    def placer(self, pose):
+        pass
+
+    def commander(self, vx, vy, wz, dt):
+        pass                         # jamais de vitesse : la marche passe par le pont et le faux G1
+
+    def obstacle(self, direction, distance=None):
+        return False
+
+    def fermer(self):
+        pass
+
+
+class FauxSlamJumeau(FauxSlam):
+    """Faux slam_operate de la répétition du niveau 2.
+
+    1804 : une address inconnue donne ERREUR_CARTE ; une pose initiale, ramenée dans map, à plus de
+    ECART_MAX_M ou ECART_MAX_RAD de la vérité donne ERREUR_RELOCALISATION (et plus de relocalisation
+    publiée) ; sinon le robot est repéré, sans être déplacé. 1102 est refusé (ERREUR_DEROULE).
+    Cartes connues : carte_unitree du lieu et CARTE_REPETITION.
+    """
+
+    def __init__(self, repere, cartes, **options):
+        self.repere = tuple(float(v) for v in repere)
+        self.cartes_connues = {sc.adresse_carte(c) for c in cartes if c}
+        super().__init__(relocalise=False, carte=None, deplacement=DeplacementJumeau(self.repere), **options)
+
+    def reinitialiser(self, depart=None, relocalise=False, carte=None, **options):
+        super().reinitialiser(depart, relocalise, carte, **options)
+        with self._verrou:
+            self.cartes |= getattr(self, "cartes_connues", set())
+
+    def _commande(self, api, d):
+        if api == sc.API_ALLER:
+            return self._refus(ERREUR_DEROULE, "pas de 1102 en répétition du niveau 2 : la navigation passe par Nav2")
+        if api != sc.API_RELOCALISER:
+            return super()._commande(api, d)
+        from atelier.lieu import ECART_MAX_M, ECART_MAX_RAD, quaternion_vers_cap, unitree_vers_carte
+        try:
+            x, y = float(d["x"]), float(d["y"])
+            q = (float(d["q_x"]), float(d["q_y"]), float(d["q_z"]), float(d["q_w"]))
+            adresse = d["address"]
+            cap = quaternion_vers_cap(q)
+        except (KeyError, TypeError, ValueError):
+            return self._refus(ERREUR_PARAMETRES, "il faut x, y, z, q_x, q_y, q_z, q_w et address")
+        if adresse not in self.cartes:
+            return self._refus(ERREUR_CARTE, f"carte inconnue : {adresse}")
+        if self.mode == "scan":
+            return self._refus(ERREUR_DEROULE, "un scan est en cours : terminez-le d'abord (1802)")
+        verite = self.deplacement.verite()
+        if verite is None:
+            self.mode, self.carte = "repos", None
+            return self._refus(ERREUR_DEROULE, "position du robot inconnue : /g1_jumeau/odom n'est pas publié "
+                                               "(faux G1 lancé ?)")
+        annoncee = unitree_vers_carte((x, y, cap), self.repere)
+        distance = math.hypot(annoncee[0] - verite[1][0], annoncee[1] - verite[1][1])
+        ecart_cap = abs(_angle(annoncee[2] - verite[1][2]))
+        if distance > ECART_MAX_M or ecart_cap > ECART_MAX_RAD:
+            self.mode, self.carte, self.cible = "repos", None, None
+            return self._refus(ERREUR_RELOCALISATION, "relocalisation impossible : le robot n'est pas à la position "
+                                                      f"donnée (à {distance:.1f} m et {math.degrees(ecart_cap):.0f}°)")
+        self.mode, self.carte, self.cible = "relocalise", adresse, None
+        return self._reponse(info="robot repéré sur la carte")
+
+
+def _secondes(stamp):
+    return stamp.sec + stamp.nanosec * 1e-9
+
+
+def _nuage_xyz(points, repere, stamp):
+    """Tableau (N, 3) → sensor_msgs/PointCloud2 (x, y, z en float32)."""
+    import numpy as np
+    from sensor_msgs.msg import PointCloud2, PointField
+    points = np.ascontiguousarray(np.asarray(points, dtype=np.float32).reshape(-1, 3))
+    msg = PointCloud2()
+    msg.header.frame_id, msg.header.stamp = repere, stamp
+    msg.height, msg.width = 1, len(points)
+    msg.fields = [PointField(name=n, offset=4 * i, datatype=PointField.FLOAT32, count=1) for i, n in enumerate("xyz")]
+    msg.is_bigendian, msg.is_dense = False, True
+    msg.point_step, msg.row_step = 12, 12 * len(points)
+    msg.data = points.tobytes()
+    return msg
+
+
+class FrontalRos:
+    """Frontal ROS 2 du faux service, comme le vrai robot vu depuis le Jetson.
+
+      /api/slam_operate/request  (unitree_api/Request)  → faux._traiter(api_id, parameter)
+      /api/slam_operate/response (unitree_api/Response) identity recopiée, status.code, data (JSON)
+      /g1_jumeau/odom, /g1_jumeau/points                vérité terrain et nuage du robot proxy
+      /unitree/slam_relocation/odom   une fois repéré, à 10 Hz : frame map, child body, pose de la
+                                      vérité dans le repère d'Unitree (z 1,245), covariance diagonale
+      /unitree/slam_relocation/points le dernier nuage, placé dans le repère d'Unitree, frame map
+      /slam_info                      pos_info (repère d'Unitree)
+      /faux_slam/panne                « aucune » ou « muet » (plus de relocalisation : essais de perte)
+    bruit : écart-type (m) ajouté à la position publiée (et la moitié, en radians, au cap) ;
+    retard : secondes entre la mesure et la publication (horodatage : celui de Gazebo).
+    """
+
+    def __init__(self, faux, bruit=0.0, retard=0.0, frequence=FREQUENCE_RELOCALISATION, graine=None,
+                 bavard=True):
+        import random
+        from collections import deque
+
+        import rclpy
+        from nav_msgs.msg import Odometry
+        from rclpy.executors import SingleThreadedExecutor
+        from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
+        from rclpy.signals import SignalHandlerOptions
+        from sensor_msgs.msg import PointCloud2
+        from std_msgs.msg import String
+        from unitree_api.msg import Request, Response
+
+        self.faux = faux
+        self.repere = faux.repere
+        self.bruit = max(0.0, float(bruit))
+        self.retard = max(0.0, float(retard))
+        self.bavard = bavard
+        self.panne = "aucune"
+        self.publiees = 0               # relocalisations publiées
+        self._hasard = random.Random(graine)
+        self._verites = deque(maxlen=200)       # (horodatage s, pose map) : vérité de chaque instant
+        self._nuage = None                      # dernier PointCloud2 de /g1_jumeau/points
+        self._nuage_publie = None
+        self._file = deque()                    # (instant de publication, publieur, message)
+        self._verrou = threading.Lock()
+        self._Odometry, self._String, self._Response = Odometry, String, Response
+
+        self._rclpy = rclpy
+        self._contexte = rclpy.Context()
+        rclpy.init(context=self._contexte, signal_handler_options=SignalHandlerOptions.NO)
+        self._noeud = rclpy.create_node("faux_slam", context=self._contexte)
+        fiable = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.VOLATILE)
+        n = self._noeud
+        n.create_subscription(Request, SUJETS_JUMEAU["requete"], self._sur_requete, fiable)
+        n.create_subscription(Odometry, SUJETS_JUMEAU["verite"], self._sur_verite, qos_profile_sensor_data)
+        n.create_subscription(PointCloud2, SUJETS_JUMEAU["nuage"], self._sur_nuage, qos_profile_sensor_data)
+        n.create_subscription(String, SUJETS_JUMEAU["panne"], self._sur_panne, fiable)
+        self._pub_reponse = n.create_publisher(Response, SUJETS_JUMEAU["reponse"], fiable)
+        self._pub_reloc = n.create_publisher(Odometry, SUJETS_JUMEAU["relocalisation"], 10)
+        self._pub_points = n.create_publisher(PointCloud2, SUJETS_JUMEAU["points"], qos_profile_sensor_data)
+        self._pub_info = n.create_publisher(String, SUJETS_JUMEAU["info"], 10)
+        n.create_timer(1.0 / frequence, self._publier)
+        n.create_timer(0.01, self._vider_file)
+        self._executeur = SingleThreadedExecutor(context=self._contexte)
+        self._executeur.add_node(n)
+        self._fil = threading.Thread(target=self._tourner, name="frontal ROS 2 du faux slam", daemon=True)
+        self._fil.start()
+
+    def _tourner(self):
+        try:
+            self._executeur.spin()
+        except Exception:      # noqa: BLE001 : arrêt du contexte
+            pass
+
+    def _dire(self, texte):
+        if self.bavard:
+            print(f"[faux slam_operate] {texte}", flush=True)
+
+    # ------------------------------------------------ réception
+
+    def _sur_requete(self, msg):
+        api = int(msg.header.identity.api_id)
+        self._dire(f"requête ROS 2 {api} ({sc.NOMS_API.get(api, '?')}), id {msg.header.identity.id} : {msg.parameter}")
+        code, texte = self.faux._traiter(api, msg.parameter)
+        r = self._Response()
+        r.header.identity.id = msg.header.identity.id
+        r.header.identity.api_id = msg.header.identity.api_id
+        r.header.status.code = int(code)
+        r.data = texte or ""
+        self._pub_reponse.publish(r)
+
+    def _sur_verite(self, msg):
+        from atelier.lieu import quaternion_vers_cap
+        p = msg.pose.pose
+        pose = (p.position.x, p.position.y, quaternion_vers_cap(p.orientation))
+        with self._verrou:
+            self._verites.append((_secondes(msg.header.stamp), pose, msg.header.stamp))
+        self.faux.deplacement.noter(_secondes(msg.header.stamp), pose)
+
+    def _sur_nuage(self, msg):
+        with self._verrou:
+            self._nuage = msg
+
+    def _sur_panne(self, msg):
+        panne = msg.data.strip()
+        if panne in ("aucune", "muet"):
+            self.panne = panne
+            self._dire(f"panne : {panne}")
+
+    # ------------------------------------------------ publication
+
+    def _verite_a(self, instant):
+        """Vérité terrain la plus proche de l'instant (s) : (horodatage, pose, stamp), ou None."""
+        with self._verrou:
+            if not self._verites:
+                return None
+            return min(self._verites, key=lambda v: abs(v[0] - instant))
+
+    def _bruiter(self, pose):
+        if self.bruit <= 0.0:
+            return pose
+        g = self._hasard.gauss
+        return (pose[0] + g(0.0, self.bruit), pose[1] + g(0.0, self.bruit), _angle(pose[2] + g(0.0, self.bruit / 2)))
+
+    def _mettre_en_file(self, publieur, msg):
+        with self._verrou:
+            self._file.append((time.monotonic() + self.retard, publieur, msg))
+
+    def _vider_file(self):
+        maintenant = time.monotonic()
+        while True:
+            with self._verrou:
+                if not self._file or self._file[0][0] > maintenant:
+                    return
+                _, publieur, msg = self._file.popleft()
+            publieur.publish(msg)
+
+    def _publier(self):
+        """10 Hz : relocalisation, nuage et slam_info, seulement une fois repéré (et sans panne)."""
+        import numpy as np
+        from atelier.lieu import carte_vers_unitree, cap_vers_quaternion
+        if self.faux.mode != "relocalise" or self.panne == "muet":
+            return
+        with self._verrou:
+            derniere = self._verites[-1] if self._verites else None
+            nuage = self._nuage
+        if derniere is None:
+            return
+        _, pose_carte, stamp = derniere
+        bruitee = self._bruiter(pose_carte)
+        decalage = (bruitee[0] - pose_carte[0], bruitee[1] - pose_carte[1], _angle(bruitee[2] - pose_carte[2]))
+        u = carte_vers_unitree(bruitee, self.repere)
+        m = self._Odometry()
+        m.header.stamp, m.header.frame_id, m.child_frame_id = stamp, "map", "body"
+        m.pose.pose.position.x, m.pose.pose.position.y, m.pose.pose.position.z = u[0], u[1], POSE_LIDAR[2]
+        q = cap_vers_quaternion(u[2])
+        o = m.pose.pose.orientation
+        o.x, o.y, o.z, o.w = q
+        covariance = [0.0] * 36
+        covariance[0] = covariance[7] = max(COVARIANCE_XY, self.bruit ** 2)
+        covariance[35] = max(COVARIANCE_LACET, (self.bruit / 2) ** 2)
+        m.pose.covariance = covariance
+        self._mettre_en_file(self._pub_reloc, m)
+        self.publiees += 1
+        info = {"type": "pos_info", "errorCode": 0, "info": "faux service (répétition)",
+                "data": {"currentPose": sc.pose_unitree(*u)}}
+        self._mettre_en_file(self._pub_info, self._String(data=json.dumps(info)))
+        if nuage is not None and nuage is not self._nuage_publie:
+            self._nuage_publie = nuage
+            verite = self._verite_a(_secondes(nuage.header.stamp))
+            if verite is None:
+                return
+            from atelier.scan.carte3d import points_du_nuage
+            try:
+                points = points_du_nuage(nuage)
+            except Exception:      # noqa: BLE001 : nuage sans x, y, z
+                return
+            # même petit décalage que la relocalisation : le nuage est placé par la pose estimée
+            p = verite[1]
+            estimee = (p[0] + decalage[0], p[1] + decalage[1], p[2] + decalage[2])
+            pose_u = carte_vers_unitree(estimee, self.repere)
+            c, s = math.cos(pose_u[2]), math.sin(pose_u[2])
+            x = points[:, 0] + POSE_LIDAR[0]
+            y = points[:, 1] + POSE_LIDAR[1]
+            monde = np.column_stack([pose_u[0] + c * x - s * y, pose_u[1] + s * x + c * y, points[:, 2] + POSE_LIDAR[2]])
+            self._mettre_en_file(self._pub_points, _nuage_xyz(monde, "map", nuage.header.stamp))
+
+    def fermer(self):
+        try:
+            self._executeur.shutdown(timeout_sec=2.0)
+            self._fil.join(timeout=2.0)
+            self._noeud.destroy_node()
+            self._rclpy.try_shutdown(context=self._contexte)
+        except Exception:      # noqa: BLE001
+            pass
+
+
+def lancer_jumeau(lieu, etage, bruit=0.0, retard=0.0, sdk=True, bavard=True):
+    """Faux service de la répétition du niveau 2 : FauxSlamJumeau, serveur du SDK sur lo (si possible),
+    et frontal ROS 2. Renvoie (faux, frontal) ; à fermer avec fermer_jumeau."""
+    from atelier.lieu import CARTE_REPETITION, charger_fiche, repere_unitree
+    repere = repere_unitree(lieu, etage)
+    repere = (repere.x, repere.y, repere.theta)
+    cartes = [charger_fiche(lieu).carte_unitree, CARTE_REPETITION]
+    faux = FauxSlamJumeau(repere, cartes, bavard=bavard)
+    if sdk:
+        try:
+            interface, domaine = sc.connexion(True)
+            sc.initialiser_dds(interface, domaine)
+            faux.demarrer()
+        except Exception as e:      # noqa: BLE001 : le frontal ROS 2 suffit à la répétition
+            print(f"[faux slam_operate] serveur du SDK indisponible ({e}) : seul le frontal ROS 2 répond", flush=True)
+    frontal = FrontalRos(faux, bruit=bruit, retard=retard, bavard=bavard)
+    return faux, frontal
+
+
+def fermer_jumeau(faux, frontal):
+    frontal.fermer()
+    faux._arret.set()
+    if faux._fil is not None:
+        faux._fil.join(timeout=2)

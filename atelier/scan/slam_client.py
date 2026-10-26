@@ -249,6 +249,33 @@ def lire_arrivee(texte):
     return None
 
 
+# ---------------------------------------------------------------- en ROS 2 (vague 3, section 10.5 du plan)
+#
+# Sur le Jetson, 1804 part en ROS 2 (unitree_api/msg/Request sur /api/slam_operate/request) plutôt
+# que par le SDK Python : le conteneur Humble n'a pas unitree_sdk2py. Le paramètre est le même
+# texte JSON que pour le SDK (parametres_relocaliser), et la réponse se lit par lire_reponse.
+
+SUJET_REQUETE_ROS = "/api/slam_operate/request"
+SUJET_REPONSE_ROS = "/api/slam_operate/response"
+
+
+def remplir_requete_ros(msg, api, parametres, identite):
+    """Remplit un unitree_api/msg/Request comme BaseClient::Call d'unitree_ros2 (base_client.hpp).
+
+    identite : header.identity.id, strictement croissant (l'exemple C++ prend le temps depuis le
+    démarrage en nanosecondes) ; la réponse porte le même id. parametres : dict ou texte JSON.
+    À vérifier sur le robot : slam_operate accepte une requête ROS 2 sans bail (lease.id 0), de
+    priorité 0, et répond sur /api/slam_operate/response.
+    """
+    msg.header.identity.id = int(identite)
+    msg.header.identity.api_id = int(api)
+    msg.header.lease.id = 0
+    msg.header.policy.priority = 0
+    msg.header.policy.noreply = False
+    msg.parameter = parametres if isinstance(parametres, str) else json.dumps(parametres)
+    return msg
+
+
 # ---------------------------------------------------------------- connexion DDS
 
 _DDS = None            # (domaine, interface) ouvert dans ce processus

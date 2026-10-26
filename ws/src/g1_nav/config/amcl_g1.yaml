@@ -1,0 +1,58 @@
+# AMCL (Nav2 Humble) pour le G1 : repérage de secours avec notre carte et le LiDAR (section 10.5
+# du plan, localisation:=amcl). Lu par launch/navigation.launch.py ; use_sim_time est donné par le
+# lancement (vrai en répétition).
+#
+#   Entrées : /scan, tiré de /points par pointcloud_to_laserscan (tranche de 0,1 à 1,5 m au-dessus
+#             du sol, dans base_link) ; la carte du lieu (map_server) ; odom → base_link du relais
+#             odom_vers_tf (odométrie locale du robot, qui dérive un peu).
+#   Sortie  : TF map → odom, et /amcl_pose (suivie par odom_vers_tf : repéré sous 0,15 m d'écart-type,
+#             perdu au-dessus de 0,5 m).
+# La pose initiale vient de « Repérer le robot » (/initialpose, écarts-types 0,25 m et 0,2 rad) :
+# AMCL ne cherche pas le robot sur toute la carte. Réglages essayés en répétition seulement : à
+# reprendre sur le vrai robot (LiDAR, odométrie et bâtiment réels).
+
+amcl:
+  ros__parameters:
+    use_sim_time: False
+    # Le G1 se déplace aussi sur le côté : modèle de mouvement omnidirectionnel
+    robot_model_type: "nav2_amcl::OmniMotionModel"
+    # Bruit de l'odométrie : petit en rotation (centrale inertielle), plus fort en translation
+    alpha1: 0.1
+    alpha2: 0.1
+    alpha3: 0.2
+    alpha4: 0.1
+    alpha5: 0.1
+    base_frame_id: "base_link"
+    global_frame_id: "map"
+    odom_frame_id: "odom"
+    scan_topic: scan
+    map_topic: map
+    laser_model_type: "likelihood_field"
+    laser_likelihood_max_dist: 2.0
+    laser_max_range: 20.0
+    laser_min_range: 0.2
+    max_beams: 90
+    z_hit: 0.6
+    z_rand: 0.4
+    z_max: 0.05
+    z_short: 0.05
+    sigma_hit: 0.1
+    lambda_short: 0.1
+    do_beamskip: false
+    min_particles: 300
+    max_particles: 2000
+    pf_err: 0.05
+    pf_z: 0.99
+    recovery_alpha_fast: 0.0
+    recovery_alpha_slow: 0.0
+    resample_interval: 1
+    # Mise à jour du filtre tous les 10 cm ou 0,1 rad (un robot d'accueil marche lentement)
+    update_min_d: 0.1
+    update_min_a: 0.1
+    save_pose_rate: 0.5
+    tf_broadcast: true
+    transform_tolerance: 0.5
+    # La pose initiale vient toujours de « Repérer le robot »
+    set_initial_pose: false
+    always_reset_initial_pose: false
+    first_map_only: false
