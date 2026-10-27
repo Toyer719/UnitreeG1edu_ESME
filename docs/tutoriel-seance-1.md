@@ -237,7 +237,7 @@ l'enregistrer (commande 1802), et il enregistre ce que voit le LiDAR.
 
    ```bash
    curl -s -X PUT "http://localhost:8000/api/lieux/seance/salles?synchroniser=true" -H 'Content-Type: application/json' \
-     -d '[{"id":"accueil","nom":"Accueil","alias":[],"etage":"rdc","pose":{"x":0,"y":0,"theta":0},"phrase_arrivee":""},
+     -d '[{"id":"accueil","nom":"Accueil","alias":[],"etage":"rdc","pose":{"x":0,"y":0,"theta":0},"phrase_arrivee":"","etiquettes":["principal"]},
           {"id":"essai_3m","nom":"Essai à 3 m","alias":[],"etage":"rdc","pose":{"x":3,"y":0,"theta":0},"phrase_arrivee":""}]'
    curl -s -X PUT http://localhost:8000/api/lieux/seance/itineraires -H 'Content-Type: application/json' \
      -d '{"noeuds":{"accueil":{"etage":"rdc","x":0,"y":0},"essai_3m":{"etage":"rdc","x":3,"y":0}},"couloirs":[["accueil","essai_3m"]]}'
