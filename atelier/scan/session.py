@@ -783,9 +783,13 @@ def _traiter(lieu, session, avertissements, dans_la_session, refaire=False):
                          f"du LiDAR ({repere['capteur']})"))
     dire(message_repere)
     if mode == "robot" and not s["repetition"]:
-        avertissements.append(message_repere + ". À vérifier sur la carte : un repère mal compris donne une carte "
-                              "dédoublée ou tournée.")
+        # à l'écran, une phrase simple ; le repère exact est dans le journal du scan (message_repere)
+        avertissements.append("Scan du vrai robot : regardez la carte avant de l'utiliser, elle ne doit être ni "
+                              "dédoublée ni tournée (sinon, refaites le scan plus lentement).")
     sol = infos["sol"]
+    if sol.get("raison"):
+        # revue de la vague 5 : un sol mal vu (scan court) donnait des hauteurs fausses sans rien dire
+        avertissements.append(f"Sol {sol['raison']} : refaites un scan plus long si la carte 3D paraît fausse.")
     etapes.append({"etape": "carte_3d", "ok": True, "duree_s": round(time.monotonic() - t0, 1),
                    "message": f"{infos['points']} points, {infos['nuages']} nuages sur {infos['recus']} "
                               f"({infos['ignores']} ignorés), {infos['retires_mobiles']} points de passants retirés, "

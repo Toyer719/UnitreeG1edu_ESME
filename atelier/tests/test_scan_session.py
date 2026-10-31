@@ -527,7 +527,9 @@ def test_traiter_robot_points_deja_dans_le_monde(lieux, faux_bags):
     assert S.traiter(lieux / "essai", s["id"]) == 0
     rapport = json.loads((dossier / "rapport.json").read_text())
     assert rapport["repere"]["nuage"] == "map" and rapport["repere"]["deja_dans_le_monde"] is True
-    assert any("déjà celui de l'odométrie" in a for a in rapport["avertissements"])
+    # à l'écran, une phrase simple (revue de la vague 5) ; le repère exact reste dans rapport["repere"] et le journal
+    assert any("regardez la carte avant de l'utiliser" in a for a in rapport["avertissements"])
+    assert not any("odométrie" in a for a in rapport["avertissements"])
     carte = L.charger_info_carte(dossier / "carte.yaml")
     monde = L.charger_info_carte(lieux / "essai" / "cartes" / "rdc.yaml")
     assert carte.hauteur < monde.hauteur and carte.origin[1] > monde.origin[1] + 1   # emprise du nuage

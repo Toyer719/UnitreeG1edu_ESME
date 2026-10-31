@@ -175,8 +175,24 @@ def test_trouver_sol_plan_incline():
     assert S.trouver_sol(meubles, sol=-1.2)["plan"] == [0.0, 0.0, -1.2]           # niveau imposé
     sans_sol = S.trouver_sol(meubles[:50])                                        # trop peu de points
     assert sans_sol["methode"] == "centile" and sans_sol["inclinaison_deg"] == 0.0
+    assert "raison" not in trouve
     with pytest.raises(S.ErreurSol):
         S.trouver_sol(np.zeros((0, 3)))
+
+
+def test_sol_trop_penche_pris_a_plat():
+    """Revue de la vague 5 : un scan court qui a vu peu de sol a donné un plan penché de 6,8° (hauteurs
+    fausses de plusieurs dizaines de centimètres). Au-delà de 3°, le sol est pris à plat au plus bas des points
+    (1er centile, comme un sol pas vu), et « raison » le dit ; un sol penché de 0,58° (le vrai G1) reste en plan."""
+    alea = np.random.default_rng(5)
+    sol = np.column_stack([alea.uniform(0, 2, 1200), alea.uniform(0, 1.5, 1200), alea.normal(0, 0.005, 1200)])
+    penche = incliner(sol, [0.12, -0.02, 0.83])                                   # 6,9° : un sol mal vu
+    trouve = S.trouver_sol(penche)
+    assert trouve["methode"] == "centile" and trouve["inclinaison_deg"] == 0.0
+    assert "penché de 6.9°" in trouve["raison"] and "pris à plat" in trouve["raison"]
+    assert trouve["plan"][2] == pytest.approx(float(np.percentile(penche[:, 2], 1.0)), abs=1e-6)
+    assert S.trouver_sol(incliner(sol))["methode"] == "ransac"                   # 0,58° : gardé
+    assert S.trouver_sol(penche, inclinaison_acceptee=10.0)["methode"] == "ransac"
 
 
 def test_bogue_sol_incline_damier(monde_demo):

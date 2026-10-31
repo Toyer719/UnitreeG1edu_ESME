@@ -15,6 +15,10 @@ presque horizontal (normale à moins de INCLINAISON_MAX degrés de z), tirages �
 résultat à chaque appel) ; puis deux ajustements par moindres carrés sur tous les points du nuage à
 moins de DISTANCE m du plan. Sans plan assez grand (sol jamais vu), le sol est le 1er centile des z,
 à plat (methode « centile ») ; avec un niveau imposé (--sol), un plan horizontal (methode « impose »).
+Revue de la vague 5 : un sol d'intérieur n'est pas penché de plusieurs degrés (le repère du G1 l'est de
+0,6°). Un plan plus penché que INCLINAISON_ACCEPTEE (un scan court qui a vu peu de sol a donné 6,8°, et des
+hauteurs fausses de plusieurs dizaines de centimètres) est refusé : le sol est pris à plat, au 1er centile
+des z comme quand il n'est pas vu (methode « centile »), et « raison » le dit (le rapport du scan aussi).
 
 Seulement numpy (pas d'Open3D : son RANSAC, parallèle, ne rend pas deux fois le même plan).
 """
@@ -27,7 +31,8 @@ BANDE = 0.4                # m : sol cherché parmi les points à moins de 0,4 m
 DISTANCE = 0.03            # m : écart maximal d'un point au plan
 ITERATIONS = 1000          # tirages du RANSAC
 ECHANTILLON = 20000        # points au plus pour compter les points d'un plan (tirés à graine fixe)
-INCLINAISON_MAX = 10.0     # degrés : un plan plus incliné n'est pas le sol
+INCLINAISON_MAX = 10.0     # degrés : un plan plus incliné n'est pas le sol (recherche du RANSAC)
+INCLINAISON_ACCEPTEE = 3.0  # degrés : un plan trouvé plus penché est refusé (sol mal vu) : pris à plat
 POINTS_MIN = 100           # points du plan au moins ; sinon le sol est le 1er centile des z
 METHODES = ("ransac", "centile", "impose")
 
@@ -114,11 +119,13 @@ def plan_plat(z):
 
 
 def trouver_sol(points, sol=None, bande=BANDE, distance=DISTANCE, iterations=ITERATIONS,
-                inclinaison_max=INCLINAISON_MAX, points_min=POINTS_MIN, graine=GRAINE, echantillon=ECHANTILLON):
+                inclinaison_max=INCLINAISON_MAX, points_min=POINTS_MIN, graine=GRAINE, echantillon=ECHANTILLON,
+                inclinaison_acceptee=INCLINAISON_ACCEPTEE):
     """Plan du sol d'un nuage (N, 3). sol : niveau imposé (plan horizontal), sinon trouvé seul.
 
     Renvoie {plan: [a, b, c], inclinaison_deg, methode (ransac, centile ou impose), points (points du
-    plan), niveau (hauteur du sol au milieu du nuage)}. ErreurSol si le nuage est vide."""
+    plan), niveau (hauteur du sol au milieu du nuage)}, et raison (phrase en français) quand un plan trouvé
+    a été refusé, trop penché pour un sol : le sol est alors pris à plat. ErreurSol si le nuage est vide."""
     points = np.asarray(points, dtype=float).reshape(-1, 3)
     if len(points) == 0:
         raise ErreurSol("nuage vide : pas de sol à trouver")
@@ -130,12 +137,22 @@ def trouver_sol(points, sol=None, bande=BANDE, distance=DISTANCE, iterations=ITE
         candidats = points[points[:, 2] <= bas + bande]
         trouve = plan_horizontal(candidats, distance, iterations, inclinaison_max, graine, echantillon)
         plan, methode, n = plan_plat(bas), "centile", 0
+        raison = None
         if trouve is not None:
             essai, compte = ajuster(points, plan_en_z(*trouve), distance)
-            if compte >= points_min and inclinaison_deg(essai) <= inclinaison_max:
+            pente = inclinaison_deg(essai)
+            if compte >= points_min and pente <= min(inclinaison_max, inclinaison_acceptee):
                 plan, methode, n = essai, "ransac", compte
-    return {"plan": [round(v, 6) for v in plan], "inclinaison_deg": round(inclinaison_deg(plan), 3),
-            "methode": methode, "points": int(n), "niveau": round(float(niveau(plan, cx, cy)), 3)}
+            elif compte >= points_min:
+                # trop penché pour un sol d'intérieur (peu de sol vu) : à plat, au plus bas des points, comme
+                # un sol pas vu (le plan penché passait par le pied des murs ou des meubles bas)
+                raison = (f"sol mal vu (un plan penché de {pente:.1f}° sur {compte} points : scan trop court ?) ; "
+                          "pris à plat")
+    resultat = {"plan": [round(v, 6) for v in plan], "inclinaison_deg": round(inclinaison_deg(plan), 3),
+                "methode": methode, "points": int(n), "niveau": round(float(niveau(plan, cx, cy)), 3)}
+    if sol is None and raison:
+        resultat["raison"] = raison
+    return resultat
 
 
 def resume_sol(sol):

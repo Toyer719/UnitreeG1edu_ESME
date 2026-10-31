@@ -228,6 +228,30 @@ def test_etage_scanne_graphe_sur_la_carte(demo):
     assert not un_message(rapport.erreurs, "couloir n°3 [vie_scolaire, couloir_sud_1]")
 
 
+def test_etage_scanne_noeud_trop_pres_d_un_obstacle(demo):
+    """Revue de la vague 5 (salle 3 de la séance, à 0,25 m d'un objet bas) : sur une carte scannée, un nœud
+    (et sa salle) à moins du rayon du robot d'un pixel occupé est signalé ; plus loin, rien."""
+    demo.etages[0].source_carte = "scan"
+    del demo.mondes["rdc"]
+    info, image = ecrire_carte(demo)
+    ecrire_carte(demo, 254, "_interdit")
+    n = demo.itineraires.noeuds["b204"]
+    c, l = L.monde_vers_pixel(n.x + 0.25, n.y, info)          # un obstacle à 0,25 m de la salle b204
+    image[l, c] = 0
+    L.enregistrer_carte(demo.dossier / "cartes" / "rdc.yaml", info, image)
+    d = L.verification.distance_obstacle_carte(n.x, n.y, info, image)
+    assert d is not None and abs(d - 0.25) < info.resolution
+    rapport = L.verifier_lieu(demo)
+    assert un_message(rapport.avertissements, "nœud « b204 » (et sa salle) : à 0.2", "moins que le rayon du robot (0.35 m)")
+    assert not un_message(rapport.avertissements, "nœud « cdi »", "moins que le rayon")
+    # l'obstacle à 0,6 m : plus d'avertissement
+    image[l, c] = 254
+    c, l = L.monde_vers_pixel(n.x + 0.6, n.y, info)
+    image[l, c] = 0
+    L.enregistrer_carte(demo.dossier / "cartes" / "rdc.yaml", info, image)
+    assert not un_message(L.verifier_lieu(demo).avertissements, "nœud « b204 »", "rayon du robot")
+
+
 # ---------------------------------------------------------------- valider_lieu sur un dossier
 
 def test_valider_dossier_absent_ou_pas_un_lieu(tmp_path):

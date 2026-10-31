@@ -14,7 +14,7 @@ from typing import List, Optional
 
 import atelier
 from . import geometrie
-from .conversions import dans_image, monde_vers_pixel
+from .conversions import dans_image, monde_vers_pixel, pixel_vers_monde
 from .fichiers import (FICHE, ITINERAIRES, SALLES, ZONES, ErreurLieu, chemin_carte, chemin_monde,
                        charger_carte, charger_info_carte, charger_lieu, dossier_lieu)
 from .modeles import ETIQUETTE_PRINCIPAL, Lieu
@@ -318,6 +318,26 @@ def _classe_pixel(valeur, info):
     return "inconnu"
 
 
+def distance_obstacle_carte(x, y, info, image, portee=RAYON_ROBOT):
+    """Distance (m) du point (x, y) au centre du pixel occupé le plus proche de la carte, cherché à moins de
+    portee ; None s'il n'y en a pas si près. Comme map_server en mode trinary (seuils de la carte)."""
+    import numpy as np
+    col, lig = monde_vers_pixel(x, y, info)
+    n = int(math.ceil(portee / info.resolution)) + 1
+    c0, c1 = max(0, col - n), min(info.largeur, col + n + 1)
+    l0, l1 = max(0, lig - n), min(info.hauteur, lig + n + 1)
+    if c0 >= c1 or l0 >= l1:
+        return None
+    morceau = image[l0:l1, c0:c1].astype(float)
+    occupation = morceau / 255.0 if info.negate else (255.0 - morceau) / 255.0
+    lignes, colonnes = np.nonzero(occupation > info.occupied_thresh)
+    if not len(lignes):
+        return None
+    px, py = pixel_vers_monde(colonnes + c0, lignes + l0, info)
+    d = float(np.min(np.hypot(np.asarray(px) - x, np.asarray(py) - y)))
+    return d if d < portee else None
+
+
 def _graphe_sur_carte(lieu, id_etage, info, image, r, nom_carte):
     """Nœuds et couloirs d'un étage face aux pixels de sa carte (étage scanné)."""
     noeuds = lieu.itineraires.noeuds
@@ -343,6 +363,14 @@ def _graphe_sur_carte(lieu, id_etage, info, image, r, nom_carte):
             r.erreur(f"{ou} : {_pt(n.x, n.y)} est sur un obstacle de la carte {nom_carte} ; déplacez-le")
         elif "inconnu" in vues:
             r.avertir(f"{ou} : {_pt(n.x, n.y)} est dans une partie inconnue de la carte {nom_carte}")
+        else:
+            # revue de la vague 5 : comme pour un monde dessiné, la marge du robot autour du nœud (et de la
+            # salle de même identifiant) : Nav2 ne peut pas y amener le centre du robot
+            d = distance_obstacle_carte(n.x, n.y, info, image)
+            if d is not None:
+                salle = " (et sa salle)" if any(s.id == id_noeud for s in lieu.salles) else ""
+                r.avertir(f"{ou}{salle} : à {d:.2f} m d'un obstacle de la carte {nom_carte}, moins que le rayon "
+                          f"du robot ({RAYON_ROBOT:g} m) ; écartez-le de l'obstacle (Placer)")
     for i, c in enumerate(lieu.itineraires.couloirs):
         if c.a not in noeuds or c.b not in noeuds or not (noeuds[c.a].etage == id_etage == noeuds[c.b].etage):
             continue
