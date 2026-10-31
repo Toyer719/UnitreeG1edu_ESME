@@ -25,11 +25,11 @@ et `tout.sh` qui les lance tous et affiche un bilan (agents Intégrateur et Test
 | `critere_08_service_robot.sh` | `g1-slam --faux` : déroulé 1801 → 1802 → 1804 → 1102 ; `MoteurUnitree` de l'accueil à b204 | 1 à 2 min |
 | `critere_09_interface.sh` | `atelier/tests/test_serveur_navigateur.py` (Firefox sans fenêtre), sinon la liste cochée du journal | quelques min |
 | `critere_10_point_entree.sh` | `g1-atelier` sert la page et l'API ; compté par `tout.sh` seulement si les 9 premiers réussissent | 5 s |
-| `critere_11_scan_simu_api.sh` | scan intégré par l'API : `POST /api/scan/demarrer` (simu, exploration), aperçu mis à jour, « Fin » (`POST /api/scan/arreter`) après 30 s au moins et 80 % des couloirs, `termine`, recouvrement d'au moins 90 %, monde du scan valide, aucun processus restant | 5 à 10 min |
-| `critere_12_reconnaissance.sh` | `atelier.scan.evaluation` sur la session du 11 (sinon sur un nuage fabriqué) : murs ≥ 90 %, passages ≥ 80 %, objets de la bonne catégorie ≥ 70 %, aucune personne gardée | 1 à 3 min |
-| `critere_13_monde_du_scan.sh` | revue : un objet décoché (`PUT …/reconnaissance`), absent du monde adopté ; adoption avec le monde (API) ; `g1-lieu valider` ; `g1-monde generer` ; simulation sur le monde du scan et parcours du critère 4 jusqu'à une salle | 3 à 5 min (+ le 11 s'il n'a pas de session) |
+| `critere_11_scan_simu_api.sh` | scan intégré par l'API : `POST /api/scan/demarrer` (simu, exploration), aperçu mis à jour, « Fin » (`POST /api/scan/arreter`) après 30 s au moins et 80 % des couloirs, `termine`, recouvrement d'au moins 90 %, carte et nuage de la session, aucun processus restant | 3 à 5 min |
+| `critere_12_carte_du_scan.sh` | vague 5 (la reconnaissance est retirée) : la session du 11 a sa carte 2D, son nuage 3D et son nuage d'affichage, sans `reconnaissance.yaml` ; étapes `carte_3d`, `carte_2d`, `nuage` ; nuages ignorés au plus 1 % ; nuage d'au moins 50 000 points, sol à 0,02 m de z = 0 ; précision 0,98 et recouvrement 0,90 face à la carte du monde ; `GET /api/scan/nuage` | 10 s (+ le 11 s'il n'a pas de session) |
+| `critere_13_monde_du_scan.sh` | adoption de la session du 11 (« Utiliser cette carte ») : carte du scan telle quelle, nuage de l'étage, monde = carte extrudée de 1,5 m (`mondes/rdc_carte.stl`) avec les piétons, sans les murs dessinés ; `g1-lieu valider` ; `g1-monde generer` ; simulation sur le monde maillé et parcours du critère 4 jusqu'à une salle | 1 à 2 min (+ le 11 s'il n'a pas de session) |
 | `critere_14_repetition_robot.sh` | `g1-scan demarrer --mode robot --repetition` (moins de 3 s), puis `arreter --attendre` : 1801 puis 1802 reçus par le faux service, `/unitree/slam_mapping/*` enregistrés, `termine` | 3 à 6 min |
-| `critere_15_robustesse.sh` | « Fin » sans scan, « Scan » deux fois, flèches pendant un scan simulé (le robot avance, puis s'arrête seul quand on lâche), « Fin » pendant la préparation, mode robot sans robot (« Robot non détecté »), demandes absurdes : refus clairs, jamais d'erreur 500 ; puis le parcours de l'onglet Scan dans Firefox sans fenêtre (`test_serveur_scan_navigateur.py`) | 2 à 3 min |
+| `critere_15_robustesse.sh` | « Fin » sans scan, « Scan » deux fois, flèches pendant un scan simulé (le robot avance, puis s'arrête seul quand on lâche), « Fin » pendant la préparation, mode robot sans robot (« Robot non détecté »), demandes absurdes : refus clairs, jamais d'erreur 500 ; puis l'écran de scan dans Firefox sans fenêtre (`test_serveur_scan_navigateur.py` : plein écran, nuage en direct, Fin, « Utiliser cette carte ») | 1 à 2 min |
 | `critere_16_conteneur.sh` | conteneur `g1-jetson` sur le PC : image amd64 (réutilisée si à jour), `demarrer --local`, l'hôte voit `pont_g1`, `odom_vers_tf`, `guide`, `bt_navigator`, `map_server` et les états du pont et du repérage, verrou en moins de 3 s, arrêt propre (le pont envoie son arrêt), « réseau du robot introuvable » sans 192.168.123.x, jamais de ssh | 15 à 20 s (+ 0,5 min si l'image est à refaire) |
 | `critere_17_pont.sh` | Gazebo `--jumeau`, navigation `--localisation externe --pont oui` et relais simple : aucun lien direct `/cmd_vel` → Gazebo ; `g1-guide aller hall_sud` par le pont et le faux G1 ; 7105 au bon format, 10 par seconde ; 0,9 m en 3 s puis arrêt ; plafonds, NaN, `/guide/stop`, `/pont/arret` | 1 min |
 | `critere_18_reperage.sh` | répétition par l'Atelier : non repéré avant, « Repérer le robot » (1804 en (0, 0, 0), `repetition.pcd`), TF à moins de 0,1 m de la vérité malgré la dérive, perte puis reprise ; repère d'Unitree tourné (refus à la marque, puis repérage converti) | 1 min |
@@ -45,12 +45,12 @@ et `tout.sh` qui les lance tous et affiche un bilan (agents Intégrateur et Test
 | `critere_28_pilotage.sh` | Gazebo `--jumeau`, nœud pilotage (port libre, jeton) et Atelier : postures, confirmation double du portique, joystick avec homme mort (WebSocket coupé : arrêt en moins de 0,6 s), plafonds, gestes et refus 7401 et 7404 en français, voix, volume, LED, verrou avec le guide, interdits jamais envoyés au faux G1 | 1 min |
 | `critere_29_danses.sh` | même montage : liste 7100 (401, 402, 403 interdites), 604 envoyée comme 550604 avec la zone libre, ARRÊT pendant une danse ; `exemple_kpop` sur le faux G1 (arm_sdk à 50 Hz, rampes, limites, taille et jambes jamais pilotées, pas dans les limites, LED et paroles à leur temps, ARRÊT au milieu) ; chorégraphie hors limites refusée ; aperçu 3D dans Firefox sans fenêtre | 2 min |
 | `critere_30_equipe.sh` | les trois fichiers de l'équipe (exemples valides, fautes refusées en français, écrits puis relus par l'API), onglets dans Firefox sans fenêtre, personnalité publiée ; bout en bout : « je cherche la salle b204 » sur `/visiteur/texte` → `/robot/dire` et `/guide/aller` → b204 ; « bonjour » → réponse sans guidage ; phrase inconnue → repli | 1 min 30 |
-| `critere_31_coque.sh` | accueil puis espace de travail en Simulation et en Réel (répétition) dans Firefox sans fenêtre ; à 1366 × 768 et 1920 × 1080, la page ne défile pas, rien n'est coupé, tout élément cliquable peut être amené à l'écran ; anciens hash ; thème clair | à écrire (agent Coquille) |
-| `critere_32_carte3d.sh` | carte 3D (WebGL) d'un nuage de test : l'accueil et une salle posés et orientés en 3D, `salles.yaml` à jour, mêmes coordonnées dans le Plan 2D ; vues, zoom vers le pointeur, Annuler ; repli sans WebGL | à écrire (agent Carte 3D) |
-| `critere_33_scan_corrige.sh` | scan simulé sans reconnaissance : étapes `carte_3d`, `carte_2d`, `nuage`, carte propre (précision 0,98, recouvrement 0,90), même avec un sol incliné et des horodatages nuls (`--refaire`) ; adoption : nuage de l'étage et monde maillé, Gazebo à 0,9 fois le temps réel au moins ; `g1-scan carte-unitree` | à écrire (agent Scan) |
-| `critere_34_pont_modes.sh` | pont et faux G1 : vitesse minimale (0,1 demandé → 0,2 envoyé), zones mortes, faux G1 assis → `pas_en_marche` et aucun pas, retour à `pret` en 501, course refusée, 7001 à 1 Hz ; `vitesse_max` sous 0,2 refusée, transmise à Nav2 | à écrire (agent Robot) |
-| `critere_35_camera.sh` | fausse source d'images → `camera_usb` → `/camera_poitrine/image/compressed` → flux MJPEG de l'Atelier → `g1-visiteurs` (YOLO) → `/visiteurs/detectes` avec les cadres ; vue Caméra dans Firefox ; caméra dans le conteneur, à blanc | à écrire (agent Caméra) |
-| `critere_36_arret.sh` | ARRÊT global : guide en route (répétition), téléopération (simulation) et joystick du pilotage arrêtés en moins de 1 s ; verrou posé en répétition puis « Débloquer » ; nœud pilotage injoignable ; bouton et touche Échap | à écrire (agent Coquille) |
+| `critere_31_coque.sh` | accueil puis espace de travail en Simulation, en Réel et en répétition dans Firefox sans fenêtre ; à 1366 × 768, 1600 × 1000 et 1920 × 1080, pour chaque onglet et chaque commande (186 mesures) : la page ne défile pas, rien n'est coupé, tout élément cliquable peut être amené à l'écran, ARRÊT visible ; anciens hash ; thème clair (`outils_coque_e2e.py critere-31`) | 2 min |
+| `critere_32_carte3d.sh` | carte 3D (WebGL) d'un nuage de test, par la coque (Réel › Placer) : l'accueil et une salle posés et orientés en 3D, `salles.yaml`, `lieu.yaml`, `depart_robot` et `itineraires.yaml` à jour, mêmes coordonnées dans le Plan 2D ; vues, zoom vers le pointeur, Annuler et Rétablir ; repli sans WebGL ; plus les tests de la carte seule (`test_carte3d_*.py`). **WebGL demande l'affichage X de la session (`DISPLAY=:1`)** : sans lui, « en attente » (77) | 2 à 3 min |
+| `critere_33_scan_corrige.sh` | scan simulé sans reconnaissance : étapes `carte_3d`, `carte_2d`, `nuage`, carte propre (précision 0,98, recouvrement 0,90), même avec un sol incliné de 0,6°, des horodatages nuls et l'odométrie décalée de −138 s (`--refaire`) ; adoption : nuage de l'étage et monde maillé, Gazebo à 0,9 fois le temps réel au moins, contact avec le mur ; `g1-scan carte-unitree` en répétition | 5 min |
+| `critere_34_pont_modes.sh` | pont et faux G1 : vitesse minimale (0,1 demandé → 0,2 envoyé), zones mortes, faux G1 assis → `pas_en_marche` et aucun pas, retour à `pret` en 501, course refusée, 7001 à 1 Hz ; `vitesse_max` sous 0,2 refusée, transmise à Nav2 | 1 min |
+| `critere_35_camera.sh` | fausse source d'images → `camera_usb` → `/camera_poitrine/image/compressed` → flux MJPEG de l'Atelier → `g1-visiteurs` (YOLO) → `/visiteurs/detectes` avec les cadres ; vue Caméra dans Firefox ; caméra dans le conteneur, à blanc ; sans le modèle YOLO : « en attente » | 30 s |
+| `critere_36_arret.sh` | ARRÊT global : guide en route (répétition), téléopération (simulation) et joystick du pilotage arrêtés en moins de 1 s ; verrou posé en répétition puis « Débloquer » ; nœud pilotage injoignable ; bouton et touche Échap dans Firefox (`critere_36_outils.py`) | 1 min |
 
 Critères 16 à 20 (vague 3, le vrai robot en répétition, section 10 du plan) : en répétition, la vérité terrain
 est `/g1_jumeau/odom` (et non `/odom`, l'odométrie du relais). Options :
@@ -74,7 +74,13 @@ autre agent manque, il répond « en attente » (77) en disant laquelle. Nouveau
 Critères 31 à 36 (vague 5, section 12.10 du plan) : chacun est écrit par l'agent nommé, sur des copies du demo ;
 tant que la pièce d'un autre agent manque, il répond « en attente » (77). Un agent essaie ses paquets ROS compilés à
 part avec `E2E_OVERLAY=~/robot-g1/ws/install_v5_<agent>` (chargé après `ws/install`, donc prioritaire), dans son
-domaine : `E2E_DOMAINE=<domaine> E2E_PARTITION=v5_<agent> tests_e2e/tout.sh N` (section 12.11).
+domaine : `E2E_DOMAINE=<domaine> E2E_PARTITION=v5_<agent> tests_e2e/tout.sh N` (section 12.11). Outils :
+`outils_coque_e2e.py` (sous-commandes `critere-31`, `captures`, `contrastes`, `arret-navigateur`),
+`critere_36_outils.py`, `outils_carte3d_e2e.py`, `outils_robot_e2e.py`, `outils_camera_e2e.py` ; le critère 33
+réutilise `outils_scan_e2e.py`. **Lancez `tout.sh` depuis un terminal de la session graphique** (`DISPLAY=:1`) :
+le critère 32 a besoin de WebGL, que Firefox sans fenêtre n'a qu'avec l'affichage X (aucune fenêtre ne s'ouvre ;
+`commun.sh` retire `DISPLAY` pour Gazebo et RViz, et le critère 32 le rend à Firefox seul). Captures de la coque :
+`.venv-projet/bin/python tests_e2e/outils_coque_e2e.py captures --api http://127.0.0.1:<port> --sortie <dossier>`.
 
 Codes de sortie : 0 réussi, 1 échoué, 77 pas encore possible (une commande, une route ou un module manque).
 
@@ -98,11 +104,9 @@ Scan intégré (critères 11 à 15, `outils_scan_e2e.py`) :
 - réglages : `E2E_DUREE_SCAN` (30 s au moins avant « Fin »), `E2E_PART_TOUR` (0,8 : part des couloirs à
   parcourir avant « Fin »), `E2E_DUREE_MAX_SCAN` (600 s), `E2E_FIN_AUTO=1` (critère 11 sans « Fin » :
   l'exploration doit terminer le scan d'elle-même), `E2E_DUREE_REPETITION` (30 s d'enregistrement
-  au critère 14), `E2E_STRICT=1` (tous les objectifs de 9.8 deviennent bloquants au critère 12),
-  `E2E_NUAGE_FABRIQUE=0` (pas de nuage fabriqué au critère 12) ;
-- le nuage fabriqué du critère 12 ne demande ni ROS ni Gazebo : les rayons du LiDAR du robot proxy
-  (360 × 16, de −7° à +52°, à 1,245 m) sont lancés sur les formes du monde Gazebo, le long des couloirs.
-  Il sert aussi à mettre au point la reconnaissance :
-  `.venv-projet/bin/python tests_e2e/outils_scan_e2e.py fabriquer-nuage --reference demo --sortie /tmp/nuage`.
+  au critère 14) ;
+- la reconnaissance des murs, passages et objets a été retirée à la vague 5 (section 12.5 du plan) : les
+  critères 12 et 13 vérifient maintenant la carte, le nuage et le monde maillé, sans elle ; le critère 33
+  ajoute le « damier » (sol incliné, horodatages nuls, odométrie décalée, comme le scan du 27/10).
 
 Les journaux de `tout.sh` vont dans `~/robot-g1/journaux/e2e_<date>/`.

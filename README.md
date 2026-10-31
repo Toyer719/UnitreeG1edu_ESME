@@ -26,7 +26,8 @@ Toutes les commandes s'utilisent dans un terminal ouvert après l'installation (
 | `g1-ecouter` | Reconnaissance vocale en français (Vosk, faster-whisper) | non |
 | `g1-atelier` | Atelier G1 : décrire ou scanner un lieu, fabriquer la carte, essayer le guide dans Gazebo (section ci-dessous) | non (oui pour scanner un vrai bâtiment) |
 | `g1-jetson` | Conteneur de la navigation sur le Jetson du robot : construire, envoyer, démarrer, arrêter (section « Le vrai robot ») | oui (non avec `--local`) |
-| `g1-pilotage` | Piloter le G1 comme l'onglet Pilotage de l'Atelier : postures, gestes, voix, LED, danses, chorégraphies (section « Pilotage et danses ») | oui (non contre le faux G1) |
+| `g1-pilotage` | Piloter le G1 comme Réel › Piloter de l'Atelier : postures, gestes, voix, LED, danses, chorégraphies (section « Pilotage et danses ») | oui (non contre le faux G1) |
+| `g1-visiteurs` | Les visiteurs vus par la caméra de poitrine (YOLO) : cadres, distances, `/visiteurs/detectes` (section « L'équipe ») | non (oui pour la caméra du robot) |
 
 Le calendrier jour par jour, avec toutes les commandes de chaque étape, est sur la page du
 projet : https://claude.ai/artifact/3sjPDb9CYcwJGrTZ8vgxNP
@@ -52,21 +53,48 @@ Plan : `docs/plan-atelier-multi-agents.md`. Décisions et état : `docs/journal-
 g1-atelier                 # ouvre http://localhost:8000 dans le navigateur
 ```
 
-Les onglets se suivent de gauche à droite : **Lieux** (créer ou choisir un lieu),
-**Monde** (dessiner murs, passages, meubles et piétons, vue 3D), **Carte**
-(« Fabriquer la carte »), **Salles**, **Itinéraires** (nœuds et couloirs de 8 m au plus),
-**Zones** (interdites en rouge, lentes en orange), **Simulation** (« Lancer la simulation »,
-puis « Y aller » ; gros bouton ARRÊT) et **Scan** (boutons « Scan » et « Fin », section
-« Scanner un lieu » ci-dessous). L'onglet Simulation a trois modes : **Simulation** (Gazebo
-seul), **Répétition sans robot** (comme avec le vrai robot, mais contre un faux G1 dans Gazebo :
-repérage, pont vers la marche) et **Robot** (section « Le vrai robot »).
-Ctrl+C dans le terminal arrête le serveur, et avec lui la simulation et la navigation.
+L'Atelier s'ouvre sur un **accueil** (comme « Nouveau document » de SolidWorks) : deux grandes
+cartes, **Simulation** (dessiner un lieu et essayer le guide sur l'ordinateur, sans robot) et
+**Robot réel** (scanner le bâtiment, placer les salles et guider le vrai G1 ; la case **Répétition
+sans robot** joue tout contre un faux G1 dans Gazebo). Choisissez un lieu (ou « Nouveau lieu »),
+puis **Ouvrir**. En Robot réel, l'accueil vérifie aussi le câble, le robot et la télécommande.
+
+L'espace de travail ne défile jamais (habillage d'Unitree Explore, thème sombre ou clair ◐) :
+
+- la **barre d'outils** : ⌂ (retour à l'accueil), lieu et étage, mode, Annuler / Rétablir,
+  **Enregistrer**, et le gros bouton **ARRÊT** (touche **Échap**) : il arrête le guide, la
+  téléopération et le pilotage en moins d'une seconde, et en Réel il bloque le robot jusqu'à
+  **Débloquer** ;
+- le **ruban**, avec de grosses icônes ; ce qui est rare est dans son menu **⚙ Avancé** :
+
+| Mode | Onglets du ruban |
+|---|---|
+| Simulation | **Dessiner** (murs, passages, meubles, piétons, départ ; la carte se refait seule à « Enregistrer »), **Placer** (salle, accueil ★, nœud, relier, zones interdites et lentes), **Simuler** (Lancer, Arrêter, Y aller, Accompagner, Retour ; Avancé : faux visiteur, passants, réglages du guide, scan simulé), **Équipe** |
+| Robot réel | **Scanner** (Scan, Fin, Utiliser cette carte), **Placer** (sur le nuage du scan, en 3D), **Naviguer** (Lancer, Repérer, Y aller, Bloquer, Débloquer, Arrêter), **Piloter** (prendre la main, postures, gestes, voix, lumière, joysticks ; Spectacle : danses, chorégraphies), **Équipe** (personnalités, dialogues, caméra) |
+
+- l'**arbre du lieu** à gauche (étage, carte, monde, ★ accueil et salles, itinéraires, zones, scans,
+  équipe ; ⚠ sur ce que « Vérifier le lieu » signale) ;
+- la **vue** au centre : **3D** (le nuage de points du scan en Réel, coloré par la hauteur, plafond
+  caché ; le monde en volumes et la carte 2D au sol en Simulation ; l'accueil en étoile ambre, les
+  salles en épingles numérotées, les itinéraires, les zones, le robot et les piétons en direct),
+  **Plan 2D** (pour dessiner le monde, les itinéraires et les zones) ou **Caméra** (en Réel) ;
+  gestes en 3D : glisser = tourner, clic droit ou Maj = déplacer, molette = zoom vers le pointeur,
+  F = tout voir ; boutons Dessus, Iso, Face, Recadrer ;
+- le **panneau** à droite : le formulaire de la commande en cours, ✓ Enregistrer et ✗ Annuler.
+
+**Placer un point en 3D** (Placer › Accueil ou Salle) : un clic sur le sol pose le point, un glissé
+depuis le point règle son orientation (par pas de 15°, Maj : libre), x, y et l'angle se corrigent à
+droite, puis ✓ Enregistrer. Les fichiers et les coordonnées sont les mêmes qu'en Plan 2D.
+Ctrl+C dans le terminal arrête le serveur, et avec lui la simulation et la navigation. Les anciennes
+adresses (`#salles`, `#simulation`, `#pilotage`…) mènent au bon endroit. Détails :
+`atelier/web/LISEZMOI.md`.
 
 Depuis la vague 4 (section 11 du plan) : le **point principal** du lieu (l'accueil : départ de la
 simulation, pose du repérage, retour après chaque visite), des **passants** que le robot contourne
-ou attend, l'**accompagnement** du visiteur et le retour automatique, l'onglet **Pilotage**
-(postures, joystick, gestes, voix, LED, danses du robot, chorégraphies) et les onglets
-**Personnalités**, **Dialogues** et **Caméra** pour l'équipe. Chacun a sa section ci-dessous.
+ou attend, l'**accompagnement** du visiteur et le retour automatique, **Piloter** (postures,
+joystick, gestes, voix, LED, danses du robot, chorégraphies) et l'**Équipe** (personnalités,
+dialogues, caméra). Depuis la vague 5 (section 12) : cette interface, la carte 3D, le scan corrigé,
+la vitesse minimale du pont et la caméra de poitrine. Chacun a sa section ci-dessous.
 
 ### Les mêmes étapes en ligne de commande
 
@@ -99,83 +127,81 @@ Sans `--sans-fenetre`, Gazebo s'ouvre dans une fenêtre. `--lieu` accepte un id 
 | `g1-carte-3d --lieu L --etage E --enregistrement DOSSIER` | Enregistrement ros2 bag → nuage 3D `.pcd` |
 | `g1-carte-2d --lieu L --etage E` | Nuage 3D → carte 2D de navigation |
 | `g1-salle ajouter "Nom" --lieu L` | Ajoute une salle à la position actuelle du robot |
-| `g1-scan demarrer\|arreter\|etat\|traiter\|adopter --lieu L …` | Le scan intégré, comme les boutons « Scan » et « Fin » de l'onglet Scan (section suivante) |
+| `g1-scan demarrer\|arreter\|etat\|traiter\|adopter --lieu L …` | Le scan intégré, comme Scan, Fin et « Utiliser cette carte » de Réel › Scanner (section suivante) |
+| `g1-scan traiter --lieu L --session S --refaire` | Refait le traitement d'un scan fini, même adopté, avec la chaîne d'aujourd'hui ; les résultats d'avant sont gardés dans `ancien_<date>/` (à réadopter) |
+| `g1-scan carte-unitree --lieu L [--etage E] [--delai 60]` | Enregistre la carte d'Unitree (`/unitree/slam_relocation/global_map`, publiée pendant « Repérer le robot ») dans `cartes/<etage>_unitree.pcd` |
+| `g1-visiteurs [--lieu L] [--source robot\|N\|/dev/…\|video.mp4] [--image] [--fenetre]` | Les visiteurs vus par la caméra de poitrine (YOLO pose et suivi), publiés sur `/visiteurs/detectes` (section « L'équipe ») |
 | `g1-jetson construire\|envoyer\|demarrer\|arreter\|etat\|journal\|verifier …` | Le conteneur de la navigation sur le Jetson (section « Le vrai robot » ; `--local` : sur le PC) |
 
 Chaque commande a un alias `gl-…` et accepte `--help`.
 
 ### Scanner un lieu
 
-Le scan fabrique la carte 2D d'un étage, et un monde 3D modifiable, à partir de ce que voit le
-LiDAR du robot. Tout se fait dans l'onglet **Scan** de l'Atelier : un bouton **Scan** pour
-commencer, un bouton **Fin** pour arrêter, et le reste est automatique.
-
-**En simulation** (sans robot, pour essayer ou pour préparer) : le robot simulé de Gazebo, à la
-taille du G1, scanne le monde dessiné de l'étage.
-
-1. Onglet **Carte** : « Fabriquer la carte », si ce n'est pas déjà fait (le robot simulé a besoin
-   du monde Gazebo de l'étage).
-2. Onglet **Scan** : choisissez **Simulation**. Cochez **Exploration automatique** pour que le
-   robot fasse seul le tour des couloirs de l'onglet Itinéraires ; sinon, conduisez-le avec les
-   flèches de l'écran ou du clavier (il s'arrête dès qu'on lâche).
-3. Cliquez sur **Scan**. Après 10 à 20 s (démarrage de Gazebo), l'aperçu se remplit en direct :
-   murs vus d'en haut, trajet du robot, nuage de points en 3D, durée et distance.
-4. Cliquez sur **Fin** quand tout l'étage a été vu. Avec l'exploration, le scan s'arrête de
-   lui-même à la fin du tour (environ 3 min pour le lieu `demo`).
-5. Une barre suit la suite, automatique : carte 3D, carte 2D, reconnaissance, monde (10 à 30 s).
-6. La revue montre ce qui a été reconnu : murs, passages (les portes) et objets (tables, chaises,
-   bancs, poubelles, poteaux, meubles, personnes), chacun avec une case **garder**. Les personnes
-   sont décochées d'office : elles ne vont jamais sur la carte. Décochez ce qui est faux.
-7. Choisissez :
-   - **Utiliser cette carte pour l'étage** : la carte du scan remplace celle de l'étage ;
-   - **Ouvrir dans l'éditeur du monde** : la carte **et** le monde du scan remplacent ceux de
-     l'étage (l'ancien monde est gardé dans le dossier du scan), puis l'onglet **Monde** s'ouvre.
-     On y modifie le monde du scan comme un monde dessiné, et l'onglet **Simulation** le lance
-     dans Gazebo pour essayer le guide.
+Le scan fabrique la **carte 2D** de navigation d'un étage et son **nuage de points 3D** (celui de la
+vue 3D), à partir de ce que voit le LiDAR du robot. Tout se fait dans **Réel › Scanner** : **Scan**
+pour commencer, **Fin** pour arrêter, puis **Utiliser cette carte** ; le reste est automatique.
+Depuis la vague 5, il n'y a plus de reconnaissance des tables et des chaises : la carte et le nuage
+sont gardés tels quels (le nuage montre déjà les meubles), et le monde de simulation d'un étage
+scanné est la carte extrudée sur 1,5 m, en un seul maillage.
 
 **Avec le vrai robot** : le PC suit le robot au câble. Les données du scan n'arrivent au PC que par
 le câble Ethernet, pas par le Wi-Fi. Il faut deux personnes : l'une pilote le robot à la
-télécommande, l'autre marche derrière avec le PC portable, relié au robot par un câble de 2 à 3 m.
+télécommande, l'autre marche derrière avec le PC portable, relié au robot par un câble de 2 à 5 m.
 
-1. Robot allumé et debout en mode marche, dans une zone dégagée ; dans l'appli Unitree, les
-   services `unitree_slam` et `lidar_driver` sont activés.
+1. Robot allumé et debout en mode marche, **sur le point de départ** (il deviendra l'origine de la
+   carte : le plus simple est d'y mettre le point principal) ; dans l'appli Unitree, les services
+   `unitree_slam` et `lidar_driver` sont activés.
 2. Branchez le câble, puis dans un terminal : `source ~/robot-g1/setup/robot.sh` (doit dire « le
-   robot répond »).
-3. `g1-atelier`, onglet **Scan** : choisissez **Robot**, cliquez sur **Scan** et confirmez. Le PC
-   demande au robot de commencer sa cartographie (commande 1801) et enregistre ce que le robot
-   publie (`/unitree/slam_mapping/points` et `/unitree/slam_mapping/odom`). Sans câble, l'Atelier
-   répond « Robot non détecté » et ne lance rien.
-4. Promenez le robot lentement dans tout l'étage, câble lâche, sans couper les virages. Les flèches
-   de l'écran ne servent pas avec le vrai robot : il se pilote à la télécommande, qui reste
-   l'arrêt d'urgence.
-5. Revenez près du point de départ, puis **Fin** : le robot enregistre sa propre carte (commande
-   1802, fichier `<etage>_<session>.pcd` sur le robot) et le PC fabrique la carte 2D et le monde,
-   comme en simulation.
-6. Revue et adoption, comme en simulation. Le repère du scan du robot (origine au point de départ)
-   n'est pas celui du monde dessiné : replacez ensuite les salles, les itinéraires et les zones sur
-   la nouvelle carte.
+   robot répond »), puis `g1-atelier`.
+3. Accueil : **Robot réel**, le lieu, **Ouvrir**. **Scanner › Scan** : le PC demande au robot de
+   commencer sa cartographie (commande 1801) et enregistre ce qu'il publie
+   (`/unitree/slam_mapping/points` et `/unitree/slam_mapping/odom`). L'écran passe en plein écran
+   sombre, comme « 3D LiDAR Mapping » d'Unitree Explore : le nuage se remplit en direct, coloré par la
+   hauteur, avec le trajet du robot, la durée, la distance et le nombre de points. Sans câble,
+   l'Atelier répond « Robot non détecté » et ne lance rien.
+4. Promenez le robot **lentement** dans tout l'étage (moins de 0,5 m/s, virages lents, personne entre
+   le robot et les murs), câble lâche. Il se pilote à la télécommande, qui reste l'arrêt d'urgence.
+5. Revenez au point de départ, puis **Fin** : le robot enregistre sa propre carte (commande 1802,
+   fichier `<etage>_<session>.pcd` sur le robot) et le PC fabrique en quelques secondes la carte 2D
+   et le nuage : tous les nuages sont gardés (même avec des horodatages nuls, comme sur le G1), les
+   passants sont retirés depuis la vraie position du capteur, et le sol est trouvé comme un plan
+   (même un peu penché) : plus de « damier » sur la carte.
+6. Regardez la carte et le nuage, puis **Utiliser cette carte** : elle devient la carte de l'étage,
+   le nuage devient celui de la vue 3D (`cartes/<etage>.nuage.bin`) et le monde de simulation devient
+   la carte extrudée. Les salles, les itinéraires et les zones ne bougent pas (mêmes coordonnées) ;
+   si l'étage avait un monde dessiné (autre repère), replacez-les.
 
-Pour s'entraîner sans robot, cochez **Répétition sans robot** en mode Robot : tout le déroulé du
-mode robot est joué avec un faux service de cartographie et le robot simulé.
-
-**Attention** : le mode robot n'a encore jamais été essayé sur le vrai G1, seulement en
-répétition. Au premier vrai scan, vérifiez la carte (elle ne doit être ni dédoublée ni tournée) et
-lisez les avertissements du rapport.
+**En simulation** (sans robot, pour essayer ou pour préparer) : **Simulation › Simuler › ⚙ Avancé ›
+Scan simulé** : le robot simulé de Gazebo, à la taille du G1, scanne le monde dessiné de l'étage.
+Cochez **Exploration automatique** pour qu'il fasse seul le tour des couloirs des itinéraires ;
+sinon, conduisez-le avec les flèches de l'écran ou du clavier (il s'arrête dès qu'on lâche). Pour
+s'entraîner au déroulé du vrai robot sans robot : **Robot réel** avec **Répétition sans robot**, puis
+Scanner (faux service de cartographie et robot simulé).
 
 Les mêmes étapes en ligne de commande :
 
 ```bash
 g1-scan demarrer --lieu demo --etage rdc --mode simu --explorer   # « Scan » : rend la main tout de suite
 g1-scan etat --lieu demo                                          # où en est le scan
-g1-scan arreter --lieu demo --attendre                            # « Fin », puis attend la carte et le monde
-g1-scan adopter --lieu demo --session 2026-10-25_17h42 --monde    # adopte la carte et le monde du scan
+g1-scan arreter --lieu demo --attendre                            # « Fin », puis attend la carte et le nuage
+g1-scan adopter --lieu demo --session 2026-10-25_17h42            # « Utiliser cette carte »
+g1-scan traiter --lieu seance --session 2026-10-27_14h22 --refaire   # refait le traitement d'un vieux scan
+g1-scan carte-unitree --lieu seance --etage rdc                   # la carte d'Unitree, pendant « Repérer le robot »
 ```
 
 Vrai robot : `--mode robot` (câble branché et `source ~/robot-g1/setup/robot.sh` fait) ;
 répétition sans robot : `--mode robot --repetition`. Chaque scan est rangé dans
-`lieux/<id>/scans/<date>_<heure>/` (enregistrement, aperçu, nuage 3D, carte, reconnaissance,
-monde, `rapport.json`). L'enregistrement pèse environ 100 Mo par minute de scan ; il n'est pas
-sauvegardé par Git : effacez le dossier `enregistrement/` quand le scan est adopté.
+`lieux/<id>/scans/<date>_<heure>/` (enregistrement, aperçu, carte, nuage 3D `nuage.pcd`, nuage
+d'affichage `nuage_affichage.bin`, `rapport.json` avec les nuages gardés, la base de temps, le plan du
+sol et les passants retirés). `--refaire` range les résultats d'avant dans `ancien_<date>/`, sans
+rien effacer ; la session est alors à réadopter. L'enregistrement pèse environ 100 Mo par minute de
+scan ; il n'est pas sauvegardé par Git : gardez-en une copie (le scan du 27/10 est aussi dans
+`~/robot-g1-donnees/2026-10-27_seance1/`).
+
+**Le scan du 27/10** (lieu `seance`, étage `rdc`) a été retraité et adopté le 31/10 avec la nouvelle
+chaîne : 2 327 nuages gardés sur 2 327 (953 avant), 299 558 points (158 791 avant), sol penché de
+0,58° trouvé, plus de damier ; la carte nettoyée à la main n'est plus nécessaire. La copie d'avant est
+dans `lieux/seance/sauvegardes/`.
 
 ### Le point principal
 
@@ -189,10 +215,10 @@ salle de `salles.yaml` qui porte l'étiquette `principal`, avec une flèche (le 
 - le **retour** : après chaque visite, le guide revient seul au point principal et se tourne dans le
   sens de la flèche.
 
-Dans l'Atelier, onglet **Salles** : le point principal est dessiné d'une étoile et d'une flèche.
-Pour en changer : choisissez la salle, puis **« Faire de cette salle le point principal »**. Pour
-le tourner : glissez la flèche (par pas de 15°), puis **« Enregistrer les salles »**. On ne peut pas
-supprimer le point principal sans en avoir choisi un autre. Un lieu d'avant la vague 4 sans
+Dans l'Atelier, **Placer › Accueil** : le point principal est l'étoile ambre avec sa flèche, en 3D
+comme en Plan 2D. Un clic sur le sol le pose, un glissé depuis l'étoile le tourne (par pas de 15°),
+puis ✓ Enregistrer. Pour donner ce rôle à une autre salle : choisissez-la, puis **« Faire de cette
+salle l'accueil »**. On ne peut pas supprimer le point principal sans en avoir choisi un autre. Un lieu d'avant la vague 4 sans
 étiquette prend la salle `accueil` ; un lieu sans point principal du tout est refusé par
 `g1-lieu valider`, et l'Atelier refuse d'y lancer la simulation.
 
@@ -213,7 +239,7 @@ g1-lieu valider --lieu bomboclat               # vérifie tout, fichiers de l'é
 
 Dans Gazebo, chaque piéton du monde est un **corps** (cylindre de 0,25 m de rayon, 1,7 m de haut)
 que le LiDAR voit et que le robot ne peut pas traverser, et il **réagit** au robot (champ `reaction`
-d'un piéton, onglet Monde) : `ecart` (défaut : il ralentit et s'écarte, ou attend 8 s au plus s'il
+d'un piéton, Simulation › Dessiner) : `ecart` (défaut : il ralentit et s'écarte, ou attend 8 s au plus s'il
 ne peut pas passer), `arret` (il s'arrête), `aucune` (il ne voit pas le robot : le pire cas).
 `g1-monde simuler … ` lance les corps (argument `pietons:=corps` de `simulation.launch.py`, ou
 `acteurs` pour les silhouettes de la vague 1).
@@ -235,9 +261,8 @@ g1-banc --scene foule                             # les 5 piétons du demo, 20 t
 ```
 
 Le CSV (dans `journaux/`) compte les contacts, leur cause (robot ou piéton), la distance bord à bord
-la plus courte, les attentes de passage et la longueur parcourue. Dans l'onglet **Simulation**, le
-panneau **Passants** montre les piétons en direct, la distance au plus proche, les scènes et les
-derniers bancs.
+la plus courte, les attentes de passage et la longueur parcourue. **Simuler › ⚙ Avancé › Passants**
+montre les piétons en direct, la distance au plus proche, les scènes et les derniers bancs.
 
 ### Accompagnement du visiteur et retour au point principal
 
@@ -267,33 +292,40 @@ guide: {retour_auto: true, delai_avant_retour_s: 15, delai_visiteur_s: 30, dista
         distance_attendre_m: 3.5, ralenti: 0.5, delai_perdu_s: 30, delai_passant_s: 20}
 ```
 
-Dans l'onglet **Simulation**, le panneau **Comportement du guide** : « Accompagner un visiteur »
-vers une salle (avec ou sans retour), l'état du guide et du visiteur, les derniers événements, et
-le **faux visiteur** de la simulation (Suivre, Traîner, Partir), qui joue un visiteur dans Gazebo.
+Dans **Simuler** : les cases **Accompagner** et **Retour**, puis **Y aller** vers une salle ; en Réel
+(**Naviguer**), le bouton « Accompagner un visiteur » du panneau **Visite guidée**. Le panneau montre
+l'état du guide et du visiteur et les derniers événements.
+**⚙ Avancé › Faux visiteur** (Suivre, Traîner, Partir) joue un visiteur dans Gazebo, et **Réglages du
+guide** règle les délais ci-dessus.
 
 ### Pilotage et danses
 
-L'onglet **Pilotage** pilote le robot comme l'appli Unitree Explore. Une barre reste toujours en
-haut : l'état, la batterie, **Prendre la main** / **Rendre la main**, et le gros bouton **ARRÊT**
-(touche Échap). Trois sous-onglets :
+**Réel › Piloter** pilote le robot comme l'appli Unitree Explore (en Réel seulement : vrai robot ou
+répétition). La vue du robot est au centre, avec deux **joysticks** en surimpression (tactiles sur une
+tablette) ; le ruban donne **Prendre la main** / **Rendre la main**, **Postures**, **Gestes**,
+**Voix**, **Lumière**, et le groupe **Spectacle** ; le bouton **ARRÊT** de la barre d'outils (touche
+Échap) reste toujours là :
 
-- **Commandes** : postures (500 démarrer, 706 accroupi ↔ debout, 702 se relever, 3 s'asseoir ;
-  1 amortir et 0 couple nul seulement avec la case « robot au portique » et une double
-  confirmation), **joystick** (tactile sur une tablette ; le robot s'arrête seul 0,5 s après le
-  dernier ordre, ou dès que la page ou le Wi-Fi se coupe), gestes des bras, voix du robot, volume,
-  LED ;
-- **Danses du robot** : la liste lue dans le robot ; 401, 402 et 403 sont toujours interdites ;
-  chaque danse demande la case « zone libre de 2 à 3 m autour du robot » ;
-- **Mes chorégraphies** : éditeur à ligne de temps (poses des bras, pas de marche, gestes, LED,
+- **Postures** : 500 démarrer, 706 accroupi ↔ debout, 702 se relever, 3 s'asseoir ; **⚙ Avancé ›
+  Portique** : 1 amortir et 0 couple nul, seulement avec la case « robot au portique » et une double
+  confirmation ;
+- **joysticks** : le robot s'arrête seul 0,5 s après le dernier ordre, ou dès que la page ou le Wi-Fi
+  se coupe ; un manche à peine incliné fait marcher à 0,2 m/s (le robot ne marche pas plus lentement) ;
+  refusés quand le robot est assis ou pas démarré ; **après un ARRÊT, un manche resté tenu ne relance
+  pas le robot** : il faut le lâcher, puis le reprendre ;
+- **Spectacle › Danses** : la liste lue dans le robot ; 401, 402 et 403 sont toujours interdites ;
+  chaque danse demande la case « zone libre de 2 à 3 m autour du robot » ; permises en mode marche
+  (500, 501 ou 801 : le vrai G1 marche en 501) ;
+- **Spectacle › Chorégraphies** : éditeur à ligne de temps (poses des bras, pas de marche, gestes, LED,
   paroles, musique) et **aperçu 3D** du G1 avant de jouer. Les bras passent par rt/arm_sdk avec des
-  rampes, des angles et des vitesses bornés ; les jambes restent au contrôleur d'Unitree.
+  rampes, des angles et des vitesses bornés ; les jambes restent au contrôleur d'Unitree. Un pas plus
+  lent que 0,2 m/s est joué deux fois plus vite pendant deux fois moins longtemps (même trajet), avec
+  un avertissement.
 
-**La Vue du robot** (sous « Commandes » et « Danses du robot », pliable avec « Masquer la vue ») montre
-ce que fait le robot, sans rien commander :
+**La Vue du robot** (au centre de Piloter) montre ce que fait le robot, sans rien commander :
 
-- une **carte** du lieu en cours (simulation, répétition ou robot) avec la position et le cap du
-  robot et les passants, comme l'onglet Simulation (en répétition et avec le robot, il faut avoir
-  cliqué « Repérer le robot » dans l'onglet Simulation) ; « Suivre le robot » la recentre ;
+- une **carte** du lieu en cours avec la position et le cap du robot et les passants (en répétition
+  et avec le robot, après **Naviguer › Repérer**) ; « Suivre le robot » la recentre ;
 - **le G1 en 3D** : la posture d'après le mode du robot (debout, accroupi, assis, amorti), les
   jambes qui marchent avec le joystick, les gestes des bras et la danse du robot en **aperçu
   approché** (le vrai mouvement est dans le robot ; une danse montre sa barre de progression), et
@@ -322,8 +354,8 @@ g1-pilotage rendre                             # rendre la main au guide
 g1-pilotage importer-video danse.mp4 --id ma_danse   # bras d'une vidéo filmée de face (pose YOLO, hors ligne)
 ```
 
-Dans l'Atelier, en simulation ou en répétition : bouton **« Démarrer le pilotage »** de l'onglet
-(le nœud tourne sur le PC, contre le faux G1). Avec le robot : le nœud tourne dans le conteneur du
+Dans l'Atelier, en répétition : bouton **« Démarrer le pilotage »** de Piloter (le nœud tourne sur le
+PC, contre le faux G1). Avec le robot : le nœud tourne dans le conteneur du
 Jetson (`G1_PILOTAGE=1`, défaut de `g1-jetson demarrer`), joint par le Wi-Fi ou le câble :
 `G1_PILOTAGE_URL=http://<adresse du Jetson>:8010 g1-atelier` (jeton partagé dans
 `opt/jetson/jeton_pilotage`, ou `G1_PILOTAGE_JETON`). Les chorégraphies sont dans
@@ -337,16 +369,32 @@ page la regarde, et l'Atelier la relaie (`GET /api/pilotage/camera`). Le flux H2
 
 ### L'équipe : personnalités, dialogues, caméra
 
-Trois fichiers facultatifs du lieu, chacun avec son onglet et un bouton « Partir de l'exemple » :
+Trois fichiers facultatifs du lieu, chacun avec son écran (ruban **Équipe**) et un bouton « Partir de
+l'exemple » :
 
-- `personnalites.yaml` (onglet **Personnalités**) : les modes du robot (salutation, voix et son
+- `personnalites.yaml` (**Équipe › Personnalités**) : les modes du robot (salutation, voix et son
   nom, couleur de la LED, geste de salut, vitesse maximale, phrases du guide) ; la personnalité
   active part sur `/personnalite/active` : le guide applique sa vitesse maximale, le nœud pilotage
   sa LED ;
-- `dialogues.yaml` (onglet **Dialogues**) : le chatbot à règles (guider, dire, personnalité, stop,
+- `dialogues.yaml` (**Équipe › Dialogues**) : le chatbot à règles (guider, dire, personnalité, stop,
   geste) ; « Essayer » montre la réponse d'une phrase sans rien faire bouger ;
-- `camera.yaml` (onglet **Caméra**) : la See3CAM_11CUG, sa position sur le robot (tangage positif :
-  vers le bas) et la détection des visiteurs.
+- `camera.yaml` (**Équipe › Caméra** ; ⚙ Avancé › Réglages de la caméra) : la See3CAM_11CUG, sa
+  position sur le robot (tangage positif : vers le bas), l'exposition, les images publiées, la
+  détection des visiteurs et l'étalonnage des distances.
+
+**La caméra de poitrine** (vague 5) : la See3CAM_11CUG, branchée sur un port USB 3 du Jetson, est
+passée au conteneur par `g1-jetson demarrer` quand elle est là (sinon il démarre sans) ; le nœud
+`camera_usb` de `g1_equipe` règle l'exposition automatique, lit l'image en 1280 × 720 et publie un
+JPEG de 640 pixels à 10 images par seconde sur `/camera_poitrine/image/compressed`. Sur le PC,
+**`g1-visiteurs`** (YOLO pose et suivi, sur la carte graphique) trouve les personnes, estime leur
+distance et publie `/visiteurs/detectes` ; l'Atelier montre l'image en direct avec un cadre autour de
+chaque visiteur (vue **Caméra**, et en incrustation dans Piloter et Naviguer).
+
+```bash
+ros2 run g1_equipe camera_usb                                   # la caméra branchée sur ce PC, sans conteneur
+g1-visiteurs --source robot --image                             # les visiteurs de l'image du robot, cadres dessinés
+g1-visiteurs --source /dev/v4l/by-id/<la See3CAM>-video-index0 --fenetre --sans-ros   # essai local, fenêtre (q : quitter)
+```
 
 Pour essayer sans la caméra ni la voix de l'équipe (simulation lancée) :
 
@@ -369,13 +417,17 @@ lieux/<id>/
 ├── mondes/<etage>.sdf                 monde Gazebo (généré)
 ├── cartes/<etage>.pgm + .yaml         carte de navigation (générée, ou issue du scan)
 ├── cartes/<etage>_interdit.pgm + .yaml   masque des zones interdites (généré)
+├── cartes/<etage>.pcd                 nuage 3D du scan adopté
+├── cartes/<etage>.nuage.bin + .json   nuage de la vue 3D (x, y du repère de la carte, z au-dessus du sol)
+├── cartes/<etage>_unitree.pcd, _unitree.nuage.bin + .json   carte d'Unitree (g1-scan carte-unitree)
+├── mondes/<etage>_carte.stl           carte d'un étage scanné, extrudée en un maillage (monde de simulation)
 ├── salles.yaml                        salles : nom, alias, position devant la porte, phrase d'arrivée ;
 │                                      la salle qui porte l'étiquette « principal » est le point principal
 ├── itineraires.yaml                   nœuds et couloirs du guide
 ├── zones.yaml                         zones interdites et lentes
 ├── personnalites.yaml, dialogues.yaml, camera.yaml   pour l'équipe (vague 4, facultatifs)
 ├── sauvegardes/<date>_<raison>/       copies faites avant une migration (g1-lieu migrer, vague 4)
-└── scans/<date>_<heure>/              un dossier par scan (session.json, carte, reconnaissance, monde…)
+└── scans/<date>_<heure>/              un dossier par scan (session.json, enregistrement, carte, nuages, rapport)
 ```
 
 Les formats exacts sont dans `atelier/lieu/schemas/` et dans la section 4 du plan.
@@ -383,17 +435,21 @@ Les formats exacts sont dans `atelier/lieu/schemas/` et dans la section 4 du pla
 ### Tester
 
 ```bash
-cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q    # bibliothèques, scan, serveur, interface : 4 min environ
-cd ~/robot-g1 && .venv-projet/bin/python -m pytest docker/tests -q    # conteneur du Jetson : 30 s
+cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q --ignore=atelier/tests/test_robot_reperage_ros.py   # bibliothèques, scan, serveur, interface : 10 min environ
+cd ~/robot-g1 && ROS_LOCALHOST_ONLY=0 .venv-projet/bin/python -m pytest atelier/tests/test_robot_reperage_ros.py -q   # ce fichier à part (ses programmes l'imposent)
+cd ~/robot-g1 && .venv-projet/bin/python -m pytest docker/tests -q    # conteneur du Jetson : 1 min
 cd ~/robot-g1/ws && colcon test --executor sequential --packages-select g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe && colcon test-result --all   # paquets ROS 2
 ~/robot-g1/tests_e2e/tout.sh            # les 36 critères de recette, sans fenêtre : « N / 36 » (3 h environ)
 ~/robot-g1/tests_e2e/tout.sh 1 2 3 4    # seulement certains (11 à 15 : le scan ; 16 à 20 : le vrai robot en répétition ;
                                         # 21 à 30 : point principal, passants, guide, pilotage, équipe ;
-                                        # 31 à 36 : vague 5, en cours : coque, carte 3D, scan corrigé, pont, caméra, ARRÊT)
+                                        # 31 à 36 : coque, carte 3D, scan corrigé, pont, caméra, ARRÊT)
 ```
 
 Tous les tests tournent sans robot et sans écran, sur des copies de `lieux/demo` dans des
-dossiers temporaires. Journaux : `~/robot-g1/journaux/`.
+dossiers temporaires. Journaux : `~/robot-g1/journaux/`. La carte 3D a besoin de WebGL : Firefox
+sans fenêtre n'en a qu'avec l'affichage de la session graphique (`DISPLAY=:1`, aucune fenêtre ne
+s'ouvre) ; lancez donc les tests depuis un terminal de la session (sinon, le critère 32 répond « en
+attente » et quelques tests de la carte 3D sont sautés).
 
 Après une modification de `ws/src` (nouveau fichier, lancement, réglage), recompilez, puis
 refaites l'image du Jetson (elle contient `g1_nav`, `g1_bridge`, `g1_pilotage`, `g1_equipe` et
@@ -535,7 +591,8 @@ du premier essai, robot sur le portique.
 ### Le guide sur le vrai robot : navigation de niveau 2
 
 Le guide de l'Atelier conduit le vrai G1 avec Nav2. Trois pièces font le lien avec le robot (et,
-depuis la vague 4, le nœud pilotage de l'onglet Pilotage, dans le même conteneur) :
+depuis la vague 4, le nœud pilotage de Réel › Piloter, et depuis la vague 5 la caméra de poitrine,
+dans le même conteneur) :
 
 - **le conteneur `g1-jetson`**, sur le Jetson du robot : ROS 2 Humble, Nav2, le guide, le relais
   de position et le pont ;
@@ -546,10 +603,13 @@ depuis la vague 4, le nœud pilotage de l'onglet Pilotage, dans le même contene
   la pose du point principal ; le relais `odom_vers_tf` transforme ensuite la position fournie par
   Unitree en repères pour Nav2.
 
-**État** : tout est prêt et répété sans robot, contre un faux G1 dans Gazebo (critères 16 à 20 de
-`tests_e2e/tout.sh`). Rien n'a encore été essayé sur le vrai G1 : les formats des messages
-viennent d'un projet tiers. La première fois, suivez **`docs/seance-robot.md`** (séance de 1 h 30 :
-le pont au portique, à vitesse réduite, puis le repérage, puis un premier trajet court).
+**État** : tout est prêt et répété sans robot, contre un faux G1 dans Gazebo (critères 16 à 20, 34
+et 36 de `tests_e2e/tout.sh`). La séance n° 1 avec le robot (27/10) a validé le scan et l'ordre de
+marche 7105 du pont ; elle a montré que le G1 ne fait **aucun pas à 0,1 m/s** (il marche à 0,2) et
+que le mode lu par 7001 vaut 0, 3, 501 ou 802 : le pont en tient compte depuis la vague 5 (voir
+« Les sécurités »). Le conteneur, le repérage et le premier trajet restent à essayer sur le vrai
+robot : suivez **`docs/tutoriel-seance-2.md`** (brouillon de la séance n° 2, avec sa feuille
+`docs/releves/seance-2.md`) ; le déroulé de référence est `docs/seance-robot.md`.
 
 #### 1. Installer le conteneur sur le Jetson
 
@@ -566,9 +626,10 @@ g1-jetson verifier                           # doit voir les sujets du robot dep
 
 #### 2. La carte et le point principal
 
-Le robot navigue sur la carte d'un **scan fait avec lui** (onglet Scan, mode Robot, section
-« Scanner un lieu »), adoptée pour l'étage. Placez ensuite les salles et les itinéraires sur la
-nouvelle carte, et le **point principal** (onglet Salles, section « Le point principal ») : c'est
+Le robot navigue sur la carte d'un **scan fait avec lui** (Réel › Scanner, section « Scanner un
+lieu »), adoptée pour l'étage. Placez ensuite les salles et les itinéraires sur la nouvelle carte
+(Réel › Placer, sur le nuage en 3D), et le **point principal** (Placer › Accueil, section « Le point
+principal ») : c'est
 là qu'on pose le robot avant de le repérer. Marquez-le au sol d'une croix et d'une flèche (le sens
 du robot). Le plus simple, au début : le point principal au point de départ du scan.
 
@@ -579,15 +640,16 @@ source ~/robot-g1/setup/robot.sh      # câble branché : « le robot répond »
 g1-atelier                            # ou G1_VITESSE_MAX=0.2 g1-atelier pour les premiers essais
 ```
 
-1. Onglet **Simulation**, mode **Robot**, **Lancer sur le robot**, et confirmer : l'Atelier lance
-   le conteneur sur le Jetson (`g1-jetson demarrer`, le lieu y est copié).
+1. Accueil : **Robot réel** (sans « Répétition »), le lieu, les vérifications au vert, **Ouvrir** ;
+   puis **Naviguer › Lancer** : l'Atelier lance le conteneur sur le Jetson (`g1-jetson demarrer`, le
+   lieu y est copié).
 2. Posez le robot **sur le point principal, dans le sens de la flèche** (l'étoile sur la carte),
    debout en mode marche.
-3. **Repérer le robot** : « Repéré », avec la précision, en quelques secondes. Si le robot n'est
-   pas sur le point principal : « Le robot n'est pas sur le point principal », cliquez sa position
-   sur la carte, glissez vers son orientation, puis repérez.
+3. **Naviguer › Repérer** : « Repéré », avec la précision, en quelques secondes. Si le robot n'est
+   pas sur le point principal : **⚙ Avancé › Robot ailleurs**, cliquez sa position sur la carte,
+   glissez vers son orientation, puis repérez.
 4. **Y aller** vers une salle. « Y aller » reste grisé tant que le robot n'est pas repéré.
-5. Pour finir : **Arrêter la navigation du robot** (arrêt propre du conteneur).
+5. Pour finir : **Naviguer › Arrêter** (arrêt propre du conteneur).
 
 Sans l'Atelier : `g1-jetson demarrer --lieu L --etage E [--vitesse-max 0.2]`, `g1-jetson etat`,
 `g1-jetson journal -f`, `g1-jetson arreter` ; `g1-guide aller ID` et `g1-guide stop`.
@@ -598,23 +660,35 @@ Sans l'Atelier : `g1-jetson demarrer --lieu L --etage E [--vitesse-max 0.2]`, `g
 - **Vitesses plafonnées** par le pont : 0,4 m/s en avant, 0,25 m/s de côté, 0,6 rad/s en rotation.
   Une valeur absurde (NaN, infini) donne un arrêt ; le pont refuse de démarrer avec des plafonds
   plus hauts. Premiers essais : `G1_VITESSE_MAX=0.2` (ou `--vitesse-max 0.2`) baisse les trois
-  plafonds dans la même proportion.
+  plafonds dans la même proportion, et aussi les vitesses de Nav2 ; moins de 0,2 m/s est refusé
+  (« le robot ne marche pas sous 0,2 m/s »).
+- **Vitesse minimale** (vague 5) : le G1 ne fait aucun pas sous 0,2 m/s ; le pont monte donc une
+  petite consigne à 0,2 m/s dans la même direction (0,3 rad/s pour une rotation sur place), et une
+  consigne minuscule (moins de 0,05 m/s et 0,1 rad/s) donne un arrêt. Nav2 ne recule jamais avec le
+  vrai robot. Seuils à mesurer à la séance n° 2 (`python3 -m g1_bridge.mesure`, voir
+  `ws/src/g1_bridge/LISEZMOI.md`).
+- **Le mode du robot** (vague 5) : le pont le lit une fois par seconde (7001). Assis, pas démarré ou
+  en mode course, il n'envoie plus d'ordre de marche (`pas_en_marche`, avec un message qui dit quoi
+  faire à la télécommande) ; revenu en marche (501), il attend une nouvelle consigne.
 - **Chaque ordre ne vaut que 0,5 s** : si le pont, le conteneur ou le Jetson s'arrête, le robot
   s'arrête seul. Le pont envoie aussi un arrêt 0,3 s après la dernière consigne de Nav2, et un
   arrêt quand il quitte.
 - **Pas de mouvement sans repérage** : tant que le robot n'est pas repéré, ou si le repérage est
   perdu (plus de position d'Unitree depuis 3 s), le pont refuse de le faire bouger.
-- **ARRÊT** (Atelier, ou `g1-guide stop`) : arrêt immédiat, puis 1 s sans mouvement.
-  **Bloquer le robot** : il reste immobile, quoi qu'on lui demande, jusqu'à « Débloquer ».
-- Si le robot ne répond plus (`robot_muet`) ou refuse les ordres (`refus`, par exemple hors du
-  mode marche), le pont le dit en français dans l'onglet Simulation.
+- **ARRÊT** (barre d'outils de l'Atelier, touche Échap) : arrête le guide, la téléopération et le
+  pilotage en moins d'une seconde, et bloque le robot jusqu'à **Débloquer** ; `g1-guide stop` :
+  arrêt immédiat, puis 1 s sans mouvement. **Naviguer › Bloquer** : il reste immobile, quoi qu'on lui
+  demande, jusqu'à « Débloquer ».
+- Si le robot ne répond plus (`robot_muet`), refuse les ordres (`refus`) ou n'est pas en mode marche
+  (`pas_en_marche`), le pont le dit en français (pastille du robot dans la barre d'outils, panneau de
+  Naviguer).
 - Le conteneur ne redémarre jamais seul : on ne relance pas une navigation sans un humain.
 
 #### 5. Répéter sans robot
 
-Onglet **Simulation**, mode **Répétition sans robot** : tout le déroulé ci-dessus (repérage, pont,
-« Y aller ») est joué avec un faux G1 dans Gazebo, qui répond comme le vrai. Les mêmes étapes en
-ligne de commande :
+Accueil : **Robot réel** avec **Répétition sans robot** : tout le déroulé ci-dessus (repérage, pont,
+« Y aller », ARRÊT, pilotage) est joué avec un faux G1 dans Gazebo, qui répond comme le vrai (il
+démarre en mode 501 et ne fait aucun pas sous 0,15 m/s). Les mêmes étapes en ligne de commande :
 
 ```bash
 g1-monde simuler --lieu demo --etage rdc --sans-fenetre --jumeau        # terminal 1 : Gazebo et le faux G1
@@ -653,7 +727,7 @@ robot-g1/
 ├── setup/          installation et environnement (env.sh, robot.sh)
 ├── third_party/    dépôts Unitree, versions dans VERSIONS.txt
 ├── ws/            espace de travail ROS 2 : pilote LiDAR, FAST-LIO2, g1_sim, g1_nav, g1_bridge (pont), g1_jumeau (faux G1),
-│                  g1_pilotage (pilotage, vague 4), g1_equipe (chatbot et personnalités, vague 4)
+│                  g1_pilotage (pilotage, vague 4), g1_equipe (chatbot, personnalités, caméra de poitrine)
 ├── choregraphies/ chorégraphies du G1 (vague 4) ; musique/ : vos musiques, jamais dans Git
 ├── modeles/       YOLO, Vosk, voix Piper, Whisper
 ├── opt/           SDK C++ Unitree et SDK Livox compilés

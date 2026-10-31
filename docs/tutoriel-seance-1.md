@@ -1,5 +1,10 @@
 # Séance robot n° 1 : mardi 27 octobre 2026
 
+> **Séance faite le 27/10.** Ce tutoriel est gardé tel quel, comme trace. Depuis la vague 5 (31/10),
+> l'interface de l'Atelier a changé (accueil, puis le ruban Scanner, Placer, Naviguer, Piloter), le scan
+> n'a plus de revue des objets reconnus, et le pont ne marche plus à 0,1 m/s (0,2 m/s au moins). Pour la
+> séance suivante : **`docs/tutoriel-seance-2.md`**.
+
 Ce tutoriel suit toute la journée, dans l'ordre :
 
 1. la veille au soir ;

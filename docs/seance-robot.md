@@ -13,12 +13,23 @@ d'Unitree), à vitesse réduite. Tout a été répété dans Gazebo contre un fa
 comprenne nos messages (leurs formats viennent d'un projet tiers), et comment il réagit vraiment.
 C'est ce qu'on vérifie ici, dans cet ordre : le pont au portique, puis le repérage, puis le trajet.
 
+> **Mise à jour de la vague 5 (31/10/2026).** La séance n° 1 (27/10) a montré que le vrai G1 ne
+> fait **aucun pas à 0,1 m/s** et marche à 0,2 m/s, et que le mode lu par 7001 vaut 0, 3, 501 ou 802.
+> Depuis, le pont a une **vitesse minimale** (une petite consigne est montée à 0,2 m/s dans la même
+> direction, 0,3 rad/s en rotation ; un plafond plus bas est refusé) et **lit le mode du robot** (état
+> `pas_en_marche` : assis, pas démarré, mode course). Les commandes ci-dessous en tiennent compte.
+> L'Atelier a une nouvelle interface : l'accueil (Simulation ou Robot réel), puis le ruban **Scanner**,
+> **Placer**, **Naviguer**, **Piloter**, **Équipe** (`atelier/web/LISEZMOI.md`). **Le déroulé de la
+> séance n° 2, pas à pas, est dans `docs/tutoriel-seance-2.md`** (mesures des seuils, Jetson, repérage,
+> premier trajet, caméra See3CAM, carte d'Unitree, nouveau scan, pilotage et une danse sûre).
+
 ## Les règles de la séance
 
 - **Deux personnes.** L'une tient la télécommande officielle pendant toute la séance, le doigt
   prêt : c'est l'arrêt d'urgence (mode amortissement). L'autre est au PC.
 - **Le portique** pour tout le début : robot accroché, sangle lâche, pieds au sol.
-- **Vitesses réduites** : 0,1 m/s au portique, 0,2 m/s pour le premier trajet.
+- **Vitesses réduites** : 0,2 m/s au portique et pour le premier trajet (le robot ne marche pas
+  plus lentement : 0,1 m/s ne fait aucun pas, mesuré le 27/10).
 - **On arrête la séance** (télécommande, puis amortissement) si :
   - la télécommande ne reprend pas la main pendant que le pont envoie (étape 1.7) ;
   - le robot ne s'arrête pas seul quand le pont est tué (étape 1.6) ;
@@ -69,14 +80,16 @@ section.
 
 ## 1. Le pont au portique, à vitesse réduite (0 h 10 → 0 h 35)
 
-Le pont tourne d'abord **sur le PC**, au câble, sans repérage exigé et avec des plafonds 4 fois
-plus bas que ceux du contrat (0,1 m/s au lieu de 0,4).
+Le pont tourne d'abord **sur le PC**, au câble, sans repérage exigé et avec des plafonds deux fois
+plus bas que ceux du contrat (0,2 m/s au lieu de 0,4). 0,2 m/s est aussi la vitesse minimale de marche
+du pont : un plafond plus bas (`vx_max:=0.1`) est refusé au lancement, avec un message qui dit quoi
+corriger (sauf pour une mesure, avec `vitesse_min_lin:=0`).
 
 1. **Robot en mode marche** avec la télécommande, au portique, pieds au sol.
 2. **Terminal A, le pont** :
 
    ```bash
-   ros2 run g1_bridge pont --ros-args -p exiger_reperage:=false -p vx_max:=0.1 -p vy_max:=0.05 -p wz_max:=0.15
+   ros2 run g1_bridge pont --ros-args -p exiger_reperage:=false -p vx_max:=0.2 -p vy_max:=0.2 -p wz_max:=0.3
    ```
 
    **Terminal B, l'état du pont** (`source ~/robot-g1/setup/robot.sh` d'abord) :
@@ -94,15 +107,16 @@ plus bas que ceux du contrat (0,1 m/s au lieu de 0,4).
 3. **Le format 7105 est-il accepté ?** Au lancement, le pont envoie un arrêt (7105 avec
    `{"velocity": [0.0, 0.0, 0.0], "duration": 1.0}`) pour vérifier le lien.
    - Attendu : une réponse dans le terminal C, avec notre `identity.id`, `api_id: 7105` et
-     `status.code: 0` ; le pont passe à `pret`.
+     `status.code: 0` ; le pont passe à `pret`. Une fois par seconde, le pont lit aussi le mode du
+     robot (requête 7001) : le champ `mode_robot` de `/pont/etat` doit donner `fsm` 501 (marche).
    - À noter : le contenu exact de la réponse (`status.code`, `data`).
    - Si le pont reste `robot_muet` : `ros2 topic info -v /api/sport/request` (le robot est-il
      abonné ?). Notez, arrêtez le pont (Ctrl+C) et passez à l'étape 2 : le reste du pont ne peut
      pas se vérifier.
-4. **Premier pas en avant**, 2 s à 0,1 m/s. Terminal D (`source ~/robot-g1/setup/robot.sh`) :
+4. **Premier pas en avant**, 2 s à 0,2 m/s. Terminal D (`source ~/robot-g1/setup/robot.sh`) :
 
    ```bash
-   ros2 topic pub -r 10 -t 20 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.1}}"
+   ros2 topic pub -r 10 -t 20 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.2}}"
    ```
 
    Attendu : le robot marche doucement vers l'avant pendant 2 s, puis s'arrête de lui-même environ
@@ -111,15 +125,15 @@ plus bas que ceux du contrat (0,1 m/s au lieu de 0,4).
 5. **Les autres axes**, chacun 2 s :
 
    ```bash
-   ros2 topic pub -r 10 -t 20 /cmd_vel geometry_msgs/msg/Twist "{angular: {z: 0.15}}"    # tourne à gauche
-   ros2 topic pub -r 10 -t 20 /cmd_vel geometry_msgs/msg/Twist "{linear: {y: 0.05}}"     # pas de côté, à gauche
+   ros2 topic pub -r 10 -t 20 /cmd_vel geometry_msgs/msg/Twist "{angular: {z: 0.3}}"     # tourne à gauche
+   ros2 topic pub -r 10 -t 20 /cmd_vel geometry_msgs/msg/Twist "{linear: {y: 0.2}}"      # pas de côté, à gauche
    ```
 
 6. **Le robot s'arrête seul si le pont meurt** (chaque ordre ne vaut que 0,5 s). Terminal D :
    une marche de 10 s ; pendant qu'il marche, terminal E : tuer le pont.
 
    ```bash
-   ros2 topic pub -r 10 -t 100 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.1}}"   # terminal D
+   ros2 topic pub -r 10 -t 100 /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.2}}"   # terminal D
    pkill -9 -f lib/g1_bridge/pont                                                      # terminal E, après 3 s
    ```
 
@@ -130,9 +144,11 @@ plus bas que ceux du contrat (0,1 m/s au lieu de 0,4).
    temps la personne à la télécommande l'arrête avec elle (puis amortissement si besoin).
    Attendu : la télécommande gagne tout de suite, même si le pont envoie encore. **C'est la
    condition pour continuer.**
-8. **Un refus.** Robot en amortissement (ou assis), une commande de 2 s : le robot ne bouge pas.
-   À noter : le code de la réponse (7301 ?) et le message de `/pont/etat` (état `refus`). Remettez
-   ensuite le robot en mode marche.
+8. **Hors du mode marche.** Robot assis (ou amorti), une commande de 2 s : le robot ne bouge pas.
+   Depuis la vague 5, le pont lit le mode (7001) : `/pont/etat` passe à `pas_en_marche`, avec un
+   message en français (« le robot est assis… »), et il n'envoie plus de 7105. Le 27/10, le robot
+   assis répondait code 0 sans bouger. À noter : le `fsm` lu et le message. Remettez ensuite le robot
+   en mode marche : `pret`, et la marche ne reprend qu'avec une nouvelle commande.
 9. **Arrêts du projet.** Pendant une marche de 10 s :
 
    ```bash
@@ -170,7 +186,7 @@ navigation sur le PC, au câble (voir « Si le conteneur ne marche pas » à la 
 
 Le robot quitte le portique. La carte du robot est celle d'un scan : il en faut un de la zone de
 l'essai. Depuis la vague 4, on pose le robot sur le **point principal** du lieu (l'accueil, une
-étoile et une flèche dans l'onglet Salles) avant « Repérer le robot ». Pour cette première séance,
+étoile et une flèche dans Placer) avant « Repérer le robot ». Pour cette première séance,
 le point principal est au point de départ du scan : c'est le plus simple à vérifier.
 
 1. **Le point principal au sol** : une croix au ruban adhésif au sol, au bord de la zone dégagée,
@@ -183,10 +199,10 @@ le point principal est au point de départ du scan : c'est le plus simple à vé
    g1-atelier            # dans le terminal A (robot.sh chargé) ; ouvre l'Atelier
    ```
 
-   Onglet **Lieux** : choisir « Séance robot ». Onglet **Scan** : choisir **Robot**, cliquer sur
-   **Scan** et confirmer. Promenez le robot à la télécommande, lentement, dans toute la zone
+   Accueil de l'Atelier : **Robot réel**, « Séance robot », **Ouvrir** (cocher les vérifications).
+   Ruban **Scanner** : **Scan**. Promenez le robot à la télécommande, lentement, dans toute la zone
    (3 à 5 min), la personne du PC derrière avec le câble lâche. Revenez **sur la croix, dans le
-   sens de la flèche**, puis **Fin**. Dans la revue : **Utiliser cette carte pour l'étage**.
+   sens de la flèche**, puis **Fin**. Quand la carte et le nuage sont prêts : **Utiliser cette carte**.
    À noter : le nom de la carte enregistrée sur le robot (`carte_unitree` dans `lieux/seance/lieu.yaml`).
 3. **L'accueil (le point principal) sur la croix et un but à 3 m devant**. Le repère de la carte
    du scan a son origine à la croix, l'axe x dans le sens de la flèche (à vérifier : c'est ce que
@@ -201,8 +217,8 @@ le point principal est au point de départ du scan : c'est le plus simple à vé
      -d '{"noeuds":{"accueil":{"etage":"rdc","x":0,"y":0},"essai_3m":{"etage":"rdc","x":3,"y":0}},"couloirs":[["accueil","essai_3m"]]}'
    ```
 
-   Onglet **Carte** : le point (3 ; 0) doit être dans le blanc (libre), au milieu de la zone
-   dégagée. Sinon, déplacez `essai_3m` dans l'onglet **Salles**.
+   Ruban **Placer** (vue 3D du nuage, ou Plan 2D) : le point (3 ; 0) doit être dans le libre, au
+   milieu de la zone dégagée. Sinon, déplacez `essai_3m` (glisser son épingle, puis ✓ Enregistrer).
 4. **Navigation sur le robot, à vitesse réduite.** Fermez l'Atelier (Ctrl+C dans le terminal A),
    puis relancez-le avec la vitesse maximale du premier trajet :
 
@@ -210,7 +226,7 @@ le point principal est au point de départ du scan : c'est le plus simple à vé
    G1_VITESSE_MAX=0.2 g1-atelier
    ```
 
-   Onglet **Simulation** : mode **Robot**, puis **Lancer sur le robot** et confirmer. L'Atelier
+   Ruban **Naviguer** : **Lancer**. L'Atelier
    lance `g1-jetson demarrer --lieu seance --etage rdc` (le lieu est copié sur le Jetson) ; la
    ligne de démarrage doit dire « vitesse max 0.2 m/s ». Attendu : « Non repéré » dans le panneau
    Repérage, et la pastille du pont en attente du repérage.
@@ -237,7 +253,7 @@ le point principal est au point de départ du scan : c'est le plus simple à vé
 
 7. **La précision**, à la télécommande (le pont n'envoie rien tant que personne ne demande de
    mouvement) : avancez le robot d'environ 2 m, puis tournez-le d'un quart de tour. À chaque arrêt,
-   comparez la position affichée dans l'Atelier (Simulation, panneau Repérage) à la mesure au mètre
+   comparez la position affichée dans l'Atelier (Naviguer, panneau Repérage) à la mesure au mètre
    ruban depuis la croix. Trois mesures. Attendu : moins de 10 cm d'écart.
 8. **Hors du point principal** (si le temps le permet) : robot à 0,5 m de la croix et tourné de
    20°, « Repérer le robot » sans rien changer : accepté ou refusé, à noter. Puis « Le robot n'est
@@ -250,7 +266,7 @@ La navigation tourne dans le conteneur du Jetson, plafonnée à 0,2 m/s (`G1_VIT
 
 1. Robot repéré, près de la croix. La personne à la télécommande se tient à côté du robot ; celle
    du PC suit avec le câble lâche.
-2. Onglet **Simulation** : **Y aller** vers « Essai à 3 m ». Attendu : `en_route`, le robot marche
+2. Ruban **Naviguer** : **Y aller** vers « Essai à 3 m ». Attendu : `en_route`, le robot marche
    droit vers le but à 0,2 m/s au plus, puis `arrive`.
 3. Pendant un deuxième essai (Y aller « Accueil »), cliquez une fois sur **ARRÊT** à mi-chemin :
    le robot s'arrête net. Puis **Y aller** « Accueil » de nouveau.
@@ -264,12 +280,12 @@ La navigation tourne dans le conteneur du Jetson, plafonnée à 0,2 m/s (`G1_VIT
 g1-jetson journal > ~/robot-g1/docs/releves/seance_$(date +%F)_conteneur.log     # avant l'arrêt
 ```
 
-Puis, dans l'Atelier : **Arrêter la navigation du robot** (le pont envoie un arrêt, le conteneur
+Puis, dans l'Atelier : **Naviguer › Arrêter** (le pont envoie un arrêt, le conteneur
 s'arrête et se retire). Robot en amortissement, puis éteint. Complétez la feuille de résultats.
 
 ## 6. Séance suivante : le pilotage (vague 4, environ 1 h, au portique)
 
-But : vérifier sur le vrai G1 ce que l'onglet **Pilotage** envoie (section 11.5 du plan). Tout a
+But : vérifier sur le vrai G1 ce que **Réel › Piloter** envoie (section 11.5 du plan). Tout a
 été essayé contre le faux G1 seulement (critères 28 et 29). **Au portique, télécommande en main,
 une personne qui tient le robot** ; jamais les danses 401, 402, 403.
 
@@ -281,7 +297,7 @@ Avant de commencer, deux relevés (2 min) :
   device status'` (mot de passe 123) : une interface `wlan0` (ou `wlP…`) avec une adresse ? Si oui,
   noter l'adresse : c'est elle qui servira pour le joystick par le Wi-Fi (étape 4). Si non, le
   pilotage se fait au câble (`http://192.168.123.164:8010`), et le Wi-Fi est à ajouter (clé USB
-  ou carte M.2) avant d'utiliser l'onglet Pilotage depuis une tablette.
+  ou carte M.2) avant d'utiliser Piloter depuis une tablette.
 
 Préparation (PC, au câble) :
 
@@ -290,12 +306,12 @@ source ~/robot-g1/setup/robot.sh
 G1_VITESSE_MAX=0.2 g1-jetson demarrer --veille            # le nœud pilotage seul (G1_PILOTAGE=1), sans navigation
 export G1_PILOTAGE_URL=http://192.168.123.164:8010 G1_PILOTAGE_JETON=$(cat ~/robot-g1/opt/jetson/jeton_pilotage)
 g1-pilotage etat                                             # robot_repond : true ; noter fsm
-G1_PILOTAGE_URL=$G1_PILOTAGE_URL g1-atelier                  # onglet Pilotage
+G1_PILOTAGE_URL=$G1_PILOTAGE_URL g1-atelier                  # Robot réel, puis Piloter
 ```
 
 1. **Lecture du mode (7001)** : `g1-pilotage etat` donne `fsm`. Noter la valeur robot debout, assis,
-   accroupi, amorti. Si elle n'est jamais 801 debout, corriger `FSM_MARCHE` (danses et
-   chorégraphies l'exigent).
+   accroupi, amorti. Le 27/10 : 0, 3, 501 et 802. Depuis la vague 5, la marche est l'un des modes
+   `MODES_MARCHE` (500, 501, 801) : danses et chorégraphies sont permises en 501.
 2. **Postures** (« Prendre la main », puis les boutons) : 500, 706, 702, 3 depuis le conteneur, sans
    bail ; temps de chaque transition ; **la télécommande reste prioritaire et arrête tout**.
 3. **Amortir (1) et couple nul (0)** : seulement robot tenu au portique ; case « robot au portique »
@@ -303,7 +319,7 @@ G1_PILOTAGE_URL=$G1_PILOTAGE_URL g1-atelier                  # onglet Pilotage
 4. **Joystick** (plafonds 0,2 m/s), d'abord au câble, puis **par le Wi-Fi** (si le Jetson en a :
    relancer l'Atelier avec `G1_PILOTAGE_URL=http://<adresse Wi-Fi du Jetson>:8010`, PC sur le même
    réseau Wi-Fi) : l'arrêt seul 0,5 s après le dernier ordre — fermer la page en marche ; puis,
-   **pendant une marche lente** (0,1 m/s, robot au portique, pieds au sol), **couper le Wi-Fi du
+   **pendant une marche lente** (0,2 m/s, robot au portique, pieds au sol), **couper le Wi-Fi du
    PC** : le robot doit s'arrêter seul en moins de 0,6 s (le conteneur ne dépend pas du PC).
    Noter la latence par le Wi-Fi (appui → premier pas) et les plafonds (1,0 demandé → 0,2).
 5. **Gestes** : `g1-pilotage geste 26`. Si le robot répond 3204 (paramètres), le format est
@@ -317,7 +333,7 @@ G1_PILOTAGE_URL=$G1_PILOTAGE_URL g1-atelier                  # onglet Pilotage
    `g1-pilotage danse 604 --zone-libre` ; durée réelle, retour seul en 801 (lu par 7001) ;
    ce que fait un 7105 ou un autre 7101 pendant la danse ; **ce qui interrompt une danse**
    (télécommande ? StopMove ?).
-8. **rt/arm_sdk** : d'abord une chorégraphie lente, sans pas (onglet « Mes chorégraphies » :
+8. **rt/arm_sdk** : d'abord une chorégraphie lente, sans pas (Piloter › Chorégraphies :
    « Nouvelle », une seule pose coudes à 0,5 rad, vitesse de lecture 1/2), au portique ; vérifier
    le poids dans `motor_cmd[29].q`, les rampes, la taille tenue (12 à 14), les gains (kp 60,
    kd 1,5), le `mode` des moteurs (0 comme l'exemple d'Unitree, ou 1 ?), le CRC (non calculé, comme
@@ -325,14 +341,14 @@ G1_PILOTAGE_URL=$G1_PILOTAGE_URL g1-atelier                  # onglet Pilotage
    `exemple_kpop` à la vitesse de lecture 1/2, robot posé au sol, zone libre.
 9. **Batterie** : `/lf/bmsstate` (unitree_hg/BmsState, champ `soc`) existe-t-il sur le G1 ?
 10. **Musique par le haut-parleur du robot** (1003, flux PCM) : pas encore prise en charge.
-11. **Personnalité** (onglet Personnalités, lieu de la séance avec un `personnalites.yaml` partant
+11. **Personnalité** (Équipe › Personnalités, lieu de la séance avec un `personnalites.yaml` partant
     de l'exemple) : « Rendre active » « Accueillant » : la LED passe au bleu (0, 120, 255) sans
     prendre la main ; « Discret » : gris. Puis, la main rendue au guide, guide au repos :
     `ros2 topic pub --once /robot/geste std_msgs/msg/String "{data: '{\"geste\": 26, \"source\": \"atelier\"}'}"`
-    → grand salut, puis bras relâchés 5 s après ; le même message pendant que l'onglet a la main :
+    → grand salut, puis bras relâchés 5 s après ; le même message pendant que Piloter a la main :
     ignoré (journal du conteneur : « Geste demandé ignoré »).
-12. **Vidéo de la tête dans la Vue du robot** (onglet Pilotage, « Commandes », panneau « Caméra de
-    la tête », bouton « Voir » ; le conteneur doit venir de la nouvelle image, `g1-jetson
+12. **Vidéo de la tête dans la Vue du robot** (Piloter, panneau « Caméra de la tête », bouton
+    « Voir » ; le conteneur doit venir de la nouvelle image, `g1-jetson
     demarrer`) :
     - le service existe-t-il ? `ros2 topic list | grep videohub` dans le conteneur
       (`/api/videohub/request` et `/api/videohub/response`) ; sinon noter ce qui existe
@@ -346,7 +362,7 @@ G1_PILOTAGE_URL=$G1_PILOTAGE_URL g1-atelier                  # onglet Pilotage
       robot) ; noter la taille d'une image, le nombre d'images par seconde vues sur la tablette,
       au câble puis **par le Wi-Fi**, et si le joystick reste vif pendant que la caméra tourne
       (latence appui → premier pas, caméra allumée puis coupée) ;
-    - « Couper », onglet fermé, autre sous-onglet : plus aucune demande (journal du conteneur : pas
+    - « Couper », page fermée, autre écran : plus aucune demande (journal du conteneur : pas
       de requêtes videohub) ;
     - la vue 3D suit-elle le robot : posture lue (7001) après chaque changement, geste montré en
       même temps que le vrai (l'aperçu des gestes est approché : noter ceux qui ne ressemblent pas
@@ -355,13 +371,13 @@ G1_PILOTAGE_URL=$G1_PILOTAGE_URL g1-atelier                  # onglet Pilotage
 ## 7. Point principal, passants et accompagnement (vague 4, environ 45 min, au sol)
 
 But : vérifier en vrai ce que les critères 21 à 27 ont vérifié dans Gazebo (sections 11.2 à 11.4
-du plan). Robot au sol, navigation sur le Jetson (`G1_VITESSE_MAX=0.2 g1-atelier`, mode Robot),
+du plan). Robot au sol, navigation sur le Jetson (`G1_VITESSE_MAX=0.2 g1-atelier`, Réel › Naviguer),
 télécommande en main, deux ou trois volontaires.
 
 1. **Robot posé sur le point principal** : principal à la croix, robot dans le sens de la flèche,
    « Repérer le robot » : 1804 reçoit (0, 0, 0). Puis déplacez le principal **loin de l'origine du
-   scan et tourné** (onglet Salles : la salle « Essai à 3 m », « Faire de cette salle le point
-   principal », flèche tournée vers la croix, « Enregistrer les salles ») ; relancez la navigation
+   scan et tourné** (Placer : la salle « Essai à 2,5 m », « Faire de cette salle l'accueil »,
+   flèche tournée vers la croix, ✓ Enregistrer) ; relancez la navigation
    du robot, posez le robot sur ce nouveau point, dans le sens de sa flèche, et « Repérer le
    robot » : « Repéré », écart au mètre ruban (moins de 10 cm), durée.
 2. **Retour au point principal** : « Y aller » vers l'autre salle ; à l'arrivée, attendre 15 s : le
@@ -374,12 +390,30 @@ télécommande en main, deux ou trois volontaires.
    robot s'arrête vers 2,5 m (« Pardon, puis-je passer ? »), attend ; ils s'écartent : il repart
    (« Merci ! »). Puis un volontaire immobile sur le côté : le robot passe à côté sans s'arrêter
    (distance bord à bord notée, 0,20 m au moins).
-5. **Collision Monitor et obstacles bas** (robot immobile, puis à 0,1 m/s) : dans RViz
+5. **Collision Monitor et obstacles bas** (robot immobile, puis à 0,2 m/s) : dans RViz
    (`collision_ralentir`, `collision_ralentir_pres`, `collision_arret`), aucun point du robot
    lui-même (bras, mains) dans les zones ; une valise et un sac au sol sont vus (carte locale) ;
    le robot ralentit à moins de 1 m devant, s'arrête à 0,4 m.
 6. **Robot perdu** : couper la relocalisation (couvrir le LiDAR n'est pas sûr : plutôt une
    pièce sans repères, ou attendre une perte réelle) ; noter le message et le délai.
+
+## 8. Séance n° 2 : seuils, caméra, carte d'Unitree, nouveau scan (vague 5)
+
+Le déroulé complet, pas à pas, est dans **`docs/tutoriel-seance-2.md`**, avec sa feuille de résultats
+**`docs/releves/seance-2.md`** (section 12.12 du plan). En bref :
+
+1. **les seuils du robot**, au portique, pont en consignes brutes (minimums à 0) : marche en avant,
+   de côté et en diagonale (0,12 à 0,2 m/s), rotation (0,1 à 0,4 rad/s), latence et distance d'arrêt
+   à 0,2 m/s (`python3 -m g1_bridge.mesure`), puis le pont avec ses défauts (0,1 demandé : marche à 0,2) ;
+2. **les modes** (7001) dans chaque posture, un ordre de marche robot assis (`pas_en_marche`) ;
+3. les étapes C3 à C5 et C7 de la séance n° 1 refaites avec le nouveau pont, puis le Jetson (D), le
+   repérage (E) et le premier trajet (F), sur la carte du 27/10 **retraitée** par la nouvelle chaîne ;
+4. **la caméra See3CAM** sur le Jetson (`g1-jetson verifier`, 10 images par seconde sur le PC,
+   `g1-visiteurs`, distances à 1, 2, 3 et 4 m) ;
+5. **la carte d'Unitree** pendant « Repérer le robot » (`g1-scan carte-unitree`) ;
+6. **un nouveau scan**, plus lent, avec la nouvelle chaîne, comparé à celui d'Unitree Explore ;
+7. **la rotation finale du guide** (dépassement d'un Spin de 90°, réglage en marche du guide) ;
+8. **le pilotage** depuis 501 et **une danse sûre** (604), robot tenu au portique d'abord.
 
 ## Si le conteneur ne marche pas
 
@@ -408,11 +442,11 @@ g1-guide stop                                                                   
 | 0.2 | Sujets du robot vus du PC (domaine 0, eno2) | `/api/sport/*`, `/api/slam_operate/*`, `/state_estimator/odom_pelvis`, `/lf/sportmodestate` | | |
 | 0.3 | `/state_estimator/odom_pelvis` | fréquence, `frame_id`, `child_frame_id` | | |
 | 1.3 | 7105 accepté en ROS 2 (sans bail, priorité 0) | réponse avec notre `identity.id`, code 0 ; pont `pret` | | |
-| 1.4 | Marche à 0,1 m/s, arrêt après la consigne | pas nets, arrêt 0,3 s après ; latence notée | | |
-| 1.5 | Rotation 0,15 rad/s, pas de côté 0,05 m/s | dans le bon sens | | |
+| 1.4 | Marche à 0,2 m/s, arrêt après la consigne | pas nets, arrêt 0,3 s après ; latence notée | | |
+| 1.5 | Rotation 0,3 rad/s, pas de côté 0,2 m/s | dans le bon sens | | |
 | 1.6 | Pont tué (`kill -9`) en marche | arrêt seul en moins de 1 s | | |
 | 1.7 | Télécommande prioritaire pendant que le pont envoie | la télécommande gagne | | |
-| 1.8 | Refus hors du mode marche | code (7301 ?), message du pont | | |
+| 1.8 | Hors du mode marche (assis) | `pas_en_marche`, `fsm` lu, message ; aucun pas | | |
 | 1.9 | `/guide/stop`, verrou `/pont/arret` | arrêt net ; immobile sous verrou | | |
 | 2 | `g1-jetson verifier`, `envoyer`, `demarrer --veille` | OK ; sujets du robot vus du conteneur ; durée de `envoyer` | | |
 | 3.2 | Petit scan (1801, 1802) | carte cohérente, `carte_unitree` notée | | |
