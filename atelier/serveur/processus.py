@@ -9,6 +9,7 @@ mettent dans $ATELIER_BIN de fausses commandes, pour tourner sans Gazebo ni Nav2
 """
 import atexit
 import os
+import re
 import signal
 import subprocess
 import threading
@@ -20,6 +21,17 @@ import atelier
 
 ATTENTE_SIGINT = 10.0     # s laissées à ros2 launch pour tout arrêter proprement (Ctrl+C)
 ATTENTE_SIGTERM = 5.0     # s après SIGTERM, avant SIGKILL
+PLANTAGES_MAX = 10
+
+# Ligne de ros2 launch quand un des nœuds qu'il a lancés s'arrête seul, ex. :
+# « [ERROR] [bt_navigator-5]: process has died [pid 4123, exit code -6, cmd '...']. »
+MOTIF_PLANTAGE = re.compile(r"\[ERROR\] \[([A-Za-z0-9_./]+?)(?:-\d+)?\]: process has died")
+
+
+def noeud_plante(ligne):
+    """Nom du nœud qu'une ligne de ros2 launch dit planté (« process has died »), sinon None."""
+    m = MOTIF_PLANTAGE.search(ligne)
+    return m.group(1) if m else None
 
 
 def dossier_bin():
@@ -105,6 +117,7 @@ class Processus:
         self.debut = None
         self.fin = None
         self.arret_demande = False
+        self.plantages = []               # nœuds lancés par cette commande qui se sont arrêtés seuls
         self._dernieres = deque(maxlen=30)
         self._fil = None
 
@@ -130,6 +143,10 @@ class Processus:
             for ligne in iter(self.popen.stdout.readline, b""):
                 texte = ligne.decode("utf-8", "replace").rstrip()
                 self._dernieres.append(texte)
+                noeud = noeud_plante(texte)
+                if noeud and not self.arret_demande and noeud not in self.plantages \
+                        and len(self.plantages) < PLANTAGES_MAX:
+                    self.plantages.append(noeud)
                 if f:
                     f.write(texte + "\n")
                     f.flush()
@@ -157,11 +174,12 @@ class Processus:
             self._fil.join(timeout=2.0)
 
     def etat(self):
-        """État pour l'interface : en cours, code de sortie, dernières lignes de la sortie."""
+        """État pour l'interface : en cours, code de sortie, dernières lignes de la sortie, nœuds plantés
+        (plantages : ceux que ros2 launch a vus s'arrêter seuls avant qu'on demande l'arrêt)."""
         code = None if self.popen is None else self.popen.poll()
         return {"commande": " ".join([self.nom, *self.arguments]), "en_cours": self.en_cours,
                 "pid": None if self.popen is None else self.popen.pid,
-                "code": code, "arret_demande": self.arret_demande,
+                "code": code, "arret_demande": self.arret_demande, "plantages": list(self.plantages),
                 "debut": self.debut, "duree_s": None if self.debut is None else
                 round((self.fin or time.time()) - self.debut, 1),
                 "journal": str(self.journal) if self.journal else None,

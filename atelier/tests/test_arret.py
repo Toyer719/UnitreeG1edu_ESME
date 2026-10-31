@@ -174,7 +174,7 @@ def test_pilotage_qui_ne_repond_pas_a_temps(client, noeud_pilotage):
     d = r.json()
     assert r.status_code == 200 and d["parties"]["pilotage"]["ok"] is False
     assert d["parties"]["guide"]["ok"] is True and d["parties"]["verrou"]["ok"] is True and pont.verrous == [True]
-    assert "nœud pilotage n'a pas répondu" in d["message"] and "télécommande" in d["message"]
+    assert "pilotage n'a pas répondu" in d["message"] and "télécommande" in d["message"]
     assert "0,6 s" in d["parties"]["pilotage"]["detail"] or "0.6 s" in d["parties"]["pilotage"]["detail"]
 
 
@@ -250,7 +250,7 @@ def test_message_et_mode():
     assert A.message_arret(parties, True).startswith("ARRÊT : robot arrêté et bloqué")
     parties["pilotage"]["ok"] = False
     parties["guide"]["ok"] = False
-    assert A.message_arret(parties, True) == ("ARRÊT envoyé, mais le guide et le nœud pilotage n'ont pas répondu : "
+    assert A.message_arret(parties, True) == ("ARRÊT envoyé, mais le guide et le pilotage n'ont pas répondu : "
                                               "gardez la télécommande en main.")
 
     class Etat:

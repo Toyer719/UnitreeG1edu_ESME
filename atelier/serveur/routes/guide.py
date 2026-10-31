@@ -110,6 +110,6 @@ def mode_visiteur(demande: DemandeVisiteur, request: Request):
     pub.publish(String(data=mode))
     reponse = {"envoye": mode, "ecoute": pub.get_subscription_count()}
     if reponse["ecoute"] == 0:
-        reponse["avertissement"] = ("Aucun faux visiteur n'écoute /faux_visiteur/mode : lancez-le avec "
-                                    "ros2 run g1_nav faux_visiteur (scène d'accompagnement).")
+        reponse["avertissement"] = ("Aucun faux visiteur dans cette simulation : il vient avec une scène "
+                                    "d'accompagnement (Simuler › Avancé › Passants, scènes d'essai).")
     return reponse

@@ -54,29 +54,44 @@ def _sujet(source):
     return SOURCES_IMAGES[source]
 
 
-def pourquoi_pas_d_image(pont, source, image, maintenant=None):
-    """Phrase en français qui dit pourquoi une source n'a pas d'image récente, et quoi faire ; None
-    si une image a moins de 2 s."""
+def pourquoi_pas_d_image_detail(pont, source, image, maintenant=None):
+    """(phrase courte, détail technique) qui disent pourquoi une source n'a pas d'image récente, et quoi
+    faire ; (None, None) si elle en a une. La phrase s'affiche (vague 5, I10 : ni nœud, ni sujet, ni
+    commande) ; le détail technique va dans l'infobulle et les détails des erreurs."""
     maintenant = time.monotonic() if maintenant is None else maintenant
     if not pont.actif:
-        return ("Pas d'image : ROS 2 n'est pas actif dans le serveur de l'Atelier ("
-                + (pont.erreur or "pont ROS 2 arrêté") + ").")
+        return ("Pas d'image : l'Atelier n'est pas relié à ROS 2.", pont.erreur or "pont ROS 2 du serveur arrêté")
     if getattr(pont, "erreur_images", None):
-        return "Pas d'image : " + pont.erreur_images + "."
+        return "Pas d'image : " + pont.erreur_images + ".", None
     if image is not None and image.age(maintenant) <= AGE_MAX_S:
-        return None
+        return None, None
     noeud = pont.dernier(SUJET_ETAT_CAMERA) if source == "poitrine" else None
     if noeud and not noeud.get("perime") and noeud.get("erreur"):
-        return f"Pas d'image : {noeud['erreur']}."
+        return f"Pas d'image : {noeud['erreur']}.", "message du nœud camera_usb (/camera_poitrine/etat)"
     if image is not None:
-        return (f"Pas d'image depuis {image.age(maintenant):.0f} s : "
-                + ("la caméra s'est arrêtée (nœud camera_usb arrêté, caméra débranchée ?)."
-                   if source == "poitrine" else "g1-visiteurs ne publie plus ses images."))
+        if source == "poitrine":
+            return (f"Pas d'image depuis {image.age(maintenant):.0f} s : la caméra s'est arrêtée (débranchée ?).",
+                    "le nœud camera_usb ne publie plus /camera_poitrine/image/compressed")
+        return (f"Pas d'image des visiteurs depuis {image.age(maintenant):.0f} s.",
+                "g1-visiteurs ne publie plus ses images")
     if source == "poitrine":
-        return ("Pas d'image : le nœud de la caméra (camera_usb) ne publie pas. Sur le robot : "
-                "g1-jetson demarrer, la See3CAM branchée sur le Jetson ; sur ce PC : ros2 run g1_equipe "
-                "camera_usb. Même ROS_DOMAIN_ID que l'Atelier ?")
-    return "Pas d'image des visiteurs : lancez g1-visiteurs --image (cadres dessinés sur l'image)."
+        return ("Pas d'image : la caméra de poitrine n'envoie rien. Est-elle branchée au robot, et le robot lancé ?",
+                "le nœud de la caméra (camera_usb) ne publie pas. Sur le robot : g1-jetson demarrer, la See3CAM "
+                "branchée sur le Jetson ; sur ce PC : ros2 run g1_equipe camera_usb. Même ROS_DOMAIN_ID que "
+                "l'Atelier ?")
+    return ("Pas d'image des visiteurs : la détection des visiteurs ne tourne pas.",
+            "lancez g1-visiteurs --image (cadres dessinés sur l'image)")
+
+
+def pourquoi_pas_d_image(pont, source, image, maintenant=None):
+    """La phrase courte de pourquoi_pas_d_image_detail, ou None si la source a une image récente."""
+    return pourquoi_pas_d_image_detail(pont, source, image, maintenant)[0]
+
+
+def _sans_image(pont, source, image, maintenant=None):
+    """ErreurAtelier 503 : la phrase courte, et le détail technique dans « sortie » (le journal)."""
+    message, detail = pourquoi_pas_d_image_detail(pont, source, image, maintenant)
+    return ErreurAtelier(503, message, sortie=detail)
 
 
 @routeur.get("/api/camera/image")
@@ -88,7 +103,7 @@ def image(request: Request, source: str = "poitrine"):
     maintenant = time.monotonic()
     message = pourquoi_pas_d_image(pont, source, derniere, maintenant)
     if message:
-        raise ErreurAtelier(503, message)
+        raise _sans_image(pont, source, derniere, maintenant)
     return Response(content=derniere.octets, media_type="image/jpeg", headers=entetes_image(derniere, maintenant))
 
 
@@ -103,7 +118,7 @@ async def flux(request: Request, source: str = "poitrine", ips: float = IPS_DEFA
         raise ErreurAtelier(400, f"images={images} : il faut au moins 1 (ou rien : flux sans fin).")
     pont = _pont(request)
     if not pont.actif:
-        raise ErreurAtelier(503, pourquoi_pas_d_image(pont, source, None))
+        raise _sans_image(pont, source, None)
     frequence = min(float(ips), IPS_MAX)
 
     async def generer():
@@ -141,13 +156,13 @@ def etat_camera(request: Request):
     pont = _pont(request)
     actif = bool(pont.actif)
     maintenant = time.monotonic()
-    sources, messages = {}, {}
+    sources, messages, details = {}, {}, {}
     for source, sujet in SOURCES_IMAGES.items():
         images = pont.images.get(sujet)
         sources[source] = images.etat(maintenant) if images is not None else {
             "recue": False, "numero": 0, "age_s": None, "largeur": None, "hauteur": None, "octets": None, "ips": 0.0}
-        messages[source] = pourquoi_pas_d_image(pont, source, pont.derniere_image(sujet) if actif else None,
-                                                maintenant)
+        messages[source], details[source] = pourquoi_pas_d_image_detail(
+            pont, source, pont.derniere_image(sujet) if actif else None, maintenant)
     visiteurs = pont.dernier(SUJET_VISITEURS) if actif else None
     return {"ros": {"actif": actif, "erreur": pont.erreur},
             "sources": sources,
@@ -156,4 +171,5 @@ def etat_camera(request: Request):
                 "age_s": visiteurs.get("age_recu_s"), "nombre": len(visiteurs.get("personnes") or []),
                 "perime": visiteurs.get("perime")},
             "messages": messages,
+            "details": details,
             "flux_ouverts": _flux["ouverts"]}

@@ -185,8 +185,8 @@ async def _avec_delai(coroutine, delai, partie):
 def message_arret(parties, verrou):
     """Phrase courte pour l'utilisateur, d'après le résultat des parties."""
     fautes = [nom for nom in PARTIES if parties[nom]["ok"] is False]
-    textes = {"guide": "le guide", "teleop": "la téléopération", "pilotage": "le nœud pilotage",
-              "verrou": "le verrou du pont"}
+    textes = {"guide": "le guide", "teleop": "la téléopération", "pilotage": "le pilotage",
+              "verrou": "le verrou du robot"}
     if fautes:
         sujet = " et ".join(textes[n] for n in fautes)
         verbe = "n'a pas répondu" if len(fautes) == 1 else "n'ont pas répondu"
@@ -246,8 +246,8 @@ def debloquer(request: Request):
     mode = etat.arret.get("mode") if isinstance(getattr(etat, "arret", None), dict) else None
     noter_verrou(etat, False, mode, "debloquer")
     return {"verrou": False, "ecoute": ecoute,
-            "message": "Robot débloqué : il repartira à la prochaine consigne."
-            + ("" if ecoute else " (Aucun pont n'écoute pour l'instant.)")}
+            "message": "Robot débloqué : il repartira à la prochaine consigne." if ecoute
+            else "Robot débloqué : il pourra marcher dès que la navigation sera lancée."}
 
 
 @routeur.get("/api/arret")

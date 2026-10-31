@@ -290,8 +290,8 @@ def aller(demande: DemandeAller, request: Request):
     if message != cible:
         reponse["demande"] = json.loads(message)
     if ecoute == 0:
-        reponse["avertissement"] = ("Aucun guide n'écoute /guide/aller : lancez la simulation (avec la "
-                                    "navigation) ou g1-guide navigation.")
+        reponse["avertissement"] = ("Le guide ne tourne pas : lancez d'abord la simulation (Simuler › Lancer) "
+                                    "ou la navigation (Naviguer › Lancer).")
     maitre = etat.pont.dernier("/mouvement/maitre")
     if maitre and maitre.get("maitre") == "pilotage":
         reponse["avertissement"] = ("Le robot est piloté à la main (Réel › Piloter) : le guide refusera "
@@ -413,6 +413,6 @@ def teleop(demande: DemandeTeleop, request: Request):
         raise ErreurAtelier(503, f"Pas de liaison avec ROS 2 : {e}.") from None
     reponse = {"envoye": consigne, "ecoute": ecoute}
     if ecoute == 0:
-        reponse["avertissement"] = ("Personne n'écoute /cmd_vel : le robot simulé n'est peut-être pas encore "
-                                    "apparu dans Gazebo.")
+        reponse["avertissement"] = ("Le robot simulé ne reçoit pas encore les consignes : il n'est peut-être "
+                                    "pas encore apparu dans Gazebo.")
     return reponse

@@ -42,7 +42,8 @@ _NUMEROS = itertools.count(1)
 MESSAGES = {
     None: "Aucune navigation ne tourne : lancez la répétition ou le robot (Réel › Naviguer › Lancer).",
     "simu": "Simulation : la position vient de Gazebo, il n'y a pas besoin de repérer le robot.",
-    "relais": "Le relais de position (odom_vers_tf) ne répond pas encore : la navigation démarre…",
+    "relais": "Le robot n'est pas encore prêt à être repéré (relais de position) : la navigation démarre, "
+              "réessayez dans quelques secondes.",
 }
 
 
@@ -159,8 +160,9 @@ def reperer(demande: DemandeReperer, request: Request):
     while etat.pont.abonnes_reperage() == 0 and time.monotonic() < fin:
         time.sleep(0.1)
     if etat.pont.abonnes_reperage() == 0:
-        raise ErreurAtelier(504, "Le relais de position (odom_vers_tf) ne répond pas : la navigation est-elle "
-                                 "lancée ? Ouvrez « Ce qui tourne » (menu ⚙ de la barre d'outils).")
+        raise ErreurAtelier(504, "Le robot n'est pas encore prêt à être repéré : la navigation est-elle lancée "
+                                 "(Naviguer › Lancer) ? Réessayez dans quelques secondes ; le détail est dans "
+                                 "« Ce qui tourne » (menu ⚙).")
     if pose is None:
         # vague 4 (section 11.2) : le robot est posé sur le point principal, dans le sens de sa flèche.
         # La pose est toujours envoyée en entier (repère map) : le relais la convertit vers le repère
@@ -194,6 +196,7 @@ def arret(demande: DemandeArret, request: Request):
     noter_verrou(etat, demande.verrou, mode, "bloquer" if demande.verrou else "debloquer")
     reponse = {"verrou": demande.verrou, "pont": etat.pont.etat_pont(), "ecoute": ecoute}
     if ecoute == 0:
-        reponse["avertissement"] = ("Aucun pont n'écoute /pont/arret pour l'instant : le verrou sera appliqué "
-                                    "dès qu'il démarrera.")
+        reponse["avertissement"] = ("Le robot restera bloqué : le verrou s'appliquera dès que la navigation sera "
+                                    "lancée." if demande.verrou else
+                                    "Le robot pourra marcher dès que la navigation sera lancée.")
     return reponse

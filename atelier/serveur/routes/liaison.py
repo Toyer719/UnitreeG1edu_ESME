@@ -101,14 +101,15 @@ async def ping(adresse):
 def message_liaison(interface, cable, pc1, jetson, domaine, cyclonedds):
     """Phrase qui dit ce qui va, ou quoi faire."""
     if not cable:
-        return (f"Câble du robot non détecté ({interface}) : branchez le câble Ethernet entre le PC et le "
-                "robot. Pour essayer sans robot, cochez « Répétition sans robot ».")
+        # espaces insécables dans les guillemets : « » ne finit jamais seul sur sa ligne
+        return ("Câble du robot non détecté : branchez le câble Ethernet entre le PC et le robot. Pour essayer "
+                "sans robot, cochez «\u00a0Répétition sans robot\u00a0».")
     if not pc1["repond"]:
         return (f"Le robot ne répond pas ({pc1['adresse']}) : est-il allumé ? Le PC doit avoir une adresse en "
                 "192.168.123.x sur ce câble (setup/robot.sh).")
     if domaine != "0" or (cyclonedds is not None and cyclonedds != interface):
         return ("Le robot répond, mais l'Atelier n'a pas été lancé avec robot.sh : fermez-le (Ctrl+C), puis "
-                "« source ~/robot-g1/setup/robot.sh » et g1-atelier.")
+                "«\u00a0source ~/robot-g1/setup/robot.sh\u00a0» et g1-atelier.")
     suite = "" if jetson["repond"] else " Le Jetson ne répond pas encore : la navigation ne pourra pas démarrer."
     duree = f"{pc1['ms']:g}".replace(".", ",") if isinstance(pc1.get("ms"), (int, float)) else "?"
     return f"Robot relié : il répond en {duree} ms.{suite}"

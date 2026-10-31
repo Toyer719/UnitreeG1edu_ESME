@@ -130,7 +130,7 @@ def _erreur(r, statut, *morceaux):
 
 
 def test_sans_ros(client):
-    _erreur(client.get("/api/camera/image"), 503, "ROS 2 n'est pas actif")
+    _erreur(client.get("/api/camera/image"), 503, "pas relié à ROS 2")
     _erreur(client.get("/api/camera/image?source=visiteurs"), 503, "ROS 2")
     _erreur(client.get("/api/camera/flux"), 503, "ROS 2")
     e = client.get("/api/camera/etat").json()
@@ -162,9 +162,14 @@ class Message:
 
 
 def test_image_recue(client, pont_actif):
-    detail = _erreur(client.get("/api/camera/image"), 503, "(camera_usb) ne publie pas")
-    assert "ROS_DOMAIN_ID" in detail
-    _erreur(client.get("/api/camera/image?source=visiteurs"), 503, "g1-visiteurs --image")
+    # la phrase affichée est courte, sans jargon ; le détail technique est dans « sortie »
+    r = client.get("/api/camera/image")
+    assert r.status_code == 503 and "n'envoie rien" in r.json()["detail"] and "camera_usb" not in r.json()["detail"]
+    assert "(camera_usb) ne publie pas" in r.json()["sortie"] and "ROS_DOMAIN_ID" in r.json()["sortie"]
+    r = client.get("/api/camera/image?source=visiteurs")
+    assert r.status_code == 503 and "g1-visiteurs --image" in r.json()["sortie"]
+    e = client.get("/api/camera/etat").json()
+    assert "branchée" in e["messages"]["poitrine"] and "camera_usb" in e["details"]["poitrine"]
     pont_actif.images[SUJET_IMAGE_POITRINE].ajouter(jpeg(640, 360), temps=5.0)
     r = client.get("/api/camera/image?source=poitrine")
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg" and r.content == jpeg(640, 360)

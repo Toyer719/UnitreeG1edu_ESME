@@ -7,7 +7,8 @@ import pytest
 
 from atelier.lieu import Pieton
 from atelier.serveur import pietons
-from atelier.serveur.processus import CommandeAbsente, Gestionnaire, Processus, commande, lancer_et_attendre
+from atelier.serveur.processus import (CommandeAbsente, Gestionnaire, Processus, commande, lancer_et_attendre,
+                                      noeud_plante)
 
 from .test_serveur_communs import attendre, journaux, processus_vivant  # noqa: F401
 
@@ -100,6 +101,41 @@ def test_commande_qui_finit_seule(bin_test, journaux):
     e = g.etat()["essai"]
     assert e["code"] == 4 and not e["arret_demande"] and e["dernieres_lignes"] == ["bonjour x"]
     g.arreter_tout()          # sans effet sur une commande finie
+
+
+# Revue de la vague 5 : une répétition annoncée lancée alors que des nœuds de Nav2 avaient planté
+PLANTE = r'''#!/bin/sh
+echo "[INFO] [launch]: All log files can be found below /tmp"
+echo "[ERROR] [bt_navigator-5]: process has died [pid 4123, exit code -6, cmd 'bt_navigator --ros-args']."
+echo "[ERROR] [map_server-2]: process has died [pid 4124, exit code 1, cmd 'map_server']."
+echo "[ERROR] [bt_navigator-5]: process has died [pid 4125, exit code -6, cmd 'bt_navigator']."
+sleep 30
+'''
+
+
+def test_noeud_plante():
+    assert noeud_plante("[ERROR] [bt_navigator-5]: process has died [pid 1, exit code -6, cmd 'x'].") == "bt_navigator"
+    assert noeud_plante("[ERROR] [component_container_isolated-1]: process has died [pid 2]") == \
+        "component_container_isolated"
+    assert noeud_plante("[INFO] [bt_navigator-5]: process started with pid [4123]") is None
+    assert noeud_plante("[ERROR] [guide]: lieu introuvable") is None
+
+
+def test_noeuds_plantes_dans_l_etat(bin_test, journaux):
+    """Les nœuds que ros2 launch dit plantés sont dans l'état (une fois chacun), la commande tournant encore ;
+    ceux qui s'arrêtent après la demande d'arrêt ne comptent pas."""
+    (bin_test / "g1-plante").write_text(PLANTE)
+    (bin_test / "g1-plante").chmod(0o755)
+    g = Gestionnaire()
+    p = g.lancer("navigation", "g1-plante", [])
+    assert attendre(lambda: len(p.etat()["plantages"]) == 2)
+    e = g.etat()["navigation"]
+    assert e["en_cours"] and e["plantages"] == ["bt_navigator", "map_server"]
+    g.arreter_tout(attente_sigint=1.0)
+    assert g.etat()["navigation"]["plantages"] == ["bt_navigator", "map_server"]
+    q = Processus("g1-court", [], journaux / "court.log").demarrer()
+    assert attendre(lambda: not q.en_cours)
+    assert q.etat()["plantages"] == []
 
 
 # ---------------------------------------------------------------- piétons

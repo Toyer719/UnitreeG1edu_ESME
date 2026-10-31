@@ -89,11 +89,12 @@ def _entetes():
 
 
 def _injoignable(erreur=None):
-    mode = "Avec le robot : vérifiez le conteneur du Jetson (g1-jetson etat) et le Wi-Fi."
+    """503 en français : le pilotage ne répond pas ; l'adresse et l'erreur sont dans les détails (sortie)."""
+    mode = "Avec le robot, il démarre avec le conteneur du Jetson : vérifiez-le (g1-jetson etat) et le Wi-Fi."
     if noeud_local():
-        mode = ("En répétition : cliquez sur « Démarrer le pilotage » dans Réel › Piloter.")
-    return ErreurAtelier(503, f"Le nœud pilotage ne répond pas ({url_noeud()}). {mode}",
-                         sortie=None if erreur is None else str(erreur)[:300])
+        mode = "En répétition : « Démarrer », au début du ruban de Piloter."
+    detail = f"adresse du pilotage : {url_noeud()}" + ("" if erreur is None else f" ; {str(erreur)[:250]}")
+    return ErreurAtelier(503, f"Le pilotage ne répond pas : il n'est pas démarré ? {mode}", sortie=detail)
 
 
 async def appeler_noeud(methode, chemin, corps=None, delai=DELAI_HTTP_S, params=None):
@@ -233,7 +234,7 @@ async def demarrer(request: Request):
             derniere = e.detail
         await asyncio.sleep(0.3)
     await run_in_threadpool(etat.gestionnaire.arreter, "pilotage")
-    raise ErreurAtelier(504, f"Le nœud pilotage ne répond pas après {DELAI_DEMARRAGE_S:g} s : {derniere}")
+    raise ErreurAtelier(504, f"Le pilotage ne répond pas après {DELAI_DEMARRAGE_S:g} s : {derniere}")
 
 
 @routeur.post("/api/pilotage/arreter")
@@ -276,8 +277,8 @@ async def arret(request: Request):
                 envoye = True
             except RuntimeError:
                 pass
-        suite = (" /guide/stop a été envoyé à la navigation." if envoye else "")
-        raise ErreurAtelier(503, "ARRÊT : le nœud pilotage ne répond pas." + suite
+        suite = (" L'arrêt a été envoyé au guide." if envoye else "")
+        raise ErreurAtelier(503, "ARRÊT : le pilotage ne répond pas." + suite
                             + " Utilisez la télécommande pour arrêter le robot.", sortie=e.sortie) from None
 
 
