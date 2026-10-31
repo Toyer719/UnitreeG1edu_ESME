@@ -1,5 +1,73 @@
 // Petits éléments de formulaire pour les panneaux de détails des écrans.
 // Les textes viennent toujours de textContent ou de value : jamais de HTML venant des fichiers.
+//
+// Validation d'un champ (événement « change », quand on le quitte) : l'écran redessine alors souvent son
+// panneau. Si on quitte le champ en appuyant sur un bouton (✓ Enregistrer, Supprimer…), le panneau redessiné
+// tout de suite détruisait ce bouton entre l'appui et le relâchement, et le clic était perdu ; avec Tab, le
+// champ suivant disparaissait et le curseur avec lui (revue de la vague 5). La validation attend donc que le
+// bouton de la souris soit relâché (le clic passe d'abord), ou que Tab ait posé le curseur. Sans souris
+// enfoncée ni Tab (Entrée, Ctrl+S, essais), elle est immédiate. apresValidations(f) lance f après les
+// validations en attente (✓ et ✗ du panneau s'en servent : le champ quitté est enregistré avec le reste).
+
+let appuye = false;           // un bouton de la souris (ou un doigt) est enfoncé
+let apresTab = false;         // Tab vient d'être pressé : le curseur va dans le champ suivant
+const enAttente = [];         // validations qui attendent la fin du clic
+
+function viderAttente() {
+  while (enAttente.length) {
+    const f = enAttente.shift();
+    try {
+      f();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+}
+
+function relacher() {
+  if (!appuye) return;
+  appuye = false;
+  // après le clic (qui suit le relâchement dans la même tâche) : le bouton cliqué a fait son travail
+  setTimeout(viderAttente, 0);
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('pointerdown', () => { appuye = true; }, true);
+  document.addEventListener('pointerup', relacher, true);
+  document.addEventListener('pointercancel', relacher, true);
+  window.addEventListener('blur', relacher);
+  document.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Tab') return;
+    apresTab = true;
+    setTimeout(() => { apresTab = false; }, 0);
+  }, true);
+}
+
+// Lance la validation d'un champ : tout de suite, ou après le clic en cours, ou après le déplacement de Tab
+export function valider(f) {
+  if (appuye) {
+    enAttente.push(f);
+    // filet : un relâchement jamais reçu (hors de la fenêtre) ne bloque pas la validation
+    setTimeout(() => {
+      if (enAttente.indexOf(f) >= 0) {
+        appuye = false;
+        viderAttente();
+      }
+    }, 1500);
+    return;
+  }
+  if (apresTab) {
+    setTimeout(f, 0);
+    return;
+  }
+  f();
+}
+
+// Lance f après les validations de champs en attente (tout de suite s'il n'y en a pas)
+export function apresValidations(f) {
+  if (enAttente.length || appuye) setTimeout(f, 0);
+  else f();
+}
 
 export function el(balise, classe, texte) {
   const e = document.createElement(balise);
@@ -38,7 +106,7 @@ export function champNombre(parent, libelle, valeur, options, surChangement) {
   c.addEventListener('change', () => {
     const v = parseFloat(c.value.replace(',', '.'));
     if (isNaN(v)) return;
-    surChangement(v);
+    valider(() => surChangement(v));
   });
   return ligne(parent, libelle, c, options.unite);
 }
@@ -51,7 +119,10 @@ export function champTexte(parent, libelle, valeur, surChangement, options) {
   c.value = valeur || '';
   if (options.indice) c.placeholder = options.indice;
   if (options.lectureSeule) c.readOnly = true;
-  c.addEventListener('change', () => surChangement(c.value));
+  c.addEventListener('change', () => {
+    const v = c.value;
+    valider(() => surChangement(v));
+  });
   return ligne(parent, libelle, c, options.unite);
 }
 
@@ -60,7 +131,10 @@ export function caseACocher(parent, libelle, valeur, surChangement) {
   const c = el('input');
   c.type = 'checkbox';
   c.checked = !!valeur;
-  c.addEventListener('change', () => surChangement(c.checked));
+  c.addEventListener('change', () => {
+    const v = c.checked;
+    valider(() => surChangement(v));
+  });
   l.appendChild(c);
   l.appendChild(el('span', 'champ-libelle', libelle));
   parent.appendChild(l);
@@ -76,7 +150,10 @@ export function listeDeroulante(parent, libelle, valeur, choix, surChangement) {
     s.appendChild(o);
   });
   s.value = valeur;
-  s.addEventListener('change', () => surChangement(s.value));
+  s.addEventListener('change', () => {
+    const v = s.value;
+    valider(() => surChangement(v));
+  });
   return ligne(parent, libelle, s);
 }
 

@@ -17,6 +17,7 @@ function coqueSeule() {
     confirmer: (texte, o) => demanderConfirmation(texte, o),
     saisir: (texte, o) => demanderSaisie(texte, o),
     message: (texte, genre, details, sortie) => afficherMessage(texte, genre, details, sortie),
+    effacerMessage: RIEN,
     pleinEcran: RIEN, ouvrirCommande: () => false, choisirVue: () => 'plan', vue: () => 'plan',
     surVue: () => RIEN, barreEtat: null, activer: RIEN, griser: RIEN, libelle: RIEN, menu: RIEN, coche: RIEN,
     cases: () => ({ accompagner: false, retour: true, joysticks: true }), aide: RIEN, lieuModifie: RIEN,
@@ -49,10 +50,11 @@ export function preparerEcran(racine, options) {
     valeur: options.valeur, carte3d: options.carte3d || null };
 }
 
-// Panneau d'un écran d'édition : titre, ✓ Enregistrer et ✗ Annuler (actifs s'il y a des modifications)
+// Panneau d'un écran d'édition : titre, ✓ Enregistrer et ✗ Annuler (actifs s'il y a des modifications, ou
+// dès qu'on tape dans un champ : le champ se valide quand on le quitte, par exemple en appuyant sur ✓)
 export function panneauEdition(element, titre, aide, actions) {
   return ouvrirPanneau(element, {
-    titre: titre, aide: aide,
+    titre: titre, aide: aide, actifSurSaisie: true,
     ok: { texte: 'Enregistrer', action: actions.enregistrer, actif: actions.modifie(), titre: 'Enregistrer (Ctrl+S)' },
     annuler: { texte: 'Annuler', action: actions.annuler, actif: actions.modifie(),
       titre: 'Abandonner les modifications non enregistrées' },

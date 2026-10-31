@@ -13,7 +13,9 @@ atelier/tests/test_serveur_navigateur.py) ; les mesures viennent de atelier/test
            recouvert, ARRÊT visible et cliquable ;
         3. les anciennes adresses (#salles, #simulation, #scan, #pilotage, #camera) mènent à leur écran ;
         4. le thème clair change data-theme et atelier.theme, la vue 3D reste sombre ;
-        5. window.erreursAtelier reste vide.
+        5. revue de la vague 5 : l'arbre replié se rouvre (languette « Le lieu »), le Plan 2D ouvert après la 3D
+           montre les salles, la barre d'outils de la répétition ne se chevauche pas ;
+        6. window.erreursAtelier reste vide.
   outils_coque_e2e.py captures --api URL --sortie DOSSIER [--taille 1600x1000]
         captures d'écran : l'accueil (deux modes), chaque onglet en Simulation et en Réel (répétition), en
         thème sombre et en thème clair, et l'accueil en 1366 × 768.
@@ -131,6 +133,9 @@ def critere_31(args):
         fautes = mesures(nav, args.api, tailles, modes, avec_commandes=not args.sans_commandes)
         ok(C.parcours_anciens_hash(nav, args.api))
         ok(C.parcours_theme(nav, args.api))
+        nav.taille(*taille(tailles[0]))
+        for phrase in C.parcours_revue_v5(nav, args.api):
+            ok(phrase)
         erreurs = erreurs_page(nav)
     verifier(not fautes, f"{len(fautes)} faute(s) de mise en page, dont : " + " | ".join(fautes[:6]))
     verifier(not erreurs, f"erreurs JavaScript dans la page : {erreurs[:5]}")

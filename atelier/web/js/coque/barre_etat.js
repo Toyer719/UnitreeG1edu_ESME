@@ -2,8 +2,10 @@
 // volantes), coordonnées sous le pointeur, liaison, et en Avancé « Ce qui tourne » (vague 5, section 12.2
 // du plan). Module de l'agent Coquille.
 //
-// construireBarreEtat(element) → {message(texte, genre, details, sortie), coordonnees(x, y), outil(texte),
-//   liaison(texte, genre), processus(etat), journal(ouvrir), detruire()}
+// construireBarreEtat(element) → {message(texte, genre, details, sortie), effacer(), coordonnees(x, y),
+//   outil(texte), liaison(texte, genre), processus(etat), journal(ouvrir), detruire()}
+// effacer() : plus de message dans la barre (il reste dans le journal) ; la coque l'appelle quand on change
+// d'écran (un avertissement d'un autre écran ne reste pas affiché).
 // Repères : [data-role=barre-etat], [data-role=etat-message] (data-genre), [data-role=etat-coordonnees],
 // [data-role=etat-liaison], [data-role=journal] (les messages, avec leurs détails : .message.message-<genre>),
 // [data-role=ce-qui-tourne].
@@ -14,7 +16,7 @@ const DUREE_MESSAGE_MS = { info: 9000, succes: 9000, avertissement: 30000, erreu
 const JOURNAL_MAX = 60;
 const NOMS_PROCESSUS = {
   simulation: 'Simulation (Gazebo)', navigation: 'Navigation (guide)', faux_slam: 'Faux service de cartographie',
-  scan: 'Scan', pilotage: 'Nœud pilotage',
+  scan: 'Scan', pilotage: 'Pilotage du robot',
 };
 const SYMBOLES = { info: 'info', succes: 'coche', avertissement: 'alerte', erreur: 'alerte' };
 
@@ -189,7 +191,8 @@ export function construireBarreEtat(element) {
     const enCours = roles.filter((r) => processus[r].en_cours).length;
     boutonProcessus.classList.toggle('actif', enCours > 0);
     boutonProcessus.querySelector('span').textContent = enCours ? 'Ce qui tourne (' + enCours + ')' : 'Ce qui tourne';
-    const enErreur = roles.some((r) => !processus[r].en_cours && !processus[r].arret_demande && processus[r].code);
+    const enErreur = roles.some((r) => (!processus[r].en_cours && !processus[r].arret_demande && processus[r].code)
+      || (processus[r].en_cours && processus[r].plantages && processus[r].plantages.length));
     boutonProcessus.classList.toggle('erreur', enErreur);
     if (!roles.length) {
       listeProcessus.appendChild(el('p', 'panneau-note', 'Rien ne tourne.'));
@@ -201,6 +204,10 @@ export function construireBarreEtat(element) {
       const etat = p.en_cours ? 'en cours' : (p.arret_demande ? 'arrêté' : 'terminé (code ' + p.code + ')');
       bloc.appendChild(el('div', 'processus-titre' + (!p.en_cours && !p.arret_demande && p.code ? ' processus-erreur' : ''),
         (NOMS_PROCESSUS[role] || role) + ' : ' + etat));
+      if (p.en_cours && p.plantages && p.plantages.length) {
+        bloc.appendChild(el('div', 'processus-erreur', 'Arrêtés seuls : ' + p.plantages.join(', ')
+          + ' (arrêtez, puis relancez)'));
+      }
       bloc.appendChild(el('div', 'code', p.commande));
       if (p.dernieres_lignes && p.dernieres_lignes.length) bloc.appendChild(el('pre', 'processus-sortie', p.dernieres_lignes.join('\n')));
       if (p.journal) bloc.appendChild(el('div', 'panneau-note', 'Journal complet : ' + p.journal));
@@ -208,8 +215,18 @@ export function construireBarreEtat(element) {
     });
   }
 
+  function effacer() {
+    if (minuterie) clearTimeout(minuterie);
+    minuterie = null;
+    texteMessage.textContent = '';
+    symbole.textContent = '';
+    zoneMessage.dataset.genre = '';
+    zoneMessage.title = 'Voir les derniers messages';
+  }
+
   return {
     message: message,
+    effacer: effacer,
     coordonnees: (x, y) => {
       coordonnees.textContent = (x === null || x === undefined || y === null || y === undefined) ? ''
         : 'x ' + nb(x) + ' m   y ' + nb(y) + ' m';

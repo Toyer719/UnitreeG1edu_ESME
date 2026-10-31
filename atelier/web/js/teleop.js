@@ -2,6 +2,8 @@
 // Le serveur n'applique une consigne que 0,5 s (homme mort) : on la renvoie toutes les 0,2 s tant
 // qu'une commande reste appuyée, puis on envoie {0, 0, 0} dès que tout est relâché.
 // Clavier : ↑ ↓ avancer et reculer, ← → tourner, Q et D pas de côté (à gauche, à droite).
+// ARRÊT (bouton de la barre d'outils ou Échap : événement « atelier-arret » de la page) : tout est lâché, et
+// une flèche encore tenue ne relance pas le robot ; il faut la relâcher, puis appuyer de nouveau.
 
 import { api } from './api.js';
 import * as F from './formulaire.js';
@@ -21,6 +23,13 @@ const COMMANDES = {
 };
 const TOUCHES = { arrowup: 'avancer', arrowdown: 'reculer', arrowleft: 'gauche', arrowright: 'droite', q: 'pasGauche', d: 'pasDroite' };
 
+const instances = new Set();      // flèches à l'écran (une par écran ouvert)
+
+// Vrai si une flèche est tenue (le robot simulé bouge) : la coque s'en sert pour la touche Échap
+export function flechesTenues() {
+  return Array.from(instances).some((t) => t.actif && t.appuyees.size > 0);
+}
+
 function dansUnChamp(cible) {
   return !!(cible && cible.closest && cible.closest('input, textarea, select, [contenteditable="true"]'));
 }
@@ -30,6 +39,8 @@ export class Teleop {
   constructor(element) {
     this.element = element;
     this.appuyees = new Set();
+    this.tenues = new Set();      // touches et boutons physiquement tenus (même après un ARRÊT)
+    this.bloque = false;          // après un ARRÊT : rien ne repart avant que tout soit relâché
     this.boutons = {};
     this.actif = false;
     this.enVol = false;           // une requête est en cours : on n'en empile pas d'autre
@@ -53,9 +64,14 @@ export class Teleop {
         } catch (err) {
           // pas grave : pointerup arrivera quand même sur le bouton
         }
+        this.tenues.add(id);
         this.appuyer(id);
       });
-      const lacher = () => this.relacher(id);
+      const lacher = () => {
+        this.tenues.delete(id);
+        this.relacher(id);
+        this.debloquerSiRelache();
+      };
       b.addEventListener('pointerup', lacher);
       b.addEventListener('pointercancel', lacher);
       b.addEventListener('lostpointercapture', lacher);
@@ -70,15 +86,28 @@ export class Teleop {
       const id = TOUCHES[(e.key || '').toLowerCase()];
       if (!id || !this.actif || e.ctrlKey || e.metaKey || e.altKey || dansUnChamp(e.target)) return;
       e.preventDefault();                 // les flèches ne font pas défiler la page
+      this.tenues.add(id);
       if (!e.repeat) this.appuyer(id);
     };
     this._clavierHaut = (e) => {
       const id = TOUCHES[(e.key || '').toLowerCase()];
-      if (id) this.relacher(id);
+      if (!id) return;
+      this.tenues.delete(id);
+      this.relacher(id);
+      this.debloquerSiRelache();
     };
-    this._toutLacher = () => this.toutRelacher();
+    // ARRÊT de la page : tout lâcher, et ne rien relancer tant qu'une flèche reste tenue
+    this._arret = () => {
+      this.bloque = true;
+      this.toutRelacher();
+      if (this.tenues.size) this.etat.textContent = 'ARRÊT : relâchez les flèches, puis appuyez de nouveau pour repartir.';
+      this.debloquerSiRelache();
+    };
+    document.addEventListener('atelier-arret', this._arret);
+    instances.add(this);
+    this._toutLacher = () => this.toutLacher();
     this._visibilite = () => {
-      if (document.hidden) this.toutRelacher();
+      if (document.hidden) this.toutLacher();
     };
   }
 
@@ -88,6 +117,7 @@ export class Teleop {
     window.addEventListener('keydown', this._clavierBas);
     window.addEventListener('keyup', this._clavierHaut);
     window.addEventListener('blur', this._toutLacher);
+    instances.add(this);
     document.addEventListener('visibilitychange', this._visibilite);
     this.element.classList.remove('teleop-inactif');
   }
@@ -104,7 +134,13 @@ export class Teleop {
 
   detruire() {
     this.desactiver();
+    document.removeEventListener('atelier-arret', this._arret);
+    instances.delete(this);
     this.element.innerHTML = '';
+  }
+
+  debloquerSiRelache() {
+    if (this.bloque && !this.tenues.size) this.bloque = false;
   }
 
   consigne() {
@@ -117,7 +153,7 @@ export class Teleop {
   }
 
   appuyer(id) {
-    if (!this.actif || this.appuyees.has(id)) return;
+    if (!this.actif || this.bloque || this.appuyees.has(id)) return;
     this.appuyees.add(id);
     this.boutons[id].classList.add('appuye');
     this.envoyer(this.consigne());
@@ -140,6 +176,13 @@ export class Teleop {
 
   toutRelacher() {
     Array.from(this.appuyees).forEach((id) => this.relacher(id));
+  }
+
+  // fenêtre quittée : plus rien n'est tenu
+  toutLacher() {
+    this.tenues.clear();
+    this.toutRelacher();
+    this.debloquerSiRelache();
   }
 
   // forcer : l'arrêt part même si une requête est en vol (il ne doit jamais être perdu)

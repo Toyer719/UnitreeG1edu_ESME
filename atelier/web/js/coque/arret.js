@@ -6,8 +6,14 @@
 //   mode : 'simu' | 'reel' | 'repetition' ; message(texte, genre, details) : la barre d'état.
 // Événement : « atelier-arret » sur document, dès l'appui (les écrans lâchent leurs manettes).
 // Repère : [data-role=arret] (data-etat=pret|bloque). Le verrou n'existe qu'en Réel et en répétition :
-// son état vient de la réponse de l'ARRÊT et du champ arret de /ws/etat. « Débloquer » demande une
-// confirmation dans la page : un double clic affolé sur ARRÊT ne relâche jamais le robot.
+// son état vient de la réponse de l'ARRÊT, du champ arret de /ws/etat (le verrou posé par l'Atelier) et du
+// verrou du pont lui-même (champ pont : un pont resté bloqué après un redémarrage de l'Atelier montre
+// « Débloquer »). « Débloquer » demande une confirmation dans la page : un double clic affolé sur ARRÊT ne
+// relâche jamais le robot.
+// Chaque appui envoie sa demande (la route est idempotente), avec un délai de 1,5 s : sans réponse, la barre
+// d'état dit de prendre la télécommande (un premier ARRÊT resté sans réponse ne fait plus taire les autres).
+//
+// etatMouvement(d, local) et decisionEchap(m, servi) : ce que fait la touche Échap (la coque les appelle).
 
 import { abonner } from '../direct.js';
 import { demanderConfirmation } from './confirmation.js';
@@ -20,16 +26,79 @@ function el(balise, classe, texte) {
   return e;
 }
 
-async function poster(url, corps) {
-  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(corps || {}) });
-  let d = null;
-  try {
-    d = await r.json();
-  } catch (e) {
-    d = null;
+export const DELAI_ARRET_MS = 1500;       // sans réponse dans ce délai : « prenez la télécommande »
+const MESSAGE_SANS_REPONSE = 'ARRÊT : le serveur de l\'Atelier ne répond pas : arrêtez le robot avec la télécommande.';
+
+// États du guide où le robot peut bouger d'un instant à l'autre (atelier.lieu.comportement.ETATS_EN_MISSION)
+export const ETATS_EN_MISSION = ['en_route', 'retour', 'bloque', 'detour', 'attente_passage', 'attente_visiteur', 'perdu'];
+// Commandes lancées par l'Atelier qui font (ou peuvent faire) bouger le robot
+const ROLES_QUI_BOUGENT = ['simulation', 'navigation', 'faux_slam', 'pilotage', 'scan'];
+
+// Ce qui peut bouger, d'après un message de /ws/etat (d, ou null s'il n'y en a pas encore) et les flèches
+// tenues dans la page (local) : {connu, enMouvement, tourne: [noms]}. enMouvement : le robot bouge ou peut
+// repartir à l'instant (guide en mission, pont qui envoie des consignes, pilotage qui a la main, flèches).
+export function etatMouvement(d, local) {
+  const tourne = [];
+  const noter = (nom) => { if (tourne.indexOf(nom) < 0) tourne.push(nom); };
+  let enMouvement = !!local;
+  if (local) noter('fleches');
+  if (!d) return { connu: false, enMouvement: enMouvement, tourne: tourne };
+  if (d.simulation && d.simulation.en_cours) noter('simulation');
+  const p = d.processus || {};
+  ROLES_QUI_BOUGENT.forEach((r) => { if (p[r] && p[r].en_cours) noter(r); });
+  if (d.mode) noter('navigation');
+  if (d.pont && !d.pont.perime) {
+    noter('pont');
+    if (d.pont.etat === 'en_mouvement') enMouvement = true;
   }
-  return { statut: r.status, corps: d || {} };
+  const g = d.guide;
+  if (g && ETATS_EN_MISSION.indexOf(g.etat) >= 0 && !(g.age_s > 3)) {
+    noter('guide');
+    enMouvement = true;
+  }
+  if (d.maitre && d.maitre.maitre === 'pilotage') {
+    noter('pilotage');
+    enMouvement = true;
+  }
+  return { connu: true, enMouvement: enMouvement, tourne: tourne };
+}
+
+// Échap : 'arret' (envoyer l'ARRÊT), 'local' (la touche a seulement fermé un menu, une fenêtre, annulé une
+// saisie ou un outil) ou 'rien' (rien ne bouge ni ne tourne : rien à arrêter). servi : la touche avait un
+// usage dans la page. Le robot qui bouge l'emporte toujours (sécurité) ; sans nouvelles du serveur, on arrête.
+export function decisionEchap(m, servi) {
+  if (m.enMouvement) return 'arret';
+  if (servi) return 'local';
+  if (!m.connu || m.tourne.length) return 'arret';
+  return 'rien';
+}
+
+// Le robot est-il bloqué, d'après un message de /ws/etat ? Le verrou posé par l'Atelier (champ arret), ou celui
+// que le pont garde encore (champ pont, s'il est frais) : après un redémarrage de l'Atelier, le serveur a
+// oublié son verrou, le pont non (revue de la vague 5)
+export function verrouVu(d) {
+  if (!d) return false;
+  const pont = d.pont && !d.pont.perime ? !!d.pont.verrou : false;
+  return !!(d.arret && d.arret.verrou) || pont;
+}
+
+async function poster(url, corps, delaiMs) {
+  // délai : un serveur saturé ou une liaison coupée ne laisse pas l'ARRÊT attendre sans rien dire
+  const controle = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const minuterie = controle && delaiMs ? setTimeout(() => controle.abort(), delaiMs) : null;
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(corps || {}), signal: controle ? controle.signal : undefined });
+    let d = null;
+    try {
+      d = await r.json();
+    } catch (e) {
+      d = null;
+    }
+    return { statut: r.status, corps: d || {} };
+  } finally {
+    if (minuterie) clearTimeout(minuterie);
+  }
 }
 
 export function monterArret(element, options) {
@@ -37,7 +106,7 @@ export function monterArret(element, options) {
   let mode = options.mode || 'simu';
   const dire = options.message || (() => {});
   let etat = 'pret';
-  let enCours = false;
+  let enCours = 0;                 // demandes d'ARRÊT parties et pas encore revenues (pour l'aspect du bouton)
   const b = el('button', 'bouton-arret-global');
   b.type = 'button';
   b.setAttribute('data-role', 'arret');
@@ -65,31 +134,32 @@ export function monterArret(element, options) {
   }
 
   async function arreter(raison) {
-    // les écrans lâchent tout de suite ce qu'ils tiennent (manettes du pilotage, aperçu) : événement de la page
+    // les écrans lâchent tout de suite ce qu'ils tiennent (manettes du pilotage, flèches) : événement de la page
     document.dispatchEvent(new CustomEvent('atelier-arret', { detail: { raison: raison || 'bouton ARRÊT' } }));
-    if (enCours) return null;
-    enCours = true;
+    // chaque appui part, même si le précédent attend encore sa réponse (la route est idempotente)
+    enCours += 1;
     b.classList.add('appuye');
     try {
-      const r = await poster('/api/arret', { mode: mode, raison: raison || 'bouton ARRÊT' });
+      const r = await poster('/api/arret', { mode: mode, raison: raison || 'bouton ARRÊT' }, DELAI_ARRET_MS);
+      if (r.statut >= 500) throw new Error('statut ' + r.statut);
       const d = r.corps;
-      const fautes = Object.keys(d.parties || {}).filter((k) => d.parties[k].ok === false)
+      const fautes = Object.keys(d.parties || {}).filter((k) => d.parties[k] && d.parties[k].ok === false)
         .map((k) => d.parties[k].detail);
       dire(d.message || 'ARRÊT envoyé.', fautes.length ? 'erreur' : 'avertissement', fautes);
       poserEtat(!!d.verrou);
       return d;
     } catch (e) {
-      dire('ARRÊT : le serveur de l\'Atelier ne répond pas. Arrêtez le robot avec la télécommande.', 'erreur');
+      dire(MESSAGE_SANS_REPONSE, 'erreur');
       return null;
     } finally {
-      enCours = false;
-      setTimeout(() => b.classList.remove('appuye'), 250);
+      enCours = Math.max(0, enCours - 1);
+      setTimeout(() => { if (!enCours) b.classList.remove('appuye'); }, 250);
     }
   }
 
   async function debloquer() {
     try {
-      const r = await poster('/api/arret/debloquer', {});
+      const r = await poster('/api/arret/debloquer', {}, 5000);
       if (r.statut >= 200 && r.statut < 300) {
         dire(r.corps.message || 'Robot débloqué.', 'info');
         poserEtat(false);
@@ -123,8 +193,10 @@ export function monterArret(element, options) {
   }
 
   b.addEventListener('click', cliquer);
+  // le verrou posé par l'Atelier, ou celui que le pont garde encore (Atelier redémarré pendant un verrou)
   const desabonner = abonner((d) => {
-    if (d && d.arret && mode !== 'simu') poserEtat(!!d.arret.verrou);
+    if (!d || mode === 'simu') return;
+    if (d.arret || d.pont) poserEtat(verrouVu(d));
   });
   majBouton();
 

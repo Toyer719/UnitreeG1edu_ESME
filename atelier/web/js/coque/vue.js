@@ -5,7 +5,7 @@
 //
 // construireVue(element, {surVue(nom), surCadrage(nom), surCalque(nom, visible), surPlafond(oui)})
 //   → {plan, trois, camera, choisir(nom), courante(), permettre(vues), barre(visible), calques(etat),
-//      plafond(oui), detruire()}
+//      plafond(oui), fermerCalques(), detruire()}
 // Repères : [data-role=vue], [data-role=vue-plan] (racine des écrans), [data-role=vue-3d],
 // [data-role=vue-camera], [data-role=barre-vue] avec [data-vue=3d|plan|camera],
 // [data-cadrage=dessus|iso|face|recadrer], [data-calque=<nom>].
@@ -17,11 +17,12 @@ export const NOMS_CALQUES = {
   nuage: 'Nuage de points', carte2d: 'Carte 2D au sol', monde: 'Monde (murs et meubles)', points: 'Salles et accueil',
   itineraires: 'Itinéraires', zones: 'Zones', robot: 'Robot', pietons: 'Piétons', trajet: 'Trajet du scan',
 };
+// Recadrer existe aussi en Plan 2D (tout le plan de l'étage) ; les trois vues prédéfinies, seulement en 3D
 const CADRAGES = [
-  { id: 'dessus', libelle: 'Dessus', icone: 'dessus', aide: 'Vue de dessus (Ctrl+5)' },
-  { id: 'iso', libelle: 'Iso', icone: 'iso', aide: 'Vue en perspective (Ctrl+7)' },
-  { id: 'face', libelle: 'Face', icone: 'face', aide: 'Vue de face (Ctrl+1)' },
-  { id: 'recadrer', libelle: 'Recadrer', icone: 'recadrer', aide: 'Tout voir (touche F)' },
+  { id: 'dessus', libelle: 'Dessus', icone: 'dessus', aide: 'Vue de dessus (Ctrl+5)', vues: ['3d'] },
+  { id: 'iso', libelle: 'Iso', icone: 'iso', aide: 'Vue en perspective (Ctrl+7)', vues: ['3d'] },
+  { id: 'face', libelle: 'Face', icone: 'face', aide: 'Vue de face (Ctrl+1)', vues: ['3d'] },
+  { id: 'recadrer', libelle: 'Recadrer', icone: 'recadrer', aide: 'Tout voir (touche F)', vues: ['3d', 'plan'] },
 ];
 
 function el(balise, classe, texte) {
@@ -69,10 +70,12 @@ export function construireVue(element, options) {
   });
   barre.appendChild(groupeVues);
   const groupeCadrages = el('div', 'barre-vue-groupe barre-vue-3d');
+  const boutonsCadrages = [];
   CADRAGES.forEach((c) => {
     const b = boutonBarre(c.libelle, c.icone, c.aide);
     b.setAttribute('data-cadrage', c.id);
     b.addEventListener('click', () => { if (options.surCadrage) options.surCadrage(c.id); });
+    boutonsCadrages.push([b, c]);
     groupeCadrages.appendChild(b);
   });
   barre.appendChild(groupeCadrages);
@@ -132,7 +135,8 @@ export function construireVue(element, options) {
     camera.hidden = nom !== 'camera';
     element.setAttribute('data-vue', nom);
     Object.keys(boutonsVues).forEach((k) => boutonsVues[k].setAttribute('aria-pressed', k === nom ? 'true' : 'false'));
-    groupeCadrages.hidden = nom !== '3d';
+    boutonsCadrages.forEach((x) => { x[0].hidden = x[1].vues.indexOf(nom) < 0; });
+    groupeCadrages.hidden = nom === 'camera';
     groupeCalques.hidden = nom !== '3d';
     if (change && options.surVue) options.surVue(nom, !!parUtilisateur);
     return nom;
@@ -161,6 +165,10 @@ export function construireVue(element, options) {
       });
     },
     plafond: (oui) => { casePlafond.checked = !!oui; },
+    fermerCalques: () => {
+      menuCalques.hidden = true;
+      boutonCalques.setAttribute('aria-expanded', 'false');
+    },
     detruire: () => {
       document.removeEventListener('mousedown', fermerCalques, true);
       element.textContent = '';

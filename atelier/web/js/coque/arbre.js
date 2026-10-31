@@ -9,6 +9,7 @@
 // equipe:camera) ; [data-alerte] sur les nœuds cités par GET /api/lieux/{id}/verification.
 
 import { api, urlEtage, urlLieu } from '../api.js';
+import { sallesDansLOrdre } from '../carte3d/geometrie3d.js';
 import { icone } from './icones.js';
 
 function el(balise, classe, texte) {
@@ -40,17 +41,34 @@ function principal(salles) {
   return salles.find((s) => s.id === 'accueil') || null;
 }
 
-// Messages de vérification qui citent un identifiant (« b204 », b204 :, …) : {id: [messages]}
+// Messages de vérification qui citent un identifiant (« b204 », b204 :, …) : {id: [messages]}. Chaque
+// identifiant et chaque message une seule fois (une salle et son nœud ont le même identifiant).
 export function alertesParId(rapport, ids) {
   const alertes = {};
-  const messages = [].concat((rapport && rapport.erreurs) || [], (rapport && rapport.avertissements) || []);
+  const messages = [].concat((rapport && rapport.erreurs) || [], (rapport && rapport.avertissements) || [])
+    .filter((m, i, l) => l.indexOf(m) === i);
+  const uniques = ids.filter((id, i) => ids.indexOf(id) === i);
   messages.forEach((m) => {
-    ids.forEach((id) => {
+    uniques.forEach((id) => {
       const motif = new RegExp('(^|[^a-z0-9_-])' + id.replace(/[-]/g, '\\-') + '([^a-z0-9_-]|$)');
       if (motif.test(m)) (alertes[id] = alertes[id] || []).push(m);
     });
   });
   return alertes;
+}
+
+// Un identifiant rendu lisible : « couloir_sud_1 » → « Couloir sud 1 »
+export function nomLisible(id) {
+  const t = String(id === undefined || id === null ? '' : id).replace(/[_-]+/g, ' ').trim();
+  return t ? t.charAt(0).toUpperCase() + t.slice(1) : t;
+}
+
+// États d'une session de scan, en français
+const ETATS_SCAN = { en_cours: 'en cours', arret_en_cours: 'arrêt…', traitement: 'fabrication…', echec: 'échec',
+  interrompu: 'interrompu', termine: '' };
+
+function pluriel(n, mot) {
+  return n + ' ' + mot + (n > 1 ? 's' : '');
 }
 
 export function construireArbre(element, options) {
@@ -88,6 +106,8 @@ export function construireArbre(element, options) {
     const ic = el('span', 'arbre-icone' + (plus.couleur ? ' arbre-icone-' + plus.couleur : ''));
     ic.appendChild(icone(nomIcone, 16));
     ligne.appendChild(ic);
+    // le numéro de l'épingle de la vue 3D (salles)
+    if (plus.numero !== undefined && plus.numero !== null) ligne.appendChild(el('span', 'numero-salle', String(plus.numero)));
     ligne.appendChild(el('span', 'arbre-libelle', libelle));
     if (plus.note) ligne.appendChild(el('span', 'arbre-note', plus.note));
     if (plus.alertes && plus.alertes.length) {
@@ -194,19 +214,27 @@ export function construireArbre(element, options) {
         titre: carte ? 'Carte du robot : ' + carte.largeur + ' × ' + carte.hauteur + ' pixels' : 'Pas encore de carte pour cet étage' });
       // monde (simulation)
       if (options.mode === 'simu') {
-        const n = monde ? (monde.murs || []).length + (monde.objets || []).length : 0;
+        // le même décompte que le panneau du monde
+        const nm = monde ? (monde.murs || []).length : 0;
+        const no = monde ? (monde.objets || []).length : 0;
+        const np = monde ? (monde.pietons || []).length : 0;
         noeud(dansEtage, 'monde:' + e.id, 'Monde', 'mur', { niveau: 2,
-          note: monde ? n + ' élément' + (n > 1 ? 's' : '') : 'à dessiner' });
+          note: monde ? pluriel(nm, 'mur') + ' · ' + pluriel(no, 'objet') : 'à dessiner',
+          titre: monde ? pluriel(nm, 'mur') + ', ' + pluriel(no, 'objet') + ', ' + pluriel(np, 'piéton') : 'Monde à dessiner' });
       }
       // points
       const ici = salles.filter((s) => s.etage === e.id);
       const p = principal(salles);
-      const tries = ici.slice().sort((a, b) => (a === p ? -1 : (b === p ? 1 : a.nom.localeCompare(b.nom, 'fr'))));
-      const dansPoints = noeud(dansEtage, null, 'Points', 'salle', { dossier: 'points', niveau: 2, note: String(ici.length) });
+      // dans l'ordre des épingles de la vue 3D, avec leur numéro (★ l'accueil d'abord)
+      const tries = sallesDansLOrdre(ici, p ? p.id : null);
+      const dansPoints = noeud(dansEtage, null, 'Points', 'salle', { dossier: 'points', niveau: 2,
+        note: ici.length + ' point' + (ici.length > 1 ? 's' : ''), titre: 'L\'accueil et les salles de l\'étage' });
       if (!tries.length) dansPoints.appendChild(el('li', 'arbre-vide', 'Aucune salle : Placer › Salle.'));
-      tries.forEach((s) => {
+      tries.forEach((x) => {
+        const s = x.salle;
         noeud(dansPoints, 'salle:' + s.id, s.nom, s === p ? 'etoile' : 'salle', {
           niveau: 3, couleur: s === p ? 'accueil' : 'salle', alertes: alertes[s.id], note: s === p ? 'accueil' : '',
+          numero: x.numero, titre: s.nom + (s === p ? ' (accueil)' : ' (épingle ' + x.numero + ')') + ' — id ' + s.id,
         });
       });
       // itinéraires
@@ -214,16 +242,23 @@ export function construireArbre(element, options) {
       const couloirs = (itin.couloirs || []).map((c, i) => ({ c: c, i: i }))
         .filter((x) => itin.noeuds[x.c[0]] && itin.noeuds[x.c[0]].etage === e.id);
       const dansItin = noeud(dansEtage, null, 'Itinéraires', 'relier', { dossier: 'itineraires', niveau: 2,
-        note: noeuds.length + ' · ' + couloirs.length });
+        note: pluriel(noeuds.length, 'nœud'), titre: pluriel(noeuds.length, 'nœud') + ' et ' + pluriel(couloirs.length, 'couloir') });
       const sallesIds = new Set(salles.map((s) => s.id));
+      // un nœud de salle porte le nom de la salle ; les autres, leur identifiant rendu lisible
+      const nomNoeud = (k) => {
+        const s = salles.find((x) => x.id === k);
+        return s ? s.nom : nomLisible(k);
+      };
       noeuds.filter((k) => !sallesIds.has(k)).forEach((k) => {
-        noeud(dansItin, 'noeud:' + k, k, 'noeud', { niveau: 3, couleur: 'itineraire', alertes: alertes[k] });
+        noeud(dansItin, 'noeud:' + k, nomNoeud(k), 'noeud', { niveau: 3, couleur: 'itineraire', alertes: alertes[k],
+          titre: 'Nœud « ' + k + ' »' });
       });
       couloirs.forEach((x) => {
         const a = itin.noeuds[x.c[0]];
         const b = itin.noeuds[x.c[1]];
         const l = a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 0;
-        noeud(dansItin, 'couloir:' + x.i, x.c[0] + ' – ' + x.c[1], 'relier', {
+        noeud(dansItin, 'couloir:' + x.i, nomNoeud(x.c[0]) + ' – ' + nomNoeud(x.c[1]), 'relier', {
+          titre: 'Couloir ' + x.c[0] + ' – ' + x.c[1],
           niveau: 3, couleur: 'itineraire', note: l.toFixed(1).replace('.', ',') + ' m',
           alertes: l > 8 ? ['Couloir de plus de 8 m : coupez-le en deux (Placer › Relier, puis le couloir).'] : null,
         });
@@ -231,7 +266,8 @@ export function construireArbre(element, options) {
       // zones
       const zi = (zones.interdites || []).map((z, i) => ({ z: z, i: i, genre: 'interdite' })).filter((x) => x.z.etage === e.id);
       const zl = (zones.lentes || []).map((z, i) => ({ z: z, i: i, genre: 'lente' })).filter((x) => x.z.etage === e.id);
-      const dansZones = noeud(dansEtage, null, 'Zones', 'zone', { dossier: 'zones', niveau: 2, note: String(zi.length + zl.length) });
+      const dansZones = noeud(dansEtage, null, 'Zones', 'zone', { dossier: 'zones', niveau: 2,
+        note: pluriel(zi.length + zl.length, 'zone') });
       zi.concat(zl).forEach((x) => {
         noeud(dansZones, 'zone:' + x.genre + ':' + x.i, x.z.nom || (x.genre === 'interdite' ? 'Zone interdite' : 'Zone lente'),
           x.genre === 'interdite' ? 'interdit' : 'lent', { niveau: 3, couleur: x.genre === 'interdite' ? 'interdite' : 'lente',
@@ -240,12 +276,12 @@ export function construireArbre(element, options) {
       // scans de cet étage
       const sessions = (Array.isArray(scans) ? scans : []).filter((s) => !s.etage || s.etage === e.id);
       if (sessions.length || options.mode !== 'simu') {
-        const dansScans = noeud(dansEtage, null, 'Scans', 'scan', { dossier: 'scans', niveau: 2, note: String(sessions.length) });
+        const dansScans = noeud(dansEtage, null, 'Scans', 'scan', { dossier: 'scans', niveau: 2, note: pluriel(sessions.length, 'scan') });
         if (!sessions.length) dansScans.appendChild(el('li', 'arbre-vide', 'Aucun scan : Scanner › Scan.'));
         sessions.slice(0, 30).forEach((s) => {
           const adoptee = !!(s.adoption || s.adopte || s.adoptee);
-          noeud(dansScans, 'scan:' + s.id, s.nom || s.id, 'scan', { niveau: 3,
-            note: adoptee ? 'utilisé' : (s.etat === 'termine' ? '' : (s.etat || '')) });
+          const etatScan = ETATS_SCAN[s.etat] !== undefined ? ETATS_SCAN[s.etat] : (s.etat || '');
+          noeud(dansScans, 'scan:' + s.id, s.nom || s.id, 'scan', { niveau: 3, note: adoptee ? 'utilisé' : etatScan });
         });
       }
     });

@@ -1,7 +1,7 @@
 // Fenêtre de confirmation dans la page, à la place de window.confirm (vague 5, section 12.2 du plan) :
 // tous les écrans s'en servent (options.coque.confirmer). Module de l'agent Coquille.
 // Repères : [data-role=confirmation], boutons [data-role=confirmer] et [data-role=renoncer].
-// Entrée confirme, Échap renonce (la coque envoie quand même l'ARRÊT sur Échap : la sécurité d'abord).
+// Entrée confirme, Échap renonce (et la coque envoie aussi l'ARRÊT si le robot bouge : la sécurité d'abord).
 // demanderSaisie(texte, {valeur}) : la même fenêtre avec un champ texte, à la place de window.prompt.
 
 let ouverte = null;       // {fond, finir} : une seule fenêtre à la fois
@@ -85,7 +85,7 @@ function fenetre(texte, options, saisie) {
 
     function clavier(ev) {
       if (ev.key === 'Escape') {
-        finir(saisie ? null : false);      // la coque reçoit aussi Échap (ARRÊT) : on ne l'arrête pas
+        finir(saisie ? null : false);      // la coque reçoit aussi Échap (ARRÊT si le robot bouge)
       } else if (ev.key === 'Enter' && (!ev.target || ev.target.tagName !== 'BUTTON' || ev.target === confirmer)) {
         ev.preventDefault();
         finir(saisie ? champ.value : true);

@@ -21,6 +21,8 @@ export const DESSINS = {
   replier: '<path d="m6 15 6-6 6 6"/>',
   deplier: '<path d="m6 9 6 6 6-6"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
+  'replier-gauche': '<path d="m11 7-5 5 5 5"/><path d="m18 7-5 5 5 5"/>',
+  'deplier-droite': '<path d="m6 7 5 5-5 5"/><path d="m13 7 5 5-5 5"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   coche: '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   croix: '<path d="M6 6l12 12M18 6 6 18"/>',

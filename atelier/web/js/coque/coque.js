@@ -10,12 +10,14 @@
 
 import { api, urlEtage, urlLieu } from '../api.js';
 import { choisirEtage, choisirLieu, contexte, ecouter } from '../contexte.js';
-import { abonner, suivreConnexion } from '../direct.js';
+import { abonner, dernierEtat, suivreConnexion } from '../direct.js';
+import { apresValidations } from '../formulaire.js';
 import { afficherErreur, brancherMessages } from '../messages.js';
+import { flechesTenues } from '../teleop.js';
 import { afficherAccueil } from './accueil.js';
 import { destinationDuHash } from './anciens_hash.js';
 import { construireArbre } from './arbre.js';
-import { monterArret } from './arret.js';
+import { decisionEchap, etatMouvement, monterArret } from './arret.js';
 import { construireBarreEtat } from './barre_etat.js';
 import { demanderConfirmation, demanderSaisie, fenetreOuverte } from './confirmation.js';
 import { icone } from './icones.js';
@@ -97,6 +99,7 @@ const etat = {
   desabonner: [],
   ignorerLieu: false,
   pointeurPlan: null,
+  connecte: false,       // la liaison /ws/etat est ouverte (sinon : on ne sait pas ce qui tourne)
 };
 
 function el(balise, classe, texte) {
@@ -217,7 +220,10 @@ export async function demarrerCoque(options) {
       ev.returnValue = '';
     }
   });
-  document.addEventListener('keydown', clavier);
+  // en capture, sur la fenêtre : la coque voit Échap avant les menus et les fenêtres qui se ferment avec
+  window.addEventListener('keydown', clavier, true);
+  suivreConnexion((ok) => { etat.connecte = ok; });
+  abonner(() => {});      // /ws/etat dès l'accueil : on sait ce qui tourne (Échap, ARRÊT de l'accueil)
   return allerAuHash(true, options);
 }
 
@@ -244,6 +250,13 @@ async function allerAuHash(premiereFois) {
 
 // ---------------------------------------------------------------- accueil
 
+// Mode envoyé par l'ARRÊT de l'accueil : celui du dernier espace ouvert (le serveur ajoute le verrou si la
+// navigation qui tourne est celle du robot ou de la répétition)
+function modeMemoriseArret() {
+  if (lire(CLES_MEMOIRE.mode) !== 'reel') return 'simu';
+  return lire(CLES_MEMOIRE.repetition) === '1' ? 'repetition' : 'reel';
+}
+
 export async function retourAccueil(sansConfirmer) {
   if (!sansConfirmer && !(await quitterEcranPermis())) return false;
   fermerEspace();
@@ -252,6 +265,7 @@ export async function retourAccueil(sansConfirmer) {
   brancherMessages(null);
   etat.accueil = afficherAccueil(racine, {
     surOuvrir: (choix) => ouvrirEspace(choix),
+    modeArret: modeMemoriseArret(),
     surPilotageSansLieu: () => ouvrirEspace({ mode: 'reel', repetition: lire(CLES_MEMOIRE.repetition) === '1',
       lieu: null, ecran: 'pilotage', sansLieu: true }),
     surTheme: basculerTheme,
@@ -323,9 +337,13 @@ function construireEspace() {
   const marque = el('span', 'marque marque-barre', 'Atelier G1');
   gauche.appendChild(marque);
   gauche.appendChild(el('span', 'barre-separateur'));
+  // l'arbre : tiroir sous 1100 px ; au-dessus, ce bouton n'apparaît que l'arbre replié, pour le rouvrir
   const tiroirArbre = boutonIcone('arbre', 'Montrer ou cacher l\'arbre du lieu', 'basculer-arbre');
   tiroirArbre.classList.add('seulement-etroit');
-  tiroirArbre.addEventListener('click', () => basculerTiroir('arbre'));
+  tiroirArbre.addEventListener('click', () => {
+    if (ecranEtroit()) basculerTiroir('arbre');
+    else replierArbre(false);
+  });
   gauche.appendChild(tiroirArbre);
   const choixLieu = el('label', 'choix-barre choix-lieu');
   choixLieu.appendChild(icone('lieu', 18));
@@ -400,15 +418,13 @@ function construireEspace() {
   const arbre = el('aside', 'arbre');
   const enteteArbre = el('div', 'arbre-entete');
   enteteArbre.appendChild(el('span', 'arbre-titre', 'Le lieu'));
-  const replierArbre = boutonIcone('arbre', 'Replier l\'arbre', 'replier-arbre');
-  replierArbre.classList.add('petit');
-  replierArbre.addEventListener('click', () => {
-    const replie = !espace.classList.contains('arbre-replie');
-    espace.classList.toggle('arbre-replie', replie);
-    ecrire(CLES_MEMOIRE.arbreReplie, replie ? '1' : '0');
-    redimensionnerVues();
+  const boutonReplier = boutonIcone('replier-gauche', 'Replier l\'arbre (le bouton ▸ Le lieu le rouvre)', 'replier-arbre');
+  boutonReplier.classList.add('petit');
+  boutonReplier.addEventListener('click', () => {
+    if (ecranEtroit()) espace.classList.remove('tiroir-arbre');
+    else replierArbre(true);
   });
-  enteteArbre.appendChild(replierArbre);
+  enteteArbre.appendChild(boutonReplier);
   const contenuArbre = el('div', 'arbre-contenu');
   arbre.appendChild(enteteArbre);
   arbre.appendChild(contenuArbre);
@@ -449,6 +465,15 @@ function construireEspace() {
       if (etat.carte3d) etat.carte3d.coupe(oui ? null : 2.2);
     },
   });
+  // arbre replié : une languette au bord gauche de la vue le rouvre (elle n'existe que l'arbre replié)
+  const languette = el('button', 'languette-arbre');
+  languette.type = 'button';
+  languette.setAttribute('data-role', 'deplier-arbre');
+  languette.title = 'Montrer l\'arbre du lieu';
+  languette.appendChild(icone('deplier-droite', 16));
+  languette.appendChild(el('span', 'languette-texte', 'Le lieu'));
+  languette.addEventListener('click', () => replierArbre(false));
+  vue.appendChild(languette);
   etat.ruban = construireRuban(ruban, {
     mode: modeCourant(),
     onglet: lire(CLES_MEMOIRE.onglet + modeRuban()),
@@ -511,6 +536,18 @@ function boutonIcone(nomIcone, titre, role) {
   return b;
 }
 
+function ecranEtroit() {
+  return window.innerWidth < 1100;
+}
+
+// Replie (oui) ou rouvre l'arbre du lieu (écrans larges ; sous 1100 px, l'arbre est un tiroir)
+function replierArbre(oui) {
+  if (!etat.espace) return;
+  etat.espace.racine.classList.toggle('arbre-replie', !!oui);
+  ecrire(CLES_MEMOIRE.arbreReplie, oui ? '1' : '0');
+  redimensionnerVues();
+}
+
 function basculerTiroir(quoi) {
   const e = etat.espace.racine;
   const classe = 'tiroir-' + quoi;
@@ -542,12 +579,15 @@ function menuReglages(bouton) {
       menu.appendChild(b);
     };
     item('Thème clair ou sombre', 'theme', basculerTheme);
+    const replie = etat.espace.racine.classList.contains('arbre-replie');
+    if (!ecranEtroit()) item(replie ? 'Montrer l\'arbre du lieu' : 'Cacher l\'arbre du lieu', 'arbre', () => replierArbre(!replie));
     item('Ce qui tourne (commandes lancées)', 'console', () => etat.barreEtat.ceQuiTourne(true));
     item('Derniers messages', 'messages', () => etat.barreEtat.journal(true));
     if (contexte.lieu) item('Vérifier le lieu', 'valider', () => ouvrirEcran('lieux', 'verifier'));
     item('Raccourcis clavier', 'aide', () => {
-      demanderConfirmation('Échap : ARRÊT du robot (et fin de l\'outil en cours).\n\n'
-        + '- Ctrl+Z, Ctrl+Y : annuler, rétablir\n- Ctrl+S : enregistrer\n- F : tout voir (vue 3D)\n'
+      demanderConfirmation('Échap : ARRÊT dès que le robot bouge ou que quelque chose tourne (simulation, '
+        + 'navigation, pilotage). Sinon, Échap ferme le menu ou la fenêtre, annule la saisie ou l\'outil en cours.\n\n'
+        + '- Ctrl+Z, Ctrl+Y : annuler, rétablir\n- Ctrl+S : enregistrer (même pendant une saisie)\n- F : tout voir (vue 3D)\n'
         + '- Ctrl+Page haut, Ctrl+Page bas : onglet précédent, suivant\n- Suppr : supprimer l\'élément choisi',
       { titre: 'Raccourcis clavier', ok: 'Compris', annuler: 'Fermer' });
     });
@@ -800,6 +840,8 @@ async function ouvrirEcran(id, nomCommande, valeur, plus) {
   }
   if (!plus.forcer && !(await quitterEcranPermis())) return false;
   const numero = ++etat.ouverture;
+  // un autre écran : le message de l'écran d'avant ne reste pas dans la barre d'état (il est dans le journal)
+  if (etat.ecran && etat.ecran.id !== id && etat.barreEtat) etat.barreEtat.effacer();
   fermerEcran();
   if (!def.sansLieu && (!contexte.lieu || !contexte.etage)) {
     panneauSansLieu();
@@ -903,6 +945,7 @@ function interfaceCoque(idEcran) {
     confirmer: (texte, o) => demanderConfirmation(texte, o),
     saisir: (texte, o) => demanderSaisie(texte, o),
     message: (texte, genre, details, sortie) => (etat.barreEtat ? etat.barreEtat.message(texte, genre, details, sortie) : null),
+    effacerMessage: () => { if (etat.barreEtat) etat.barreEtat.effacer(); },
     pleinEcran: (oui) => {
       if (!etat.espace) return;
       etat.espace.racine.classList.toggle('plein-ecran', !!oui);
@@ -1085,7 +1128,12 @@ function redimensionnerVues() {
   });
 }
 
+// Vues prédéfinies et « Recadrer » : la carte 3D, ou en Plan 2D l'écran ouvert (tout le plan de l'étage)
 function cadrer(nom) {
+  if (etat.vue && etat.vue.courante() === 'plan') {
+    if (nom === 'recadrer') appelerEcran('recadrer');
+    return;
+  }
   if (!etat.carte3d) return;
   if (nom === 'recadrer') etat.carte3d.recadrer();
   else etat.carte3d.vue(nom);
@@ -1252,11 +1300,12 @@ function majPastille(nom, genre, texte, titre) {
   p.title = titre || texte;
 }
 
+// pastille du robot (courte : la barre d'outils reste entière à 1366 px ; le message complet en infobulle)
 const TEXTES_PONT = {
-  demarrage: ['attente', 'Robot : démarrage'], attente_reperage: ['attente', 'Robot : à repérer'],
-  pret: ['ok', 'Robot prêt'], en_mouvement: ['ok', 'Robot en marche'], arret: ['attente', 'Robot arrêté'],
+  demarrage: ['attente', 'Robot démarre'], attente_reperage: ['attente', 'À repérer'],
+  pret: ['ok', 'Robot prêt'], en_mouvement: ['ok', 'En marche'], arret: ['attente', 'Robot arrêté'],
   arret_verrouille: ['ko', 'Robot bloqué'], robot_muet: ['ko', 'Robot muet'], refus: ['ko', 'Refus du robot'],
-  pilotage: ['ok', 'Robot piloté'], pas_en_marche: ['ko', 'Robot pas en marche'],
+  pilotage: ['ok', 'Piloté'], pas_en_marche: ['ko', 'Pas en marche'],
 };
 
 function recevoirDirect(d) {
@@ -1318,13 +1367,69 @@ function dansUnChamp(cible) {
     || cible.isContentEditable));
 }
 
-function clavier(ev) {
-  if (!etat.espace) return;
-  if (ev.key === 'Escape') {
-    // ARRÊT toujours (sécurité) ; les écrans et la carte 3D reçoivent aussi Échap (fin de l'outil)
+// Commandes du ruban qui sont un outil en cours qu'Échap annule (retour à « Choisir ») : Placer, Dessiner
+// (sauf « Choisir » lui-même) et « Robot ailleurs » de Naviguer
+function outilAnnulable(id) {
+  const c = commandeParId(id);
+  if (!c || c.case || id === 'monde.choisir') return false;
+  return c.onglet === 'placer' || c.onglet === 'dessiner' || id === 'navigation.position';
+}
+
+// Échap a-t-il un usage dans la page à cet instant : fermer un menu, une fenêtre, un volet, un tiroir, annuler
+// une saisie, l'outil ou le geste en cours ? Vu avant que ces éléments réagissent (écoute en capture).
+function echapServi(ev) {
+  if (fenetreOuverte() || document.querySelector('.menu-ruban')) return true;
+  if (dansUnChamp(ev.target)) return true;
+  if (!etat.espace) return !!(etat.accueil && etat.accueil.formulaireOuvert && etat.accueil.formulaireOuvert());
+  const r = etat.espace.racine;
+  if (r.querySelector('.menu-calques:not([hidden]), [data-role=journal]:not([hidden]), [data-role=ce-qui-tourne]:not([hidden])')) {
+    return true;
+  }
+  if (r.classList.contains('tiroir-arbre') || r.classList.contains('tiroir-panneau')) return true;
+  if (carte3dPrete()) {
+    try {
+      const e = etat.carte3d.etat();
+      if (e.geste || (e.outil && e.outil !== 'naviguer')) return true;
+    } catch (err) {
+      // carte 3D détruite entre-temps
+    }
+  }
+  const presse = r.querySelector('.ruban-commandes .commande[aria-pressed=true]:not(.commande-case)');
+  return !!(presse && outilAnnulable(presse.getAttribute('data-commande')));
+}
+
+// Échap : l'ARRÊT dès que le robot bouge (toujours) ou que quelque chose tourne (si la touche ne sert pas déjà
+// à fermer ou annuler) ; sinon, la touche ferme et annule seulement (revue de la vague 5 : un Échap pour fermer
+// un menu bloquait le robot en répétition). Sur l'accueil aussi : la navigation peut tourner encore.
+function echap(ev) {
+  const servi = echapServi(ev);
+  const m = etatMouvement(etat.connecte ? dernierEtat() : null, flechesTenues());
+  const decision = decisionEchap(m, servi);
+  if (decision === 'arret') {
     if (etat.arret) etat.arret.arreter('touche Échap');
+    else if (etat.accueil && etat.accueil.arreter) etat.accueil.arreter('touche Échap');
+  }
+  // ce que la coque a ouvert se ferme (les menus du ruban, les fenêtres et les outils réagissent d'eux-mêmes)
+  document.querySelectorAll('.menu-reglages').forEach((x) => x.remove());
+  if (etat.espace) {
+    etat.espace.racine.classList.remove('tiroir-arbre', 'tiroir-panneau');
+    if (etat.barreEtat) {
+      etat.barreEtat.journal(false);
+      etat.barreEtat.ceQuiTourne(false);
+    }
+    if (etat.vue) etat.vue.fermerCalques();
+    if (decision === 'rien' && etat.barreEtat) {
+      etat.barreEtat.message('Échap : rien ne bouge ni ne tourne, rien à arrêter (ARRÊT reste en haut à droite).', 'info');
+    }
+  }
+}
+
+function clavier(ev) {
+  if (ev.key === 'Escape') {
+    echap(ev);
     return;
   }
+  if (!etat.espace) return;
   if (fenetreOuverte()) return;
   const ctrl = ev.ctrlKey || ev.metaKey;
   if (ctrl && (ev.key === 'PageUp' || ev.key === 'PageDown')) {
@@ -1334,18 +1439,24 @@ function clavier(ev) {
     ouvrirOnglet(ids[(i + (ev.key === 'PageUp' ? ids.length - 1 : 1)) % ids.length]);
     return;
   }
-  if (dansUnChamp(ev.target)) return;
   const touche = (ev.key || '').toLowerCase();
   if (ctrl && touche === 's') {
+    // même pendant une saisie : le champ quitté est validé, puis l'écran enregistre (la page web ne
+    // s'enregistre jamais à la place)
     ev.preventDefault();
-    appelerEcran('enregistrer');
-  } else if (ctrl && touche === 'z' && !ev.shiftKey) {
+    const actif = document.activeElement;
+    if (dansUnChamp(actif) && actif.blur) actif.blur();
+    apresValidations(() => appelerEcran('enregistrer'));
+    return;
+  }
+  if (dansUnChamp(ev.target)) return;
+  if (ctrl && touche === 'z' && !ev.shiftKey) {
     ev.preventDefault();
     appelerEcran('defaire');
   } else if (ctrl && (touche === 'y' || (touche === 'z' && ev.shiftKey))) {
     ev.preventDefault();
     appelerEcran('refaire');
-  } else if (!ctrl && !ev.altKey && touche === 'f' && etat.vue && etat.vue.courante() === '3d') {
+  } else if (!ctrl && !ev.altKey && touche === 'f' && etat.vue && ['3d', 'plan'].indexOf(etat.vue.courante()) >= 0) {
     cadrer('recadrer');
   } else if (ctrl && etat.vue && etat.vue.courante() === '3d' && ['1', '5', '7'].indexOf(touche) >= 0) {
     ev.preventDefault();

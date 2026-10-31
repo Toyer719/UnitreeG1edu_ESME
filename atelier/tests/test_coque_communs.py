@@ -481,9 +481,11 @@ def parcours_theme(nav, base):
             f"vue 3D toujours sombre ({fond_clair})")
 
 
-def parcours_arret(nav, base, mode, lieu="demo", verrou=False):
+def parcours_arret(nav, base, mode, lieu="demo", verrou=False, tourne=True):
     """Le clic sur ARRÊT et la touche Échap envoient POST /api/arret {mode} ; avec verrou (Réel ou répétition,
-    pont ROS 2 en marche), le bouton passe ensuite à « Débloquer » (data-etat=bloque)."""
+    pont ROS 2 en marche), le bouton passe ensuite à « Débloquer » (data-etat=bloque). Revue de la vague 5 :
+    Échap n'envoie l'ARRÊT que si quelque chose tourne (tourne) ; sinon, rien ne part et la barre d'état dit
+    qu'il n'y a rien à arrêter."""
     ouvrir_espace(nav, base, mode, lieu=lieu)
     vu = []
     for geste in ("clic", "Échap"):
@@ -492,6 +494,13 @@ def parcours_arret(nav, base, mode, lieu="demo", verrou=False):
             nav.clic("[data-role=arret]")
         else:
             nav.js("document.body.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, cancelable: true}))")
+        if geste == "Échap" and not tourne:
+            time.sleep(0.8)
+            assert len(requetes(nav, "POST", "/api/arret")) == avant, "Échap a envoyé l'ARRÊT alors que rien ne tourne"
+            message = nav.js("return document.querySelector('[data-role=etat-message]').textContent")
+            assert "rien à arrêter" in message, f"message après Échap : {message}"
+            vu.append("Échap, rien ne tourne : pas d'ARRÊT, « rien à arrêter »")
+            continue
         r = nav.attendre(DERNIER_ARRET, avant, "/api/arret", delai=5.0, message=f"POST /api/arret après {geste}")
         assert (r.get("corps") or {}).get("mode") == mode, f"{geste} : corps de l'ARRÊT {r.get('corps')} ({mode} attendu)"
         # la réponse est arrivée (un second appui pendant qu'un ARRÊT part encore ne renvoie rien de plus)
@@ -504,6 +513,72 @@ def parcours_arret(nav, base, mode, lieu="demo", verrou=False):
             assert "Débloquer" in etat, f"texte du bouton bloqué : {etat}"
             vu.append(f"bouton « {etat} » (data-etat=bloque)")
     assert not fenetres_natives(nav), f"boîtes natives : {fenetres_natives(nav)}"
+    return vu
+
+
+# ---------------------------------------------------------------- revue de la vague 5 (critère 31)
+
+LANGUETTE = """const b = document.querySelector('[data-role=deplier-arbre]'); const r = b.getBoundingClientRect();
+const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+return [getComputedStyle(b).display, Math.round(r.width), Math.round(r.height), t === b || b.contains(t)];"""
+
+SALLES_VISIBLES = """const v = document.querySelector('[data-role=vue-plan]').getBoundingClientRect();
+return Array.from(document.querySelectorAll('[data-ecran=salles] .leaflet-marker-icon.icone-orientee')).filter((m) => {
+  const r = m.getBoundingClientRect(); return r.right > v.left && r.left < v.right && r.bottom > v.top && r.top < v.bottom;
+}).length;"""
+
+# la barre d'outils en répétition, avec la plus longue pastille du robot : rien ne se chevauche
+BARRE_SANS_CHEVAUCHEMENT = """const p = document.querySelector('[data-etat=robot]');
+p.hidden = false;
+p.querySelector('.etat-pastille-texte').textContent = arguments[0];
+const boites = ['[data-role=lieu]', '[data-role=etage]', '[data-role=mode]', '[data-role=defaire]', '[data-etat=robot]',
+  '[data-role=theme]', '[data-role=arret]'].map((s) => [s, document.querySelector(s)]).filter((x) => x[1] && x[1].getClientRects().length)
+  .map((x) => [x[0], x[1].getBoundingClientRect()]);
+const fautes = [];
+for (let i = 0; i < boites.length; i += 1) {
+  for (let j = i + 1; j < boites.length; j += 1) {
+    const a = boites[i][1], b = boites[j][1];
+    if (a.right > b.left + 1 && b.right > a.left + 1 && a.bottom > b.top + 1 && b.bottom > a.top + 1) fautes.push(boites[i][0] + ' et ' + boites[j][0]);
+  }
+}
+const t = p.querySelector('.etat-pastille-texte');
+if (t.scrollWidth > t.clientWidth + 1) fautes.push('pastille du robot coupée');
+return fautes;"""
+
+
+def parcours_revue_v5(nav, base):
+    """Corrections de la revue (critère 31) : l'arbre replié se rouvre par la languette « Le lieu » (mesure sans
+    faute, arbre replié) ; le Plan 2D ouvert après la 3D montre les salles ; la barre d'outils de la répétition,
+    avec la plus longue pastille du robot, sans chevauchement."""
+    vu = []
+    ouvrir_espace(nav, base, "simu")
+    nav.clic("[data-role=replier-arbre]")
+    nav.attendre("return document.querySelector('[data-role=espace]').classList.contains('arbre-replie')",
+                 message="arbre replié")
+    time.sleep(0.3)
+    fautes = mesurer(nav)["fautes"]
+    assert not fautes, "arbre replié : " + " | ".join(fautes[:5])
+    l = nav.js(LANGUETTE)
+    assert l[0] != "none" and l[1] >= 24 and l[2] >= 24 and l[3], f"languette « Le lieu » : {l}"
+    nav.clic("[data-role=deplier-arbre]")
+    nav.attendre("return !document.querySelector('[data-role=espace]').classList.contains('arbre-replie')",
+                 message="arbre rouvert par la languette")
+    vu.append("arbre replié (mesure sans faute) puis rouvert par la languette « Le lieu »")
+    ouvrir_espace(nav, base, "simu", hash_="#salles")
+    nav.attendre("return !!document.querySelector('[data-ecran=salles]')", message="Placer")
+    attendre_pret(nav)
+    if nav.js("return document.querySelector('[data-role=vue]').getAttribute('data-vue')") == "3d":
+        nav.js("document.querySelector('[data-vue=plan]').click()")
+        time.sleep(1.0)
+        n = nav.js(SALLES_VISIBLES)
+        assert n >= 1, "Plan 2D ouvert après la 3D : aucune salle visible"
+        vu.append(f"Placer ouvert en 3D, puis Plan 2D : {n} salle(s) visibles")
+    else:
+        vu.append("Placer s'ouvre en Plan 2D (sans WebGL) : cas de la 3D non essayé")
+    ouvrir_espace(nav, base, "repetition")
+    fautes = nav.js(BARRE_SANS_CHEVAUCHEMENT, "Refus du robot")
+    assert not fautes, f"barre d'outils de la répétition : {fautes}"
+    vu.append("barre d'outils de la répétition, pastille « Refus du robot » : rien ne se chevauche")
     return vu
 
 

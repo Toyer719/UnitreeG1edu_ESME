@@ -4,7 +4,9 @@
 // plan). Module de l'agent Coquille.
 //
 // afficherAccueil(racine, {surOuvrir({mode, repetition, lieu, etage, telecommande}), surPilotageSansLieu(),
-//   mode, repetition, lieu, etage, surTheme()}) → {fermer()}
+//   mode, repetition, lieu, etage, surTheme(), modeArret}) → {fermer(), arreter(raison), formulaireOuvert()}
+// Quand quelque chose tourne encore (navigation, répétition, pilotage, simulation : /ws/etat), l'en-tête
+// montre le bouton ARRÊT (modeArret : le mode envoyé), et Échap l'envoie (la coque l'appelle).
 // Un clic choisit une carte, un double-clic ou Entrée ouvre. Repères : [data-role=accueil],
 // [data-role=mode-simu], [data-role=mode-reel] (aria-pressed), [data-role=repetition] (case),
 // [data-role=verifications] avec [data-verif=ros|cable|robot|telecommande] (data-etat=ok|non|inconnu),
@@ -12,7 +14,9 @@
 // [data-role=pilotage-sans-lieu].
 
 import { api } from '../api.js';
+import { abonner } from '../direct.js';
 import { idDepuisNom, verifierId } from '../geometrie.js';
+import { etatMouvement, monterArret } from './arret.js';
 import { icone, ILLUSTRATIONS } from './icones.js';
 
 const PERIODE_LIAISON_MS = 4000;
@@ -21,7 +25,7 @@ const TEXTES_MODES = {
   reel: { titre: 'Robot réel', texte: 'Scanner le bâtiment, placer les salles et guider le vrai G1.' },
 };
 const VERIFICATIONS = {
-  ros: { reel: 'Atelier lancé avec robot.sh', repetition: 'ROS 2 actif dans l\'Atelier' },
+  ros: { reel: 'Atelier lancé avec robot.sh', repetition: 'ROS 2 actif' },
   cable: { reel: 'Câble du robot branché' },
   robot: { reel: 'PC1 et Jetson répondent' },
   telecommande: { reel: 'Télécommande en main' },
@@ -49,15 +53,17 @@ function ms(v) {
 // État d'une vérification d'après la réponse de GET /api/robot/liaison : [etat, détail]
 export function etatVerification(nom, liaison, repetition) {
   if (!liaison) return ['inconnu', 'vérification en cours…'];
+  // [etat, détail affiché, détail technique en infobulle]
   if (nom === 'ros') {
-    if (repetition) return liaison.ros.actif ? ['ok', 'ROS 2 répond'] : ['non', 'pont ROS 2 de l\'Atelier arrêté'];
+    if (repetition) return liaison.ros.actif ? ['ok', ''] : ['non', 'l\'Atelier ne voit pas ROS 2 : relancez-le'];
     const bon = liaison.ros.domaine === '0' && (!liaison.ros.cyclonedds || liaison.ros.cyclonedds === liaison.interface);
-    return bon ? ['ok', 'domaine 0' + (liaison.ros.cyclonedds ? ', ' + liaison.ros.cyclonedds : '')]
-      : ['non', 'domaine ' + liaison.ros.domaine + ' : relancez avec « source ~/robot-g1/setup/robot.sh »'];
+    const technique = 'domaine ' + liaison.ros.domaine + (liaison.ros.cyclonedds ? ', interface ' + liaison.ros.cyclonedds : '');
+    return bon ? ['ok', 'réglé pour le robot', technique]
+      : ['non', 'relancez l\'Atelier après «\u00a0source ~/robot-g1/setup/robot.sh\u00a0»', technique];
   }
   if (nom === 'cable') {
-    return liaison.cable ? ['ok', liaison.interface + (liaison.adresse_pc ? ', ' + liaison.adresse_pc : '')]
-      : ['non', 'rien sur ' + liaison.interface];
+    const technique = 'interface ' + liaison.interface + (liaison.adresse_pc ? ', adresse ' + liaison.adresse_pc : '');
+    return liaison.cable ? ['ok', 'câble détecté', technique] : ['non', 'câble non détecté', technique];
   }
   if (nom === 'robot') {
     if (!liaison.cable) return ['inconnu', 'branchez d\'abord le câble'];
@@ -97,6 +103,12 @@ export function afficherAccueil(racine, options) {
   const etatServeur = el('span', 'accueil-serveur', 'Serveur…');
   etatServeur.setAttribute('data-role', 'etat-serveur');
   entete.appendChild(etatServeur);
+  // ARRÊT, seulement quand quelque chose tourne encore (on est revenu à l'accueil pendant une navigation…)
+  const zoneArret = el('div', 'zone-arret accueil-arret');
+  zoneArret.hidden = true;
+  const tourneEncore = el('span', 'accueil-tourne', 'Le robot tourne encore');
+  zoneArret.appendChild(tourneEncore);
+  entete.appendChild(zoneArret);
   const boutonTheme = el('button', 'bouton-icone');
   boutonTheme.type = 'button';
   boutonTheme.setAttribute('data-role', 'theme');
@@ -227,6 +239,20 @@ export function afficherAccueil(racine, options) {
   page.appendChild(corps);
   racine.appendChild(page);
 
+  const arret = monterArret(zoneArret, { mode: options.modeArret || null, message: (t, g) => dire(t, g === 'avertissement' ? 'info' : g) });
+  const NOMS_TOURNE = { simulation: 'la simulation', navigation: 'la navigation', faux_slam: 'la répétition',
+    pilotage: 'le pilotage', scan: 'un scan', pont: 'le robot', guide: 'le guide', fleches: 'les flèches' };
+  const desabonner = abonner((d) => {
+    const m = etatMouvement(d, false);
+    const montrer = m.enMouvement || m.tourne.length > 0 || arret.bloque();
+    zoneArret.hidden = !montrer;
+    if (montrer) {
+      const noms = m.tourne.map((n) => NOMS_TOURNE[n] || n).filter((n, i, l) => l.indexOf(n) === i);
+      tourneEncore.textContent = noms.length ? 'En cours : ' + noms.slice(0, 2).join(', ') : 'Robot bloqué';
+      zoneArret.title = 'Quelque chose tourne encore : ARRÊT (ou Échap) arrête le robot tout de suite.';
+    }
+  });
+
   // ---------------------------------------------------------------- mode et vérifications
 
   function choisirMode(m) {
@@ -334,6 +360,7 @@ export function afficherAccueil(racine, options) {
         const r = etatVerification(nom, liaison, repetition);
         etat = r[0];
         detail = r[1];
+        li.title = r[2] || '';
       }
       li.setAttribute('data-etat', etat);
       li.querySelector('.verification-detail').textContent = detail;
@@ -502,6 +529,10 @@ export function afficherAccueil(racine, options) {
 
   function clavier(ev) {
     const cible = ev.target;
+    if (ev.key === 'Escape' && !formulaire.hidden) {
+      formulaire.hidden = true;
+      return;
+    }
     if (cible && (cible.tagName === 'INPUT' || cible.tagName === 'TEXTAREA' || cible.tagName === 'SELECT')) return;
     if (ev.key === 'Enter' && !(cible && cible.tagName === 'BUTTON' && cible !== boutonOuvrir)) {
       ev.preventDefault();
@@ -529,7 +560,11 @@ export function afficherAccueil(racine, options) {
       ferme = true;
       if (minuterie) clearInterval(minuterie);
       document.removeEventListener('keydown', clavier);
+      desabonner();
+      arret.detruire();
       racine.textContent = '';
     },
+    arreter: (raison) => arret.arreter(raison),
+    formulaireOuvert: () => !formulaire.hidden,
   };
 }

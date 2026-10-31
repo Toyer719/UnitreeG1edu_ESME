@@ -101,7 +101,7 @@ export const COMMANDES = [
   c('navigation.bloquer', R, 'naviguer', 'securite', 'Bloquer', 'cadenas', 'Le robot reste immobile jusqu\'à « Débloquer ».', 'simulation', 'bloquer'),
   c('navigation.debloquer', R, 'naviguer', 'securite', 'Débloquer', 'cadenas-ouvert', 'Le robot peut de nouveau marcher.', 'simulation', 'debloquer'),
   c('navigation.arreter', R, 'naviguer', 'navigation', 'Arrêter', 'stop', 'Arrête la navigation (et la répétition).', 'simulation', 'arreter'),
-  c('navigation.position', R, 'naviguer', 'avance', 'Robot ailleurs', 'position', 'Le robot n\'est pas sur l\'accueil : cliquez sur la carte où il est, puis glissez vers son avant.', 'simulation', 'position', { avance: true, vue: 'plan' }),
+  c('navigation.position', R, 'naviguer', 'avance', 'Situer le robot', 'position', 'Le robot n\'est pas sur l\'accueil : cliquez sur la carte où il est, puis glissez vers son avant.', 'simulation', 'position', { avance: true, vue: 'plan' }),
 
   // Réel › Piloter (vrai robot, ou répétition avec le faux G1)
   c('pilotage.main', R, 'piloter', 'main', 'Prendre la main', 'main', 'Pilotez le robot vous-même : le guide attend.', 'pilotage', 'main'),
