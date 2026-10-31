@@ -1,3 +1,387 @@
-/* Styles de la carte 3D (vague 5, section 12.3 du plan) : agent Carte 3D. Feuille livrée vide par
-   l'agent Contrats, chargée après theme.css et atelier.css (index.html). Couleurs : les jetons --vue-*
-   et --repere-* de theme.css. */
+/* Styles de la carte 3D (vague 5, section 12.3 du plan) : agent Carte 3D. Chargée après theme.css et
+   atelier.css (index.html). Aucune couleur en dur : les jetons --vue-*, --repere-*, --nuage-* et
+   --zone-* de theme.css (la vue 3D est toujours sombre, quel que soit le thème). */
+
+.carte3d {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--vue-fond);
+  color: var(--vue-texte);
+  font-family: var(--police);
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* les mesures du module (têtes de 24 px, étiquettes de 22 px) valent aussi sans atelier.css */
+.carte3d,
+.carte3d *,
+.carte3d *::before,
+.carte3d *::after {
+  box-sizing: border-box;
+}
+
+.carte3d:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--accent-actif);
+}
+
+.carte3d [hidden] {
+  display: none !important;
+}
+
+.carte3d-toile {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: default;
+}
+
+.carte3d.outil-salle .carte3d-toile,
+.carte3d.outil-accueil .carte3d-toile,
+.carte3d.outil-noeud .carte3d-toile,
+.carte3d.outil-mesurer .carte3d-toile {
+  cursor: crosshair;
+}
+
+.carte3d.survol-repere .carte3d-toile {
+  cursor: grab;
+}
+
+.carte3d.survol-choix .carte3d-toile {
+  cursor: pointer;
+}
+
+.carte3d.geste-en-cours .carte3d-toile {
+  cursor: grabbing;
+}
+
+/* Têtes d'épingle et noms des salles : posés par le module sur la projection de leur point */
+.carte3d-html {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.carte3d-tete,
+.carte3d-etiquette,
+.carte3d-mesure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  will-change: transform;
+}
+
+.carte3d-tete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  border-radius: 50%;
+  background: var(--repere-salle);
+  color: var(--sur-accent);
+  border: 2px solid var(--vue-texte);
+  box-shadow: var(--ombre);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.carte3d-tete.principal {
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  background: var(--repere-accueil);
+  color: var(--vue-fond);
+  font-size: 16px;
+}
+
+.carte3d-tete.choisi {
+  box-shadow: 0 0 0 3px var(--repere-choisi), var(--ombre);
+}
+
+.carte3d-tete.fantome,
+.carte3d-etiquette.fantome {
+  opacity: 0.65;
+}
+
+.carte3d-tete.noeud {
+  background: var(--itineraire);
+  color: var(--vue-fond);
+}
+
+.carte3d-etiquette {
+  margin: -11px 0 0 18px;
+  padding: 2px 9px;
+  border-radius: var(--rayon-pilule);
+  background: var(--vue-barre);
+  color: var(--vue-texte);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(6px);
+}
+
+.carte3d-etiquette.doublon {
+  display: none;
+}
+
+.carte3d-etiquette.principal {
+  margin-left: 20px;
+  box-shadow: inset 0 0 0 1px var(--repere-accueil);
+  font-weight: 600;
+}
+
+/* Place du nom autour de sa tête, choisie par le module pour ne rien chevaucher (placerEtiquettes de
+   geometrie3d.js : 6 px entre le bord de la tête et le nom) ; sans place libre, le nom est caché */
+.carte3d-etiquette[data-place="gauche"] {
+  margin: -11px 0 0 -18px;
+  translate: -100% 0;
+}
+
+.carte3d-etiquette.principal[data-place="gauche"] {
+  margin-left: -20px;
+}
+
+.carte3d-etiquette[data-place="dessus"] {
+  margin: -18px 0 0 0;
+  translate: -50% -100%;
+}
+
+.carte3d-etiquette.principal[data-place="dessus"] {
+  margin-top: -20px;
+}
+
+.carte3d-etiquette[data-place="dessous"] {
+  margin: 18px 0 0 0;
+  translate: -50% 0;
+}
+
+.carte3d-etiquette.principal[data-place="dessous"] {
+  margin-top: 20px;
+}
+
+.carte3d-etiquette.cachee {
+  visibility: hidden;
+}
+
+.carte3d-mesure {
+  margin: -24px 0 0 0;
+  padding: 3px 10px;
+  border-radius: var(--rayon-pilule);
+  background: var(--vue-barre);
+  color: var(--vue-texte);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  translate: -50% 0;
+}
+
+/* Indicateur d'orientation, en bas à gauche : x rouge (est), y vert (nord), z bleu (haut) */
+.carte3d-axes {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  z-index: 2;
+  overflow: visible;
+}
+
+.carte3d-axes-fond {
+  fill: var(--vue-barre);
+  stroke: var(--vue-grille);
+  stroke-width: 1;
+}
+
+.carte3d-axe {
+  cursor: pointer;
+}
+
+.carte3d-axe line {
+  stroke-width: 2.5;
+  stroke-linecap: round;
+}
+
+.carte3d-axe text {
+  font: 700 10px var(--police);
+  fill: var(--vue-fond);
+  pointer-events: none;
+}
+
+.carte3d-axe.axe-x line { stroke: var(--zone-interdite); }
+.carte3d-axe.axe-x circle { fill: var(--zone-interdite); }
+.carte3d-axe.axe-y line { stroke: var(--nuage-bas); }
+.carte3d-axe.axe-y circle { fill: var(--nuage-bas); }
+.carte3d-axe.axe-z line { stroke: var(--repere-salle); }
+.carte3d-axe.axe-z circle { fill: var(--repere-salle); }
+.carte3d-axe.axe-z text { fill: var(--vue-texte); }
+
+.carte3d-axe.derriere {
+  opacity: 0.45;
+}
+
+/* Légende des hauteurs et réglages du nuage, en bas à droite (seulement avec un nuage) */
+.carte3d-legende {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  width: 200px;
+  padding: 8px 10px;
+  border-radius: var(--rayon);
+  background: var(--vue-barre);
+  color: var(--vue-texte);
+  font-size: 12px;
+  backdrop-filter: blur(8px);
+}
+
+.carte3d-legende-titre {
+  color: var(--vue-texte-doux);
+  margin-bottom: 4px;
+}
+
+.carte3d-degrade {
+  height: 8px;
+  border-radius: var(--rayon-pilule);
+  background: linear-gradient(to right, var(--nuage-bas), var(--nuage-milieu), var(--nuage-haut));
+}
+
+.carte3d-graduations {
+  display: flex;
+  justify-content: space-between;
+  color: var(--vue-texte-doux);
+  margin: 2px 0 6px;
+}
+
+.carte3d-reglage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  cursor: pointer;
+}
+
+.carte3d-reglage input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-actif);
+}
+
+.carte3d-reglage input[type="range"] {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--accent-actif);
+}
+
+/* Barre flottante (option barre) : Dessus, Iso, Face, Recadrer, Calques */
+.carte3d-barre {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--rayon-pilule);
+  background: var(--vue-barre);
+  backdrop-filter: blur(8px);
+  max-width: calc(100% - 20px);
+}
+
+.carte3d-bouton {
+  min-height: 36px;
+  min-width: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--rayon-pilule);
+  background: transparent;
+  color: var(--vue-texte);
+  font: 600 13px var(--police);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carte3d-bouton:hover {
+  background: var(--vue-grille);
+}
+
+.carte3d-bouton[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--sur-accent);
+}
+
+.carte3d-menu {
+  position: relative;
+}
+
+.carte3d-menu > summary {
+  list-style: none;
+}
+
+.carte3d-menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.carte3d-menu > summary::after {
+  content: " ▾";
+}
+
+.carte3d-menu-liste {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  padding: 6px 10px;
+  border-radius: var(--rayon);
+  background: var(--vue-barre);
+  color: var(--vue-texte);
+  font-size: 13px;
+  backdrop-filter: blur(8px);
+  box-shadow: var(--ombre);
+}
+
+.carte3d-chargement {
+  position: absolute;
+  top: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  padding: 6px 14px;
+  border-radius: var(--rayon-pilule);
+  background: var(--vue-barre);
+  color: var(--vue-texte);
+  font-size: 13px;
+}
+
+.carte3d.carte3d-absente {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.carte3d-sans-webgl {
+  max-width: 420px;
+  padding: 16px 20px;
+  border-radius: var(--rayon);
+  background: var(--vue-barre);
+  color: var(--vue-texte);
+  text-align: center;
+  line-height: 1.5;
+}
+
+@media (pointer: coarse) {
+  .carte3d-bouton {
+    min-height: var(--cible);
+  }
+}

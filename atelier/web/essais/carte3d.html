@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atelier G1 · essai de la carte 3D</title>
+  <!-- Page d'essai de la carte 3D (vague 5, section 12.3 du plan), jamais liée par l'interface : la carte
+       seule, sans la coque, pour les tests dans Firefox sans fenêtre et les captures. Même importmap que
+       index.html. Logique : js/carte3d/essai.js. -->
+  <link rel="stylesheet" href="../css/theme.css">
+  <link rel="stylesheet" href="../css/carte3d.css">
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    [hidden] { display: none !important; }
+    body.essai-carte3d {
+      display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--fond); color: var(--texte);
+      font: 14px/1.4 var(--police);
+    }
+    .essai-barre { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px;
+      background: var(--surface); border-bottom: 1px solid var(--bord); }
+    .essai-barre strong { margin-right: 8px; }
+    .essai-lieu { color: var(--texte-doux); margin-right: auto; }
+    .essai-barre button, .essai-panneau button { min-height: var(--cible); padding: 0 14px; border-radius: var(--rayon-petit);
+      border: 1px solid var(--bord); background: var(--surface-2); color: var(--texte); font: inherit; cursor: pointer; }
+    .essai-barre button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent-actif); color: var(--sur-accent); }
+    .essai-barre button:disabled { opacity: 0.45; cursor: default; }
+    .essai-barre button.essai-principal { background: var(--accent); color: var(--sur-accent); border-color: var(--accent); }
+    .essai-centre { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; }
+    .essai-vue { position: relative; min-height: 0; }
+    .essai-panneau { overflow-y: auto; overscroll-behavior: contain; padding: 12px; background: var(--surface);
+      border-left: 1px solid var(--bord); min-height: 0; }
+    .essai-panneau h3 { margin: 4px 0 10px; font-size: 16px; }
+    .essai-panneau .champ { display: grid; grid-template-columns: 1fr auto; gap: 2px 6px; margin: 0 0 10px; }
+    .essai-panneau .champ-libelle { grid-column: 1 / -1; color: var(--texte-doux); font-size: 12px; }
+    .essai-panneau input { min-height: 36px; padding: 0 8px; border-radius: var(--rayon-petit); border: 1px solid var(--bord);
+      background: var(--fond); color: var(--texte); font: inherit; }
+    .essai-panneau .champ-unite { align-self: center; color: var(--texte-doux); }
+    .essai-panneau .panneau-note { color: var(--texte-doux); font-size: 12px; }
+    .essai-panneau .liste-choix { list-style: none; padding: 0; margin: 0; }
+    .essai-panneau .bouton-lien { width: 100%; text-align: left; margin-bottom: 6px; }
+    .essai-panneau .bouton { display: block; width: 100%; margin: 6px 0; }
+    .essai-panneau .bouton-danger { border-color: var(--danger); }
+    .essai-etat { display: flex; gap: 16px; align-items: center; min-height: var(--h-barre-etat); padding: 0 12px;
+      background: var(--surface); border-top: 1px solid var(--bord); color: var(--texte-doux); font-size: 12px; }
+    .essai-etat [data-role="etat-coordonnees"] { margin-left: auto; font-variant-numeric: tabular-nums; }
+    .essai-erreur { color: var(--danger); }
+    .essai-succes { color: var(--succes); }
+    @media (max-width: 900px) { .essai-centre { grid-template-columns: minmax(0, 1fr); } .essai-panneau { display: none; } }
+  </style>
+  <script>
+    // Erreurs JavaScript de la page, gardées pour les tests (comme index.html)
+    window.erreursAtelier = [];
+    window.addEventListener('error', function (e) { window.erreursAtelier.push(String(e.message || e)); });
+    window.addEventListener('unhandledrejection', function (e) {
+      window.erreursAtelier.push(String((e.reason && e.reason.message) || e.reason));
+    });
+  </script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "../vendor/three/three.module.js",
+        "three/addons/": "../vendor/three/"
+      }
+    }
+  </script>
+  <script type="module" src="../js/carte3d/essai.js"></script>
+</head>
+<body class="essai-carte3d">
+  <header class="essai-barre">
+    <strong>Carte 3D</strong>
+    <span class="essai-lieu" data-role="essai-lieu">Chargement…</span>
+    <button type="button" data-outil="naviguer" title="Tourner, déplacer, zoomer ; choisir et déplacer les épingles">Choisir</button>
+    <button type="button" data-outil="accueil" title="Poser l'accueil (point principal) et son orientation">Accueil ★</button>
+    <button type="button" data-outil="salle" title="Poser une nouvelle salle et son orientation">Salle</button>
+    <button type="button" data-outil="mesurer" title="Mesurer une distance au sol">Mesurer</button>
+    <button type="button" data-role="annuler" title="Annuler (Ctrl+Z)" disabled>↶ Annuler</button>
+    <button type="button" data-role="retablir" title="Rétablir (Ctrl+Y)" disabled>↷ Rétablir</button>
+    <button type="button" class="essai-principal" data-role="enregistrer" title="Enregistrer les salles (Ctrl+S)">Enregistrer</button>
+    <span data-role="etat-enregistrement"></span>
+  </header>
+  <main class="essai-centre">
+    <div class="essai-vue" data-role="vue-3d"></div>
+    <aside class="essai-panneau" data-role="panneau" aria-label="Propriétés"></aside>
+  </main>
+  <footer class="essai-etat">
+    <span data-role="etat-outil"></span>
+    <span data-role="etat-message" class="essai-message"></span>
+    <span data-role="etat-coordonnees"></span>
+  </footer>
+</body>
+</html>
