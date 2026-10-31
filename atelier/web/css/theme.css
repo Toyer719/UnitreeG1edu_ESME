@@ -2,8 +2,9 @@
    Habillage d'Unitree Explore (sombre, accent pervenche), structure de SolidWorks. Thème sombre par
    défaut ; thème clair avec <html data-theme="clair"> (bouton de la barre d'outils, clé atelier.theme).
    La vue 3D est toujours sombre, quel que soit le thème (--vue-*).
-   Contrastes WCAG AA vérifiés par atelier/tests/test_contrats_vague5.py : texte ≥ 4,5:1 sur les fonds,
-   repères de la vue 3D ≥ 3:1 sur --vue-fond. Les feuilles des agents n'écrivent pas de couleur en dur :
+   Contrastes WCAG AA vérifiés par atelier/tests/test_contrats_vague5.py et, pour tous les textes sur tous
+   les fonds de la coque, par atelier/tests/test_coque.py : texte ≥ 4,5:1 sur les fonds, repères de la vue 3D
+   ≥ 3:1 sur --vue-fond. Les feuilles des agents n'écrivent pas de couleur en dur :
    elles utilisent ces jetons (var(--accent)…). Fichier de l'agent Coquille après le commit des contrats ;
    les valeurs ne changent qu'avec les tests de contraste. */
 
@@ -20,13 +21,24 @@
   --accent-texte: #a3adff;    /* liens, icônes et textes en couleur d'accent */
   --accent-doux: #2b3160;     /* fond de l'élément choisi */
   --sur-accent: #ffffff;
-  --danger: #d93036;          /* ARRÊT, suppression (texte --sur-danger) */
+  --danger: #d93036;          /* ARRÊT, suppression (texte --sur-danger) ; fond ou bord, pas de texte */
+  --danger-texte: #ff8a8a;    /* erreurs écrites en rouge (texte sur les fonds) */
   --sur-danger: #ffffff;
   --succes: #3ccb85;
   --avertissement: #f5a524;
+  --accueil-texte: #ffa724;   /* étoile ★ de l'accueil dans les listes et l'arbre (texte sur les fonds) */
   --mode-simulation: #a3adff; /* pastille du mode Simulation */
-  --mode-reel: #f08a3c;       /* pastille et liseré du mode Réel */
+  --mode-reel: #f2924a;       /* pastille et liseré du mode Réel */
+  --surface-3: #2a2939;       /* boutons et champs posés sur une surface */
+  --champ: #191824;           /* fond des champs de saisie */
+  --bord-fort: #6b6b88;       /* bord des champs, focus discret */
+  --barre: #22212d;           /* barre d'outils et barre d'état (barre de titre d'Explore) */
   --ombre: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --ombre-forte: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --selection: rgba(101, 119, 224, 0.24);
+  --survol: rgba(255, 255, 255, 0.06);
+  --voile: rgba(10, 10, 18, 0.62);
+  color-scheme: dark;
 }
 
 :root[data-theme="clair"] {
@@ -42,12 +54,23 @@
   --accent-doux: #e8ebfb;
   --sur-accent: #ffffff;
   --danger: #c62828;
+  --danger-texte: #c62828;
   --sur-danger: #ffffff;
-  --succes: #2e7d32;
-  --avertissement: #b45309;
+  --succes: #2a752e;
+  --avertissement: #a64d08;
+  --accueil-texte: #9a5800;
   --mode-simulation: #4b5bd6;
-  --mode-reel: #c2410c;
+  --mode-reel: #b53d0b;
+  --surface-3: #eef0f5;
+  --champ: #ffffff;
+  --bord-fort: #9aa3b2;
+  --barre: #ffffff;
   --ombre: 0 1px 3px rgba(20, 30, 50, 0.12);
+  --ombre-forte: 0 10px 30px rgba(20, 30, 50, 0.18);
+  --selection: rgba(75, 91, 214, 0.12);
+  --survol: rgba(20, 30, 50, 0.05);
+  --voile: rgba(20, 24, 34, 0.45);
+  color-scheme: light;
 }
 
 :root {
@@ -56,7 +79,7 @@
   --vue-grille: #34343c;
   --vue-texte: #eceef4;
   --vue-texte-doux: #a9adbd;
-  --vue-barre: rgba(30, 30, 38, 0.78);   /* barres flottantes au-dessus de la vue */
+  --vue-barre: rgba(30, 30, 38, 0.9);    /* barres flottantes au-dessus de la vue (lisibles sur un plan blanc) */
   --repere-accueil: #ffa724;             /* étoile et flèche de l'accueil (point principal) */
   --repere-salle: #6577e0;               /* épingles numérotées des salles */
   --repere-choisi: #ffffff;              /* anneau de l'élément choisi */
@@ -68,10 +91,13 @@
   --nuage-bas: #2e9e6b;                  /* couleur des points par la hauteur au-dessus du sol : */
   --nuage-milieu: #ccad78;               /* vert (sol) → jaune → rose (2,2 m), comme Unitree Explore */
   --nuage-haut: #db3866;
+  --manche: #c9c8c6;                     /* manche des joysticks (dégradé vers --manche-ombre) */
+  --manche-ombre: #8e8d8b;
 
   /* Tailles de la coque (rien de codé en dur ailleurs ; jamais 100vh) */
   --h-barre-outils: 48px;
-  --h-ruban: 84px;
+  --h-ruban: 92px;                        /* onglets (28 px) et commandes, hauteur fixe */
+  --h-ruban-onglets: 28px;
   --h-barre-etat: 28px;
   --l-arbre: 260px;
   --l-panneau: 320px;

@@ -1,20 +1,23 @@
-// Écran Salles : placer les destinations du guide sur la carte. Clic pour placer, glisser pour
-// orienter (le robot s'arrête tourné vers la salle). Panneau : nom, alias, phrase d'arrivée.
-// Enregistrer écrit salles.yaml, et met à jour les nœuds de même id dans itineraires.yaml.
+// Écran Salles (Placer › Salle, Placer › Accueil) : placer les destinations du guide et l'accueil, dans la
+// carte 3D (vue par défaut, vague 5 : section 12.3 du plan) ou sur le plan 2D. Un appui sur le sol pose le
+// point, un glissé depuis là règle l'orientation (le robot s'arrête tourné vers la salle) ; glisser un point
+// le déplace. Le panneau de droite : nom, autres noms, phrase d'arrivée, x, y et orientation en degrés ;
+// ✓ Enregistrer écrit salles.yaml (PUT …/salles?synchroniser=true : chaque salle reçoit son nœud de même id
+// dans itineraires.yaml, et l'accueil recopie sa pose dans lieu.yaml et le départ du robot). Les deux vues
+// lisent et écrivent la même liste ; Annuler et Rétablir (Ctrl+Z, Ctrl+Y) par historique.js.
 //
 // Vague 4 (section 11.2 du plan) : le point principal du lieu est la salle qui porte l'étiquette
-// « principal » (à défaut, la salle « accueil »). Il est dessiné d'une étoile, avec le badge
-// « principal », et sa flèche (le sens du robot) se tourne en la glissant, par pas de 15°. C'est
-// l'accueil : le robot y démarre en simulation, on l'y pose au démarrage (« Repérer le robot »), et
-// il y revient après chaque visite. En enregistrant, sa pose est aussi recopiée dans l'accueil de
-// lieu.yaml et dans le départ du robot du monde (PUT …/salles?synchroniser=true). « Faire de cette
-// salle le point principal » déplace l'étiquette ; le point principal ne se supprime pas sans en
+// « principal » (à défaut, la salle « accueil ») : l'étoile ambre, le badge « principal ». C'est l'accueil :
+// le robot y démarre en simulation, on l'y pose au démarrage (« Repérer »), et il y revient après chaque
+// visite. « Faire de cette salle l'accueil » déplace l'étiquette ; l'accueil ne se supprime pas sans en
 // avoir choisi un autre.
 
 import { api, urlLieu } from '../api.js';
 import { contexte, rechargerLieu } from '../contexte.js';
+import { blocAvance, panneauEdition, preparerEcran } from '../coque/ecran.js';
 import * as F from '../formulaire.js';
 import * as G from '../geometrie.js';
+import { Historique } from '../historique.js';
 import { afficherErreur, afficherMessage, afficherRapport } from '../messages.js';
 import { creerPlan, iconeOrientee, ll, suivrePointeur } from '../plan.js';
 
@@ -23,11 +26,11 @@ const PAS = 0.05;      // m : les salles s'accrochent aux 5 cm
 const PAS_ANGLE = 15;  // degrés : l'orientation glissée s'accroche par pas de 15° (valeur exacte dans le panneau)
 export const ETIQUETTE_PRINCIPAL = 'principal';
 const ID_PRINCIPAL_IMPLICITE = 'accueil';
-
-const OUTILS = [
-  { id: 'choisir', texte: 'Choisir', aide: "Cliquez sur une salle pour la modifier. Faites glisser son rond pour la déplacer, et la petite poignée pour l'orienter. L'étoile est le point principal (l'accueil) : glissez sa poignée pour tourner sa flèche, le sens du robot quand il y est posé." },
-  { id: 'ajouter', texte: 'Ajouter une salle', aide: "Cliquez devant la porte de la salle, là où le robot doit s'arrêter, et glissez vers la salle pour l'orienter." },
-];
+const AIDES = {
+  choisir: 'Cliquez sur un point pour le modifier ; glissez-le pour le déplacer, sa poignée pour le tourner.',
+  salle: 'Cliquez sur le sol devant la porte, puis tirez vers la salle.',
+  accueil: 'Cliquez là où le robot attend les visiteurs, puis tirez dans le sens où il regarde.',
+};
 
 // ---------------------------------------------------------------- point principal (partagé avec Simulation et Monde)
 
@@ -66,30 +69,27 @@ export function etiquetteSalle(nom, principale) {
   return e;
 }
 
-export function ouvrir(racine) {
+function copie(v) {
+  return JSON.parse(JSON.stringify(v));
+}
+
+export function ouvrir(racine, options) {
+  const ecran = preparerEcran(racine, options);
+  const coque = ecran.coque;
   const lieu = contexte.lieu;
   const etage = contexte.etage;
-  const etat = { salles: [], choisi: null, outil: 'choisir', modifie: false, trace: null, idsAuto: new Set() };
+  const carte3d = ecran.carte3d;
+  const etat = { salles: [], choisi: null, outil: 'choisir', modifie: false, trace: null, idsAuto: new Set(),
+    geste: null, charge: false, ferme: false };
+  const hist = new Historique();
+  const desabonner = [];
 
-  racine.innerHTML = `
-    <div class="barre">
-      <div class="barre-gauche" data-role="outils"></div>
-      <div class="barre-droite">
-        <button type="button" class="bouton bouton-principal" data-role="enregistrer">Enregistrer les salles</button>
-        <span class="etat-enregistrement" data-role="etat"></span>
-      </div>
-    </div>
-    <p class="aide" data-role="aide"></p>
-    <div class="espace-deux">
-      <div class="plan" data-role="plan"></div>
-      <div class="cote cote-etroit"><div class="panneau" data-role="panneau"></div></div>
-    </div>`;
-  const $ = (r) => racine.querySelector('[data-role="' + r + '"]');
-  const plan = creerPlan($('plan'));
+  ecran.vue.innerHTML = '<div class="plan" data-role="plan"></div>';
+  const plan = creerPlan(ecran.vue.querySelector('[data-role=plan]'));
   const carte = plan.carte;
   const calque = L.layerGroup().addTo(carte);
   const calqueTrace = L.layerGroup().addTo(carte);
-  const outils = F.barreOutils($('outils'), OUTILS, etat.outil, choisirOutil);
+  let panneau = null;
 
   function sallesEtage() {
     return etat.salles.filter((s) => s.etage === etage);
@@ -103,13 +103,19 @@ export function ouvrir(racine) {
     return sallePrincipale(etat.salles);
   }
 
-  function modifier(f) {
+  // Toute modification passe par ici : copie pour « annuler », puis redessin
+  function modifier(f, sansHistorique) {
+    if (!sansHistorique) hist.noter(etat.salles);
     f();
     etat.modifie = true;
     rafraichir();
   }
 
-  // « Faire de cette salle le point principal » : l'étiquette passe à cette salle, et à elle seule
+  function idNouvelle() {
+    return G.idLibre('salle', etat.salles.map((s) => s.id));
+  }
+
+  // « Faire de cette salle l'accueil » : l'étiquette passe à cette salle, et à elle seule
   function fairePrincipal(s) {
     const avant = principale();
     modifier(() => {
@@ -120,15 +126,51 @@ export function ouvrir(racine) {
         else delete x.etiquettes;
       });
     });
-    afficherMessage('« ' + s.nom + ' » sera le point principal (l\'accueil du robot) à l\'enregistrement'
+    coque.message('« ' + s.nom + ' » sera l\'accueil (le point principal) à l\'enregistrement'
       + (avant && avant !== s ? ', à la place de « ' + avant.nom + ' »' : '') + '.', 'info');
   }
 
   function refuserSuppression(s) {
-    afficherMessage('« ' + s.nom + ' » est le point principal du lieu (l\'accueil : le robot y démarre et y revient '
-      + 'après chaque visite). Choisissez d\'abord un autre point principal (« Faire de cette salle le point '
-      + 'principal » sur une autre salle), puis supprimez celle-ci.', 'erreur');
+    coque.message('« ' + s.nom + ' » est le point principal du lieu (l\'accueil : le robot y démarre et y revient '
+      + 'après chaque visite). Choisissez d\'abord un autre point principal (« Faire de cette salle l\'accueil » sur '
+      + 'une autre salle), puis supprimez celle-ci.', 'erreur');
   }
+
+  function supprimer(s) {
+    if (s === principale()) {
+      refuserSuppression(s);
+      return;
+    }
+    modifier(() => {
+      etat.salles = etat.salles.filter((x) => x !== s);
+      if (etat.choisi === s.id) etat.choisi = null;
+    });
+  }
+
+  // Pose (x, y, theta) de l'accueil ; le crée s'il n'existe pas encore
+  function poserAccueil(x, y, theta) {
+    let p = principale();
+    if (!p) {
+      const id = salle(ID_PRINCIPAL_IMPLICITE) ? idNouvelle() : ID_PRINCIPAL_IMPLICITE;
+      p = { id: id, nom: 'Accueil', alias: ['accueil'], etage: etage, pose: { x: x, y: y, theta: theta },
+        phrase_arrivee: '', etiquettes: [ETIQUETTE_PRINCIPAL] };
+      etat.salles.push(p);
+    }
+    p.etage = etage;
+    p.pose = { x: G.arrondir(x, 3), y: G.arrondir(y, 3), theta: G.arrondir(G.normaliserAngle(theta), 4) };
+    return p;
+  }
+
+  function nouvelleSalle(id, x, y, theta) {
+    const s = { id: id, nom: 'Nouvelle salle', alias: [], etage: etage,
+      pose: { x: G.arrondir(x, 3), y: G.arrondir(y, 3), theta: G.arrondir(G.normaliserAngle(theta), 4) },
+      phrase_arrivee: '' };
+    etat.idsAuto.add(id);
+    etat.salles.push(s);
+    return s;
+  }
+
+  // ------------------------------------------------------------ plan 2D
 
   function poigneeOrientation(s, m, estPrincipale) {
     // poignée d'orientation, à 1 m devant la salle (1,5 m pour la flèche du point principal)
@@ -138,7 +180,7 @@ export function ouvrir(racine) {
     const poignee = L.marker(ll(s.pose.x + r * Math.cos(s.pose.theta), s.pose.y + r * Math.sin(s.pose.theta)), {
       icon: L.divIcon({ className: 'poignee' + (estPrincipale ? ' poignee-principal' : ''), iconSize: [18, 18], iconAnchor: [9, 9] }),
       draggable: true, keyboard: false,
-      title: estPrincipale ? 'Glisser pour tourner la flèche du point principal (le sens du robot)' : 'Glisser pour orienter',
+      title: estPrincipale ? 'Glisser pour tourner la flèche de l\'accueil (le sens du robot)' : 'Glisser pour orienter',
     });
     const ligne = L.polyline([ll(s.pose.x, s.pose.y), poignee.getLatLng()],
       { className: 'ligne-poignee' + (estPrincipale ? ' fleche-principal' : ''), interactive: false });
@@ -170,7 +212,7 @@ export function ouvrir(racine) {
         zIndexOffset: estPrincipale ? 500 : 0,
       });
       m.bindTooltip(etiquetteSalle(s.nom, estPrincipale), { permanent: true, direction: 'right', offset: [14, 0], className: 'etiquette' });
-      m.on('click', () => { etat.choisi = s.id; rafraichir(); });
+      m.on('click', () => choisir(s.id));
       m.on('dragstart', () => { etat.choisi = s.id; });
       m.on('dragend', () => {
         const q = m.getLatLng();
@@ -180,7 +222,7 @@ export function ouvrir(racine) {
         });
       });
       m.addTo(calque);
-      // la flèche du point principal se tourne toujours ; celle d'une autre salle, une fois choisie
+      // la flèche de l'accueil se tourne toujours ; celle d'une autre salle, une fois choisie
       if (etat.outil === 'choisir' && (choisie || estPrincipale)) poigneeOrientation(s, m, estPrincipale);
     });
   }
@@ -189,14 +231,17 @@ export function ouvrir(racine) {
     calqueTrace.clearLayers();
     const t = etat.trace;
     if (!t) return;
-    L.marker(ll(t.x, t.y), { icon: iconeOrientee('salle trace', t.theta), interactive: false }).addTo(calqueTrace);
+    const icone = t.accueil ? iconePrincipal(t.theta, 'trace') : iconeOrientee('salle trace', t.theta);
+    L.marker(ll(t.x, t.y), { icon: icone, interactive: false }).addTo(calqueTrace);
   }
 
   const arreterPointeur = suivrePointeur(plan, {
     debut: (p) => {
-      if (etat.outil !== 'ajouter') return false;
+      if (etat.outil !== 'salle' && etat.outil !== 'accueil') return false;
       const q = G.accrocherPoint(p, PAS);
-      etat.trace = { x: q[0], y: q[1], theta: 0 };
+      const p0 = principale();
+      etat.trace = { x: q[0], y: q[1], theta: etat.outil === 'accueil' && p0 ? p0.pose.theta : 0,
+        accueil: etat.outil === 'accueil' };
       dessinerTrace();
       return true;
     },
@@ -211,51 +256,148 @@ export function ouvrir(racine) {
       etat.trace = null;
       dessinerTrace();
       if (!t) return;
-      const id = G.idLibre('salle', etat.salles.map((s) => s.id));
-      etat.idsAuto.add(id);
-      modifier(() => {
-        etat.salles.push({ id: id, nom: 'Nouvelle salle', alias: [], etage: etage, pose: { x: t.x, y: t.y, theta: t.theta }, phrase_arrivee: '' });
-        etat.choisi = id;
-      });
-      choisirOutil('choisir');
-      const champ = $('panneau').querySelector('[data-champ="nom"] input');
-      if (champ) {
-        champ.focus();
-        champ.select();
+      if (t.accueil) {
+        modifier(() => { etat.choisi = poserAccueil(t.x, t.y, t.theta).id; });
+      } else {
+        modifier(() => { etat.choisi = nouvelleSalle(idNouvelle(), t.x, t.y, t.theta).id; });
       }
+      choisirOutil('choisir');
+      focaliserNom();
     },
     annuler: () => { etat.trace = null; dessinerTrace(); },
   });
 
+  // ------------------------------------------------------------ carte 3D
+
+  function afficher3D() {
+    if (!carte3d) return;
+    const p = principale();
+    carte3d.afficherSalles(etat.salles, p ? p.id : null);
+    if (etat.choisi) carte3d.choisir('salle', etat.choisi);
+  }
+
+  // surPose de la carte 3D : {outil, genre, id, x, y, theta, fini, geste, annule}
+  function recevoirPose(e) {
+    if (!e || e.genre !== 'salle' || etat.ferme) return;
+    if (e.annule) {
+      if (etat.geste) {
+        etat.salles = etat.geste.avant;
+        etat.geste = null;
+        rafraichir();
+      }
+      return;
+    }
+    if (!etat.geste) etat.geste = { avant: copie(etat.salles), id: e.id || null };
+    let s = null;
+    if (e.outil === 'accueil') {
+      s = poserAccueil(e.x, e.y, e.theta === null || e.theta === undefined ? (principale() ? principale().pose.theta : 0) : e.theta);
+    } else {
+      const id = e.id || etat.geste.id || null;
+      s = id ? salle(id) : null;
+      if (!s) {
+        s = nouvelleSalle(id || idNouvelle(), e.x, e.y, e.theta || 0);
+        etat.geste.id = s.id;
+      } else {
+        s.pose = { x: G.arrondir(e.x, 3), y: G.arrondir(e.y, 3),
+          theta: G.arrondir(G.normaliserAngle(e.theta === null || e.theta === undefined ? s.pose.theta : e.theta), 4) };
+      }
+    }
+    etat.choisi = s.id;
+    if (e.fini) {
+      hist.noter(etat.geste.avant);
+      etat.geste = null;
+      etat.modifie = true;
+      const pose = e.outil === 'salle' || e.outil === 'accueil';
+      rafraichir();
+      if (pose) {
+        choisirOutil('choisir');
+        if (e.outil === 'salle') focaliserNom();
+      }
+    } else {
+      // pendant le geste : le plan 2D et le panneau suivent sans tout redessiner
+      dessiner();
+      majChampsPose(s);
+    }
+  }
+
+  if (carte3d) {
+    // seulement les salles : un nœud d'itinéraire ne se glisse pas depuis cet écran
+    desabonner.push(carte3d.surPose(recevoirPose, { genres: ['salle'] }));
+  }
+
+  // ------------------------------------------------------------ outils
+
   function choisirOutil(id) {
     etat.outil = id;
-    outils.choisir(id);
     plan.cadre.classList.toggle('dessin', id !== 'choisir');
     if (id === 'choisir') carte.dragging.enable();
     else carte.dragging.disable();
-    $('aide').textContent = OUTILS.find((o) => o.id === id).aide;
+    if (carte3d) {
+      if (id === 'salle') carte3d.outil('salle', { id: null });
+      else if (id === 'accueil') carte3d.outil('accueil', { id: principale() ? principale().id : null });
+      else carte3d.outil('naviguer');
+    }
+    coque.activer(id === 'choisir' ? null : id);
+    coque.aide(AIDES[id]);
     dessiner();
+    majPanneau();
   }
+
+  function choisir(id) {
+    etat.choisi = id;
+    if (carte3d) carte3d.choisir('salle', id);
+    coque.choisirDansArbre(id ? 'salle' : null, id);
+    rafraichir();
+  }
+
+  function focaliserNom() {
+    const champ = ecran.panneau.querySelector('[data-champ="nom"] input');
+    if (champ) {
+      champ.focus();
+      champ.select();
+    }
+  }
+
+  // ------------------------------------------------------------ panneau
 
   function badge(parent) {
     return parent.appendChild(F.el('span', 'badge-principal', 'principal'));
   }
 
-  function panneau() {
-    const z = $('panneau');
-    z.innerHTML = '';
+  const champsPose = {};
+
+  function majChampsPose(s) {
+    if (!s || s.id !== etat.choisi) return;
+    const ecrireChamp = (cle, v, d) => {
+      if (champsPose[cle] && document.activeElement !== champsPose[cle]) {
+        champsPose[cle].value = String(Math.round(v * Math.pow(10, d)) / Math.pow(10, d));
+      }
+    };
+    ecrireChamp('x', s.pose.x, 3);
+    ecrireChamp('y', s.pose.y, 3);
+    ecrireChamp('theta', G.degres(s.pose.theta), 1);
+  }
+
+  function actionsEdition() {
+    return { modifie: () => etat.modifie, enregistrer: enregistrer, annuler: abandonner };
+  }
+
+  function majPanneau() {
+    if (etat.ferme) return;
     const s = salle(etat.choisi);
     const p = principale();
+    const titre = s ? (s === p ? 'Accueil' : 'Salle') : 'Points de l\'étage';
+    panneau = panneauEdition(ecran.panneau, titre, null, actionsEdition());
+    const z = panneau.corps;
+    Object.keys(champsPose).forEach((k) => delete champsPose[k]);
     if (s) {
       const estPrincipale = s === p;
-      const t = F.titre(z, 'Salle « ' + s.nom + ' »');
       if (estPrincipale) {
-        t.appendChild(document.createTextNode(' '));
-        badge(t);
-        F.paragraphe(z, 'Point principal du lieu : le robot y démarre en simulation, on l\'y pose au démarrage, tourné '
-          + 'dans le sens de la flèche (« Repérer le robot »), et il y revient seul après chaque visite.', 'panneau-note note-principal');
+        const t = F.paragraphe(z, 'Le robot y démarre, y attend les visiteurs et y revient après chaque visite.', 'panneau-note note-principal');
+        t.insertBefore(document.createTextNode(' '), t.firstChild);
+        t.insertBefore(badge(t), t.firstChild);
       }
-      const champNom = F.champTexte(z, 'Nom affiché et annoncé', s.nom, (v) => modifier(() => {
+      const champNom = F.champTexte(z, 'Nom', s.nom, (v) => modifier(() => {
         s.nom = v.trim() || s.nom;
         if (etat.idsAuto.has(s.id)) {
           // identifiant fabriqué depuis le nom, tant que l'utilisateur ne l'a pas choisi lui-même
@@ -269,13 +411,39 @@ export function ouvrir(racine) {
         }
       }));
       champNom.parentNode.setAttribute('data-champ', 'nom');
+      const alias = F.champTexte(z, 'Autres noms', s.alias.join(', '), (v) => modifier(() => {
+        s.alias = v.split(',').map((a) => a.trim()).filter((a) => a);
+      }), { indice: 'ex. labo de physique, b204' });
+      alias.parentNode.setAttribute('data-champ', 'alias');
+      const phrase = F.champTexte(z, 'Phrase à l\'arrivée', s.phrase_arrivee, (v) => modifier(() => { s.phrase_arrivee = v.trim(); }),
+        { lignes: 2, indice: 'Vide : le robot annonce le nom de la salle.' });
+      phrase.parentNode.setAttribute('data-champ', 'phrase');
+      const pose = F.el('div', 'champs-pose');
+      champsPose.x = F.champNombre(pose, 'x', s.pose.x, { pas: PAS, unite: 'm' }, (v) => modifier(() => { s.pose.x = G.arrondir(v, 3); }));
+      champsPose.x.parentNode.setAttribute('data-champ', 'x');
+      champsPose.y = F.champNombre(pose, 'y', s.pose.y, { pas: PAS, unite: 'm' }, (v) => modifier(() => { s.pose.y = G.arrondir(v, 3); }));
+      champsPose.y.parentNode.setAttribute('data-champ', 'y');
+      champsPose.theta = F.champNombre(pose, 'Orientation', G.degres(s.pose.theta), { pas: 15, unite: '°', decimales: 1 },
+        (v) => modifier(() => { s.pose.theta = G.arrondir(G.normaliserAngle(G.radians(v)), 4); }));
+      champsPose.theta.parentNode.setAttribute('data-champ', 'orientation');
+      champsPose.theta.title = '0° : vers l\'est (la droite du plan), 90° : vers le nord (le haut).';
+      z.appendChild(pose);
+      const actions = F.el('div', 'formulaire-ligne');
+      if (!estPrincipale) {
+        F.bouton(actions, 'Faire de cette salle l\'accueil', () => fairePrincipal(s), 'bouton bouton-faire-principal');
+      }
+      // le point principal ne se supprime pas : on dit pourquoi et quoi faire
+      F.bouton(actions, 'Supprimer', () => supprimer(s), 'bouton bouton-danger').setAttribute('data-role', 'supprimer-salle');
+      F.bouton(actions, 'Fermer', () => choisir(null), 'bouton bouton-discret');
+      z.appendChild(actions);
+      const avance = blocAvance(z, 'Avancé');
       const figee = estPrincipale || s.id === ID_PRINCIPAL_IMPLICITE;
-      const champId = F.champTexte(z, 'Identifiant', s.id, (v) => {
+      const champId = F.champTexte(avance, 'Identifiant', s.id, (v) => {
         v = v.trim();
         const refus = G.verifierId(v, etat.salles.filter((x) => x !== s).map((x) => x.id), 'une salle');
         if (refus) {
-          afficherMessage(refus, 'erreur');
-          panneau();
+          coque.message(refus, 'erreur');
+          majPanneau();
           return;
         }
         modifier(() => {
@@ -284,93 +452,107 @@ export function ouvrir(racine) {
           etat.choisi = v;
         });
       }, { lectureSeule: figee });
+      champId.parentNode.setAttribute('data-champ', 'id');
       if (figee) {
-        champId.title = estPrincipale ? 'Le point principal garde son identifiant (son nœud dans les itinéraires a le même).'
+        champId.title = estPrincipale ? 'L\'accueil garde son identifiant (son nœud dans les itinéraires a le même).'
           : 'L\'accueil garde toujours l\'identifiant « accueil ».';
       }
-      F.champTexte(z, 'Autres noms (séparés par des virgules)', s.alias.join(', '), (v) => modifier(() => {
-        s.alias = v.split(',').map((a) => a.trim()).filter((a) => a);
-      }), { indice: 'ex. labo de physique, b204' });
-      F.champTexte(z, 'Phrase à l\'arrivée', s.phrase_arrivee, (v) => modifier(() => { s.phrase_arrivee = v.trim(); }),
-        { lignes: 3, indice: 'Vide : le robot annonce le nom de la salle.' });
-      F.champNombre(z, 'x', s.pose.x, { pas: PAS, unite: 'm' }, (v) => modifier(() => { s.pose.x = v; }));
-      F.champNombre(z, 'y', s.pose.y, { pas: PAS, unite: 'm' }, (v) => modifier(() => { s.pose.y = v; }));
-      F.champNombre(z, estPrincipale ? 'Orientation (sens du robot)' : 'Orientation', G.degres(s.pose.theta), { pas: 15, unite: '°', decimales: 1 },
-        (v) => modifier(() => { s.pose.theta = G.arrondir(G.normaliserAngle(G.radians(v)), 4); }));
-      F.paragraphe(z, '0° : vers l\'est (la droite de la carte), 90° : vers le nord (le haut). En glissant la poignée, '
-        + 'l\'orientation va par pas de 15°.', 'panneau-note');
-      if (!estPrincipale) {
-        F.bouton(z, 'Faire de cette salle le point principal', () => fairePrincipal(s), 'bouton bouton-faire-principal');
-      }
-      // le point principal ne se supprime pas : on dit pourquoi et quoi faire
-      F.bouton(z, 'Supprimer la salle', () => {
-        if (s === principale()) {
-          refuserSuppression(s);
-          return;
-        }
-        modifier(() => {
-          etat.salles = etat.salles.filter((x) => x !== s);
-          etat.choisi = null;
-        });
-      }, 'bouton bouton-danger');
-      F.bouton(z, 'Retour à la liste', () => { etat.choisi = null; rafraichir(); });
+      F.paragraphe(avance, 'Chaque salle a un nœud de même identifiant dans les itinéraires : reliez-le au reste '
+        + '(Placer › Relier).', 'panneau-note');
       return;
     }
-    F.titre(z, 'Salles de l\'étage (' + sallesEtage().length + ')');
-    if (!sallesEtage().length) F.paragraphe(z, 'Aucune salle : choisissez « Ajouter une salle » en haut.');
-    if (!p) {
-      F.paragraphe(z, 'Ce lieu n\'a pas encore de point principal (l\'accueil, où le robot démarre et revient) : '
-        + 'choisissez une salle, puis « Faire de cette salle le point principal ».', 'panneau-note note-sans-principal');
-    } else if (p.etage !== etage) {
-      F.paragraphe(z, 'Le point principal « ' + p.nom + ' » est sur un autre étage (' + p.etage + ').', 'panneau-note');
-    }
-    const ul = F.el('ul', 'liste-choix');
-    sallesEtage().forEach((x) => {
+    const ici = sallesEtage();
+    const liste = F.el('ul', 'liste-choix liste-points');
+    const tries = ici.slice().sort((a, b) => (a === p ? -1 : (b === p ? 1 : a.nom.localeCompare(b.nom, 'fr'))));
+    tries.forEach((x) => {
       const li = F.el('li');
-      F.bouton(li, x.nom + ' (' + x.id + ')', () => {
-        etat.choisi = x.id;
-        carte.panTo(ll(x.pose.x, x.pose.y));
-        rafraichir();
-      }, 'bouton-lien');
+      const b = F.bouton(li, x.nom, () => {
+        choisir(x.id);
+        if (coque.vue() === 'plan') carte.panTo(ll(x.pose.x, x.pose.y));
+        else if (carte3d) carte3d.centrerSur(x.pose.x, x.pose.y);
+      }, 'ligne-point' + (x === p ? ' ligne-accueil' : ''));
+      b.setAttribute('data-salle', x.id);
       if (x === p) {
-        li.appendChild(document.createTextNode(' '));
-        badge(li);
+        b.insertBefore(F.el('span', 'etoile', '★'), b.firstChild);
+        badge(b);
       }
-      ul.appendChild(li);
+      liste.appendChild(li);
     });
-    z.appendChild(ul);
-    F.paragraphe(z, 'En enregistrant, chaque salle reçoit aussi un nœud de même nom dans les itinéraires. Reliez-le ensuite au reste dans l\'onglet Itinéraires.', 'panneau-note');
-  }
-
-  function majEtat() {
-    $('etat').textContent = etat.modifie ? 'Modifications non enregistrées' : 'Tout est enregistré';
-    $('etat').classList.toggle('non-enregistre', etat.modifie);
+    if (!ici.length) F.paragraphe(z, 'Aucune salle : choisissez « Salle » dans le ruban, puis cliquez sur le sol.');
+    z.appendChild(liste);
+    if (!p) {
+      F.paragraphe(z, 'Ce lieu n\'a pas encore d\'accueil (le point principal, où le robot démarre et revient) : '
+        + 'choisissez « Accueil » dans le ruban.', 'panneau-note note-sans-principal');
+    } else if (p.etage !== etage) {
+      F.paragraphe(z, 'L\'accueil « ' + p.nom + ' » est sur un autre étage (' + p.etage + ').', 'panneau-note');
+    }
   }
 
   function rafraichir() {
+    if (etat.ferme) return;
     dessiner();
-    panneau();
-    majEtat();
+    afficher3D();
+    majPanneau();
   }
 
-  $('enregistrer').addEventListener('click', async () => {
-    const b = $('enregistrer');
-    b.disabled = true;
+  // ------------------------------------------------------------ enregistrer, annuler
+
+  async function enregistrer() {
     try {
       const r = await api.ecrire(urlLieu(lieu) + '/salles?synchroniser=true', etat.salles);
       etat.modifie = false;
-      majEtat();
       const autres = r.enregistre.filter((f) => f !== 'salles.yaml');
       const p = principale();
-      afficherRapport(r.rapport, 'Salles enregistrées' + (autres.length ? ' (mis à jour aussi : ' + autres.join(', ') + ')' : '') + '.'
-        + (p ? ' Point principal : « ' + p.nom + ' ».' : ''));
+      afficherRapport(r.rapport, 'Salles enregistrées' + (autres.length ? ' (et ' + autres.join(', ') + ')' : '') + '.'
+        + (p ? ' Accueil : « ' + p.nom + ' ».' : ''));
       rechargerLieu().catch(() => {});
+      coque.lieuModifie('salles');
+      majPanneau();
+      return true;
     } catch (e) {
       afficherErreur(e);
-    } finally {
-      b.disabled = false;
+      return false;
     }
-  });
+  }
+
+  async function abandonner() {
+    if (!etat.modifie) return;
+    if (!(await coque.confirmer('Abandonner les modifications des salles et relire le fichier ?',
+      { titre: 'Annuler les modifications', ok: 'Abandonner', annuler: 'Garder', danger: true }))) return;
+    await charger();
+  }
+
+  function defaire() {
+    const precedent = hist.annuler(etat.salles);
+    if (!precedent) return;
+    etat.salles = precedent;
+    etat.modifie = true;
+    if (!salle(etat.choisi)) etat.choisi = null;
+    rafraichir();
+  }
+
+  function refaire() {
+    const suivant = hist.refaire(etat.salles);
+    if (!suivant) return;
+    etat.salles = suivant;
+    etat.modifie = true;
+    if (!salle(etat.choisi)) etat.choisi = null;
+    rafraichir();
+  }
+
+  function clavier(ev) {
+    const c = ev.target;
+    if (c && (c.tagName === 'INPUT' || c.tagName === 'TEXTAREA' || c.tagName === 'SELECT')) return;
+    if (ev.key === 'Escape') {
+      etat.trace = null;
+      dessinerTrace();
+      if (etat.outil !== 'choisir') choisirOutil('choisir');
+    } else if ((ev.key === 'Delete' || ev.key === 'Backspace') && salle(etat.choisi)) {
+      ev.preventDefault();
+      supprimer(salle(etat.choisi));
+    }
+  }
+  document.addEventListener('keydown', clavier);
 
   async function charger() {
     try {
@@ -379,15 +561,53 @@ export function ouvrir(racine) {
     } catch (e) {
       afficherErreur(e);
     }
-    choisirOutil('choisir');
+    etat.modifie = false;
+    etat.charge = true;
+    hist.vider();
+    if (!salle(etat.choisi)) etat.choisi = null;
+    const outil = etat.outilDemande || 'choisir';
+    etat.outilDemande = null;
+    choisirOutil(outil);
     rafraichir();
   }
-  racine.classList.add('chargement');     // rien n'est modifiable avant la fin du chargement
-  charger().finally(() => racine.classList.remove('chargement'));
+
+  function commande(nom) {
+    if (nom === 'salle' || nom === 'accueil') {
+      if (!etat.charge) {
+        etat.outilDemande = nom;
+        return;
+      }
+      choisirOutil(etat.outil === nom ? 'choisir' : nom);
+    }
+  }
+
+  ecran.vue.classList.add('chargement');     // rien n'est modifiable avant la fin du chargement
+  commande(ecran.commande);
+  charger().finally(() => ecran.vue.classList.remove('chargement'));
 
   return {
     modifie: () => etat.modifie,
+    enregistrer: enregistrer,
+    defaire: defaire,
+    refaire: refaire,
+    peutDefaire: () => hist.peutAnnuler,
+    peutRefaire: () => hist.peutRefaire,
+    commande: commande,
+    selectionner: (genre, id) => {
+      if (genre !== 'salle') return;
+      choisir(salle(id) ? id : null);
+      const s = salle(id);
+      if (s && coque.vue() === 'plan') carte.panTo(ll(s.pose.x, s.pose.y));
+    },
+    vue: () => {
+      plan.carte.invalidateSize();
+      choisirOutil(etat.outil);
+    },
     fermer: () => {
+      etat.ferme = true;
+      document.removeEventListener('keydown', clavier);
+      desabonner.forEach((f) => f());
+      if (carte3d) carte3d.outil('naviguer');
       arreterPointeur();
       plan.detruire();
     },

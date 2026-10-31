@@ -1,52 +1,49 @@
-// Écran Zones : polygones interdits (rouge : le robot n'y va jamais) et lents (orange : le
-// robot y roule doucement). Clic pour chaque sommet, puis « Terminer la zone ».
+// Écran Zones (Placer › Zone interdite, Placer › Zone lente) : polygones interdits (rouge : le robot n'y
+// va jamais) et lents (orange : le robot y roule doucement), sur le plan 2D. Clic pour chaque coin, puis
+// « Terminer la zone » (ou Entrée, ou clic sur le premier coin). ✓ Enregistrer écrit zones.yaml puis refait
+// le masque des zones interdites que le robot respecte (POST …/monde/generer) ; Annuler et Rétablir par
+// historique.js ; la vue 3D de la coque suit les changements.
 
-import { api, urlLieu } from '../api.js';
+import { api, urlEtage, urlLieu } from '../api.js';
 import { contexte } from '../contexte.js';
+import { panneauEdition, preparerEcran } from '../coque/ecran.js';
 import * as F from '../formulaire.js';
 import * as G from '../geometrie.js';
-import { afficherErreur, afficherMessage, afficherRapport } from '../messages.js';
+import { Historique } from '../historique.js';
+import { afficherErreur, afficherRapport } from '../messages.js';
 import { creerPlan, ll, lls, suivrePointeur } from '../plan.js';
 
 const L = window.L;
 const PAS = 0.25;
 
 const OUTILS = [
-  { id: 'choisir', texte: 'Choisir', aide: "Cliquez dans une zone pour la modifier ; faites glisser ses sommets pour changer sa forme." },
-  { id: 'interdite', texte: 'Zone interdite', aide: "Cliquez chaque coin de la zone où le robot ne doit jamais aller (escalier, local technique...), puis « Terminer la zone »." },
-  { id: 'lente', texte: 'Zone lente', aide: "Cliquez chaque coin de la zone où le robot doit ralentir (hall, sortie de classe...), puis « Terminer la zone »." },
+  { id: 'choisir', texte: 'Choisir', aide: "Cliquez dans une zone pour la modifier ; glissez ses coins pour changer sa forme." },
+  { id: 'interdite', texte: 'Zone interdite', aide: "Cliquez chaque coin de la zone où le robot ne va jamais (escalier, local technique…), puis « Terminer la zone »." },
+  { id: 'lente', texte: 'Zone lente', aide: "Cliquez chaque coin de la zone où le robot ralentit (hall, sortie de classe…), puis « Terminer la zone »." },
 ];
 
-export function ouvrir(racine) {
+export function ouvrir(racine, options) {
+  const ecran = preparerEcran(racine, options);
+  const coque = ecran.coque;
+  const carte3d = ecran.carte3d;
   const lieu = contexte.lieu;
   const etage = contexte.etage;
-  const etat = { zones: { interdites: [], lentes: [] }, outil: 'choisir', choisi: null, trace: null, vitesse: 0.25, modifie: false };
+  const etat = { zones: { interdites: [], lentes: [] }, outil: 'choisir', choisi: null, trace: null, vitesse: 0.25,
+    modifie: false, charge: false, outilDemande: null };
+  const hist = new Historique();
 
-  racine.innerHTML = `
-    <div class="barre">
-      <div class="barre-gauche" data-role="outils"></div>
-      <div class="barre-options" data-role="options"></div>
-      <div class="barre-droite">
-        <button type="button" class="bouton bouton-principal" data-role="enregistrer">Enregistrer les zones</button>
-        <span class="etat-enregistrement" data-role="etat"></span>
-      </div>
-    </div>
-    <p class="aide" data-role="aide"></p>
-    <div class="espace-deux">
-      <div class="plan" data-role="plan"></div>
-      <div class="cote cote-etroit"><div class="panneau" data-role="panneau"></div></div>
-    </div>`;
-  const $ = (r) => racine.querySelector('[data-role="' + r + '"]');
-  const plan = creerPlan($('plan'));
+  ecran.vue.innerHTML = '<div class="plan" data-role="plan"></div>';
+  const plan = creerPlan(ecran.vue.querySelector('[data-role=plan]'));
   const carte = plan.carte;
   const calque = L.layerGroup().addTo(carte);
   const calqueTrace = L.layerGroup().addTo(carte);
-  const outils = F.barreOutils($('outils'), OUTILS, etat.outil, choisirOutil);
+  let zoneOutil = null;
 
   const liste = (genre) => (genre === 'interdite' ? etat.zones.interdites : etat.zones.lentes);
   const zoneChoisie = () => (etat.choisi ? liste(etat.choisi.genre)[etat.choisi.indice] || null : null);
 
   function modifier(f) {
+    hist.noter(etat.zones);
     f();
     etat.modifie = true;
     rafraichir();
@@ -104,7 +101,7 @@ export function ouvrir(racine) {
     const t = etat.trace;
     if (!t) return;
     if (t.points.length < 3) {
-      afficherMessage('Une zone a besoin d\'au moins trois coins : cliquez encore.', 'avertissement');
+      coque.message('Une zone a besoin d\'au moins trois coins : cliquez encore.', 'avertissement');
       return;
     }
     const z = { etage: etage, polygone: t.points, nom: '' };
@@ -146,88 +143,122 @@ export function ouvrir(racine) {
   });
 
   function choisirOutil(id) {
+    if (!OUTILS.some((o) => o.id === id)) id = 'choisir';
     etat.outil = id;
     etat.trace = null;
-    outils.choisir(id);
     plan.cadre.classList.toggle('dessin', id !== 'choisir');
     if (id === 'choisir') carte.dragging.enable();
     else carte.dragging.disable();
-    $('aide').textContent = OUTILS.find((o) => o.id === id).aide;
+    coque.activer(id === 'choisir' ? null : id);
+    coque.aide(OUTILS.find((o) => o.id === id).aide);
     dessinerTrace(null);
-    majOptions();
     rafraichir();
   }
 
+  // Réglages de l'outil en cours, en tête du panneau
   function majOptions() {
-    const z = $('options');
-    z.innerHTML = '';
+    if (!zoneOutil) return;
+    const z = zoneOutil;
+    z.textContent = '';
+    z.hidden = etat.outil === 'choisir';
     if (etat.outil === 'choisir') return;
+    z.appendChild(F.el('h3', 'panneau-titre', etat.outil === 'interdite' ? 'Nouvelle zone interdite' : 'Nouvelle zone lente'));
     if (etat.outil === 'lente') {
       F.champNombre(z, 'Vitesse maximale', etat.vitesse, { pas: 0.05, min: 0.05, max: 1, unite: 'm/s' }, (v) => { etat.vitesse = v; });
     }
     const n = etat.trace ? etat.trace.points.length : 0;
-    F.bouton(z, 'Terminer la zone (' + n + ' coin' + (n > 1 ? 's' : '') + ')', terminerZone, 'bouton bouton-principal').disabled = n < 3;
-    F.bouton(z, 'Abandonner', () => { etat.trace = null; dessinerTrace(null); majOptions(); }).disabled = n === 0;
+    const ligne = F.el('div', 'formulaire-ligne');
+    F.bouton(ligne, 'Terminer la zone (' + n + ' coin' + (n > 1 ? 's' : '') + ')', terminerZone, 'bouton bouton-principal').disabled = n < 3;
+    F.bouton(ligne, 'Abandonner', () => { etat.trace = null; dessinerTrace(null); majOptions(); }).disabled = n === 0;
+    z.appendChild(ligne);
   }
 
   function panneau() {
-    const p = $('panneau');
-    p.innerHTML = '';
     const z = zoneChoisie();
+    const genre = z ? etat.choisi.genre : null;
+    const titre = z ? (genre === 'interdite' ? 'Zone interdite' : 'Zone lente') : 'Zones';
+    const p = panneauEdition(ecran.panneau, titre, null,
+      { modifie: () => etat.modifie, enregistrer: enregistrer, annuler: abandonner }).corps;
+    zoneOutil = F.el('div', 'section-panneau section-outil');
+    zoneOutil.setAttribute('data-section', 'outil');
+    p.appendChild(zoneOutil);
+    majOptions();
     if (z) {
-      const genre = etat.choisi.genre;
-      F.titre(p, genre === 'interdite' ? 'Zone interdite' : 'Zone lente');
-      F.champTexte(p, 'Nom (facultatif)', z.nom || '', (v) => modifier(() => { z.nom = v.trim(); }), { indice: 'ex. Escalier' });
+      F.champTexte(p, 'Nom', z.nom || '', (v) => modifier(() => { z.nom = v.trim(); }), { indice: 'ex. Escalier' });
       if (genre === 'lente') {
         F.champNombre(p, 'Vitesse maximale', z.vitesse_max, { pas: 0.05, min: 0.05, max: 1, unite: 'm/s' }, (v) => modifier(() => { z.vitesse_max = v; }));
       }
       F.valeur(p, 'Coins', String(z.polygone.length));
-      F.bouton(p, 'Supprimer la zone', () => modifier(() => {
+      const actions = F.el('div', 'formulaire-ligne');
+      F.bouton(actions, 'Supprimer', () => modifier(() => {
         liste(genre).splice(etat.choisi.indice, 1);
         etat.choisi = null;
       }), 'bouton bouton-danger');
+      F.bouton(actions, 'Fermer', () => { etat.choisi = null; rafraichir(); }, 'bouton bouton-discret');
+      p.appendChild(actions);
       return;
     }
     const nI = etat.zones.interdites.filter((x) => x.etage === etage).length;
     const nL = etat.zones.lentes.filter((x) => x.etage === etage).length;
-    F.titre(p, 'Zones de l\'étage');
-    F.paragraphe(p, nI + ' interdite(s) en rouge, ' + nL + ' lente(s) en orange.');
-    F.paragraphe(p, 'Après avoir changé les zones interdites, fabriquez à nouveau la carte (onglet Carte) : c\'est elle qui contient le masque que le robot respecte.', 'panneau-note');
+    F.paragraphe(p, nI + ' zone(s) interdite(s) en rouge, ' + nL + ' zone(s) lente(s) en orange.');
+    F.paragraphe(p, 'Cliquez dans une zone pour la modifier. À l\'enregistrement, le masque que le robot respecte '
+      + 'se refait seul.', 'panneau-note');
   }
 
-  function majEtat() {
-    $('etat').textContent = etat.modifie ? 'Modifications non enregistrées' : 'Tout est enregistré';
-    $('etat').classList.toggle('non-enregistre', etat.modifie);
+  function afficher3D() {
+    if (carte3d) carte3d.afficherZones(etat.zones);
   }
 
   function rafraichir() {
     dessiner();
+    afficher3D();
     panneau();
-    majEtat();
   }
 
   function clavier(ev) {
     const c = ev.target;
-    if (c && (c.tagName === 'INPUT' || c.tagName === 'TEXTAREA')) return;
+    if (c && (c.tagName === 'INPUT' || c.tagName === 'TEXTAREA' || c.tagName === 'SELECT')) return;
     if (ev.key === 'Enter') terminerZone();
-    if (ev.key === 'Escape') { etat.trace = null; dessinerTrace(null); majOptions(); }
+    if (ev.key === 'Escape') { etat.trace = null; dessinerTrace(null); choisirOutil('choisir'); }
   }
   document.addEventListener('keydown', clavier);
 
-  $('enregistrer').addEventListener('click', async () => {
-    const b = $('enregistrer');
-    b.disabled = true;
+  async function enregistrer() {
     try {
       const r = await api.ecrire(urlLieu(lieu) + '/zones', etat.zones);
       etat.modifie = false;
-      majEtat();
-      afficherRapport(r.rapport, 'Zones enregistrées. Fabriquez à nouveau la carte pour mettre à jour le masque des zones interdites.');
+      afficherRapport(r.rapport, 'Zones enregistrées. Le masque du robot se met à jour…');
+      panneau();
+      coque.lieuModifie('zones');
+      try {
+        await api.envoyer(urlEtage(lieu, etage) + '/monde/generer');
+        coque.message('Zones enregistrées, masque du robot à jour.', 'succes');
+      } catch (e) {
+        coque.message('Zones enregistrées, mais le masque du robot n\'a pas pu être refait : ' + e.message,
+          'avertissement', e.erreurs, e.sortie);
+      }
+      return true;
     } catch (e) {
       afficherErreur(e);
-    } finally {
-      b.disabled = false;
+      return false;
     }
-  });
+  }
+
+  async function abandonner() {
+    if (!etat.modifie) return;
+    if (!(await coque.confirmer('Abandonner les modifications des zones et relire le fichier ?',
+      { titre: 'Annuler les modifications', ok: 'Abandonner', annuler: 'Garder', danger: true }))) return;
+    await charger();
+  }
+
+  function deplacerHistorique(sens) {
+    const autre = sens < 0 ? hist.annuler(etat.zones) : hist.refaire(etat.zones);
+    if (!autre) return;
+    etat.zones = autre;
+    etat.modifie = true;
+    if (etat.choisi && !zoneChoisie()) etat.choisi = null;
+    rafraichir();
+  }
 
   async function charger() {
     try {
@@ -236,13 +267,50 @@ export function ouvrir(racine) {
     } catch (e) {
       afficherErreur(e);
     }
-    choisirOutil('choisir');
+    etat.modifie = false;
+    etat.charge = true;
+    hist.vider();
+    const outil = etat.outilDemande || 'choisir';
+    etat.outilDemande = null;
+    choisirOutil(outil);
   }
-  racine.classList.add('chargement');     // rien n'est modifiable avant la fin du chargement
-  charger().finally(() => racine.classList.remove('chargement'));
+
+  function commande(nom) {
+    if (!OUTILS.some((o) => o.id === nom)) return;
+    if (!etat.charge) {
+      etat.outilDemande = nom;
+      return;
+    }
+    choisirOutil(nom);
+  }
+
+  ecran.vue.classList.add('chargement');     // rien n'est modifiable avant la fin du chargement
+  commande(ecran.commande);
+  charger().finally(() => ecran.vue.classList.remove('chargement'));
 
   return {
     modifie: () => etat.modifie,
+    enregistrer: enregistrer,
+    defaire: () => deplacerHistorique(-1),
+    refaire: () => deplacerHistorique(1),
+    peutDefaire: () => hist.peutAnnuler,
+    peutRefaire: () => hist.peutRefaire,
+    commande: commande,
+    selectionner: (genre, id) => {
+      if (genre !== 'zone') return;
+      const morceaux = String(id).split(':');
+      const g = morceaux[0];
+      const i = Number(morceaux[1]);
+      if ((g === 'interdite' || g === 'lente') && liste(g)[i]) {
+        etat.choisi = { genre: g, indice: i };
+        const z = liste(g)[i];
+        const xs = z.polygone.map((q) => q[0]);
+        const ys = z.polygone.map((q) => q[1]);
+        plan.cadrer(Math.min.apply(null, xs) - 2, Math.min.apply(null, ys) - 2, Math.max.apply(null, xs) + 2, Math.max.apply(null, ys) + 2);
+        rafraichir();
+      }
+    },
+    vue: () => plan.carte.invalidateSize(),
     fermer: () => {
       document.removeEventListener('keydown', clavier);
       arreterPointeur();

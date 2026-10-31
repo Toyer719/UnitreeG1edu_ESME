@@ -20,7 +20,7 @@
                                     cible « principal » : le point principal ; répétition et robot :
                                     409 tant que le robot n'est pas repéré
   POST /api/guide/stop              publie sur /guide/stop (à défaut : g1-guide stop)
-  POST /api/simulation/teleop {vx, vy, wz}   pilote le robot simulé (flèches de l'onglet Scan) :
+  POST /api/simulation/teleop {vx, vy, wz}   pilote le robot simulé (flèches du scan simulé) :
         publie /cmd_vel par le pont ROS 2, avec un homme mort (vitesse nulle après 0,5 s sans consigne) ;
         en répétition, /cmd_vel passe par le pont vers le faux G1 ; refusée avec le vrai robot
 """
@@ -164,7 +164,7 @@ async def demarrer(demande: DemandeSimulation, request: Request):
     if mode == "robot":
         if not chemin_carte(dossier, demande.etage).is_file():
             raise ErreurAtelier(409, "Cet étage n'a pas de carte 2D : le guide ne peut pas naviguer. Faites d'abord "
-                                     "un scan avec le robot (onglet Scan).")
+                                     "un scan avec le robot (Réel › Scanner).")
         etat.pont.oublier()
         sortie = await _demarrer_robot(etat, demande, dossier)
         etat.simulation = {"lieu": demande.lieu, "etage": demande.etage, "dossier": str(dossier), "monde": None,
@@ -180,8 +180,9 @@ async def demarrer(demande: DemandeSimulation, request: Request):
                 raise ErreurAtelier(503, f"Impossible de lancer la répétition : la commande {nom} n'est pas "
                                          "installée.")
     if not chemin_sdf(dossier, demande.etage).is_file():
-        raise ErreurAtelier(409, "Le monde Gazebo de cet étage n'existe pas encore : dans l'onglet Carte, "
-                                 "cliquez sur « Fabriquer la carte », puis relancez la simulation.")
+        raise ErreurAtelier(409, "Le monde Gazebo de cet étage n'existe pas encore : dans Simulation › Dessiner, "
+                                 "cliquez sur « Enregistrer » (ou ⚙ Avancé › Refaire la carte), puis relancez "
+                                 "la simulation.")
     avertissements = []
     depart = synchroniser_le_depart(dossier)
     if depart:
@@ -189,7 +190,8 @@ async def demarrer(demande: DemandeSimulation, request: Request):
     navigation = demande.navigation
     if navigation and not chemin_carte(dossier, demande.etage).is_file():
         raise ErreurAtelier(409, "Cet étage n'a pas de carte 2D : le guide ne peut pas naviguer. Dans "
-                                 "l'onglet Carte, cliquez sur « Fabriquer la carte ».")
+                                 "Simulation › Dessiner, cliquez sur « Enregistrer » (ou ⚙ Avancé › Refaire la "
+                                 "carte), ou faites un scan (Réel › Scanner).")
     if navigation and mode == "simu" and commande("g1-guide") is None:
         navigation = False
         avertissements.append("La commande g1-guide n'est pas encore installée : la simulation tourne "
@@ -272,7 +274,7 @@ def aller(demande: DemandeAller, request: Request):
             connus = None
         if connus is not None and cible not in connus:
             raise ErreurAtelier(404, f"« {cible} » n'est ni une salle ni un nœud du lieu "
-                                     f"« {etat.simulation['lieu']} ». Placez-la dans l'onglet Salles.")
+                                     f"« {etat.simulation['lieu']} ». Placez-la avec Placer › Salle.")
     if not etat.pont.actif:
         raise ErreurAtelier(503, "Pas de liaison avec ROS 2 : "
                             + (etat.pont.erreur or "le pont ROS 2 du serveur n'est pas démarré") + ".")
@@ -292,7 +294,7 @@ def aller(demande: DemandeAller, request: Request):
                                     "navigation) ou g1-guide navigation.")
     maitre = etat.pont.dernier("/mouvement/maitre")
     if maitre and maitre.get("maitre") == "pilotage":
-        reponse["avertissement"] = ("Le robot est piloté à la main (onglet Pilotage) : le guide refusera "
+        reponse["avertissement"] = ("Le robot est piloté à la main (Réel › Piloter) : le guide refusera "
                                     "d'y aller. Rendez d'abord la main.")
     return reponse
 
@@ -396,8 +398,8 @@ def teleop(demande: DemandeTeleop, request: Request):
     if etat.mode_navigation() == "robot":
         raise ErreurAtelier(409, "Le vrai robot se pilote à sa télécommande, pas depuis l'Atelier.")
     if not (etat.simulation_en_cours() or scan_robot_simule_actif(request.app)):
-        raise ErreurAtelier(409, "Il n'y a pas de robot simulé à piloter : lancez la simulation (onglet Simulation), "
-                                 "ou un scan en mode simulation ou en répétition sans robot (onglet Scan). Le vrai "
+        raise ErreurAtelier(409, "Il n'y a pas de robot simulé à piloter : lancez la simulation (Simulation › "
+                                 "Simuler), ou un scan simulé ou en répétition sans robot. Le vrai "
                                  "robot se pilote à sa télécommande.")
     if not etat.pont.actif:
         raise ErreurAtelier(503, "Pas de liaison avec ROS 2 : "

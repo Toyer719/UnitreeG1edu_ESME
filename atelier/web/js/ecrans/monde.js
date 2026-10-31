@@ -1,6 +1,8 @@
-// Écran Monde : dessiner l'environnement inventé d'un étage, vu de dessus, avec sa vue 3D.
-// Murs (cliquer-glisser, accrochés à une grille de 0,25 m), passages, objets, piétons et
-// départ du robot. Annuler, refaire, enregistrer (PUT …/monde).
+// Écran Monde (Simulation › Dessiner) : dessiner l'environnement inventé d'un étage, vu de dessus (plan 2D),
+// et le voir en 3D (vue 3D de la coque). Murs (cliquer-glisser, accrochés à une grille de 0,25 m),
+// passages, objets, piétons et départ du robot ; l'outil vient du ruban (commande(nom, valeur)), ses
+// réglages et l'élément choisi sont dans le panneau de droite. Annuler, Rétablir (barre d'outils, Ctrl+Z,
+// Ctrl+Y), ✓ Enregistrer (PUT …/monde) : la carte du robot se refait seule ensuite (POST …/monde/generer).
 //
 // Vague 4 (section 11.2 du plan) : sur l'étage du point principal, le départ du robot EST le point
 // principal (l'accueil). Il est affiché « = point principal », sans poignée : on ne le fait pas
@@ -11,27 +13,27 @@
 
 import { api, urlEtage, urlLieu } from '../api.js';
 import { contexte, rechargerLieu } from '../contexte.js';
+import { blocAvance, panneauEdition, preparerEcran, section } from '../coque/ecran.js';
 import * as F from '../formulaire.js';
 import * as G from '../geometrie.js';
 import { Historique } from '../historique.js';
-import { afficherErreur, afficherMessage, afficherRapport } from '../messages.js';
+import { afficherErreur, afficherRapport } from '../messages.js';
 import { creerPlan, ll, lls, metresParPixel, suivrePointeur } from '../plan.js';
-import { Vue3D } from '../vue3d.js';
 import { etiquetteSalle } from './salles.js';
 
 const L = window.L;
 const IDS_RESERVES = ['sol', 'g1_proxy'];
 
 const OUTILS = [
-  { id: 'choisir', texte: 'Choisir', aide: "Cliquez sur un élément pour voir et changer ses mesures, faites-le glisser pour le déplacer. Glissez le fond pour bouger la vue, molette ou deux doigts pour zoomer." },
-  { id: 'mur', texte: 'Mur', aide: "Cliquez-glissez pour tracer un mur, ou cliquez au début puis à la fin. Les bouts s'accrochent à la grille de 0,25 m." },
-  { id: 'passage', texte: 'Passage', aide: "Cliquez sur un mur pour y laisser un passage (une porte) de la largeur choisie : le mur est coupé en deux." },
-  { id: 'objet', texte: 'Objet', aide: "Choisissez le modèle, puis cliquez là où le poser. Réglez ensuite sa rotation dans le panneau." },
-  { id: 'pieton', texte: 'Piéton', aide: "Cliquez les points du trajet du piéton, l'un après l'autre, puis « Terminer le trajet » (ou touche Entrée)." },
-  { id: 'depart', texte: 'Départ du robot', aide: "Cliquez là où le robot démarre la simulation ; glissez pour l'orienter." },
+  { id: 'choisir', texte: 'Choisir', aide: "Cliquez sur un élément pour le modifier, glissez-le pour le déplacer. Glissez le fond pour bouger la vue." },
+  { id: 'mur', texte: 'Mur', aide: "Cliquez-glissez pour tracer un mur, ou cliquez au début puis à la fin. Les bouts s'accrochent à la grille." },
+  { id: 'passage', texte: 'Passage', aide: "Cliquez sur un mur pour y laisser un passage (une porte)." },
+  { id: 'objet', texte: 'Objet', aide: "Cliquez là où poser le meuble ; tournez-le ensuite dans le panneau." },
+  { id: 'pieton', texte: 'Piéton', aide: "Cliquez les points de son trajet, puis « Terminer le trajet » (ou Entrée)." },
+  { id: 'depart', texte: 'Départ', aide: "Cliquez là où le robot démarre ; glissez pour l'orienter." },
 ];
-const AIDE_DEPART_PRINCIPAL = "Le robot démarre au point principal « {nom} » (l'accueil) : cliquez pour le déplacer, glissez "
-  + "pour l'orienter. À l'enregistrement du monde, le point principal suit (sa salle, son nœud et l'accueil).";
+const AIDE_DEPART_PRINCIPAL = "Le robot démarre à l'accueil « {nom} » : cliquez pour le déplacer, glissez pour l'orienter ; "
+  + "l'accueil suit à l'enregistrement.";
 const EGAL = 1e-6;
 
 const MODELES = [
@@ -60,7 +62,10 @@ function copie(v) {
   return JSON.parse(JSON.stringify(v));
 }
 
-export function ouvrir(racine) {
+export function ouvrir(racine, options) {
+  const ecran = preparerEcran(racine, options);
+  const coque = ecran.coque;
+  const carte3d = ecran.carte3d;
   const lieu = contexte.lieu;
   const etage = contexte.etage;
   const etat = {
@@ -71,33 +76,15 @@ export function ouvrir(racine) {
   };
   const hist = new Historique();
 
-  racine.innerHTML = `
-    <div class="barre">
-      <div class="barre-gauche" data-role="outils"></div>
-      <div class="barre-options" data-role="options"></div>
-      <div class="barre-droite">
-        <button type="button" class="bouton" data-role="annuler" title="Ctrl+Z">Annuler</button>
-        <button type="button" class="bouton" data-role="refaire" title="Ctrl+Y">Refaire</button>
-        <button type="button" class="bouton bouton-principal" data-role="enregistrer">Enregistrer le monde</button>
-        <span class="etat-enregistrement" data-role="etat"></span>
-      </div>
-    </div>
-    <p class="aide" data-role="aide"></p>
-    <div class="espace-deux">
-      <div class="plan" data-role="plan"></div>
-      <div class="cote">
-        <div class="vue3d" data-role="vue3d"></div>
-        <div class="panneau" data-role="panneau"></div>
-      </div>
-    </div>`;
-  const $ = (r) => racine.querySelector('[data-role="' + r + '"]');
-  const plan = creerPlan($('plan'));
+  ecran.vue.innerHTML = '<div class="plan" data-role="plan"></div>';
+  const plan = creerPlan(ecran.vue.querySelector('[data-role=plan]'));
   const carte = plan.carte;
-  const vue = new Vue3D($('vue3d'));
   const calqueElements = L.layerGroup().addTo(carte);
   const calqueTrace = L.layerGroup().addTo(carte);
-
-  const outils = F.barreOutils($('outils'), OUTILS, etat.outil, choisirOutil);
+  let minuterie3d = null;
+  let charge = false;
+  let panneau = null;
+  let zoneOutil = null;
 
   // ------------------------------------------------------------------ modifications
 
@@ -306,7 +293,7 @@ export function ouvrir(racine) {
     const t = etat.trace;
     if (!t || t.genre !== 'pieton') return;
     if (t.points.length < 2) {
-      afficherMessage('Un piéton a besoin d\'au moins deux points sur son trajet : cliquez encore.', 'avertissement');
+      coque.message('Un piéton a besoin d\'au moins deux points sur son trajet : cliquez encore.', 'avertissement');
       return;
     }
     let id;
@@ -323,7 +310,7 @@ export function ouvrir(racine) {
   function couperPassage(p) {
     const choix = trouver(p, true);
     if (!choix) {
-      afficherMessage('Cliquez sur un mur (ou tout près) pour y laisser un passage.', 'avertissement');
+      coque.message('Cliquez sur un mur (ou tout près) pour y laisser un passage.', 'avertissement');
       return;
     }
     modifier((m) => {
@@ -385,7 +372,7 @@ export function ouvrir(racine) {
         t.bouge = true;
         deplacerElement(t.choix, t.original, dx, dy);
         dessiner();
-        vue.afficherMonde(etat.monde, t.choix.id);
+        afficher3D();
       } else if (t.genre === 'mur') {
         t.a = accrocher(p);
         dessinerTrace(t.a);
@@ -462,42 +449,57 @@ export function ouvrir(racine) {
   };
   const arreterPointeur = suivrePointeur(plan, gestes);
 
-  // ------------------------------------------------------------------ outils et options
+  // ------------------------------------------------------------------ outils (ruban) et réglages (panneau)
 
   function choisirOutil(id) {
     if (etat.trace && etat.trace.genre === 'pieton' && etat.trace.points.length >= 2) terminerPieton();
+    if (!OUTILS.some((o) => o.id === id)) id = 'choisir';
     etat.outil = id;
     etat.trace = null;
-    outils.choisir(id);
     if (id === 'choisir') carte.dragging.enable();
     else carte.dragging.disable();
     plan.cadre.classList.toggle('dessin', id !== 'choisir');
-    $('aide').textContent = aideOutil(id);
+    coque.activer(id);
+    coque.aide(aideOutil(id));
     dessinerTrace(null);
-    majOptions();
+    majPanneau();
   }
 
+  // Réglages de l'outil en cours, en tête du panneau
   function majOptions() {
-    const zone = $('options');
-    zone.innerHTML = '';
+    if (!zoneOutil) return;
+    const zone = zoneOutil;
+    zone.textContent = '';
     const o = etat.outil;
-    if (o !== 'choisir') {
-      F.caseACocher(zone, 'Grille 0,25 m', etat.accrocher, (v) => { etat.accrocher = v; });
+    if (o === 'choisir') {
+      zone.hidden = true;
+      return;
     }
+    zone.hidden = false;
+    zone.appendChild(F.el('h3', 'panneau-titre', 'Outil : ' + OUTILS.find((x) => x.id === o).texte
+      + (o === 'objet' ? ' (' + (MODELES.find((m) => m.id === etat.modele) || { texte: etat.modele }).texte + ')' : '')));
     if (o === 'mur') {
       F.champNombre(zone, 'Épaisseur', etat.epaisseur, { pas: 0.05, min: 0.05, max: 1, unite: 'm' }, (v) => { etat.epaisseur = v; });
       F.champNombre(zone, 'Hauteur', etat.hauteur, { pas: 0.1, min: 0.1, max: 10, unite: 'm' }, (v) => { etat.hauteur = v; });
     } else if (o === 'passage') {
-      F.champNombre(zone, 'Largeur du passage', etat.largeurPassage, { pas: 0.1, min: 0.5, max: 10, unite: 'm' }, (v) => { etat.largeurPassage = v; });
+      F.champNombre(zone, 'Largeur', etat.largeurPassage, { pas: 0.1, min: 0.5, max: 10, unite: 'm' }, (v) => { etat.largeurPassage = v; });
     } else if (o === 'objet') {
-      F.listeDeroulante(zone, 'Modèle', etat.modele, MODELES, (v) => { etat.modele = v; });
+      F.listeDeroulante(zone, 'Meuble', etat.modele, MODELES, (v) => {
+        etat.modele = v;
+        majOptions();
+      });
     } else if (o === 'pieton') {
       F.champNombre(zone, 'Vitesse', etat.vitesse, { pas: 0.1, min: 0.1, max: 3, unite: 'm/s' }, (v) => { etat.vitesse = v; });
       F.caseACocher(zone, 'Va-et-vient (sinon : boucle)', etat.allerRetour, (v) => { etat.allerRetour = v; });
       const n = etat.trace && etat.trace.genre === 'pieton' ? etat.trace.points.length : 0;
-      const b = F.bouton(zone, 'Terminer le trajet (' + n + ' point' + (n > 1 ? 's' : '') + ')', terminerPieton, 'bouton bouton-principal');
+      const ligne = F.el('div', 'formulaire-ligne');
+      const b = F.bouton(ligne, 'Terminer le trajet (' + n + ' point' + (n > 1 ? 's' : '') + ')', terminerPieton, 'bouton bouton-principal');
       b.disabled = n < 2;
-      F.bouton(zone, 'Abandonner le trajet', () => { etat.trace = null; dessinerTrace(null); majOptions(); }).disabled = n === 0;
+      F.bouton(ligne, 'Abandonner', () => { etat.trace = null; dessinerTrace(null); majOptions(); }).disabled = n === 0;
+      zone.appendChild(ligne);
+    }
+    if (o !== 'choisir') {
+      F.caseACocher(zone, 'Accrocher à la grille de 0,25 m', etat.accrocher, (v) => { etat.accrocher = v; });
     }
   }
 
@@ -515,8 +517,8 @@ export function ouvrir(racine) {
       const autres = idsDuMonde(etat.monde).filter((x) => x !== e.id);
       const refus = G.verifierId(v, autres.concat(IDS_RESERVES), 'déjà un mur, un objet ou un piéton');
       if (refus) {
-        afficherMessage(refus, 'erreur');
-        panneau();
+        coque.message(refus, 'erreur');
+        majPanneau();
         return;
       }
       changer(() => { element(choix).id = v; });
@@ -536,23 +538,39 @@ export function ouvrir(racine) {
       (v) => changer(() => ecrire(G.arrondir(G.normaliserAngle(G.radians(v)), 4))));
   }
 
-  function panneau() {
-    const zone = $('panneau');
-    zone.innerHTML = '';
+  function titreElement(c, e) {
+    if (!c || !e) return 'Le monde';
+    if (c.genre === 'mur') return 'Mur';
+    if (c.genre === 'pieton') return 'Piéton';
+    if (c.genre === 'depart') return departPrincipal() ? 'Départ = accueil' : 'Départ du robot';
+    return e.type === 'modele' ? (MODELES.find((x) => x.id === e.modele) || { texte: e.modele }).texte
+      : (e.type === 'boite' ? 'Meuble' : 'Poteau');
+  }
+
+  function majPanneau() {
+    if (!etat.monde) return;
     const m = etat.monde;
     const c = etat.choisi;
     const e = element(c);
+    panneau = panneauEdition(ecran.panneau, titreElement(c, e), null,
+      { modifie: () => etat.modifie, enregistrer: enregistrer, annuler: abandonner });
+    const corps = panneau.corps;
+    zoneOutil = F.el('div', 'section-panneau section-outil');
+    zoneOutil.setAttribute('data-section', 'outil');
+    corps.appendChild(zoneOutil);
+    majOptions();
+    const zone = section(corps, null, 'element');
     if (!c || !e) {
-      F.titre(zone, 'Le monde de l\'étage');
-      F.paragraphe(zone, m.murs.length + ' murs, ' + m.objets.length + ' objets, ' + m.pietons.length + ' piétons. '
-        + 'Choisissez un outil en haut pour dessiner, ou cliquez sur un élément pour le modifier.');
-      F.paragraphe(zone, 'Emprise : le rectangle qui contient tout le monde. Elle s\'agrandit seule quand vous dessinez au-delà.', 'panneau-note');
+      F.paragraphe(zone, m.murs.length + ' murs, ' + m.objets.length + ' objets, ' + m.pietons.length + ' piétons.');
+      F.paragraphe(zone, 'Choisissez un outil dans le ruban pour dessiner, ou cliquez sur un élément pour le modifier.', 'panneau-note');
+      const avance = blocAvance(zone, 'Emprise du monde');
+      F.paragraphe(avance, 'Le rectangle qui contient tout : il s\'agrandit seul quand vous dessinez au-delà.', 'panneau-note');
       const em = m.emprise;
-      F.champNombre(zone, 'x min', em.min[0], { pas: 1, unite: 'm' }, (v) => changer((mm) => { mm.emprise.min[0] = v; }));
-      F.champNombre(zone, 'y min', em.min[1], { pas: 1, unite: 'm' }, (v) => changer((mm) => { mm.emprise.min[1] = v; }));
-      F.champNombre(zone, 'x max', em.max[0], { pas: 1, unite: 'm' }, (v) => changer((mm) => { mm.emprise.max[0] = v; }));
-      F.champNombre(zone, 'y max', em.max[1], { pas: 1, unite: 'm' }, (v) => changer((mm) => { mm.emprise.max[1] = v; }));
-      F.bouton(zone, 'Réduire l\'emprise à ce qui est dessiné', () => changer((mm) => {
+      F.champNombre(avance, 'x min', em.min[0], { pas: 1, unite: 'm' }, (v) => changer((mm) => { mm.emprise.min[0] = v; }));
+      F.champNombre(avance, 'y min', em.min[1], { pas: 1, unite: 'm' }, (v) => changer((mm) => { mm.emprise.min[1] = v; }));
+      F.champNombre(avance, 'x max', em.max[0], { pas: 1, unite: 'm' }, (v) => changer((mm) => { mm.emprise.max[0] = v; }));
+      F.champNombre(avance, 'y max', em.max[1], { pas: 1, unite: 'm' }, (v) => changer((mm) => { mm.emprise.max[1] = v; }));
+      F.bouton(avance, 'Réduire à ce qui est dessiné', () => changer((mm) => {
         // on part d'une emprise « vide », que etendreEmprise agrandit jusqu'aux éléments
         mm.emprise = { min: [1e9, 1e9], max: [-1e9, -1e9] };
         etendreEmprise(mm);
@@ -560,18 +578,12 @@ export function ouvrir(racine) {
       return;
     }
     if (c.genre === 'mur') {
-      F.titre(zone, 'Mur « ' + e.id + ' »');
-      champId(zone, c);
       champPoint(zone, 'Début', () => e.de, (p) => { element(c).de = p; });
       champPoint(zone, 'Fin', () => e.a, (p) => { element(c).a = p; });
       F.valeur(zone, 'Longueur', G.nb(G.longueurMur(e), 2) + ' m');
       F.champNombre(zone, 'Épaisseur', e.epaisseur, { pas: 0.05, min: 0.01, max: 1, unite: 'm' }, (v) => changer(() => { element(c).epaisseur = v; }));
       F.champNombre(zone, 'Hauteur', e.hauteur, { pas: 0.1, min: 0.01, max: 10, unite: 'm' }, (v) => changer(() => { element(c).hauteur = v; }));
     } else if (c.genre === 'objet') {
-      const nom = e.type === 'modele' ? (MODELES.find((x) => x.id === e.modele) || { texte: e.modele }).texte
-        : (e.type === 'boite' ? 'Boîte' : 'Poteau');
-      F.titre(zone, nom + ' « ' + e.id + ' »');
-      champId(zone, c);
       champPoint(zone, 'Centre', () => e.centre, (p) => { element(c).centre = p; });
       if (e.type === 'boite') {
         ['Longueur', 'Largeur', 'Hauteur'].forEach((libelle, i) => {
@@ -585,49 +597,45 @@ export function ouvrir(racine) {
         champCap(zone, () => e.cap || 0, (v) => { element(c).cap = v; });
       }
     } else if (c.genre === 'pieton') {
-      F.titre(zone, 'Piéton « ' + e.id + ' »');
-      champId(zone, c);
       F.champNombre(zone, 'Vitesse', e.vitesse, { pas: 0.1, min: 0.1, max: 3, unite: 'm/s' }, (v) => changer(() => { element(c).vitesse = v; }));
-      F.caseACocher(zone, 'Va-et-vient (sinon : boucle, retour direct au départ)', e.aller_retour, (v) => changer(() => { element(c).aller_retour = v; }));
-      F.valeur(zone, 'Trajet', e.trajet.length + ' points, départ en [' + G.nb(e.trajet[0][0]) + ' ; ' + G.nb(e.trajet[0][1]) + ']');
+      F.caseACocher(zone, 'Va-et-vient (sinon : boucle)', e.aller_retour, (v) => changer(() => { element(c).aller_retour = v; }));
+      F.valeur(zone, 'Trajet', e.trajet.length + ' points');
     } else if (c.genre === 'depart' && departPrincipal()) {
-      F.titre(zone, 'Départ du robot = point principal « ' + etat.principal.nom + ' »');
       F.valeur(zone, 'x', G.nb(e.x, 2) + ' m');
       F.valeur(zone, 'y', G.nb(e.y, 2) + ' m');
       F.valeur(zone, 'Orientation', G.nb(G.degres(e.theta), 1) + ' °');
-      F.paragraphe(zone, 'Le robot démarre la simulation au point principal du lieu (l\'accueil), tourné dans le sens de sa '
-        + 'flèche : il se place et s\'oriente dans l\'onglet Salles. L\'outil « Départ du robot » le déplace aussi : '
-        + 'à l\'enregistrement du monde, le point principal suit.', 'panneau-note note-principal');
+      F.paragraphe(zone, 'Le robot démarre à l\'accueil « ' + etat.principal.nom + ' » (Placer › Accueil). L\'outil « Départ » '
+        + 'le déplace aussi : l\'accueil suit à l\'enregistrement.', 'panneau-note note-principal');
     } else if (c.genre === 'depart') {
-      F.titre(zone, 'Départ du robot');
       F.champNombre(zone, 'x', e.x, { pas: pas(), unite: 'm' }, (v) => changer((mm) => { mm.depart_robot.x = v; }));
       F.champNombre(zone, 'y', e.y, { pas: pas(), unite: 'm' }, (v) => changer((mm) => { mm.depart_robot.y = v; }));
       champCap(zone, () => e.theta, (v) => { etat.monde.depart_robot.theta = v; });
-      F.paragraphe(zone, 'Glisser après le clic oriente le robot, par pas de 15° (réglez ici la valeur exacte).', 'panneau-note');
-      F.paragraphe(zone, 'En général, le robot démarre à l\'accueil.', 'panneau-note');
     }
-    if (c.genre !== 'depart') {
-      F.bouton(zone, 'Supprimer', supprimerChoisi, 'bouton bouton-danger');
-    }
+    const actions = F.el('div', 'formulaire-ligne');
+    if (c.genre !== 'depart') F.bouton(actions, 'Supprimer', supprimerChoisi, 'bouton bouton-danger');
+    F.bouton(actions, 'Fermer', () => { etat.choisi = null; rafraichir(); }, 'bouton bouton-discret');
+    zone.appendChild(actions);
+    if (c.genre !== 'depart') champId(blocAvance(zone, 'Avancé'), c);
   }
 
   // ------------------------------------------------------------------ état général
 
-  function majBoutons() {
-    $('annuler').disabled = !hist.peutAnnuler;
-    $('refaire').disabled = !hist.peutRefaire;
-    $('etat').textContent = etat.modifie ? 'Modifications non enregistrées' : 'Tout est enregistré';
-    $('etat').classList.toggle('non-enregistre', etat.modifie);
+  // la vue 3D de la coque montre le monde (au plus 5 fois par seconde pendant un glissé)
+  function afficher3D() {
+    if (!carte3d || minuterie3d) return;
+    minuterie3d = setTimeout(() => {
+      minuterie3d = null;
+      if (etat.monde) carte3d.afficherMonde(etat.monde, {});
+    }, 200);
   }
 
   function rafraichir() {
     dessiner();
-    vue.afficherMonde(etat.monde, etat.choisi ? etat.choisi.id : null);
-    panneau();
-    majBoutons();
+    afficher3D();
+    majPanneau();
   }
 
-  function annuler() {
+  function defaire() {
     const precedent = hist.annuler(etat.monde);
     if (!precedent) return;
     etat.monde = precedent;
@@ -645,13 +653,11 @@ export function ouvrir(racine) {
     rafraichir();
   }
 
+  // ✓ Enregistrer : le monde, l'accueil s'il a suivi le départ, puis la carte du robot refaite seule
   async function enregistrer() {
-    const b = $('enregistrer');
-    b.disabled = true;
     try {
       const r = await api.ecrire(urlEtage(lieu, etage) + '/monde', etat.monde);
       etat.modifie = false;
-      majBoutons();
       let rapport = r.rapport;
       let suite = '';
       if (departDiffere()) {
@@ -661,39 +667,56 @@ export function ouvrir(racine) {
           const rp = await api.ecrire(urlLieu(lieu) + '/principal', { x: d.x, y: d.y, theta: d.theta });
           etat.principal = Object.assign({}, etat.principal, { x: rp.principal.x, y: rp.principal.y, theta: rp.principal.theta });
           rapport = rp.rapport;
-          suite = ' Le point principal « ' + etat.principal.nom + ' » a suivi le départ du robot (salle, nœud et accueil).';
-          if (rp.avertissement) afficherMessage(rp.avertissement, 'avertissement');
+          suite = ' L\'accueil « ' + etat.principal.nom + ' » a suivi le départ du robot.';
+          if (rp.avertissement) coque.message(rp.avertissement, 'avertissement');
         } catch (e) {
           afficherErreur(e);
-          afficherMessage('Le monde est enregistré, mais le point principal n\'a pas suivi le départ du robot : '
-            + 'déplacez-le dans l\'onglet Salles.', 'avertissement');
+          coque.message('Le monde est enregistré, mais l\'accueil n\'a pas suivi le départ du robot : déplacez-le '
+            + '(Placer › Accueil).', 'avertissement');
         }
       }
-      afficherRapport(rapport, 'Monde enregistré (' + r.enregistre.join(', ') + ').' + suite
-        + ' Pour le voir dans la carte et la simulation : onglet Carte, « Fabriquer la carte ».');
-      rechargerLieu().catch(() => {});
+      afficherRapport(rapport, 'Monde enregistré.' + suite + ' La carte du robot se met à jour…');
       rafraichir();
+      await refaireLaCarte();
+      rechargerLieu().catch(() => {});
+      coque.lieuModifie('monde');
+      return true;
     } catch (e) {
       afficherErreur(e);
-    } finally {
-      b.disabled = false;
+      return false;
     }
+  }
+
+  // La carte du robot (et le monde de Gazebo) refaits depuis le monde enregistré
+  async function refaireLaCarte() {
+    try {
+      const r = await api.envoyer(urlEtage(lieu, etage) + '/monde/generer');
+      coque.message('Carte du robot à jour (' + G.nb(r.duree_s, 1) + ' s).', 'succes', [], r.sortie);
+      if (r.rapport && r.rapport.erreurs && r.rapport.erreurs.length) afficherRapport(r.rapport);
+      plan.afficherCarte(lieu, etage).catch(() => {});
+      coque.lieuModifie('carte');
+    } catch (e) {
+      coque.message('Le monde est enregistré, mais la carte du robot n\'a pas pu être refaite : ' + e.message,
+        'avertissement', e.erreurs, e.sortie);
+    }
+  }
+
+  async function abandonner() {
+    if (!etat.modifie) return;
+    if (!(await coque.confirmer('Abandonner les modifications du monde et relire le fichier ?',
+      { titre: 'Annuler les modifications', ok: 'Abandonner', annuler: 'Garder', danger: true }))) return;
+    await charger();
   }
 
   function clavier(ev) {
     const cible = ev.target;
     if (cible && (cible.tagName === 'INPUT' || cible.tagName === 'TEXTAREA' || cible.tagName === 'SELECT')) return;
-    const ctrl = ev.ctrlKey || ev.metaKey;
-    if (ctrl && (ev.key === 'z' || ev.key === 'Z') && !ev.shiftKey) { ev.preventDefault(); annuler(); }
-    else if (ctrl && (ev.key === 'y' || ev.key === 'Y' || ((ev.key === 'z' || ev.key === 'Z') && ev.shiftKey))) { ev.preventDefault(); refaire(); }
-    else if (ev.key === 'Delete' || ev.key === 'Backspace') { if (etat.choisi) { ev.preventDefault(); supprimerChoisi(); } }
-    else if (ev.key === 'Escape') { etat.trace = null; etat.choisi = null; dessinerTrace(null); majOptions(); rafraichir(); }
+    if (ev.ctrlKey || ev.metaKey) return;         // Ctrl+Z, Ctrl+Y : la coque
+    if (ev.key === 'Delete' || ev.key === 'Backspace') { if (etat.choisi) { ev.preventDefault(); supprimerChoisi(); } }
+    else if (ev.key === 'Escape') { etat.trace = null; etat.choisi = null; dessinerTrace(null); choisirOutil('choisir'); rafraichir(); }
     else if (ev.key === 'Enter') { terminerPieton(); }
   }
 
-  $('annuler').addEventListener('click', annuler);
-  $('refaire').addEventListener('click', refaire);
-  $('enregistrer').addEventListener('click', enregistrer);
   document.addEventListener('keydown', clavier);
   carte.on('click', (e) => {
     // clic sur le fond en mode Choisir : rien n'est choisi
@@ -715,18 +738,20 @@ export function ouvrir(racine) {
 
   async function charger() {
     await chargerPrincipal();
+    etat.modifie = false;
+    hist.vider();
     try {
       etat.monde = await api.lire(urlEtage(lieu, etage) + '/monde');
     } catch (e) {
       if (e.statut !== 404) {
         afficherErreur(e);
-        $('aide').textContent = 'Le monde n\'a pas pu être lu : corrigez le fichier, puis rouvrez cet onglet.';
+        coque.aide('Le monde n\'a pas pu être lu : corrigez le fichier, puis rouvrez Dessiner.');
         return;
       }
       etat.monde = mondeNeuf();
       etat.modifie = true;
-      afficherMessage('Cet étage n\'avait pas encore de monde : en voici un de 20 × 15 m, entouré de murs. '
-        + 'Modifiez-le, puis « Enregistrer le monde ».', 'info');
+      coque.message('Cet étage n\'avait pas encore de monde : en voici un de 20 × 15 m, entouré de murs. '
+        + 'Modifiez-le, puis ✓ Enregistrer.', 'info');
     }
     ['murs', 'objets', 'pietons'].forEach((k) => { etat.monde[k] = etat.monde[k] || []; });
     if (departDiffere()) {
@@ -735,25 +760,51 @@ export function ouvrir(racine) {
       const p = etat.principal;
       etat.monde.depart_robot = { x: p.x, y: p.y, theta: p.theta };
       etat.modifie = true;
-      afficherMessage('Le départ du robot (' + G.nb(d.x, 2) + ' ; ' + G.nb(d.y, 2) + ') n\'était pas sur le point principal « '
-        + p.nom + ' » : il y est remis, car le robot démarre toujours à l\'accueil. Enregistrez le monde pour le garder, '
-        + 'ou déplacez le point principal dans l\'onglet Salles.', 'avertissement');
+      coque.message('Le départ du robot (' + G.nb(d.x, 2) + ' ; ' + G.nb(d.y, 2) + ') n\'était pas sur l\'accueil « '
+        + p.nom + ' » : il y est remis, car le robot démarre toujours à l\'accueil. Enregistrez pour le garder.',
+      'avertissement');
     }
     const em = etat.monde.emprise;
-    plan.cadrer(em.min[0], em.min[1], em.max[0], em.max[1]);
-    vue.cadrer(em);
-    choisirOutil('choisir');
+    if (!charge) plan.cadrer(em.min[0], em.min[1], em.max[0], em.max[1]);
+    charge = true;
+    if (!element(etat.choisi)) etat.choisi = null;
+    const outil = etat.outilDemande || etat.outil || 'choisir';
+    etat.outilDemande = null;
+    choisirOutil(outil);
     rafraichir();
   }
-  racine.classList.add('chargement');     // rien n'est modifiable avant la fin du chargement
-  charger().finally(() => racine.classList.remove('chargement'));
+
+  function commande(nom, valeur) {
+    if (nom === 'objet' && valeur && MODELES.some((m) => m.id === valeur)) etat.modele = valeur;
+    if (!OUTILS.some((o) => o.id === nom)) return;
+    if (!charge) {
+      etat.outilDemande = nom;
+      return;
+    }
+    choisirOutil(nom);
+  }
+
+  ecran.vue.classList.add('chargement');     // rien n'est modifiable avant la fin du chargement
+  commande(ecran.commande, ecran.valeur);
+  charger().finally(() => ecran.vue.classList.remove('chargement'));
 
   return {
     modifie: () => etat.modifie,
+    enregistrer: enregistrer,
+    defaire: defaire,
+    refaire: refaire,
+    peutDefaire: () => hist.peutAnnuler,
+    peutRefaire: () => hist.peutRefaire,
+    commande: commande,
+    vue: () => plan.carte.invalidateSize(),
+    recadrer: () => {
+      const em = etat.monde && etat.monde.emprise;
+      if (em) plan.cadrer(em.min[0], em.min[1], em.max[0], em.max[1]);
+    },
     fermer: () => {
       document.removeEventListener('keydown', clavier);
+      if (minuterie3d) clearTimeout(minuterie3d);
       arreterPointeur();
-      vue.detruire();
       plan.detruire();
     },
   };

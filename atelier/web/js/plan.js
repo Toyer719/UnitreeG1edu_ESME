@@ -55,7 +55,13 @@ export function creerPlan(element) {
   L.control.scale({ metric: true, imperial: false, maxWidth: 150 }).addTo(carte);
   const coordonnees = new CoordonneesControle();
   coordonnees.addTo(carte);
-  carte.on('mousemove', (e) => coordonnees.montrer(xy(e.latlng)));
+  // le point sous le pointeur, en mètres : aussi pour la barre d'état de la coque (événement de la page)
+  carte.on('mousemove', (e) => {
+    const p = xy(e.latlng);
+    coordonnees.montrer(p);
+    document.dispatchEvent(new CustomEvent('atelier-pointeur', { detail: { x: p[0], y: p[1] } }));
+  });
+  carte.on('mouseout', () => document.dispatchEvent(new CustomEvent('atelier-pointeur', { detail: null })));
 
   const calques = {
     fond: L.layerGroup().addTo(carte),

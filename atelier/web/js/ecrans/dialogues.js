@@ -1,19 +1,20 @@
-// Dialogues (vague 4, section 11.6 du plan) : écran de l'agent Équipe.
-// Le chatbot à règles du lieu (dialogues.yaml) : des règles, essayées dans l'ordre, avec leurs
+// Dialogues (Équipe › Dialogues ; vague 4, section 11.6 du plan, et vague 5, section 12.2) :
+// le chatbot à règles du lieu (dialogues.yaml) : des règles, essayées dans l'ordre, avec leurs
 // motifs (ce que dit le visiteur), leur réponse et leur action (guider vers une salle, dire,
 // changer de personnalité, arrêter). « Essayer » montre la réponse et l'action d'une phrase sans
-// robot ; « Envoyer au robot » la publie sur /visiteur/texte, pour le nœud dialogue.
+// robot ; « Envoyer au robot » la publie sur /visiteur/texte, pour le nœud dialogue. L'essai et les
+// règles sont dans la vue, la règle choisie dans le panneau (✓ Enregistrer, ✗ Annuler).
 
 import { api, urlLieu } from '../api.js';
 import { contexte } from '../contexte.js';
+import { blocAvance, panneauEdition, preparerEcran } from '../coque/ecran.js';
 import * as F from '../formulaire.js';
 import * as G from '../geometrie.js';
-import { afficherErreur, afficherMessage } from '../messages.js';
+import { afficherErreur } from '../messages.js';
 import { age, creerEditeur, note, suivreEtat } from '../equipe/commun.js';
 
-const AIDE = 'Pour chaque phrase du visiteur, le robot essaie les règles dans l\'ordre : la première dont un motif '
-  + 'correspond l\'emporte (d\'abord un motif qui couvre toute la phrase, puis un motif trouvé dans la phrase). '
-  + 'Sinon, il répond le repli. Majuscules, accents et ponctuation ne comptent pas.';
+const AIDE = 'Le robot essaie les règles dans l\'ordre : la première qui correspond à la phrase du visiteur l\'emporte ; '
+  + 'sinon, il répond le repli.';
 const ABSENT = 'Ce fichier est facultatif : sans lui, le nœud dialogue d\'exemple prend les règles d\'exemple. '
   + 'Partez de l\'exemple (chercher une salle, bonjour, merci, mode discret, stop), adaptez-le, puis enregistrez.';
 const ACTIONS = [
@@ -25,13 +26,16 @@ const ACTIONS = [
 ];
 const TEXTE_ACTION = { guider: 'guider', dire: 'répondre', personnalite: 'personnalité', stop: 'arrêt', geste: 'geste', repli: 'repli' };
 const SYNTAXE = [
-  ['{salle}', 'une salle du lieu : son identifiant, son nom ou un de ses autres noms (onglet Salles), avec ou sans '
+  ['{salle}', 'une salle du lieu : son identifiant, son nom ou un de ses autres noms (Placer › Salle), avec ou sans '
     + '« la », « au », « l’ »… devant. Obligatoire dans chaque motif d\'une règle « Guider ».'],
   ['{*}', 'n\'importe quels mots, ou aucun (ex. « merci {*} »).'],
   ['{nom_salle}, {salle}', 'dans la réponse d\'une règle « Guider » : le nom et l\'identifiant de la salle trouvée.'],
 ];
 
-export function ouvrir(racine) {
+export function ouvrir(racine, options) {
+  const ecran = preparerEcran(racine, options);
+  const coque = ecran.coque;
+  const afficherMessage = (texte, genre) => coque.message(texte, genre);
   let choisie = null;          // rang de la règle ouverte dans le panneau
   let editeur = null;
   let personnalites = null;    // ids de personnalites.yaml (pour l'action personnalite), ou null
@@ -44,15 +48,8 @@ export function ouvrir(racine) {
     const zone = etat.zones.contenu;
     zone.innerHTML = '';
     zone.appendChild(cadreEssai(etat));
-    const espace = F.el('div', 'espace-deux equipe-espace');
     const gauche = F.el('div', 'equipe-liste');
-    const cote = F.el('div', 'cote');
-    const panneau = F.el('div', 'panneau');
-    panneau.setAttribute('data-role', 'panneau');
-    cote.appendChild(panneau);
-    espace.appendChild(gauche);
-    espace.appendChild(cote);
-    zone.appendChild(espace);
+    zone.appendChild(gauche);
 
     const repli = F.champTexte(gauche, 'Repli', d.repli, (v) => editeur.modifier((x) => { x.repli = v.trim() || x.repli; }),
       { lignes: 2 });
@@ -106,7 +103,7 @@ export function ouvrir(racine) {
       + 'motif la couvre en entier (« je ne cherche pas la B204 » ne guide pas).'));
     gauche.appendChild(aide);
     gauche.appendChild(cadreRobot());
-    panneauRegle(etat, panneau);
+    panneauRegle(etat);
   }
 
   function deplacer(i, sens) {
@@ -119,18 +116,17 @@ export function ouvrir(racine) {
     });
   }
 
-  function panneauRegle(etat, z) {
+  function panneauRegle(etat) {
     const d = etat.donnees;
-    z.innerHTML = '';
     const r = choisie === null ? null : d.regles[choisie];
+    const z = panneauEdition(ecran.panneau, r ? 'Règle « ' + r.id + ' » (' + (choisie + 1) + 'ᵉ)' : 'Dialogues', null,
+      { modifie: () => editeur.modifie(), enregistrer: () => editeur.enregistrer(), annuler: () => editeur.abandonner() }).corps;
     if (!r) {
-      F.titre(z, 'Règles');
-      F.paragraphe(z, 'Cliquez sur une règle pour la modifier, ou ajoutez-en une.');
+      F.paragraphe(z, 'Cliquez sur une règle pour la modifier, ou ajoutez-en une.', 'panneau-note');
       return;
     }
     const modifier = (f) => editeur.modifier(() => f(r));
-    F.titre(z, 'Règle « ' + r.id + ' » (' + (choisie + 1) + 'ᵉ)');
-    F.champTexte(z, 'Identifiant', r.id, (v) => {
+    F.champTexte(blocAvance(z, 'Avancé'), 'Identifiant', r.id, (v) => {
       v = v.trim();
       const refus = G.verifierId(v, d.regles.filter((x) => x !== r).map((x) => x.id), 'une règle');
       if (refus) {
@@ -170,7 +166,7 @@ export function ouvrir(racine) {
           (v) => modifier((x) => { x.personnalite = v; }));
       } else {
         F.champTexte(z, 'Personnalité (id)', r.personnalite || '', (v) => modifier((x) => { x.personnalite = v.trim(); }));
-        note(z, 'Le lieu n\'a pas encore de personnalites.yaml (onglet Personnalités).');
+        note(z, 'Le lieu n\'a pas encore de personnalités (Équipe › Personnalités).');
       }
     }
     if (r.action === 'geste') {
@@ -183,8 +179,9 @@ export function ouvrir(racine) {
     }
     if (r.action === 'stop') note(z, 'Le robot s\'arrête aussitôt (/guide/stop), quoi qu\'il fasse.');
     const bas = F.el('div', 'formulaire-ligne');
-    F.bouton(bas, 'Supprimer la règle', () => {
-      if (!window.confirm('Supprimer la règle « ' + r.id + ' » ?')) return;
+    F.bouton(bas, 'Supprimer la règle', async () => {
+      if (!(await coque.confirmer('Supprimer la règle « ' + r.id + ' » ?',
+        { titre: 'Supprimer', ok: 'Supprimer', annuler: 'Garder', danger: true }))) return;
       editeur.modifier((x) => {
         x.regles.splice(choisie, 1);
         choisie = null;
@@ -229,7 +226,7 @@ export function ouvrir(racine) {
       const r = await api.envoyer(urlLieu(contexte.lieu) + '/dialogues/essayer',
         { texte: texte, dialogues: etat.donnees, etage: contexte.etage });
       dernierEssai = r;
-      montrerEssai(racine.querySelector('[data-role="resultat"]'), r);
+      montrerEssai(ecran.vue.querySelector('[data-role="resultat"]'), r);
     } catch (e) {
       afficherErreur(e);
     }
@@ -268,7 +265,7 @@ export function ouvrir(racine) {
     } else {
       ajouter('Action : répondre seulement.');
     }
-    if (r.origine === 'onglet' && editeur && editeur.modifie()) ajouter('Avec les règles de l\'onglet, pas encore enregistrées.');
+    if (r.origine === 'onglet' && editeur && editeur.modifie()) ajouter('Avec les règles de l\'écran, pas encore enregistrées.');
     zone.appendChild(details);
   }
 
@@ -278,9 +275,9 @@ export function ouvrir(racine) {
       afficherMessage('Tapez une phrase à envoyer.', 'avertissement');
       return;
     }
-    if (!window.confirm('Envoyer « ' + texte + ' » au nœud dialogue (/visiteur/texte) ? S\'il trouve une salle, '
-      + 'il demande au guide d\'y aller : le robot (ou le robot simulé) peut partir. Le nœud dialogue utilise les '
-      + 'règles enregistrées, pas celles de l\'onglet.')) return;
+    if (!(await coque.confirmer('Envoyer « ' + texte + ' » au nœud dialogue ? S\'il trouve une salle, il demande au '
+      + 'guide d\'y aller : le robot (ou le robot simulé) peut partir. Il utilise les règles enregistrées.',
+    { titre: 'Envoyer au robot', ok: 'Envoyer', annuler: 'Annuler', danger: true }))) return;
     try {
       const r = await api.envoyer('/api/equipe/visiteur', { texte: texte });
       if (r.avertissement) afficherMessage(r.avertissement, 'avertissement');
@@ -294,7 +291,8 @@ export function ouvrir(racine) {
 
   function cadreRobot() {
     const cadre = F.el('div', 'equipe-dit');
-    cadre.appendChild(F.el('h3', 'panneau-titre', 'Ce que le robot a dit (/robot/dire)'));
+    const titreDit = cadre.appendChild(F.el('h3', 'panneau-titre', 'Ce que le robot a dit'));
+    titreDit.title = 'Les phrases reçues sur /robot/dire';
     const liste = F.el('ul', 'equipe-phrases');
     liste.setAttribute('data-role', 'phrases');
     cadre.appendChild(liste);
@@ -322,8 +320,10 @@ export function ouvrir(racine) {
     });
   }
 
-  editeur = creerEditeur(racine, 'dialogues', {
-    titre: 'Dialogues', aide: AIDE, absent: ABSENT, rendre: rendre,
+  const page = F.el('div', 'page-contenu');
+  ecran.vue.appendChild(page);
+  editeur = creerEditeur(page, 'dialogues', {
+    titre: 'Dialogues', aide: AIDE, absent: ABSENT, rendre: rendre, sansBarre: true,
     apresChargement: async () => {
       try {
         const p = await api.lire(urlLieu(contexte.lieu) + '/personnalites');
@@ -333,13 +333,21 @@ export function ouvrir(racine) {
       }
     },
   });
+  editeur.pret.then(() => {
+    if (!editeur.etat.donnees) {
+      const z = panneauEdition(ecran.panneau, 'Dialogues', null,
+        { modifie: () => editeur.modifie(), enregistrer: () => editeur.enregistrer(), annuler: () => editeur.abandonner() }).corps;
+      F.paragraphe(z, 'Partez de l\'exemple (au centre), puis choisissez une règle pour la modifier ici.', 'panneau-note');
+    }
+  });
   const arreter = suivreEtat((e) => {
     dernierEtat = e;
-    majPhrases(racine.querySelector('[data-role="phrases"]'), e);
+    majPhrases(ecran.vue.querySelector('[data-role="phrases"]'), e);
   }, 1500);
 
   return {
     modifie: () => editeur.modifie(),
+    enregistrer: () => editeur.enregistrer(),
     fermer: () => arreter(),
   };
 }

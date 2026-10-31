@@ -1,19 +1,20 @@
-// Personnalités (vague 4, section 11.6 du plan) : écran de l'agent Équipe.
-// Les modes de personnalité du robot dans ce lieu (personnalites.yaml) : nom, salutation, voix,
+// Personnalités (Équipe › Personnalités ; vague 4, section 11.6 du plan, et vague 5, section 12.2) :
+// les modes de personnalité du robot dans ce lieu (personnalites.yaml) : nom, salutation, voix,
 // couleur de la LED, geste de salut, vitesse maximale et phrases des événements du guide. Une
 // seule est active : « Rendre active » l'écrit dans le fichier et l'annonce sur
-// /personnalite/active, que la voix et le chatbot de l'équipe écoutent.
+// /personnalite/active, que la voix et le chatbot de l'équipe écoutent. Les cartes sont dans la vue,
+// la personnalité choisie dans le panneau (✓ Enregistrer, ✗ Annuler) ; réglages rares en « Avancé ».
 
 import { api, urlLieu } from '../api.js';
 import { contexte } from '../contexte.js';
+import { blocAvance, panneauEdition, preparerEcran } from '../coque/ecran.js';
 import * as F from '../formulaire.js';
 import * as G from '../geometrie.js';
-import { afficherErreur, afficherMessage } from '../messages.js';
+import { afficherErreur } from '../messages.js';
 import { age, aide, champNombreFacultatif, creerEditeur, note, suivreEtat } from '../equipe/commun.js';
 
-const AIDE = 'Chaque mode change la façon dont le robot parle et se comporte : ce qu\'il dit en saluant, sa voix, '
-  + 'la couleur de sa LED, son geste de salut, sa vitesse maximale et les phrases qu\'il dit pendant une visite. '
-  + 'Une seule personnalité est active ; la partie voix de l\'équipe la reçoit sur /personnalite/active.';
+const AIDE = 'Chaque mode change ce que le robot dit en saluant, sa voix, sa couleur, son geste et ses phrases '
+  + 'pendant une visite. Une seule personnalité est active.';
 const ABSENT = 'Ce fichier est facultatif : sans lui, le robot garde sa voix et les phrases par défaut du guide. '
   + 'Partez de l\'exemple (deux modes : « Accueillant » et « Discret »), adaptez-le, puis enregistrez.';
 const NOUVELLE = { nom: 'Nouvelle personnalité', salutation: 'Bonjour ! Où voulez-vous aller ?' };
@@ -28,10 +29,13 @@ function depuisHex(texte) {
   return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : null;
 }
 
-export function ouvrir(racine) {
+export function ouvrir(racine, options) {
+  const ecran = preparerEcran(racine, options);
+  const coque = ecran.coque;
   let choisie = null;          // id de la personnalité ouverte dans le panneau
   let annoncee = null;         // dernier /personnalite/active reçu par le serveur
   let editeur = null;
+  const afficherMessage = (texte, genre) => coque.message(texte, genre);
 
   function perso(d, id) {
     return d.personnalites.find((p) => p.id === id) || null;
@@ -50,15 +54,8 @@ export function ouvrir(racine) {
     if (!perso(d, choisie)) choisie = d.active;
     const zone = etat.zones.contenu;
     zone.innerHTML = '';
-    const espace = F.el('div', 'espace-deux equipe-espace');
     const gauche = F.el('div', 'equipe-liste');
-    const cote = F.el('div', 'cote');
-    const panneau = F.el('div', 'panneau');
-    panneau.setAttribute('data-role', 'panneau');
-    cote.appendChild(panneau);
-    espace.appendChild(gauche);
-    espace.appendChild(cote);
-    zone.appendChild(espace);
+    zone.appendChild(gauche);
 
     // état de l'annonce sur ROS 2
     const annonce = F.el('div', 'equipe-annonce');
@@ -97,18 +94,19 @@ export function ouvrir(racine) {
       choisie = id;
     }));
     ajout.disabled = d.personnalites.length >= 20;
-    panneauPerso(etat, panneau);
+    panneauPerso(etat);
   }
 
   function majAnnonce(zone, d) {
     if (!zone) return;
     zone.innerHTML = '';
     if (!annoncee) {
-      zone.appendChild(F.el('span', '', 'Personnalité annoncée sur /personnalite/active : aucune reçue par l\'Atelier '
-        + '(ROS 2 arrêté, ou personne ne l\'a encore annoncée).'));
+      zone.appendChild(F.el('span', '', 'Personnalité annoncée au robot : aucune pour l\'instant.'));
+      zone.title = 'Rien reçu sur /personnalite/active (ROS 2 arrêté, ou personne ne l\'a encore annoncée).';
       return;
     }
-    zone.appendChild(F.el('span', '', 'Annoncée sur /personnalite/active : '));
+    zone.title = 'Reçue sur /personnalite/active';
+    zone.appendChild(F.el('span', '', 'Annoncée au robot : '));
     zone.appendChild(F.el('strong', '', annoncee.nom + ' (' + annoncee.id + ')'));
     zone.appendChild(F.el('span', 'equipe-age', ' ' + age(annoncee)
       + (annoncee.lieu && annoncee.lieu !== contexte.lieu ? ', lieu « ' + annoncee.lieu + ' »' : '')));
@@ -117,16 +115,93 @@ export function ouvrir(racine) {
     }
   }
 
-  function panneauPerso(etat, z) {
+  function panneauPerso(etat) {
     const d = etat.donnees;
     const p = perso(d, choisie);
-    z.innerHTML = '';
+    const z = panneauEdition(ecran.panneau, p ? p.nom + (p.id === d.active ? ' (active)' : '') : 'Personnalités', null,
+      { modifie: () => editeur.modifie(), enregistrer: () => editeur.enregistrer(), annuler: () => editeur.abandonner() }).corps;
     if (!p) return;
     const modifier = (f) => editeur.modifier(() => f(p));
-    F.titre(z, 'Personnalité « ' + p.nom + ' »' + (p.id === d.active ? ' (active)' : ''));
 
     F.champTexte(z, 'Nom affiché', p.nom, (v) => modifier((x) => { x.nom = v.trim() || x.nom; }));
-    const champId = F.champTexte(z, 'Identifiant', p.id, (v) => {
+    const salut = F.champTexte(z, 'Salutation', p.salutation, (v) => modifier((x) => { x.salutation = v.trim() || x.salutation; }),
+      { lignes: 2 });
+    salut.parentNode.setAttribute('data-champ', 'salutation');
+    F.champTexte(z, 'Description', p.description || '', (v) => modifier((x) => {
+      if (v.trim()) x.description = v.trim();
+      else delete x.description;
+    }), { lignes: 2, indice: 'Facultatif : quand utiliser ce mode.' });
+
+    const bas = F.el('div', 'formulaire-ligne');
+    if (p.id !== d.active) {
+      F.bouton(bas, 'Rendre active', () => rendreActive(p.id), 'bouton bouton-principal');
+      F.bouton(bas, 'Supprimer', async () => {
+        if (!(await coque.confirmer('Supprimer la personnalité « ' + p.nom + ' » ?',
+          { titre: 'Supprimer', ok: 'Supprimer', annuler: 'Garder', danger: true }))) return;
+        editeur.modifier((x) => {
+          x.personnalites = x.personnalites.filter((y) => y !== p);
+          choisie = x.active;
+        });
+      }, 'bouton bouton-danger');
+    } else {
+      F.paragraphe(bas, 'C\'est la personnalité active.', 'panneau-note');
+    }
+    z.appendChild(bas);
+
+    const voix = blocAvance(z, 'Voix');
+    note(voix, '1 = normal ; volume de 0 à 100. Vides : ceux de la voix.');
+    F.champTexte(voix, 'Nom de la voix', (p.voix || {}).nom || '', (v) => modifier((x) => {
+      majVoix(x, 'nom', v.trim() || null);
+    }), { indice: 'ex. fr_FR-siwis-medium' });
+    ['vitesse', 'hauteur'].forEach((c) => {
+      champNombreFacultatif(voix, c === 'vitesse' ? 'Vitesse de parole' : 'Hauteur', (p.voix || {})[c],
+        { pas: 0.05, min: 0.5, max: 2, indice: '1' }, (v) => modifier((x) => majVoix(x, c, v)));
+    });
+    champNombreFacultatif(voix, 'Volume', (p.voix || {}).volume, { pas: 5, min: 0, max: 100, indice: '80' },
+      (v) => modifier((x) => majVoix(x, 'volume', v === null ? null : Math.round(v))));
+
+    const led = blocAvance(z, 'Lumière et geste');
+    const ligneLed = F.el('div', 'champ');
+    ligneLed.appendChild(F.el('span', 'champ-libelle', 'Couleur'));
+    const couleur = F.el('input');
+    couleur.type = 'color';
+    couleur.value = p.led ? hex(p.led) : '#000000';
+    couleur.disabled = !p.led;
+    couleur.addEventListener('change', () => modifier((x) => { x.led = depuisHex(couleur.value) || x.led; }));
+    ligneLed.appendChild(couleur);
+    led.appendChild(ligneLed);
+    F.caseACocher(led, 'Changer la couleur dans ce mode', !!p.led, (v) => modifier((x) => {
+      if (v) x.led = x.led || { r: 0, g: 120, b: 255 };
+      else delete x.led;
+    }));
+    const gestes = [{ id: '', texte: 'aucun' }].concat(Object.keys(etat.infos.gestes)
+      .map((k) => ({ id: k, texte: etat.infos.gestes[k] })));
+    F.listeDeroulante(led, 'Geste de salut', p.geste_salut === undefined ? '' : String(p.geste_salut), gestes,
+      (v) => modifier((x) => {
+        if (v) x.geste_salut = parseInt(v, 10);
+        else delete x.geste_salut;
+      }));
+    champNombreFacultatif(led, 'Vitesse maximale', p.vitesse_max, { pas: 0.05, min: 0.05, max: 0.4, unite: 'm/s', indice: 'celle du guide' },
+      (v) => modifier((x) => {
+        if (v === null) delete x.vitesse_max;
+        else x.vitesse_max = Math.min(0.4, Math.max(0.05, v));
+      }));
+
+    const phrases = blocAvance(z, 'Phrases pendant une visite');
+    note(phrases, 'Vide : la phrase par défaut, en gris. {nom} devient le nom de la salle visée.');
+    const codes = etat.infos.codes_evenement;
+    Object.keys(codes).forEach((code) => {
+      const c = F.champTexte(phrases, code, (p.phrases || {})[code] || '', (v) => modifier((x) => {
+        x.phrases = x.phrases || {};
+        if (v.trim()) x.phrases[code] = v.trim();
+        else delete x.phrases[code];
+        if (!Object.keys(x.phrases).length) delete x.phrases;
+      }), { indice: codes[code] });
+      c.parentNode.setAttribute('data-phrase', code);
+    });
+
+    const avance = blocAvance(z, 'Avancé');
+    const champId = F.champTexte(avance, 'Identifiant', p.id, (v) => {
       v = v.trim();
       const refus = G.verifierId(v, d.personnalites.filter((x) => x !== p).map((x) => x.id), 'une personnalité');
       if (refus) {
@@ -141,90 +216,7 @@ export function ouvrir(racine) {
       });
     });
     champId.parentNode.setAttribute('data-champ', 'id');
-    F.champTexte(z, 'Description (pour l\'équipe)', p.description || '', (v) => modifier((x) => {
-      if (v.trim()) x.description = v.trim();
-      else delete x.description;
-    }), { lignes: 2, indice: 'Facultatif : quand utiliser ce mode.' });
-    const salut = F.champTexte(z, 'Salutation', p.salutation, (v) => modifier((x) => { x.salutation = v.trim() || x.salutation; }),
-      { lignes: 2 });
-    salut.parentNode.setAttribute('data-champ', 'salutation');
-    note(z, aideChamp(etat, 'salutation'));
-
-    F.titre(z, 'Voix');
-    note(z, 'Réglages pour la partie voix de l\'équipe : 1 = normal ; volume de 0 à 100. Vides : ceux de la voix.');
-    F.champTexte(z, 'Nom de la voix', (p.voix || {}).nom || '', (v) => modifier((x) => {
-      majVoix(x, 'nom', v.trim() || null);
-    }), { indice: 'ex. fr_FR-siwis-medium (vide : la voix par défaut)' });
-    ['vitesse', 'hauteur'].forEach((c) => {
-      champNombreFacultatif(z, c === 'vitesse' ? 'Vitesse de parole' : 'Hauteur', (p.voix || {})[c],
-        { pas: 0.05, min: 0.5, max: 2, indice: '1' }, (v) => modifier((x) => majVoix(x, c, v)));
-    });
-    champNombreFacultatif(z, 'Volume', (p.voix || {}).volume, { pas: 5, min: 0, max: 100, indice: '80' },
-      (v) => modifier((x) => majVoix(x, 'volume', v === null ? null : Math.round(v))));
-
-    F.titre(z, 'LED et geste');
-    const ligneLed = F.el('div', 'champ');
-    ligneLed.appendChild(F.el('span', 'champ-libelle', 'Couleur de la LED'));
-    const couleur = F.el('input');
-    couleur.type = 'color';
-    couleur.value = p.led ? hex(p.led) : '#000000';
-    couleur.disabled = !p.led;
-    couleur.addEventListener('change', () => modifier((x) => { x.led = depuisHex(couleur.value) || x.led; }));
-    ligneLed.appendChild(couleur);
-    ligneLed.appendChild(F.el('span', 'champ-unite', p.led ? p.led.r + ', ' + p.led.g + ', ' + p.led.b : ''));
-    z.appendChild(ligneLed);
-    F.caseACocher(z, 'Changer la couleur de la LED dans ce mode', !!p.led, (v) => modifier((x) => {
-      if (v) x.led = x.led || { r: 0, g: 120, b: 255 };
-      else delete x.led;
-    }));
-    const gestes = [{ id: '', texte: 'aucun' }].concat(Object.keys(etat.infos.gestes)
-      .map((k) => ({ id: k, texte: k + ' — ' + etat.infos.gestes[k] })));
-    F.listeDeroulante(z, 'Geste de salut', p.geste_salut === undefined ? '' : String(p.geste_salut), gestes,
-      (v) => modifier((x) => {
-        if (v) x.geste_salut = parseInt(v, 10);
-        else delete x.geste_salut;
-      }));
-    note(z, 'Geste des bras d\'Unitree (service arm). Il n\'est jamais commandé par ce fichier : c\'est le nœud '
-      + 'pilotage (ou le guide) qui garde la main sur les mouvements, voir docs/integration-equipe.md.');
-
-    F.titre(z, 'Marche');
-    champNombreFacultatif(z, 'Vitesse maximale', p.vitesse_max, { pas: 0.05, min: 0.05, max: 0.4, unite: 'm/s', indice: 'celle du guide' },
-      (v) => modifier((x) => {
-        if (v === null) delete x.vitesse_max;
-        else x.vitesse_max = Math.min(0.4, Math.max(0.05, v));
-      }));
-    note(z, 'Vide : la vitesse du guide (0,4 m/s au plus, le plafond du pont). Plus bas, le robot guide plus lentement '
-      + 'dans ce mode.');
-
-    F.titre(z, 'Phrases pendant une visite');
-    note(z, 'Elles remplacent les phrases par défaut du guide (événements de /guide/evenement). Vide : la phrase par '
-      + 'défaut, montrée en gris. {nom} devient le nom de la salle visée. À l\'arrivée, la phrase propre à une salle '
-      + '(onglet Salles) reste prioritaire.');
-    const codes = etat.infos.codes_evenement;
-    Object.keys(codes).forEach((code) => {
-      const c = F.champTexte(z, code, (p.phrases || {})[code] || '', (v) => modifier((x) => {
-        x.phrases = x.phrases || {};
-        if (v.trim()) x.phrases[code] = v.trim();
-        else delete x.phrases[code];
-        if (!Object.keys(x.phrases).length) delete x.phrases;
-      }), { indice: codes[code] });
-      c.parentNode.setAttribute('data-phrase', code);
-    });
-
-    const bas = F.el('div', 'formulaire-ligne');
-    if (p.id !== d.active) {
-      F.bouton(bas, 'Rendre active', () => rendreActive(p.id), 'bouton bouton-principal');
-      F.bouton(bas, 'Supprimer cette personnalité', () => {
-        if (!window.confirm('Supprimer la personnalité « ' + p.nom + ' » ?')) return;
-        editeur.modifier((x) => {
-          x.personnalites = x.personnalites.filter((y) => y !== p);
-          choisie = x.active;
-        });
-      }, 'bouton bouton-danger');
-    } else {
-      F.paragraphe(bas, 'C\'est la personnalité active : pour la supprimer, rendez d\'abord une autre active.', 'panneau-note');
-    }
-    z.appendChild(bas);
+    note(avance, aideChamp(etat, 'salutation'));
   }
 
   function majVoix(x, champ, v) {
@@ -236,7 +228,8 @@ export function ouvrir(racine) {
 
   async function rendreActive(id) {
     if (editeur.modifie()) {
-      if (!window.confirm('Les modifications seront d\'abord enregistrées. Continuer ?')) return;
+      if (!(await coque.confirmer('Les modifications seront d\'abord enregistrées. Continuer ?',
+        { titre: 'Rendre active', ok: 'Enregistrer et continuer', annuler: 'Annuler' }))) return;
       if (!(await editeur.enregistrer())) return;
     }
     try {
@@ -245,28 +238,38 @@ export function ouvrir(racine) {
       choisie = r.active;
       editeur.rafraichir();
       if (r.avertissement) afficherMessage(r.avertissement, 'avertissement');
-      else afficherMessage('Personnalité « ' + r.message.nom + ' » active, annoncée sur /personnalite/active.', 'succes');
+      else afficherMessage('Personnalité « ' + r.message.nom + ' » active.', 'succes');
     } catch (e) {
       afficherErreur(e);
     }
   }
 
-  editeur = creerEditeur(racine, 'personnalites', {
-    titre: 'Personnalités', aide: AIDE, absent: ABSENT, rendre: rendre,
+  const page = F.el('div', 'page-contenu');
+  ecran.vue.appendChild(page);
+  editeur = creerEditeur(page, 'personnalites', {
+    titre: 'Personnalités', aide: AIDE, absent: ABSENT, rendre: rendre, sansBarre: true,
     apresChargement: (etat) => { choisie = etat.donnees ? etat.donnees.active : null; },
     depuisExemple: (d) => { choisie = d.active; },
+  });
+  editeur.pret.then(() => {
+    if (!editeur.etat.donnees) {
+      const z = panneauEdition(ecran.panneau, 'Personnalités', null,
+        { modifie: () => editeur.modifie(), enregistrer: () => editeur.enregistrer(), annuler: () => editeur.abandonner() }).corps;
+      F.paragraphe(z, 'Partez de l\'exemple (au centre), puis choisissez une personnalité pour la modifier ici.', 'panneau-note');
+    }
   });
   const arreter = suivreEtat((e) => {
     const avant = JSON.stringify(annoncee && { id: annoncee.id, lieu: annoncee.lieu });
     annoncee = e && e.personnalite ? e.personnalite : null;
-    majAnnonce(racine.querySelector('[data-role="annonce"]'), editeur.etat.donnees);
+    majAnnonce(ecran.vue.querySelector('[data-role="annonce"]'), editeur.etat.donnees);
     if (avant !== JSON.stringify(annoncee && { id: annoncee.id, lieu: annoncee.lieu })) {
-      racine.dataset.annoncee = annoncee ? annoncee.id : '';
+      ecran.vue.dataset.annoncee = annoncee ? annoncee.id : '';
     }
   }, 1500);
 
   return {
     modifie: () => editeur.modifie(),
+    enregistrer: () => editeur.enregistrer(),
     fermer: () => arreter(),
   };
 }

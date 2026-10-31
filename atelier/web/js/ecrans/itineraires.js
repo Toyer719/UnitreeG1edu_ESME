@@ -1,47 +1,42 @@
-// Écran Itinéraires : le graphe du guide. Clic pour poser un nœud, clic sur deux nœuds pour
-// les relier par un couloir. Un couloir de plus de 8 m est signalé (le vrai robot avance par
-// tronçons de 8 m au plus) : « Couper en deux » ajoute un nœud au milieu.
+// Écran Itinéraires (Placer › Nœud, Placer › Relier) : le graphe du guide, sur le plan 2D. Clic pour
+// poser un nœud, clic sur deux nœuds pour les relier par un couloir. Un couloir de plus de 8 m est
+// signalé (le vrai robot avance par tronçons de 8 m au plus) : « Couper en deux » ajoute un nœud au
+// milieu. Le panneau montre l'élément choisi ; ✓ Enregistrer écrit itineraires.yaml ; Annuler et
+// Rétablir par historique.js ; la vue 3D de la coque suit les changements.
 
 import { api, urlLieu } from '../api.js';
 import { contexte } from '../contexte.js';
+import { blocAvance, panneauEdition, preparerEcran } from '../coque/ecran.js';
 import * as F from '../formulaire.js';
 import * as G from '../geometrie.js';
-import { afficherErreur, afficherMessage, afficherRapport } from '../messages.js';
+import { Historique } from '../historique.js';
+import { afficherErreur, afficherRapport } from '../messages.js';
 import { creerPlan, ll } from '../plan.js';
 
 const L = window.L;
 const PAS = 0.25;
 
 const OUTILS = [
-  { id: 'choisir', texte: 'Choisir', aide: "Cliquez sur un nœud ou un couloir pour le modifier ; faites glisser un nœud pour le déplacer." },
-  { id: 'noeud', texte: 'Ajouter un nœud', aide: "Cliquez pour poser un nœud (un point de passage), au milieu des couloirs et à chaque croisement." },
-  { id: 'relier', texte: 'Relier deux nœuds', aide: "Cliquez sur un nœud, puis sur un autre : un couloir les relie, en ligne droite. Continuez depuis le dernier nœud, ou touche Échap pour repartir." },
+  { id: 'choisir', texte: 'Choisir', aide: "Cliquez sur un nœud ou un couloir pour le modifier ; glissez un nœud pour le déplacer." },
+  { id: 'noeud', texte: 'Nœud', aide: "Cliquez pour poser un point de passage, au milieu des couloirs et à chaque croisement." },
+  { id: 'relier', texte: 'Relier', aide: "Cliquez sur un nœud, puis sur un autre : un couloir les relie. Échap pour repartir." },
 ];
 
-export function ouvrir(racine) {
+export function ouvrir(racine, options) {
+  const ecran = preparerEcran(racine, options);
+  const coque = ecran.coque;
+  const carte3d = ecran.carte3d;
   const lieu = contexte.lieu;
   const etage = contexte.etage;
-  const etat = { itin: { noeuds: {}, couloirs: [] }, salles: [], outil: 'choisir', choisi: null, depuis: null, modifie: false };
+  const etat = { itin: { noeuds: {}, couloirs: [] }, salles: [], outil: 'choisir', choisi: null, depuis: null, modifie: false,
+    charge: false, outilDemande: null };
+  const hist = new Historique();
 
-  racine.innerHTML = `
-    <div class="barre">
-      <div class="barre-gauche" data-role="outils"></div>
-      <div class="barre-droite">
-        <button type="button" class="bouton bouton-principal" data-role="enregistrer">Enregistrer les itinéraires</button>
-        <span class="etat-enregistrement" data-role="etat"></span>
-      </div>
-    </div>
-    <p class="aide" data-role="aide"></p>
-    <div class="espace-deux">
-      <div class="plan" data-role="plan"></div>
-      <div class="cote cote-etroit"><div class="panneau" data-role="panneau"></div></div>
-    </div>`;
-  const $ = (r) => racine.querySelector('[data-role="' + r + '"]');
-  const plan = creerPlan($('plan'));
+  ecran.vue.innerHTML = '<div class="plan" data-role="plan"></div>';
+  const plan = creerPlan(ecran.vue.querySelector('[data-role=plan]'));
   const carte = plan.carte;
   const calqueCouloirs = L.layerGroup().addTo(carte);
   const calqueNoeuds = L.layerGroup().addTo(carte);
-  const outils = F.barreOutils($('outils'), OUTILS, etat.outil, choisirOutil);
 
   const noeuds = () => etat.itin.noeuds;
   const estSalle = (id) => etat.salles.some((s) => s.id === id);
@@ -49,6 +44,7 @@ export function ouvrir(racine) {
   const memeCouloir = (c, a, b) => (c[0] === a && c[1] === b) || (c[0] === b && c[1] === a);
 
   function modifier(f) {
+    hist.noter(etat.itin);
     f();
     etat.modifie = true;
     rafraichir();
@@ -94,8 +90,8 @@ export function ouvrir(racine) {
           n.y = G.accrocher(p.lat, PAS);
         });
         if (estSalle(id)) {
-          afficherMessage('Le nœud « ' + id + ' » est celui d\'une salle : il doit rester à la position de la salle. '
-            + 'Pour le déplacer, déplacez la salle dans l\'onglet Salles.', 'avertissement');
+          coque.message('Le nœud « ' + id + ' » est celui d\'une salle : il doit rester à la position de la salle. '
+            + 'Déplacez plutôt la salle (Placer › Salle).', 'avertissement');
         }
       });
       m.addTo(calqueNoeuds);
@@ -109,13 +105,13 @@ export function ouvrir(racine) {
       } else if (etat.depuis !== id) {
         const a = etat.depuis;
         if (etat.itin.couloirs.some((c) => memeCouloir(c, a, id))) {
-          afficherMessage('Ces deux nœuds sont déjà reliés.', 'info');
+          coque.message('Ces deux nœuds sont déjà reliés.', 'info');
         } else {
           modifier(() => etat.itin.couloirs.push([a, id]));
           const l = longueur([a, id]);
           if (l > G.COULOIR_MAX) {
-            afficherMessage('Ce couloir fait ' + G.nb(l, 1) + ' m : au-delà de 8 m, le vrai robot ne peut pas le parcourir d\'un coup. '
-              + 'Choisissez-le (outil Choisir) puis « Couper en deux ».', 'avertissement');
+            coque.message('Ce couloir fait ' + G.nb(l, 1) + ' m : au-delà de 8 m, le vrai robot ne peut pas le parcourir d\'un coup. '
+              + 'Choisissez-le, puis « Couper en deux ».', 'avertissement');
           }
         }
         etat.depuis = id;      // on continue depuis ce nœud
@@ -141,11 +137,12 @@ export function ouvrir(racine) {
   });
 
   function choisirOutil(id) {
+    if (!OUTILS.some((o) => o.id === id)) id = 'choisir';
     etat.outil = id;
     etat.depuis = null;
-    outils.choisir(id);
     plan.cadre.classList.toggle('dessin', id !== 'choisir');
-    $('aide').textContent = OUTILS.find((o) => o.id === id).aide;
+    coque.activer(id === 'choisir' ? null : id);
+    coque.aide(OUTILS.find((o) => o.id === id).aide);
     rafraichir();
   }
 
@@ -169,21 +166,24 @@ export function ouvrir(racine) {
   }
 
   function panneau() {
-    const z = $('panneau');
-    z.innerHTML = '';
     const ch = etat.choisi;
+    const titre = ch && ch.genre === 'noeud' ? 'Nœud' : (ch && ch.genre === 'couloir' ? 'Couloir' : 'Itinéraires');
+    const z = panneauEdition(ecran.panneau, titre, null,
+      { modifie: () => etat.modifie, enregistrer: enregistrer, annuler: abandonner }).corps;
     if (ch && ch.genre === 'noeud' && noeuds()[ch.id]) {
       const n = noeuds()[ch.id];
-      F.titre(z, 'Nœud « ' + ch.id + ' »');
+      F.titre(z, '« ' + ch.id + ' »');
       if (estSalle(ch.id)) {
-        F.paragraphe(z, 'C\'est le nœud de la salle « ' + ch.id + ' » : il suit la salle (onglet Salles).', 'panneau-note');
+        F.paragraphe(z, 'C\'est le nœud de la salle « ' + ch.id + ' » : il suit la salle (Placer › Salle).', 'panneau-note');
         F.valeur(z, 'Position', '[' + G.nb(n.x) + ' ; ' + G.nb(n.y) + '] m');
       } else {
-        F.champTexte(z, 'Identifiant', ch.id, (v) => {
+        F.champNombre(z, 'x', n.x, { pas: PAS, unite: 'm' }, (v) => modifier(() => { n.x = v; }));
+        F.champNombre(z, 'y', n.y, { pas: PAS, unite: 'm' }, (v) => modifier(() => { n.y = v; }));
+        F.champTexte(blocAvance(z, 'Avancé'), 'Identifiant', ch.id, (v) => {
           v = v.trim();
           const refus = G.verifierId(v, Object.keys(noeuds()).concat(etat.salles.map((s) => s.id)).filter((x) => x !== ch.id), 'un nœud ou une salle');
           if (refus) {
-            afficherMessage(refus, 'erreur');
+            coque.message(refus, 'erreur');
             panneau();
             return;
           }
@@ -192,8 +192,6 @@ export function ouvrir(racine) {
             etat.choisi = { genre: 'noeud', id: v };
           });
         });
-        F.champNombre(z, 'x', n.x, { pas: PAS, unite: 'm' }, (v) => modifier(() => { n.x = v; }));
-        F.champNombre(z, 'y', n.y, { pas: PAS, unite: 'm' }, (v) => modifier(() => { n.y = v; }));
       }
       const voisins = etat.itin.couloirs.filter((c) => c.indexOf(ch.id) >= 0).map((c) => (c[0] === ch.id ? c[1] : c[0]));
       F.valeur(z, 'Relié à', voisins.length ? voisins.join(', ') : 'rien (le guide ne pourra pas y passer)');
@@ -219,8 +217,7 @@ export function ouvrir(racine) {
     }
     const ids = Object.keys(noeuds()).filter((k) => noeuds()[k].etage === etage);
     const couloirs = etat.itin.couloirs.filter((c) => noeuds()[c[0]] && noeuds()[c[1]] && noeuds()[c[0]].etage === etage);
-    F.titre(z, 'Graphe de l\'étage');
-    F.paragraphe(z, ids.length + ' nœuds, ' + couloirs.length + ' couloirs. Le guide va de nœud en nœud par le plus court chemin.');
+    F.paragraphe(z, ids.length + ' nœuds, ' + couloirs.length + ' couloirs : le guide va de nœud en nœud par le plus court chemin.');
     const trop = couloirs.filter((c) => longueur(c) > G.COULOIR_MAX);
     if (trop.length) {
       const p = F.paragraphe(z, trop.length + ' couloir(s) de plus de 8 m (en rouge) :', 'panneau-alerte');
@@ -239,21 +236,22 @@ export function ouvrir(racine) {
     if (isoles.length) {
       F.paragraphe(z, 'Salles reliées à rien : ' + isoles.map((s) => s.id).join(', ') + '. Reliez leur nœud (vert) au reste.', 'panneau-alerte');
     }
-    F.paragraphe(z, 'Les nœuds verts sont ceux des salles (ils se créent en enregistrant l\'onglet Salles).', 'panneau-note');
+    F.paragraphe(z, 'Les nœuds carrés sont ceux des salles : ils se créent en enregistrant les salles.', 'panneau-note');
   }
 
-  function majEtat() {
-    $('etat').textContent = etat.modifie ? 'Modifications non enregistrées' : 'Tout est enregistré';
-    $('etat').classList.toggle('non-enregistre', etat.modifie);
+  function afficher3D() {
+    if (carte3d) carte3d.afficherItineraires(etat.itin);
   }
 
   function rafraichir() {
     dessiner();
+    afficher3D();
     panneau();
-    majEtat();
   }
 
   function clavier(ev) {
+    const c = ev.target;
+    if (c && (c.tagName === 'INPUT' || c.tagName === 'TEXTAREA' || c.tagName === 'SELECT')) return;
     if (ev.key === 'Escape') {
       etat.depuis = null;
       etat.choisi = null;
@@ -262,20 +260,36 @@ export function ouvrir(racine) {
   }
   document.addEventListener('keydown', clavier);
 
-  $('enregistrer').addEventListener('click', async () => {
-    const b = $('enregistrer');
-    b.disabled = true;
+  async function enregistrer() {
     try {
       const r = await api.ecrire(urlLieu(lieu) + '/itineraires', etat.itin);
       etat.modifie = false;
-      majEtat();
       afficherRapport(r.rapport, 'Itinéraires enregistrés.');
+      coque.lieuModifie('itineraires');
+      panneau();
+      return true;
     } catch (e) {
       afficherErreur(e);
-    } finally {
-      b.disabled = false;
+      return false;
     }
-  });
+  }
+
+  async function abandonner() {
+    if (!etat.modifie) return;
+    if (!(await coque.confirmer('Abandonner les modifications des itinéraires et relire le fichier ?',
+      { titre: 'Annuler les modifications', ok: 'Abandonner', annuler: 'Garder', danger: true }))) return;
+    await charger();
+  }
+
+  function deplacerHistorique(sens) {
+    const autre = sens < 0 ? hist.annuler(etat.itin) : hist.refaire(etat.itin);
+    if (!autre) return;
+    etat.itin = autre;
+    etat.modifie = true;
+    if (etat.choisi && etat.choisi.genre === 'noeud' && !noeuds()[etat.choisi.id]) etat.choisi = null;
+    if (etat.choisi && etat.choisi.genre === 'couloir' && !etat.itin.couloirs[etat.choisi.indice]) etat.choisi = null;
+    rafraichir();
+  }
 
   async function charger() {
     try {
@@ -285,13 +299,47 @@ export function ouvrir(racine) {
     } catch (e) {
       afficherErreur(e);
     }
-    choisirOutil('choisir');
+    etat.modifie = false;
+    etat.charge = true;
+    hist.vider();
+    const outil = etat.outilDemande || 'choisir';
+    etat.outilDemande = null;
+    choisirOutil(outil);
   }
-  racine.classList.add('chargement');     // rien n'est modifiable avant la fin du chargement
-  charger().finally(() => racine.classList.remove('chargement'));
+
+  function commande(nom) {
+    if (!OUTILS.some((o) => o.id === nom)) return;
+    if (!etat.charge) {
+      etat.outilDemande = nom;
+      return;
+    }
+    choisirOutil(etat.outil === nom ? 'choisir' : nom);
+  }
+
+  ecran.vue.classList.add('chargement');     // rien n'est modifiable avant la fin du chargement
+  commande(ecran.commande);
+  charger().finally(() => ecran.vue.classList.remove('chargement'));
 
   return {
     modifie: () => etat.modifie,
+    enregistrer: enregistrer,
+    defaire: () => deplacerHistorique(-1),
+    refaire: () => deplacerHistorique(1),
+    peutDefaire: () => hist.peutAnnuler,
+    peutRefaire: () => hist.peutRefaire,
+    commande: commande,
+    selectionner: (genre, id) => {
+      if (genre === 'noeud' && noeuds()[id]) {
+        etat.choisi = { genre: 'noeud', id: id };
+        carte.panTo(ll(noeuds()[id].x, noeuds()[id].y));
+      } else if (genre === 'couloir' && etat.itin.couloirs[Number(id)]) {
+        etat.choisi = { genre: 'couloir', indice: Number(id) };
+      } else {
+        return;
+      }
+      rafraichir();
+    },
+    vue: () => plan.carte.invalidateSize(),
     fermer: () => {
       document.removeEventListener('keydown', clavier);
       plan.detruire();

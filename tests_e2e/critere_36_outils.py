@@ -1,0 +1,455 @@
+#!/usr/bin/env python3
+"""Outils du critère 36, l'ARRÊT global (section 12.10 du plan) : agent Coquille.
+
+  critere_36_outils.py critere-36 --api URL --lieu ID
+      1. simulation (POST /api/simulation/demarrer, mode simu) : téléopération à 0,3 m/s
+         (POST /api/simulation/teleop) ; POST /api/arret {mode: simu} répond en moins de 1 s, le robot
+         s'arrête (vérité /odom, moins de 2 cm/s) en moins de 1 s, sans verrou (verrou faux, rien de
+         publié sur /pont/arret) ;
+      2. répétition (Gazebo --jumeau, faux slam_operate, navigation), repérage, Nav2 ; « Y aller » vers
+         b204 ; quand le robot roule (plus de 0,15 m/s, vérité /g1_jumeau/odom) : POST /api/arret
+         {mode: repetition} en moins de 1 s (200, parties.guide.ok et parties.verrou.ok vrais), robot
+         arrêté moins de 1 s après la demande, /guide/etat quitte en_route, /pont/etat passe à
+         arret_verrouille en moins de 1 s ;
+      3. verrou posé : un nouveau « Y aller » laisse le robot immobile (moins de 5 cm) pendant 5 s ;
+         GET /api/arret dit verrou vrai ; POST /api/arret/debloquer, puis « Y aller » : le robot repart
+         (0,3 m au moins) ;
+      4. Firefox sans fenêtre, robot en route : le clic sur [data-role=arret] et la touche Échap envoient
+         POST /api/arret ; le bouton passe à « Débloquer » (data-etat=bloque) ;
+      5. nœud pilotage (POST /api/pilotage/demarrer), main prise, joystick à vx 0,3 par /ws/pilotage :
+         POST /api/arret → StopMove (7105 [0, 0, 0] d'une seconde) reçu par le faux G1 en moins de 1 s,
+         robot arrêté ; nœud pilotage arrêté : POST /api/arret répond quand même en moins de 1 s,
+         parties.pilotage.ok faux avec un message, le reste arrêté (guide, verrou) ;
+      6. jamais d'erreur 500 (toutes les réponses de l'API notées).
+Code de sortie : 0 réussi, 1 échoué (le message dit pourquoi), 77 en attente (une pièce manque).
+"""
+import argparse
+import json
+import math
+import sys
+import threading
+import time
+from pathlib import Path
+
+ICI = Path(__file__).resolve().parent
+RACINE = ICI.parent
+sys.path.insert(0, str(ICI))
+sys.path.insert(0, str(RACINE))
+
+from critere_18_outils import (Echec, Ecoute, appel, attendre_relais, demarrer,  # noqa: E402
+                               reperer, verifier)
+from outils_pilotage_e2e import Observateur  # noqa: E402
+from outils_pont_e2e import Noeud, qos_verrou  # noqa: E402
+
+EN_ATTENTE = 77
+SEUIL_ROULE = 0.15            # m/s : le robot roule
+SEUIL_ARRET = 0.02            # m/s : le robot est arrêté
+DELAI_REPONSE_S = 1.0
+DELAI_ARRET_S = 1.0
+STOP_MOVE = {"velocity": [0.0, 0.0, 0.0], "duration": 1.0}
+CODES = []                    # (méthode, chemin, code) de chaque appel à l'API
+
+
+def dire(texte):
+    print("   " + texte, flush=True)
+
+
+def ok(texte):
+    print("ok : " + texte, flush=True)
+
+
+def api(a, methode, chemin, corps=None, delai=60):
+    code, r = appel(a, methode, chemin, corps, delai=delai)
+    CODES.append((methode, chemin, code))
+    verifier(code != 500, f"{methode} {chemin} : erreur 500 {r}")
+    return code, r
+
+
+def arret(a, mode):
+    """POST /api/arret {mode} ; renvoie (instant de la demande, durée, réponse)."""
+    t = time.monotonic()
+    code, r = api(a, "POST", "/api/arret", {"mode": mode, "raison": "critère 36"}, delai=5)
+    duree = time.monotonic() - t
+    verifier(code == 200, f"POST /api/arret {mode} : {code} {r}")
+    verifier(duree < DELAI_REPONSE_S, f"POST /api/arret {mode} : réponse en {duree:.2f} s (moins de 1 s)")
+    return t, duree, r
+
+
+def parties(r):
+    return ", ".join(f"{k} {v['ok']}" for k, v in r["parties"].items())
+
+
+# ---------------------------------------------------------------- vérité de la simulation (/odom)
+
+class Simu(Noeud):
+    """/odom (vérité de la simulation) et /pont/arret (le verrou : rien ne doit y passer en simulation)."""
+
+    def __init__(self):
+        super().__init__("e2e_critere_36_simu")
+        from nav_msgs.msg import Odometry
+        from rclpy.qos import qos_profile_sensor_data
+        from std_msgs.msg import Bool
+        self.verrou_fil = threading.Lock()
+        self.odom = []
+        self.verrous = []
+        self.noeud.create_subscription(Odometry, "/odom", self._odom, qos_profile_sensor_data)
+        self.noeud.create_subscription(Bool, "/pont/arret", self._verrou, qos_verrou())
+
+    def _odom(self, m):
+        p = m.pose.pose.position
+        with self.verrou_fil:
+            self.odom.append((time.monotonic(), m.header.stamp.sec + m.header.stamp.nanosec * 1e-9, p.x, p.y))
+            del self.odom[:-20000]
+
+    def _verrou(self, m):
+        with self.verrou_fil:
+            self.verrous.append((time.monotonic(), bool(m.data)))
+
+    def vitesse(self, depuis=0.3):
+        """Vitesse (m/s) sur les dernières depuis secondes de temps simulé, ou None."""
+        with self.verrou_fil:
+            v = list(self.odom[-400:])
+        if len(v) < 2:
+            return None
+        fin = v[-1]
+        debut = next((x for x in v if fin[1] - x[1] <= depuis), v[0])
+        dt = fin[1] - debut[1]
+        return math.hypot(fin[2] - debut[2], fin[3] - debut[3]) / dt if dt > 0.05 else None
+
+    def instant_arret(self, t_ref, tenue=0.3):
+        """Premier instant mural après t_ref où la vitesse (sur 0,1 s simulée) reste sous le seuil."""
+        with self.verrou_fil:
+            v = [x for x in self.odom if x[0] >= t_ref - 0.3]
+        vitesses = []
+        j = 0
+        for i, (t, s, x, y) in enumerate(v):
+            j = max(j, i)
+            while j + 1 < len(v) and v[j][1] - s < 0.1:
+                j += 1
+            if v[j][1] - s >= 0.099:
+                vitesses.append((t, math.hypot(v[j][2] - x, v[j][3] - y) / (v[j][1] - s)))
+        for k, (t, w) in enumerate(vitesses):
+            if t < t_ref or w >= SEUIL_ARRET:
+                continue
+            suite = [u for (tt, u) in vitesses[k:] if tt <= t + tenue]
+            if all(u < SEUIL_ARRET for u in suite) and vitesses[-1][0] >= t + tenue:
+                return t
+        return None
+
+
+def attendre(condition, delai, message, pas=0.05):
+    fin = time.monotonic() + delai
+    while time.monotonic() < fin:
+        try:
+            v = condition()
+        except (KeyError, IndexError, TypeError):
+            v = None
+        if v:
+            return v
+        time.sleep(pas)
+    raise Echec(message)
+
+
+def partie_simulation(a, lieu):
+    simu = Simu()
+    try:
+        code, r = api(a, "POST", "/api/simulation/demarrer", {"lieu": lieu, "etage": "rdc", "mode": "simu"}, delai=90)
+        verifier(code == 200, f"POST /api/simulation/demarrer (simu) : {code} {r}")
+        attendre(lambda: simu.vitesse() is not None, 90, "la simulation ne publie pas /odom")
+        dire("simulation lancée, /odom reçu")
+        verrous_avant = len(simu.verrous)
+        fin = time.monotonic() + 8.0
+        vitesse = 0.0
+        while time.monotonic() < fin:
+            code, r = api(a, "POST", "/api/simulation/teleop", {"vx": 0.3, "vy": 0.0, "wz": 0.0}, delai=5)
+            verifier(code == 200, f"POST /api/simulation/teleop : {code} {r}")
+            time.sleep(0.2)
+            vitesse = simu.vitesse() or 0.0
+            if vitesse > 0.2:
+                break
+        verifier(vitesse > 0.2, f"la téléopération ne fait pas rouler le robot simulé ({vitesse:.2f} m/s)")
+        t, duree, r = arret(a, "simu")
+        verifier(r["mode"] == "simu" and r["verrou"] is False, f"ARRÊT en simulation : verrou ou mode faux : {r}")
+        verifier(r["parties"]["verrou"]["ok"] is None, f"ARRÊT en simulation : un verrou ? {r['parties']['verrou']}")
+        verifier(r["parties"]["teleop"]["ok"] is True, f"ARRÊT en simulation : téléopération {r['parties']['teleop']}")
+        time.sleep(2.0)
+        t_arret = simu.instant_arret(t)
+        verifier(t_arret is not None, "simulation : le robot ne s'arrête pas après l'ARRÊT (/odom)")
+        verifier(t_arret - t <= DELAI_ARRET_S, f"simulation : robot arrêté {t_arret - t:.2f} s après la demande (1 s au plus)")
+        nouveaux = [v for tt, v in simu.verrous[verrous_avant:] if tt >= t - 0.1]
+        verifier(not nouveaux, f"simulation : /pont/arret publié par l'ARRÊT ({nouveaux})")
+        ok(f"simulation : téléopération à {vitesse:.2f} m/s, POST /api/arret {{mode: simu}} en {duree:.2f} s "
+           f"({parties(r)}), robot arrêté {t_arret - t:.2f} s après (/odom), sans verrou ni /pont/arret")
+    finally:
+        simu.fermer()
+        code, r = appel(a, "POST", "/api/simulation/arreter")
+        CODES.append(("POST", "/api/simulation/arreter", code))
+    attendre(lambda: not appel(a, "GET", "/api/simulation/etat")[1].get("en_cours"), 60,
+             "la simulation ne s'arrête pas", pas=0.5)
+    time.sleep(3.0)
+
+
+# ---------------------------------------------------------------- répétition
+
+def vitesse_verite(obs, depuis=0.4):
+    t = time.monotonic()
+    v = obs.vitesse_robot(t - depuis, t)
+    return math.hypot(v[0], v[1]) if v else 0.0
+
+
+def aller(a, cible="b204"):
+    code, r = api(a, "POST", "/api/guide/aller", {"cible": cible}, delai=10)
+    verifier(code == 200, f"POST /api/guide/aller {cible} : {code} {r}")
+
+
+def attendre_roule(obs, delai=60.0, quoi="le robot"):
+    return attendre(lambda: vitesse_verite(obs) > SEUIL_ROULE, delai,
+                    f"{quoi} ne roule pas à plus de {SEUIL_ROULE} m/s en {delai:.0f} s (vérité /g1_jumeau/odom)", pas=0.1)
+
+
+def arret_mesure(obs, t, quoi):
+    time.sleep(1.8)
+    t_arret = obs.instant_arret(t, seuil=SEUIL_ARRET)
+    verifier(t_arret is not None, f"{quoi} : le robot ne s'arrête pas")
+    verifier(t_arret - t <= DELAI_ARRET_S, f"{quoi} : robot arrêté {t_arret - t:.2f} s après la demande (1 s au plus)")
+    return t_arret - t
+
+
+def debloquer(a):
+    code, r = api(a, "POST", "/api/arret/debloquer", {})
+    verifier(code == 200 and r.get("verrou") is False, f"POST /api/arret/debloquer : {code} {r}")
+
+
+def nav2_actif(obs):
+    """bt_navigator actif (Nav2 prêt) ? Par son service de cycle de vie, comme au critère 19."""
+    from lifecycle_msgs.srv import GetState
+    if not hasattr(obs, "_client_nav2"):
+        obs._client_nav2 = obs.noeud.create_client(GetState, "/bt_navigator/get_state")
+    if not obs._client_nav2.wait_for_service(timeout_sec=0.5):
+        return False
+    futur = obs._client_nav2.call_async(GetState.Request())
+    fin = time.monotonic() + 3.0
+    while not futur.done() and time.monotonic() < fin:
+        time.sleep(0.05)
+    return bool(futur.done() and futur.result() and futur.result().current_state.label == "active")
+
+
+def preparer_repetition(a, lieu, obs, ecoute):
+    debut = time.monotonic()
+    demarrer(a, lieu)
+    attendre_relais(a, ecoute, lieu)
+    verifier(obs.attendre_pret(30), "pas de vérité terrain ou de /pont/etat")
+    code, r, duree = reperer(a, {"lieu": lieu, "etage": "rdc"})
+    CODES.append(("POST", "/api/robot/reperer", code))
+    verifier(code == 200 and r.get("repere"), f"POST /api/robot/reperer : {code} {r}")
+
+    attendre(lambda: nav2_actif(obs), 120, "Nav2 n'est pas prêt 120 s après le repérage", pas=0.5)
+    ok(f"répétition prête, robot repéré, Nav2 prêt en {time.monotonic() - debut:.0f} s")
+
+
+def partie_guide(a, obs):
+    aller(a)
+    attendre_roule(obs, quoi="le robot (« Y aller » b204)")
+    vitesse = vitesse_verite(obs)
+    guide_avant = obs.guide().get("etat")
+    t, duree, r = arret(a, "repetition")
+    verifier(r["parties"]["guide"]["ok"] is True and r["parties"]["verrou"]["ok"] is True and r["verrou"] is True,
+             f"ARRÊT en répétition : guide ou verrou pas faits : {r['parties']}")
+    retard = arret_mesure(obs, t, "répétition, guide en route")
+    etats_pont = [(tt, e.get("etat")) for tt, e in list(obs.etats) if tt >= t]
+    verrouille = next((tt for tt, e in etats_pont if e == "arret_verrouille"), None)
+    verifier(verrouille is not None and verrouille - t <= 1.0,
+             f"/pont/etat ne passe pas à arret_verrouille en moins de 1 s (vus : {sorted({e for _, e in etats_pont})})")
+    attendre(lambda: obs.guide().get("etat") != "en_route", 3.0, "/guide/etat reste en_route après l'ARRÊT")
+    ok(f"guide en route ({guide_avant}, {vitesse:.2f} m/s) : POST /api/arret en {duree:.2f} s ({parties(r)}), "
+       f"robot arrêté {retard:.2f} s après, /pont/etat arret_verrouille {verrouille - t:.2f} s après, "
+       f"guide « {obs.guide().get('etat')} »")
+
+    # verrou posé : un nouveau « Y aller » ne fait pas bouger le robot
+    t0 = time.monotonic()
+    aller(a)
+    time.sleep(5.0)
+    bouge = obs.deplacement(t0)
+    verifier(bouge < 0.05, f"verrou posé : le robot a bougé de {bouge:.3f} m en 5 s (moins de 5 cm)")
+    code, e = api(a, "GET", "/api/arret")
+    verifier(code == 200 and e.get("verrou") is True, f"GET /api/arret : {code} {e} (verrou vrai attendu)")
+    ok(f"verrou posé : « Y aller » laisse le robot immobile ({bouge * 100:.1f} cm en 5 s), GET /api/arret {e}")
+
+    # débloquer, puis « Y aller » : le robot repart
+    debloquer(a)
+    t0 = time.monotonic()
+    aller(a)
+    attendre(lambda: obs.deplacement(t0) >= 0.3, 40, "après « Débloquer », le robot ne repart pas (0,3 m au moins)", pas=0.2)
+    ok(f"« Débloquer » puis « Y aller » : le robot repart ({obs.deplacement(t0):.2f} m)")
+
+
+def partie_navigateur(a, lieu, obs):
+    """Robot en route : ARRÊT par le bouton de la page, puis Échap (outils_coque_e2e)."""
+    import outils_coque_e2e as N
+    from atelier.tests import test_coque_communs as C
+    attendre_roule(obs, quoi="le robot (avant le clic sur ARRÊT)")
+    with N.Firefox() as nav:
+        nav.taille(1366, 768)
+        vu = C.parcours_arret(nav, a, "repetition", lieu=lieu, verrou=True)
+        erreurs = nav.js("return window.erreursAtelier || []")
+    verifier(not erreurs, f"erreurs JavaScript dans la page : {erreurs[:4]}")
+    for phrase in vu:
+        ok("navigateur : " + phrase)
+    time.sleep(1.0)
+    verifier(vitesse_verite(obs) < SEUIL_ARRET, "navigateur : le robot roule encore après l'ARRÊT de la page")
+    debloquer(a)
+
+
+class Joystick:
+    """Le joystick de la page : /ws/pilotage de l'Atelier, un ordre toutes les 0,1 s, lâché à l'ARRÊT."""
+
+    def __init__(self, a):
+        from websockets.sync.client import connect
+        self.ws = connect(a.replace("http", "ws", 1) + "/ws/pilotage", open_timeout=10)
+        self.tenu = threading.Event()
+        self.fin = threading.Event()
+        self.refus = []
+        self.fil = threading.Thread(target=self._envoyer, daemon=True)
+        self.lecteur = threading.Thread(target=self._lire, daemon=True)
+        self.lecteur.start()
+        time.sleep(0.5)
+        self.fil.start()
+
+    def _lire(self):
+        try:
+            for m in self.ws:
+                try:
+                    d = json.loads(m)
+                except ValueError:
+                    continue
+                if d.get("type") == "refus":
+                    self.refus.append((time.monotonic(), d))
+        except Exception:       # noqa: BLE001 : fermée
+            pass
+
+    def _envoyer(self):
+        while not self.fin.is_set():
+            if self.tenu.is_set():
+                try:
+                    self.ws.send(json.dumps({"vx": 0.3, "vy": 0.0, "wz": 0.0}))
+                except Exception:       # noqa: BLE001 : fermée
+                    return
+            time.sleep(0.1)
+
+    def lacher(self):
+        """Comme la page à l'ARRÊT : plus d'ordre, et « lâché »."""
+        self.tenu.clear()
+        try:
+            self.ws.send(json.dumps({"lacher": True}))
+        except Exception:       # noqa: BLE001
+            pass
+
+    def fermer(self):
+        self.fin.set()
+        self.tenu.clear()
+        try:
+            self.ws.close()
+        except Exception:       # noqa: BLE001
+            pass
+
+
+def partie_pilotage(a, obs):
+    # arrêter le guide (l'ARRÊT de la partie précédente) et débloquer avant de piloter
+    t, _, r = arret(a, "repetition")
+    time.sleep(1.0)
+    debloquer(a)
+    code, r = api(a, "POST", "/api/pilotage/demarrer", {}, delai=60)
+    verifier(code == 200, f"POST /api/pilotage/demarrer : {code} {r}")
+
+    def pret():
+        code, e = appel(a, "GET", "/api/pilotage/etat")
+        return code == 200 and e.get("robot_repond")
+    attendre(pret, 30, "le nœud pilotage ne répond pas (GET /api/pilotage/etat)", pas=0.3)
+    code, r = api(a, "POST", "/api/pilotage/maitre", {"maitre": "pilotage", "forcer": True}, delai=20)
+    verifier(code == 200 and r.get("maitre") == "pilotage", f"prendre la main : {code} {r}")
+    obs.attendre(lambda: obs.maitre() == "pilotage", 5, "/mouvement/maitre « pilotage » pas reçu")
+    manette = Joystick(a)
+    try:
+        manette.tenu.set()
+        attendre_roule(obs, delai=10.0, quoi="le robot au joystick (vx 0,3)")
+        vitesse = vitesse_verite(obs)
+        # plus d'ordre, sans « lâché » : le StopMove qui suit vient de l'ARRÊT (l'homme mort du nœud
+        # n'agirait qu'après 0,5 s)
+        manette.tenu.clear()
+        t, duree, r = arret(a, "repetition")
+    finally:
+        manette.fermer()
+    verifier(r["parties"]["pilotage"]["ok"] is True, f"ARRÊT : le nœud pilotage n'a pas répondu : {r['parties']['pilotage']}")
+    time.sleep(1.5)
+    stops = [(tt, p) for tt, api_id, p in obs.requetes_sport(t, t + 1.0) if api_id == 7105 and p == STOP_MOVE]
+    verifier(stops, "aucun StopMove (7105 [0, 0, 0] d'une seconde) reçu par le faux G1 dans la seconde")
+    verifier(stops[0][0] - t < 0.45, f"le premier StopMove arrive {stops[0][0] - t:.2f} s après l'ARRÊT : celui de "
+             "l'homme mort, pas celui de l'ARRÊT")
+    with obs.verrou:
+        activites = [e.get("activite") for tt, e in obs.etats_pilotage if t <= tt <= t + 1.5]
+    retard = arret_mesure(obs, t, "pilotage au joystick")
+    # après l'ARRÊT, le nœud ignore le joystick jusqu'à ce qu'il soit lâché (un ordre parti juste avant
+    # l'ARRÊT peut être refusé) : seuls comptent les refus d'avant
+    avant = [d for tt, d in manette.refus if tt < t]
+    verifier(not avant, f"refus du joystick avant l'ARRÊT : {avant[:2]}")
+    ok(f"pilotage au joystick ({vitesse:.2f} m/s) : POST /api/arret en {duree:.2f} s ({parties(r)}), StopMove "
+       f"{stops[0][0] - t:.2f} s après, robot arrêté {retard:.2f} s après ; activités du nœud : "
+       f"{', '.join(sorted({str(x) for x in activites})) or 'aucun /pilotage/etat'}")
+    debloquer(a)
+    code, r = api(a, "POST", "/api/pilotage/maitre", {"maitre": "guide"})
+    verifier(code == 200, f"rendre la main : {code} {r}")
+
+    # nœud pilotage arrêté : l'ARRÊT répond quand même, et dit que le pilotage n'a pas répondu
+    code, r = api(a, "POST", "/api/pilotage/arreter", {}, delai=30)
+    verifier(code == 200, f"POST /api/pilotage/arreter : {code} {r}")
+    attendre(lambda: appel(a, "GET", "/api/pilotage/etat")[1].get("robot_repond") is not True, 15,
+             "le nœud pilotage répond encore après son arrêt", pas=0.3)
+    t0 = time.monotonic()
+    t, duree, r = arret(a, "repetition")
+    pilotage = r["parties"]["pilotage"]
+    verifier(pilotage["ok"] is False and pilotage.get("detail"), f"nœud pilotage arrêté : partie pilotage {pilotage}")
+    verifier(r["parties"]["guide"]["ok"] is True and r["parties"]["verrou"]["ok"] is True,
+             f"nœud pilotage arrêté : le reste n'est pas arrêté : {r['parties']}")
+    time.sleep(1.0)
+    verifier(obs.deplacement(t0) < 0.05, "nœud pilotage arrêté : le robot bouge")
+    ok(f"nœud pilotage arrêté : POST /api/arret en {duree:.2f} s, pilotage faux « {pilotage['detail']} », "
+       f"guide et verrou faits")
+    debloquer(a)
+
+
+def critere_36(args):
+    a = args.api
+    partie_simulation(a, args.lieu)
+    obs = Observateur()
+    ecoute = Ecoute()
+    try:
+        preparer_repetition(a, args.lieu, obs, ecoute)
+        partie_guide(a, obs)
+        partie_navigateur(a, args.lieu, obs)
+        partie_pilotage(a, obs)
+        verifier(not obs.non_conformes, f"/pont/etat non conforme : {obs.non_conformes[:2]}")
+    finally:
+        obs.fermer()
+        ecoute.fermer()
+    cinq_cents = [c for c in CODES if c[2] == 500]
+    verifier(not cinq_cents, f"erreurs 500 : {cinq_cents}")
+    ok(f"{len(CODES)} appels à l'API, jamais d'erreur 500")
+    return 0
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="critere_36_outils.py", description=__doc__.split("\n")[0])
+    sous = p.add_subparsers(dest="action", required=True)
+    s = sous.add_parser("critere-36")
+    s.add_argument("--api", required=True)
+    s.add_argument("--lieu", required=True)
+    args = p.parse_args(argv)
+    try:
+        return critere_36(args)
+    except Echec as e:
+        print(f"[critère 36] ÉCHEC : {e}", flush=True)
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

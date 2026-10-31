@@ -1,14 +1,22 @@
 <!doctype html>
-<html lang="fr">
+<html lang="fr" data-theme="sombre">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Atelier G1</title>
-  <meta name="description" content="Configuration des lieux du robot d'accueil G1 : monde, carte, salles, itinéraires, zones, simulation, scan, pilotage et équipe.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='4' y='2' width='8' height='12' rx='2' fill='%23e8772e'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+  <meta name="description" content="L'atelier du robot d'accueil G1 : dessiner ou scanner un lieu, placer les salles, simuler, guider et piloter le robot.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect x='3' y='1' width='10' height='14' rx='3' fill='%235569d4'/%3E%3Crect x='5' y='4' width='6' height='2' rx='1' fill='%23fff'/%3E%3C/svg%3E">
+  <script>
+    // Thème choisi (sombre par défaut), posé avant les feuilles : pas d'éclair de couleur au chargement
+    try {
+      if (localStorage.getItem('atelier.theme') === 'clair') document.documentElement.setAttribute('data-theme', 'clair');
+    } catch (e) {
+      // stockage bloqué : thème sombre
+    }
+  </script>
   <!-- Vague 5 (section 12.2 du plan) : jetons du thème, avant toutes les autres feuilles -->
   <link rel="stylesheet" href="css/theme.css">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="css/atelier.css">
   <link rel="stylesheet" href="css/scan.css">
   <!-- Vague 4 (section 11 du plan) : une feuille par agent -->
@@ -41,14 +49,7 @@
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
-  <header class="entete">
-    <div class="marque">Atelier G1</div>
-    <label class="choix">Lieu <select id="choix-lieu" aria-label="Lieu"></select></label>
-    <label class="choix">Étage <select id="choix-etage" aria-label="Étage"></select></label>
-    <span id="liaison" class="liaison">Connexion…</span>
-  </header>
-  <nav class="onglets" id="onglets" aria-label="Écrans de l'Atelier"></nav>
-  <main id="ecran" class="ecran"></main>
+  <div id="atelier" class="atelier" data-role="atelier"></div>
   <div id="messages" class="messages" aria-live="polite"></div>
   <noscript>L'Atelier G1 a besoin de JavaScript : activez-le dans le navigateur.</noscript>
 </body>

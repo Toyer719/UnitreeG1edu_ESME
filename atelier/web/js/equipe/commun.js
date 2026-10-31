@@ -5,6 +5,7 @@
 
 import { api, urlLieu } from '../api.js';
 import { contexte } from '../contexte.js';
+import { demanderConfirmation } from '../coque/confirmation.js';
 import * as F from '../formulaire.js';
 import { afficherErreur, afficherMessage } from '../messages.js';
 
@@ -62,7 +63,9 @@ export function afficherVerification(zone, rapport, titreOk) {
 // Éditeur d'un fichier de l'équipe. quoi : personnalites, dialogues ou camera.
 // racine : l'écran ; il reçoit la barre, l'aide, la zone « fichier absent », le contenu et la
 // vérification. rendre(etat) remplit etat.zones.contenu à chaque changement.
-// Renvoie {etat, modifier(f), rafraichir(), recharger(), fermer(), modifie()}.
+// Vague 5 (section 12.2) : options.sansBarre (l'écran met ✓ Enregistrer et ✗ Annuler dans l'en-tête du
+// panneau de la coque) : la barre ne garde que le titre, l'état et « Vérifier ».
+// Renvoie {etat, modifier(f), rafraichir(), recharger(), enregistrer(), abandonner(), verifier(), pret, modifie()}.
 export function creerEditeur(racine, quoi, options) {
   const lieu = contexte.lieu;
   const url = urlLieu(lieu) + '/' + quoi;
@@ -71,19 +74,19 @@ export function creerEditeur(racine, quoi, options) {
   racine.innerHTML = `
     <div class="barre">
       <div class="barre-gauche">
-        <h2 class="equipe-titre">${options.titre}</h2>
-        <span class="equipe-fichier code">${fichier}</span>
+        <h2 class="equipe-titre" data-role="titre"></h2>
+        <span class="equipe-fichier code" data-role="fichier"></span>
       </div>
       <div class="barre-droite">
+        <span class="etat-enregistrement" data-role="etat"></span>
         <button type="button" class="bouton" data-role="verifier">Vérifier</button>
         <button type="button" class="bouton" data-role="defaire">Annuler les modifications</button>
         <button type="button" class="bouton bouton-principal" data-role="enregistrer">Enregistrer</button>
-        <span class="etat-enregistrement" data-role="etat"></span>
       </div>
     </div>
     <p class="aide" data-role="aide"></p>
     <div class="carte-section equipe-absent" data-role="absent" hidden>
-      <h2>Ce lieu n'a pas encore de fichier ${fichier}</h2>
+      <h2 data-role="absent-titre"></h2>
       <p data-role="absent-texte"></p>
       <button type="button" class="bouton bouton-principal bouton-grand" data-role="exemple">Partir de l'exemple</button>
     </div>
@@ -94,8 +97,19 @@ export function creerEditeur(racine, quoi, options) {
     </div>`;
   const $ = (r) => racine.querySelector('[data-role="' + r + '"]');
   etat.zones = { contenu: $('contenu'), verification: $('verification') };
+  $('titre').textContent = options.titre;
+  // le nom du fichier : en infobulle seulement (pas de note de développeur dans les titres, section 12.2)
+  $('fichier').textContent = fichier;
+  $('fichier').hidden = true;
+  $('titre').title = 'Fichier du lieu : ' + fichier;
+  $('absent-titre').textContent = options.titreAbsent || (quoi === 'camera'
+    ? 'Pas encore de réglages de la caméra pour ce lieu' : 'Pas encore de ' + options.titre.toLowerCase() + ' pour ce lieu');
   $('aide').textContent = options.aide;
   $('absent-texte').textContent = options.absent;
+  if (options.sansBarre) {
+    $('defaire').remove();
+    $('enregistrer').remove();
+  }
 
   function majEtat() {
     const e = $('etat');
@@ -103,9 +117,9 @@ export function creerEditeur(racine, quoi, options) {
     else if (etat.modifie) e.textContent = 'Modifications non enregistrées';
     else e.textContent = 'Tout est enregistré';
     e.classList.toggle('non-enregistre', etat.modifie);
-    $('enregistrer').disabled = !etat.donnees;
+    if ($('enregistrer')) $('enregistrer').disabled = !etat.donnees;
     $('verifier').disabled = !etat.donnees;
-    $('defaire').hidden = !etat.modifie || !etat.existe;
+    if ($('defaire')) $('defaire').hidden = !etat.modifie || !etat.existe;
     $('absent').hidden = !!etat.donnees;
     $('contenu').hidden = !etat.donnees;
   }
@@ -141,7 +155,7 @@ export function creerEditeur(racine, quoi, options) {
 
   async function enregistrer() {
     if (!etat.donnees) return false;
-    const b = $('enregistrer');
+    const b = $('enregistrer') || F.el('button');
     b.disabled = true;
     try {
       const r = await api.ecrire(url, etat.donnees);
@@ -181,11 +195,17 @@ export function creerEditeur(racine, quoi, options) {
     rafraichir();
   }
 
+  async function abandonner() {
+    if (!etat.modifie) return false;
+    const ok = await demanderConfirmation('Abandonner les modifications et relire ' + fichier + ' ?',
+      { titre: 'Annuler les modifications', ok: 'Abandonner', annuler: 'Garder', danger: true });
+    if (ok) await recharger();
+    return ok;
+  }
+
   $('verifier').addEventListener('click', verifier);
-  $('enregistrer').addEventListener('click', enregistrer);
-  $('defaire').addEventListener('click', () => {
-    if (window.confirm('Abandonner les modifications et relire ' + fichier + ' ?')) recharger();
-  });
+  if ($('enregistrer')) $('enregistrer').addEventListener('click', enregistrer);
+  if ($('defaire')) $('defaire').addEventListener('click', abandonner);
   $('exemple').addEventListener('click', () => {
     etat.donnees = copie(etat.infos.fichiers[quoi].exemple);
     if (options.depuisExemple) options.depuisExemple(etat.donnees);
@@ -198,7 +218,7 @@ export function creerEditeur(racine, quoi, options) {
   const pret = recharger().finally(() => racine.classList.remove('chargement'));
   return {
     etat: etat, modifier: modifier, rafraichir: rafraichir, recharger: recharger, enregistrer: enregistrer,
-    verifier: verifier, pret: pret, modifie: () => etat.modifie,
+    abandonner: abandonner, verifier: verifier, pret: pret, modifie: () => etat.modifie,
   };
 }
 

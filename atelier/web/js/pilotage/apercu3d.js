@@ -91,6 +91,8 @@ function couleurCote(nom) {
   return COULEUR_CORPS;
 }
 
+const FOND_VUE = 0x1e1e1e;          // --vue-fond de theme.css
+
 export class Apercu3D {
   // element : le conteneur. charger() lit le modèle ; poser(q, base, led, corps) place le G1.
   // options : {nomGlobal} (window.apercuPilotage par défaut), {camera: [x, y, z], cible: [x, y, z]}
@@ -108,7 +110,8 @@ export class Apercu3D {
     this.liens = {};                  // nom → Object3D (origine du lien)
     this.segments = [];               // [parent, enfant, couleur] pour le dessin sans WebGL
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xf4f6f8);
+    // vague 5 (section 12.2, décision I6) : la vue 3D est toujours sombre, quel que soit le thème
+    this.scene.background = new THREE.Color(FOND_VUE);
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.05, 50);
     this.camera.up.set(0, 0, 1);
     const o = options || {};
@@ -136,7 +139,7 @@ export class Apercu3D {
       const soleil = new THREE.DirectionalLight(0xffffff, 1.3);
       soleil.position.set(3, -2, 5);
       this.scene.add(soleil);
-      const grille = new THREE.GridHelper(4, 8, 0x9aa3af, 0xd5d9e0);
+      const grille = new THREE.GridHelper(4, 8, 0x6b6b88, 0x3a3a48);
       grille.rotation.x = Math.PI / 2;
       this.scene.add(grille);
     } else {
@@ -362,14 +365,14 @@ export class Apercu3D {
     this.camera.lookAt(this.cible);
     this.camera.updateMatrixWorld();
     this.scene.updateMatrixWorld(true);
-    c.fillStyle = '#f4f6f8';
+    c.fillStyle = '#1e1e1e';
     c.fillRect(0, 0, l, h);
     const projeter = (v) => {
       const p = v.clone().project(this.camera);
       return { x: (p.x + 1) * l / 2, y: (1 - p.y) * h / 2, z: p.z };
     };
     // sol : une grille de 4 m
-    c.strokeStyle = '#d5d9e0';
+    c.strokeStyle = '#3a3a48';
     c.lineWidth = 1;
     for (let i = -4; i <= 4; i += 1) {
       [[new THREE.Vector3(i * 0.5, -2, 0), new THREE.Vector3(i * 0.5, 2, 0)],

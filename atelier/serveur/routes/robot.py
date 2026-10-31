@@ -16,7 +16,7 @@
         ou étage ; 400 si x, y et cap ne vont pas ensemble ; 503 sans pont ROS 2.
   POST /api/robot/arret {verrou}
         publie /pont/arret (verrou du pont : le robot reste immobile jusqu'au déverrouillage) ;
-        renvoie {verrou, pont, ecoute}.
+        renvoie {verrou, pont, ecoute}. Vague 5 : retenu comme le verrou de l'ARRÊT (GET /api/arret).
 
 Le relais odom_vers_tf (paquet g1_nav) envoie lui-même la commande 1804 au service slam_operate
 du robot (ou au faux service de la répétition) : l'Atelier ne parle jamais directement au robot.
@@ -40,7 +40,7 @@ DELAI_DECOUVERTE_S = 3.0     # attente du relais (abonné à /reperage/demander)
 _NUMEROS = itertools.count(1)
 
 MESSAGES = {
-    None: "Aucune navigation ne tourne : lancez la répétition ou le robot dans l'onglet Simulation.",
+    None: "Aucune navigation ne tourne : lancez la répétition ou le robot (Réel › Naviguer › Lancer).",
     "simu": "Simulation : la position vient de Gazebo, il n'y a pas besoin de repérer le robot.",
     "relais": "Le relais de position (odom_vers_tf) ne répond pas encore : la navigation démarre…",
 }
@@ -160,7 +160,7 @@ def reperer(demande: DemandeReperer, request: Request):
         time.sleep(0.1)
     if etat.pont.abonnes_reperage() == 0:
         raise ErreurAtelier(504, "Le relais de position (odom_vers_tf) ne répond pas : la navigation est-elle "
-                                 "lancée ? Ouvrez « Ce qui tourne » dans l'onglet Simulation.")
+                                 "lancée ? Ouvrez « Ce qui tourne » (menu ⚙ de la barre d'outils).")
     if pose is None:
         # vague 4 (section 11.2) : le robot est posé sur le point principal, dans le sens de sa flèche.
         # La pose est toujours envoyée en entier (repère map) : le relais la convertit vers le repère
@@ -188,6 +188,10 @@ def arret(demande: DemandeArret, request: Request):
         raise ErreurAtelier(503, "Pas de liaison avec ROS 2 : "
                             + (etat.pont.erreur or "le pont ROS 2 du serveur n'est pas démarré") + ".")
     ecoute = etat.pont.bloquer(demande.verrou)
+    # vague 5 (section 12.4) : le même état que l'ARRÊT de la barre d'outils (GET /api/arret, /ws/etat)
+    from .arret import noter_verrou
+    mode = {"robot": "reel"}.get(etat.mode_navigation(), etat.mode_navigation())
+    noter_verrou(etat, demande.verrou, mode, "bloquer" if demande.verrou else "debloquer")
     reponse = {"verrou": demande.verrou, "pont": etat.pont.etat_pont(), "ecoute": ecoute}
     if ecoute == 0:
         reponse["avertissement"] = ("Aucun pont n'écoute /pont/arret pour l'instant : le verrou sera appliqué "

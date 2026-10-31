@@ -73,7 +73,7 @@ def test_fiche_du_lieu_ajout_d_etage(client, lieux):
     assert "lieu.yaml" in r.json()["enregistre"] and "rapport" in r.json()
     assert [e.id for e in charger_fiche(lieux / "demo").etages] == ["rdc", "etage1"]
     # un étage sans monde : 404 qui dit quoi faire
-    assert "onglet Monde" in _erreur(client.get(DEMO + "/etages/etage1/monde"), 404)["detail"]
+    assert "Simulation › Dessiner" in _erreur(client.get(DEMO + "/etages/etage1/monde"), 404)["detail"]
     # fiche invalide : rien n'est écrit
     donnees["accueil"]["etage"] = "cave"
     d = _erreur(client.put(DEMO, json=donnees), 422)
@@ -204,8 +204,8 @@ def test_zones_aller_retour(client, lieux):
 # ---------------------------------------------------------------- carte
 
 def test_carte_absente(client):
-    assert "Fabriquer la carte" in _erreur(client.get(RDC + "/carte.png"), 404)["detail"]
-    assert "Fabriquer la carte" in _erreur(client.get(RDC + "/carte.yaml"), 404)["detail"]
+    assert "Simulation › Dessiner" in _erreur(client.get(RDC + "/carte.png"), 404)["detail"]
+    assert "Simulation › Dessiner" in _erreur(client.get(RDC + "/carte.yaml"), 404)["detail"]
 
 
 def test_fabriquer_la_carte_avec_g1_monde(client, lieux, faux_bin):
@@ -265,7 +265,7 @@ def _generer(client):
 
 def test_simulation_demarrer_et_arreter(client, lieux, faux_bin):
     d = _erreur(client.post("/api/simulation/demarrer", json={"lieu": "demo", "etage": "rdc"}), 409)
-    assert "Fabriquer la carte" in d["detail"]
+    assert "Dessiner" in d["detail"] and "Refaire la carte" in d["detail"]      # vocabulaire du ruban (vague 5)
     _generer(client)
     r = client.post("/api/simulation/demarrer", json={"lieu": "demo", "etage": "rdc"})
     assert r.status_code == 200, r.text

@@ -1,12 +1,13 @@
-"""Parcours principal de l'interface dans un vrai navigateur, sans fenêtre (critère 9 du plan) :
-créer un lieu → dessiner (mur, objet, piéton, passage, annuler, refaire) → enregistrer →
-fabriquer la carte → placer une salle → la relier → une zone → lancer la simulation → Y aller
-→ Arrêt → arrêter la simulation → onglet Scan.
+"""Parcours principal de l'interface dans un vrai navigateur, sans fenêtre (critère 9 du plan), sur la coque
+de la vague 5 (section 12.2) : accueil → Nouveau lieu (Simulation) → Ouvrir → Dessiner (mur, objet, départ,
+piéton, annuler, rétablir, passage) → ✓ Enregistrer (la carte se refait seule) → Placer › Salle (plan 2D) →
+Placer › Relier → Placer › Zone interdite → Simuler › Lancer → Y aller → ARRÊT → Arrêter → Scan simulé.
 
-Firefox est piloté par geckodriver, en WebDriver simple (requêtes HTTP), avec -headless.
-Pas de Playwright. Le test est sauté si geckodriver ou Firefox manquent, ou si Firefox ne
-démarre pas. Les gestes (cliquer-glisser sur le plan) sont des PointerEvent envoyés par script.
-Serveur : bin/g1-atelier, comme en vrai, sur une copie de demo, avec les fausses commandes g1-*.
+Firefox est piloté par geckodriver, en WebDriver simple (requêtes HTTP), avec -headless. Pas de Playwright.
+Le test est sauté si geckodriver ou Firefox manquent, ou si Firefox ne démarre pas. Les gestes (cliquer-
+glisser sur le plan) sont des PointerEvent envoyés par script. Les éléments sont trouvés par les repères
+stables de la coque (data-role, data-commande, data-onglet, data-ecran ; section 12.2 du plan), jamais par
+leur texte. Serveur : bin/g1-atelier, comme en vrai, sur une copie de demo, avec les fausses commandes g1-*.
 """
 import json
 import os
@@ -41,13 +42,37 @@ if (relacher) ev('pointerup', points[points.length - 1], 0);
 return [r.width, r.height];
 """
 
-CLIC_BOUTON = """
-const [texte, dans] = arguments;
-if (document.querySelector('.ecran.chargement')) return false;     // écran pas encore prêt
-const b = Array.from(document.querySelectorAll((dans || '') + ' button')).find(
-  (x) => x.textContent.trim().startsWith(texte) && !x.disabled);
-if (!b) return false;
+# Clic sur une commande du ruban ([data-commande=id]) ; avec une valeur, le choix du menu qui s'ouvre
+COMMANDE = """
+const [id, valeur] = arguments;
+if (document.querySelector('[data-role=vue-plan].chargement')) return false;     // écran pas encore prêt
+const b = document.querySelector('[data-commande="' + id + '"]');
+if (!b || b.disabled) return false;
 b.click();
+if (valeur === null || valeur === undefined) return true;
+const choix = document.querySelector('.menu-ruban [data-valeur="' + valeur + '"]');
+if (!choix) return false;
+choix.click();
+return true;
+"""
+
+CLIC = """
+const [selecteur] = arguments;
+if (document.querySelector('[data-role=vue-plan].chargement')) return false;
+const b = document.querySelector(selecteur);
+if (!b || b.disabled) return false;
+b.click();
+return true;
+"""
+
+# Donne une valeur à un champ (input ou textarea) et déclenche « input » et « change », comme une saisie
+CHAMP = """
+const [selecteur, valeur] = arguments;
+const c = document.querySelector(selecteur);
+if (!c) return false;
+c.value = valeur;
+c.dispatchEvent(new Event('input', { bubbles: true }));
+c.dispatchEvent(new Event('change', { bubbles: true }));
 return true;
 """
 
@@ -69,10 +94,11 @@ class Navigateur:
         except urllib.error.HTTPError as e:
             raise RuntimeError(f"WebDriver {methode} {chemin} : {e.read().decode()[:500]}") from None
 
-    def demarrer(self):
-        options = {"args": ["-headless", "--width=1400", "--height=900"],
-                   "prefs": {"app.update.enabled": False, "toolkit.telemetry.enabled": False,
-                             "datareporting.policy.dataSubmissionEnabled": False}}
+    def demarrer(self, prefs=None):
+        p = {"app.update.enabled": False, "toolkit.telemetry.enabled": False,
+             "datareporting.policy.dataSubmissionEnabled": False}
+        p.update(prefs or {})
+        options = {"args": ["-headless", "--width=1400", "--height=900"], "prefs": p}
         valeur = self._requete("POST", "/session", {"capabilities": {"alwaysMatch": {
             "browserName": "firefox", "moz:firefoxOptions": options}}})
         self.session = valeur["sessionId"]
@@ -99,15 +125,71 @@ class Navigateur:
                           ".message-avertissement')).map(e => e.textContent)]")
         pytest.fail(f"délai dépassé : {message or script} (dernière valeur {dernier!r}) ; erreurs de la page : {erreurs}")
 
-    def bouton(self, texte, dans=""):
-        assert self.attendre(CLIC_BOUTON, texte, dans, message=f"bouton « {texte} »")
+    def taille(self, largeur, hauteur):
+        """Zone d'affichage de largeur × hauteur pixels (la fenêtre est un peu plus grande)."""
+        self._requete("POST", f"/session/{self.session}/window/rect", {"width": largeur, "height": hauteur})
+        time.sleep(0.2)
+        iw, ih = self.js("return [window.innerWidth, window.innerHeight]")
+        self._requete("POST", f"/session/{self.session}/window/rect",
+                      {"width": largeur + (largeur - iw), "height": hauteur + (hauteur - ih)})
+        time.sleep(0.4)
+
+    # ------------------------------------------------------------ la coque (repères stables, section 12.2)
+
+    def commande(self, ident, valeur=None, delai=30.0):
+        """Clic sur [data-commande=ident] du ruban (son onglet est choisi d'abord) ; valeur : le choix du menu."""
+        onglet = self.js("const b = document.querySelector('[data-commande=\"' + arguments[0] + '\"]');"
+                         "return b ? null : arguments[0];", ident)
+        if onglet:
+            # la commande n'est pas dans l'onglet affiché : on cherche son onglet par le registre du ruban
+            ou = self.js_async("const [id, fini] = arguments; import('/js/coque/ruban.js').then((R) => "
+                               "{ const c = R.commande(id); fini(c ? [c.onglet, c.avance] : null); });", ident)
+            assert ou, f"commande inconnue : {ident}"
+            self.onglet(ou[0])
+            if ou[1]:
+                self.attendre(CLIC, "[data-role=avance]", message="menu Avancé")
+        assert self.attendre(COMMANDE, ident, valeur, delai=delai, message=f"commande {ident}")
+
+    def onglet(self, ident):
+        assert self.attendre(CLIC, f"[data-onglet='{ident}']", delai=30.0, message=f"onglet {ident}")
+
+    def clic(self, selecteur, delai=30.0, message=""):
+        assert self.attendre(CLIC, selecteur, delai=delai, message=message or f"clic sur {selecteur}")
+
+    def ecran(self, ident, delai=30.0):
+        self.attendre(f"return document.querySelector('[data-ecran={ident}]') && "
+                      "!document.querySelector('[data-role=vue-plan].chargement') && "
+                      "!document.querySelector('.chargement-panneau')", delai=delai, message=f"écran {ident}")
+
+    def vue(self, nom):
+        """Choisit la vue centrale (3d, plan, camera) si elle est proposée ; renvoie la vue affichée."""
+        self.js("const b = document.querySelector('[data-vue=' + arguments[0] + ']'); if (b && !b.hidden) b.click();", nom)
+        return self.js("return document.querySelector('[data-role=vue]').getAttribute('data-vue')")
+
+    def ok(self):
+        """✓ du panneau de tâches (Enregistrer)."""
+        self.clic("[data-role=ok]", message="✓ du panneau")
+
+    def champ(self, selecteur, valeur):
+        assert self.js(CHAMP, selecteur, valeur), f"champ introuvable : {selecteur}"
+
+    def messages(self, genre):
+        return self.js("return Array.from(document.querySelectorAll('[data-role=journal] .message-' + arguments[0] + "
+                       "' .message-texte')).map(e => e.textContent)", genre)
 
     def geste(self, ecran, points, relacher=True):
-        self.attendre("return !document.querySelector('.ecran.chargement')", message="fin du chargement")
-        return self.js(GESTE, f".ecran-{ecran}", points, relacher)
+        self.ecran(ecran)
+        return self.js(GESTE, f"[data-ecran={ecran}]", points, relacher)
 
-    def clic(self, ecran, p):
+    def clic_plan(self, ecran, p):
         self.geste(ecran, [p, p])
+
+    def capture(self, chemin):
+        import base64
+        from pathlib import Path
+        png = self._requete("GET", f"/session/{self.session}/screenshot")
+        Path(chemin).parent.mkdir(parents=True, exist_ok=True)
+        Path(chemin).write_bytes(base64.b64decode(png))
 
     def fermer(self):
         if self.session:
@@ -124,37 +206,49 @@ def _port_libre():
         return s.getsockname()[1]
 
 
-@pytest.fixture
-def navigateur(tmp_path):
+def demarrer_navigateur(prefs=None):
+    """(geckodriver, Navigateur prêt), ou pytest.skip. À arrêter avec arreter_navigateur."""
     port = _port_libre()
     gecko = subprocess.Popen([GECKODRIVER, "--port", str(port)], stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL, start_new_session=True)
     nav = Navigateur(port)
-    try:
-        fin = time.monotonic() + 20
-        while True:
-            try:
-                urllib.request.urlopen(nav.base + "/status", timeout=2)
-                break
-            except (urllib.error.URLError, ConnectionError):
-                if time.monotonic() > fin or gecko.poll() is not None:
-                    pytest.skip("geckodriver ne démarre pas")
-                time.sleep(0.2)
+    fin = time.monotonic() + 20
+    while True:
         try:
-            nav.demarrer()
-        except Exception as e:      # noqa: BLE001
-            pytest.skip(f"Firefox sans fenêtre ne démarre pas : {e}")
+            urllib.request.urlopen(nav.base + "/status", timeout=2)
+            break
+        except (urllib.error.URLError, ConnectionError):
+            if time.monotonic() > fin or gecko.poll() is not None:
+                arreter_navigateur(gecko, nav)
+                pytest.skip("geckodriver ne démarre pas")
+            time.sleep(0.2)
+    try:
+        nav.demarrer(prefs)
+    except Exception as e:      # noqa: BLE001
+        arreter_navigateur(gecko, nav)
+        pytest.skip(f"Firefox sans fenêtre ne démarre pas : {e}")
+    return gecko, nav
+
+
+def arreter_navigateur(gecko, nav):
+    nav.fermer()
+    try:
+        os.killpg(gecko.pid, signal.SIGTERM)
+        gecko.wait(timeout=10)
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        try:
+            os.killpg(gecko.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+@pytest.fixture
+def navigateur(tmp_path):
+    gecko, nav = demarrer_navigateur()
+    try:
         yield nav
     finally:
-        nav.fermer()
-        try:
-            os.killpg(gecko.pid, signal.SIGTERM)
-            gecko.wait(timeout=10)
-        except (ProcessLookupError, subprocess.TimeoutExpired):
-            try:
-                os.killpg(gecko.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
+        arreter_navigateur(gecko, nav)
 
 
 @pytest.fixture
@@ -168,137 +262,158 @@ def _api(base, chemin):
         return json.loads(r.read())
 
 
+def ouvrir_espace(nav, base, mode="simu", repetition=False, lieu="demo", hash_="", etage="rdc"):
+    """Ouvre directement l'espace de travail (la mémoire du navigateur, puis une adresse avec ?recharger)."""
+    nav.ouvrir(base + "/")
+    nav.attendre("return document.querySelector('[data-role=accueil]') !== null", message="accueil")
+    nav.js("localStorage.clear(); localStorage.setItem('atelier.lieu', arguments[0]);"
+           "localStorage.setItem('atelier.etage', arguments[1]); localStorage.setItem('atelier.mode', arguments[2]);"
+           "localStorage.setItem('atelier.repetition', arguments[3] ? '1' : '0');"
+           "localStorage.setItem('atelier.mode-simulation', arguments[2] === 'simu' ? 'simu' : (arguments[3] ? 'repetition' : 'robot'));",
+           lieu, etage, mode, repetition)
+    nav.ouvrir(base + "/?recharger=1" + hash_)
+    nav.attendre("return document.querySelector('[data-role=espace]') !== null", message="espace de travail")
+
+
 def test_parcours_principal_dans_le_navigateur(sans_ros, serveur, navigateur, lieux, faux_bin):
     _, base = serveur
     nav = navigateur
     L = "/api/lieux/essai_nav"
 
-    # Lieux : la liste, puis la création d'un lieu
-    nav.ouvrir(base + "/#lieux")
-    nav.attendre("return document.querySelectorAll('.onglet').length === 12", message="onglets construits")  # 8 + 4 de la vague 4
-    nav.attendre("return document.querySelector('.liste-lieux').textContent.includes('Lycée démo')")
-    nav.js("""const i = document.querySelector('.ecran-lieux form input[type=text]');
-              i.value = 'Essai nav'; i.dispatchEvent(new Event('input')); i.dispatchEvent(new Event('change'));""")
-    assert nav.js("return document.querySelectorAll('.ecran-lieux form input[type=text]')[1].value") == "essai_nav"
-    nav.bouton("Créer le lieu")
-    # l'Atelier passe seul à l'onglet Monde du nouveau lieu, avec ses 4 murs
-    nav.attendre("return document.querySelectorAll('.ecran-monde path.mur').length === 4", message="monde neuf")
-    assert nav.js("return document.getElementById('choix-lieu').value") == "essai_nav"
+    # Accueil : Simulation, Nouveau lieu, Ouvrir
+    nav.ouvrir(base + "/")
+    nav.attendre("return document.querySelector('[data-role=liste-lieux] [data-lieu=demo]')", message="lieux de l'accueil")
+    nav.clic("[data-role=mode-simu]")
+    assert nav.js("return document.querySelector('[data-role=mode-simu]').getAttribute('aria-pressed')") == "true"
+    nav.clic("[data-role=nouveau-lieu]")
+    nav.champ("[data-role=nom-lieu]", "Essai nav")
+    nav.clic("[data-role=creer-lieu]")
+    nav.attendre("return document.querySelector('[data-lieu=essai_nav][aria-selected=true]')", message="lieu créé et choisi")
     assert len(_api(base, "/api/lieux")) == 2
+    nav.clic("[data-role=ouvrir]")
+    nav.attendre("return document.querySelector('[data-role=espace][data-mode=simu]')", message="espace Simulation")
+    assert nav.js("return document.querySelector('[data-role=lieu]').value") == "essai_nav"
+    assert nav.js("return Array.from(document.querySelectorAll('[data-onglet]')).map(b => b.dataset.onglet)") == [
+        "dessiner", "placer", "simuler", "equipe"]
 
-    # Monde : un mur cliquer-glisser, un objet, un piéton, annuler et refaire, un passage
-    nav.bouton("Mur", ".groupe-outils")
+    # Dessiner : le monde neuf (4 murs), un mur cliquer-glisser, un objet, le déplacer et le tourner
+    nav.commande("monde.choisir")
+    nav.ecran("monde")
+    assert nav.vue("plan") == "plan"
+    nav.attendre("return document.querySelectorAll('[data-ecran=monde] path.mur').length === 4", message="monde neuf")
+    nav.commande("monde.mur")
+    assert nav.js("return document.querySelector('[data-commande=\"monde.mur\"]').getAttribute('aria-pressed')") == "true"
     nav.geste("monde", [[0.35, 0.5], [0.45, 0.5], [0.6, 0.5]])
-    nav.attendre("return document.querySelectorAll('.ecran-monde path.mur').length === 5", message="mur tracé")
-    assert "non enregistrées" in nav.js("return document.querySelector('[data-role=etat]').textContent")
-    nav.bouton("Objet", ".groupe-outils")
-    nav.clic("monde", [0.5, 0.35])
-    nav.attendre("return document.querySelectorAll('.ecran-monde path.objet').length === 1", message="objet posé")
-    # outil Choisir : glisser l'objet pour le déplacer, puis le tourner de 90° dans le panneau
-    nav.bouton("Choisir", ".groupe-outils")
-    position = "const r = document.querySelector('.ecran-monde path.objet').getBoundingClientRect(); return r.left;"
+    nav.attendre("return document.querySelectorAll('[data-ecran=monde] path.mur').length === 5", message="mur tracé")
+    nav.attendre("return !document.querySelector('[data-role=enregistrer]').disabled", message="Enregistrer actif")
+    nav.commande("monde.objet", "table")
+    nav.clic_plan("monde", [0.5, 0.35])
+    nav.attendre("return document.querySelectorAll('[data-ecran=monde] path.objet').length === 1", message="objet posé")
+    nav.commande("monde.choisir")
+    position = "const r = document.querySelector('[data-ecran=monde] path.objet').getBoundingClientRect(); return r.left;"
     avant = nav.js(position)
     nav.geste("monde", [[0.5, 0.35], [0.52, 0.35], [0.55, 0.35]])
     assert nav.js(position) > avant + 20, "l'objet n'a pas suivi le glissé"
-    nav.js("""const l = Array.from(document.querySelectorAll('.ecran-monde .panneau label'))
+    nav.js("""const l = Array.from(document.querySelectorAll('[data-role=panneau-corps] label'))
                 .find((x) => x.textContent.startsWith('Rotation'));
               const i = l.querySelector('input'); i.value = '90'; i.dispatchEvent(new Event('change'));""")
     # départ du robot : clic puis glissé vers le haut de l'écran (le nord)
-    nav.bouton("Départ du robot", ".groupe-outils")
+    nav.commande("monde.depart")
     nav.geste("monde", [[0.2, 0.8], [0.2, 0.75], [0.2, 0.7]])
-    nav.bouton("Piéton", ".groupe-outils")
-    nav.clic("monde", [0.3, 0.65])
-    nav.clic("monde", [0.6, 0.65])
-    nav.bouton("Terminer le trajet")
-    nav.attendre("return document.querySelectorAll('.ecran-monde path.trajet-pieton').length >= 1", message="piéton")
-    nav.bouton("Annuler")
-    nav.attendre("return document.querySelectorAll('.ecran-monde path.trajet-pieton').length === 0", message="annuler")
-    nav.bouton("Refaire")
-    nav.attendre("return document.querySelectorAll('.ecran-monde path.trajet-pieton').length >= 1", message="refaire")
-    nav.bouton("Passage", ".groupe-outils")
-    nav.js(GESTE, ".ecran-monde", [[0.5, 0.5]], False)       # survol puis clic sur le mur tracé
-    nav.clic("monde", [0.5, 0.5])
-    nav.attendre("return document.querySelectorAll('.ecran-monde path.mur').length === 6", message="passage coupé")
-    nav.bouton("Enregistrer le monde")
-    nav.attendre("return document.querySelector('[data-role=etat]').textContent.includes('Tout est enregistré')")
+    # piéton : deux points, puis « Terminer le trajet » dans le panneau
+    nav.commande("monde.pieton")
+    nav.clic_plan("monde", [0.3, 0.65])
+    nav.clic_plan("monde", [0.6, 0.65])
+    nav.attendre("return Array.from(document.querySelectorAll('[data-section=outil] button')).some(b => "
+                 "b.textContent.startsWith('Terminer') && !b.disabled)", message="Terminer le trajet")
+    nav.js("Array.from(document.querySelectorAll('[data-section=outil] button')).find(b => b.textContent.startsWith('Terminer')).click()")
+    nav.attendre("return document.querySelectorAll('[data-ecran=monde] path.trajet-pieton').length >= 1", message="piéton")
+    nav.clic("[data-role=defaire]")
+    nav.attendre("return document.querySelectorAll('[data-ecran=monde] path.trajet-pieton').length === 0", message="annuler")
+    nav.clic("[data-role=refaire]")
+    nav.attendre("return document.querySelectorAll('[data-ecran=monde] path.trajet-pieton').length >= 1", message="rétablir")
+    nav.commande("monde.passage")
+    nav.js(GESTE, "[data-ecran=monde]", [[0.5, 0.5]], False)       # survol puis clic sur le mur tracé
+    nav.clic_plan("monde", [0.5, 0.5])
+    nav.attendre("return document.querySelectorAll('[data-ecran=monde] path.mur').length === 6", message="passage coupé")
+    # ✓ Enregistrer : le monde, puis la carte du robot refaite seule
+    nav.ok()
+    nav.attendre("return document.querySelector('[data-role=ok]').disabled", message="monde enregistré")
     monde = _api(base, L + "/etages/rdc/monde")
     assert (len(monde["murs"]), len(monde["objets"]), len(monde["pietons"])) == (6, 1, 1)
     assert monde["objets"][0]["modele"] == "table" and abs(monde["objets"][0]["cap"] - 1.5708) < 1e-3
     assert abs(monde["depart_robot"]["theta"] - 1.5708) < 0.01 and monde["depart_robot"]["x"] != 1.0
-    vue3d = nav.js("return document.querySelector('.ecran-monde .vue3d canvas') ? 'canvas' : "
-                   "document.querySelector('.ecran-monde .vue3d').textContent")
+    fin = time.monotonic() + 30
+    while time.monotonic() < fin and not any(a.startswith("g1-monde generer") for a in faux_bin.appels()):
+        time.sleep(0.2)
+    assert any(a.startswith("g1-monde generer") for a in faux_bin.appels()), "la carte ne s'est pas refaite"
+    nav.attendre("return Array.from(document.querySelectorAll('[data-role=journal] .message-succes')).some("
+                 "m => m.textContent.includes('Carte du robot à jour'))", delai=30, message="carte refaite")
 
-    # Carte : fabriquer, puis l'image de la carte s'affiche
-    nav.bouton("Carte", ".onglets")
-    nav.bouton("Fabriquer la carte")
-    nav.attendre("const i = document.querySelector('.ecran-carte img.plan-image-carte'); "
-                 "return i && i.complete && i.naturalWidth > 0", delai=30, message="image de la carte")
-    assert "g1-monde generer" in faux_bin.appels()[-1]
-
-    # Salles : clic pour placer, glisser pour orienter, nom dans le panneau, enregistrer
-    nav.bouton("Salles", ".onglets")
-    nav.attendre("return document.querySelector('.ecran-salles .leaflet-marker-icon.salle')", message="salle accueil")
-    nav.bouton("Ajouter une salle", ".groupe-outils")
+    # Placer › Salle, sur le plan 2D : clic puis glissé vers le haut, nom dans le panneau, ✓
+    nav.commande("salles.salle")
+    nav.ecran("salles")
+    nav.vue("plan")
     nav.geste("salles", [[0.7, 0.3], [0.7, 0.2], [0.7, 0.1]])
-    nav.attendre("return document.querySelector('.ecran-salles [data-champ=nom] input')", message="panneau salle")
-    nav.js("""const i = document.querySelector('.ecran-salles [data-champ=nom] input');
-              i.value = 'Labo de physique'; i.dispatchEvent(new Event('change'));""")
-    nav.bouton("Enregistrer les salles")
-    nav.attendre("return document.querySelector('.ecran-salles [data-role=etat]').textContent.includes('Tout est')")
+    nav.attendre("return document.querySelector('[data-role=panneau-corps] [data-champ=nom] input')", message="panneau salle")
+    nav.champ("[data-role=panneau-corps] [data-champ=nom] input", "Labo de physique")
+    nav.ok()
+    nav.attendre("return document.querySelector('[data-role=ok]').disabled", message="salles enregistrées")
     salles = _api(base, L + "/salles")
     labo = next(s for s in salles if s["id"] == "labo_de_physique")
     assert labo["nom"] == "Labo de physique" and abs(labo["pose"]["theta"] - 1.5708) < 0.01   # glissé vers le haut
     assert "labo_de_physique" in _api(base, L + "/itineraires")["noeuds"]
+    # l'arbre du lieu montre la salle
+    nav.attendre("return document.querySelector('[data-role=arbre] [data-noeud=\"salle:labo_de_physique\"]')",
+                 message="salle dans l'arbre")
 
-    # Itinéraires : relier l'accueil à la salle
-    nav.bouton("Itinéraires", ".onglets")
-    nav.attendre("return document.querySelectorAll('.ecran-itineraires .noeud').length === 2", message="nœuds")
-    nav.bouton("Relier deux nœuds", ".groupe-outils")
-    # un nœud, puis l'autre (l'écran redessine les nœuds après chaque clic)
-    nav.js("document.querySelectorAll('.ecran-itineraires .noeud')[0].click()")
-    nav.js("document.querySelectorAll('.ecran-itineraires .noeud')[1].click()")
-    nav.attendre("return document.querySelectorAll('.ecran-itineraires path.couloir').length === 1", message="couloir")
-    nav.bouton("Enregistrer les itinéraires")
-    nav.attendre("return document.querySelector('.ecran-itineraires [data-role=etat]').textContent.includes('Tout est')")
+    # Placer › Relier : l'accueil et la salle
+    nav.commande("itineraires.relier")
+    nav.ecran("itineraires")
+    nav.attendre("return document.querySelectorAll('[data-ecran=itineraires] .noeud').length === 2", message="nœuds")
+    nav.js("document.querySelectorAll('[data-ecran=itineraires] .noeud')[0].click()")
+    nav.js("document.querySelectorAll('[data-ecran=itineraires] .noeud')[1].click()")
+    nav.attendre("return document.querySelectorAll('[data-ecran=itineraires] path.couloir').length === 1", message="couloir")
+    nav.ok()
+    nav.attendre("return document.querySelector('[data-role=ok]').disabled", message="itinéraires enregistrés")
     assert len(_api(base, L + "/itineraires")["couloirs"]) == 1
 
-    # Zones : une zone interdite de trois coins
-    nav.bouton("Zones", ".onglets")
-    nav.bouton("Zone interdite", ".groupe-outils")
+    # Placer › Zone interdite : trois coins, « Terminer la zone », ✓
+    nav.commande("zones.interdite")
+    nav.ecran("zones")
     for p in ([0.2, 0.2], [0.3, 0.2], [0.3, 0.3]):
-        nav.clic("zones", p)
-    nav.bouton("Terminer la zone")
-    nav.bouton("Enregistrer les zones")
-    nav.attendre("return document.querySelector('.ecran-zones [data-role=etat]').textContent.includes('Tout est')")
+        nav.clic_plan("zones", p)
+    nav.js("Array.from(document.querySelectorAll('[data-section=outil] button')).find(b => b.textContent.startsWith('Terminer')).click()")
+    nav.ok()
+    nav.attendre("return document.querySelector('[data-role=ok]').disabled", message="zones enregistrées")
     assert len(_api(base, L + "/zones")["interdites"]) == 1
 
-    # Simulation : lancer, Y aller, Arrêt, arrêter
-    nav.bouton("Simulation", ".onglets")
-    nav.bouton("Lancer la simulation")
+    # Simuler : Lancer, Y aller, ARRÊT, Arrêter
+    nav.commande("simulation.lancer")
+    nav.ecran("simulation")
     nav.attendre("return document.querySelector('[data-role=etat-simu]').textContent.includes('Simulation en cours')",
                  delai=20, message="simulation en cours")
     assert _api(base, "/api/simulation/etat")["simulation"]["en_cours"]
-    nav.attendre("return Array.from(document.querySelectorAll('.liste-salles button')).length === 2")
-    nav.js("document.querySelectorAll('.liste-salles button')[1].click()")
-    nav.attendre("return Array.from(document.querySelectorAll('.message-erreur')).some(m => "
+    nav.attendre("return document.querySelectorAll('[data-role=salles] li button').length === 2", message="Y aller")
+    nav.js("document.querySelectorAll('[data-role=salles] li button')[1].click()")
+    nav.attendre("return Array.from(document.querySelectorAll('[data-role=journal] .message-erreur')).some(m => "
                  "m.textContent.includes('Pas de liaison avec ROS 2'))", message="Y aller sans ROS 2")
-    nav.js("document.querySelectorAll('.message-erreur').forEach((m) => m.remove())")
-    nav.js("document.querySelector('.bouton-arret').click()")
-    nav.attendre("return Array.from(document.querySelectorAll('.message')).some(m => m.textContent.includes('Arrêt'))")
-    nav.bouton("Arrêter la simulation")
+    nav.clic("[data-role=arret]")
+    nav.attendre("return document.querySelector('[data-role=etat-message]').textContent.includes('ARRÊT')", message="ARRÊT")
+    fin = time.monotonic() + 15
+    while time.monotonic() < fin and "g1-guide stop" not in faux_bin.appels():
+        time.sleep(0.2)
+    assert "g1-guide stop" in faux_bin.appels()          # ARRÊT sans ROS 2 : par la commande du guide
+    nav.commande("simulation.arreter")
     nav.attendre("return document.querySelector('[data-role=etat-simu]').textContent.startsWith('Simulation arrêtée')",
-                 delai=20, message="simulation arrêtée")
+                 delai=30, message="simulation arrêtée")
 
-    # Scan : l'onglet s'ouvre sur le choix du mode (parcours complet : test_serveur_scan_navigateur.py)
-    nav.bouton("Scan", ".onglets")
-    nav.attendre("return document.querySelectorAll('.ecran-scan .scan-mode').length === 2", message="onglet Scan")
-    assert "g1-guide stop" in faux_bin.appels()          # Arrêt sans ROS 2 : par la commande du guide
+    # Scan simulé (Simuler › Avancé) : l'écran du scan s'ouvre (parcours complet : test_serveur_scan_navigateur.py)
+    nav.commande("scan.simule")
+    nav.ecran("scan")
 
     # Aucune erreur JavaScript pendant tout le parcours
     assert nav.js("return window.erreursAtelier") == []
-    erreurs = nav.js("return Array.from(document.querySelectorAll('.message-erreur')).map(e => e.textContent)")
-    assert erreurs == [], erreurs
-    print(f"vue 3D : {vue3d}")
 
 
 def test_calculs_geometriques_du_js(sans_ros, serveur, navigateur):

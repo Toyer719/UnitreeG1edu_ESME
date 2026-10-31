@@ -3,6 +3,11 @@
 # lancer la simulation → Y aller » fonctionne. L'agent Interface fournit un test dans un vrai
 # navigateur sans fenêtre (atelier/tests/test_serveur_navigateur.py), ou la liste de
 # vérifications cochée dans docs/journal-atelier.md.
+# Vague 5 (section 12.10 du plan, agent Coquille) : le parcours passe par la coque : accueil →
+# Nouveau lieu (Simulation) → Ouvrir → Dessiner (mur, objet, départ, piéton, passage, Annuler,
+# Rétablir) → ✓ Enregistrer (la carte se refait seule) → Placer › Salle, Relier, Zone interdite →
+# Simuler › Lancer → Y aller → ARRÊT → Arrêter → Scan simulé ; les éléments sont trouvés par les
+# repères stables (data-role, data-commande, data-onglet, data-ecran), jamais par leur texte.
 source "$(dirname "$0")/commun.sh"
 TEST="$RACINE/atelier/tests/test_serveur_navigateur.py"
 if [ -f "$TEST" ]; then

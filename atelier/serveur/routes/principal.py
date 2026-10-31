@@ -26,7 +26,7 @@ from ..communs import ErreurAtelier, dossier_du_lieu, verifier_id
 routeur = APIRouter(prefix="/api/lieux/{id_lieu}", tags=["point principal"])
 
 SANS_PRINCIPAL = ("Ce lieu n'a pas de point principal (l'accueil, où le robot démarre et revient après chaque "
-                  "visite) : dans l'onglet Salles, faites d'une salle le point principal.")
+                  "visite) : placez-le avec Placer › Accueil.")
 
 
 class DemandePrincipal(BaseModel):
@@ -77,8 +77,8 @@ def ecrire_principal(id_lieu: str, demande: DemandePrincipal, request: Request):
     try:
         r = definir_principal(dossier, salle=demande.salle, x=demande.x, y=demande.y, theta=demande.theta)
     except SalleInconnue as e:
-        raise ErreurAtelier(404, f"La salle « {demande.salle} » n'existe pas dans ce lieu : placez-la d'abord dans "
-                                 "l'onglet Salles.", e.erreurs) from None
+        raise ErreurAtelier(404, f"La salle « {demande.salle} » n'existe pas dans ce lieu : placez-la d'abord "
+                                 "(Placer › Salle).", e.erreurs) from None
     except ErreurLieu as e:
         raise ErreurAtelier(422, "Le point principal n'a pas été enregistré : corrigez les points ci-dessous.",
                             e.erreurs) from None

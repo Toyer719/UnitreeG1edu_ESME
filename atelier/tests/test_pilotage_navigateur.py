@@ -1,10 +1,12 @@
-"""Onglet Pilotage dans Firefox sans fenêtre (section 11.5 du plan, critère 29 pour l'aperçu 3D).
+"""Réel › Piloter dans Firefox sans fenêtre (section 11.5 du plan, critère 29 pour l'aperçu 3D ; coque de la
+vague 5, section 12.2 : postures et gestes dans le ruban, deux joysticks sur la vue, Danses et Chorégraphies
+dans le groupe « Spectacle », l'ARRÊT de la barre d'outils, les confirmations dans la page).
 
 Serveur : bin/g1-atelier (sans ROS), relié au nœud pilotage en mémoire de test_pilotage_serveur
-(logique, cœur et API tornado réels, faux G1 en mémoire). Parcours : état et « Prendre la main »,
-posture, joystick tactile (événements pointeur), ARRÊT, danses (liste, interdites, zone libre),
-« Mes chorégraphies » (aperçu 3D qui avance, interpolation identique à celle du nœud).
-Sauté sans geckodriver ou Firefox.
+(logique, cœur et API tornado réels, faux G1 en mémoire). Parcours, sans lieu (« Piloter le robot sans
+lieu ») : état et « Prendre la main », posture (menu du ruban), joystick tactile (événements pointeur), ARRÊT,
+portique (case puis confirmation), danses (liste, interdites, zone libre), « Chorégraphies » (aperçu 3D qui
+avance, interpolation identique à celle du nœud). Sauté sans geckodriver ou Firefox.
 """
 import json
 import shutil
@@ -36,6 +38,8 @@ ev('pointermove', 1);
 return true;
 """
 
+MODES_MARCHE = (500, 501, 801)
+
 
 @pytest.fixture
 def noeud(tmp_path, monkeypatch):
@@ -57,23 +61,39 @@ def _api(base, chemin):
         return json.loads(r.read())
 
 
-def test_onglet_pilotage(noeud, serveur, navigateur):
+def confirmer(nav):
+    """Accepte la fenêtre de confirmation de la page (à la place de window.confirm)."""
+    nav.attendre("return document.querySelector('[data-role=confirmation] [data-role=confirmer]')", message="confirmation")
+    nav.js("document.querySelector('[data-role=confirmation] [data-role=confirmer]').click()")
+
+
+def test_piloter(noeud, serveur, navigateur):
     _, base = serveur
     nav = navigateur
-    nav.ouvrir(base + "/#pilotage")
-    nav.attendre("return document.querySelector('.pilotage-barre .bouton-arret')", message="barre du pilotage")
+    # « Piloter le robot sans lieu » depuis l'accueil
+    nav.ouvrir(base + "/")
+    nav.attendre("return document.querySelector('[data-role=pilotage-sans-lieu]')", message="accueil")
+    nav.clic("[data-role=pilotage-sans-lieu]")
+    nav.ecran("pilotage")
+    assert nav.js("return document.querySelector('[data-role=espace]').dataset.mode") in ("reel", "repetition")
+    assert nav.js("return document.querySelector('[data-onglet=piloter]').getAttribute('aria-selected')") == "true"
+    # sans lieu : les commandes qui travaillent sur un lieu sont grisées, avec la raison
+    assert nav.js("const b = document.querySelector('[data-onglet=placer]'); b.click();"
+                  "return document.querySelector('[data-commande=\"salles.salle\"]').disabled")
+    nav.onglet("piloter")
     nav.attendre("return document.querySelector('.pastille-pilotage').textContent.includes('Robot relié')",
                  message="robot relié")
-    nav.js("window.confirm = () => true; window.prompt = (q, d) => d;")
+    assert nav.js("return document.querySelector('[data-commande=\"pilotage.postures\"]').title").startswith("Prenez")
     # prendre la main
-    nav.bouton("Prendre la main", ".pilotage-barre")
-    nav.attendre("return document.querySelector('.etat-maitre').textContent === 'Vous avez la main'",
-                 message="la main")
+    nav.commande("pilotage.main")
+    nav.attendre("return document.querySelector('.etat-maitre').textContent === 'Vous avez la main'", message="la main")
     assert noeud.coeur.logique.a_la_main()
-    # posture « Démarrer » puis le joystick tactile (manche tenu vers l'avant 1 s)
-    nav.bouton("Démarrer", ".pilotage-postures")
-    attendre(lambda: noeud.robot.fsm == 801 and noeud.coeur.logique.fsm == 801, 5, 0.1)
-    nav.attendre("return !document.querySelector('.mouvement').disabled", message="boutons de mouvement actifs")
+    nav.attendre("return document.querySelector('[data-commande=\"pilotage.main\"] .commande-libelle').textContent "
+                 "=== 'Rendre la main'", message="libellé du ruban")
+    # posture « Démarrer » par le menu du ruban, puis le joystick tactile (manche tenu vers l'avant 1 s)
+    nav.commande("pilotage.postures", 500)
+    assert attendre(lambda: noeud.robot.fsm in MODES_MARCHE and noeud.coeur.logique.fsm in MODES_MARCHE, 5, 0.1)
+    nav.attendre("return !document.querySelector('.pilotage-postures .mouvement').disabled", message="boutons de mouvement actifs")
     debut = time.monotonic()
     nav.js(APPUI, ".joystick-pave", 0.5, 0.0, False)
     time.sleep(1.2)
@@ -84,22 +104,38 @@ def test_onglet_pilotage(noeud, serveur, navigateur):
     assert len(avant) >= 6, marche
     assert all(o["velocity"][0] <= D.LIMITES_MARCHE["vx"] + 1e-9 and o["duration"] == 0.5 for o in avant)
     assert marche[-1][1]["velocity"] == [0.0, 0.0, 0.0]               # lâché : arrêt
-    # posture au portique : la case d'abord, puis la confirmation double (confirm accepté)
-    nav.bouton("Amortir", ".zone-portique")
+    # manche tenu (un pouce), puis ARRÊT de l'autre main : la manette est lâchée par la page, plus aucun
+    # ordre de marche ne part tant que le pouce n'a pas été relevé puis reposé
+    nav.js(APPUI, ".joystick-pave", 0.5, 0.0, False)
+    time.sleep(0.6)
+    assert [o for _, o in noeud.marche(time.monotonic() - 0.4) if o["velocity"][0] > 0], "le manche tenu n'avance pas"
+    nav.clic("[data-role=arret]")
+    clic = time.monotonic()
+    time.sleep(1.5)
+    apres = [o for _, o in noeud.marche(clic + 0.3) if o["velocity"][0] > 0]
+    assert not apres, f"ordres de marche après l'ARRÊT, manche encore tenu : {apres[:3]}"
+    nav.js(APPUI, ".joystick-pave", 0.5, 0.0, True)
+    # posture au portique (Avancé) : la case d'abord, puis la confirmation dans la page
+    nav.commande("pilotage.portique")
+    nav.attendre("return document.querySelector('.zone-portique')", message="section portique")
+    nav.js("document.querySelector('.zone-portique [data-fsm=\"1\"]').click()")
     time.sleep(0.5)
-    assert noeud.robot.fsm == 801                                       # case décochée : rien
+    assert noeud.robot.fsm in MODES_MARCHE                              # case décochée : rien
     nav.js("document.querySelector('.zone-portique input[type=checkbox]').click()")
-    nav.bouton("Amortir", ".zone-portique")
+    nav.js("document.querySelector('.zone-portique [data-fsm=\"1\"]').click()")
+    confirmer(nav)
     attendre(lambda: noeud.robot.fsm == 1, 5, 0.1)
-    nav.bouton("Démarrer", ".pilotage-postures")
-    attendre(lambda: noeud.robot.fsm == 801, 5, 0.1)
-    # ARRÊT, toujours là
+    nav.commande("pilotage.postures", 500)
+    attendre(lambda: noeud.robot.fsm in MODES_MARCHE, 5, 0.1)
+    # ARRÊT de la barre d'outils : il arrête aussi le pilotage (POST /api/arret → /arret du nœud)
     debut = time.monotonic()
-    nav.js("document.querySelector('.bouton-arret-pilotage').click()")
+    nav.clic("[data-role=arret]")
     attendre(lambda: [o for _, o in noeud.marche(debut) if o["velocity"] == [0.0, 0.0, 0.0]], 5, 0.1)
-    # danses du robot
-    nav.bouton("Danses du robot", ".pilotage-sous-onglets")
-    nav.bouton("Lire la liste du robot", ".pilotage-danses")
+    nav.attendre("return document.querySelector('[data-role=etat-message]').textContent.includes('ARRÊT')", message="ARRÊT")
+    # danses du robot (groupe Spectacle)
+    nav.commande("pilotage.danses")
+    nav.js("Array.from(document.querySelectorAll('.pilotage-danses button')).find(b => "
+           "b.textContent === 'Lire la liste du robot').click()")
     nav.attendre("return document.querySelectorAll('.tableau-danses tbody tr').length >= 7", message="danses")
     interdites = nav.js("return Array.from(document.querySelectorAll('.danse-interdite')).map(l => l.dataset.danse)")
     assert sorted(interdites) == ["401", "402", "403"]
@@ -109,14 +145,16 @@ def test_onglet_pilotage(noeud, serveur, navigateur):
     time.sleep(1.1)
     nav.attendre("return !document.querySelector('tr[data-danse=\"604\"] .jouer-danse').disabled", message="jouer 604")
     nav.js("document.querySelector('tr[data-danse=\"604\"] .jouer-danse').click()")
+    confirmer(nav)
     attendre(lambda: noeud.robot.danses_jouees == [604], 5, 0.1)
     nav.attendre("return !document.querySelector('.progres-danse').hidden", message="danse en cours")
-    nav.js("document.querySelector('.bouton-arret-pilotage').click()")
+    nav.clic("[data-role=arret]")
     time.sleep(0.5)
-    # mes chorégraphies : l'aperçu 3D se charge et avance
-    nav.bouton("Mes chorégraphies", ".pilotage-sous-onglets")
+    # chorégraphies : l'aperçu 3D se charge dans la vue et avance
+    nav.commande("pilotage.choregraphies")
     nav.attendre("return window.apercuPilotage && window.apercuPilotage.pret", delai=20, message="aperçu chargé")
     nav.attendre("return document.querySelector('.liste-choregraphies').value === 'exemple_kpop'", message="exemple")
+    assert nav.js("return document.querySelector('.zone-vue-robot').hidden") is True
     images = nav.js("return window.apercuPilotage.images")
     mode = nav.js("return window.apercuPilotage.mode")
     assert mode in ("webgl", "canvas")

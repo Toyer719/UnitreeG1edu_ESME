@@ -7,6 +7,10 @@ noté dans simulation["mode"] :
               (rôles simulation, faux_slam et navigation) ;
   robot       le conteneur g1-jetson sur le Jetson (lancé par g1-jetson demarrer, qui rend la main :
               simulation["en_cours"] dit s'il tourne, jusqu'à « Arrêter »).
+
+Vague 5 (section 12.4 du plan) : arret est le dernier verrou posé ou retiré par l'Atelier (ARRÊT de la
+barre d'outils, « Bloquer » et « Débloquer » de Naviguer) : {verrou, depuis, mode, par}, aussi dans
+/ws/etat.
 """
 import time
 
@@ -22,6 +26,8 @@ class EtatServeur:
         self.pont = PontRos()
         # simulation en cours : {lieu, etage, dossier, monde (Monde ou None), debut, mode, ...}
         self.simulation = None
+        # vague 5 (section 12.4) : dernier verrou du pont posé ou retiré par l'Atelier (routes/arret.py)
+        self.arret = {"verrou": False, "depuis": None, "mode": None, "par": None}
 
     def demarrer(self):
         if self.ros:
@@ -104,4 +110,6 @@ class EtatServeur:
             "maitre": self.pont.dernier("/mouvement/maitre"),
             "personnes": self.pont.dernier("/personnes/lidar"),
             "visiteurs": self.pont.dernier("/visiteurs/detectes"),
+            # vague 5 (section 12.4) : le verrou posé par l'ARRÊT de l'Atelier
+            "arret": dict(self.arret),
         }

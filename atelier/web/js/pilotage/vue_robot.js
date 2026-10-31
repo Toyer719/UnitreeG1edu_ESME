@@ -53,10 +53,13 @@ function souvenirVue(cle, defaut) {
 }
 
 export class VueRobot {
-  // element : le conteneur ; config : GET /api/pilotage/config (noms des gestes, limites de marche)
-  constructor(element, config) {
+  // element : le conteneur ; config : GET /api/pilotage/config (noms des gestes, limites de marche) ;
+  // options : {disposition: 'centrale'} (vague 5 : la vue centrale de Piloter, le G1 en grand, la carte et
+  // la caméra en incrustation), sinon les trois panneaux côte à côte d'avant
+  constructor(element, config, options) {
     this.element = element;
     this.config = config || {};
+    this.centrale = !!(options && options.disposition === 'centrale');
     this.visible = false;
     this.ferme = false;
     this.replie = souvenirVue('repliee', '0') === '1';
@@ -101,6 +104,10 @@ export class VueRobot {
   // ---------------------------------------------------------------- page
 
   construire() {
+    if (this.centrale) {
+      this.construireCentrale();
+      return;
+    }
     const s = F.el('section', 'carte-section vue-robot');
     const entete = F.el('div', 'vue-robot-entete');
     entete.appendChild(F.el('h3', 'panneau-titre', 'Vue du robot'));
@@ -168,6 +175,66 @@ export class VueRobot {
     this.majRepli();
   }
 
+  // Vague 5 : le G1 en grand dans la vue centrale, la carte en haut à gauche, la caméra en haut à droite
+  construireCentrale() {
+    this.replie = false;
+    const s = F.el('div', 'vue-robot vue-robot-centrale');
+    const trois = F.el('div', 'vue-robot-panneau vue-robot-3d');
+    this.zone3d = F.el('div', 'vue-robot-apercu');
+    trois.appendChild(this.zone3d);
+    const legende = F.el('div', 'vue-robot-legende');
+    this.lignePosture = F.el('div', 'vue-robot-posture', '');
+    this.ligneActivite = F.el('div', 'vue-robot-activite', '');
+    this.progres = F.el('div', 'vue-robot-progres');
+    this.progres.hidden = true;
+    this.ligneNote = F.el('div', 'vue-robot-approche', '');
+    [this.lignePosture, this.ligneActivite, this.progres, this.ligneNote].forEach((e) => legende.appendChild(e));
+    trois.appendChild(legende);
+    s.appendChild(trois);
+    // carte, en incrustation
+    const carte = F.el('div', 'vue-robot-panneau vue-robot-carte vue-robot-incrustation');
+    const titreCarte = F.el('div', 'vue-robot-titre');
+    titreCarte.appendChild(F.el('strong', '', 'Carte'));
+    this.etatCarte = F.el('span', 'vue-robot-etat', '');
+    titreCarte.appendChild(this.etatCarte);
+    carte.appendChild(titreCarte);
+    this.zonePlan = F.el('div', 'vue-robot-plan');
+    carte.appendChild(this.zonePlan);
+    this.boutonSuivre = F.bouton(carte, 'Suivre', () => this.suivreRobot(), 'bouton bouton-petit vue-robot-suivre');
+    this.boutonSuivre.hidden = true;
+    s.appendChild(carte);
+    // caméra de la tête, en incrustation
+    const camera = F.el('div', 'vue-robot-panneau vue-robot-camera vue-robot-incrustation');
+    const titreCamera = F.el('div', 'vue-robot-titre');
+    titreCamera.appendChild(F.el('strong', '', 'Caméra de la tête'));
+    this.boutonCamera = F.bouton(titreCamera, 'Voir', () => this.basculerCamera(), 'bouton bouton-petit vue-robot-voir');
+    camera.appendChild(titreCamera);
+    const cadre = F.el('div', 'vue-robot-image');
+    this.image = F.el('img');
+    this.image.alt = 'Image de la caméra de la tête du robot';
+    this.image.hidden = true;
+    this.remplacement = F.el('p', 'vue-robot-remplacement', '');
+    cadre.appendChild(this.image);
+    cadre.appendChild(this.remplacement);
+    camera.appendChild(cadre);
+    this.etatCamera = F.el('div', 'vue-robot-etat-camera', '');
+    camera.appendChild(this.etatCamera);
+    s.appendChild(camera);
+    this.corps = s;
+    this.section = s;
+    this.boutonReplier = F.el('button');      // pas de repli dans la vue centrale
+    this.element.appendChild(s);
+    this.plan = creerPlan(this.zonePlan);
+    this.calque = L.layerGroup().addTo(this.plan.carte);
+    this.marqueurRobot = null;
+    this.pietons = new Map();
+    this.plan.carte.on('dragstart', () => {
+      this.suivre = false;
+      this.boutonSuivre.hidden = false;
+    });
+    this.apercu = new Apercu3D(this.zone3d, { nomGlobal: 'vueRobot3d', camera: [2.4, 1.3, 1.35], cible: [0, 0, 0.75] });
+  }
+
   montrer(oui) {
     this.element.hidden = !oui;
     this.visible = !!oui && !this.replie;
@@ -186,6 +253,7 @@ export class VueRobot {
   }
 
   majRepli() {
+    if (this.centrale) return;
     this.corps.hidden = this.replie;
     this.boutonReplier.textContent = this.replie ? 'Montrer la vue' : 'Masquer la vue';
     this.section.classList.toggle('repliee', this.replie);
@@ -234,10 +302,10 @@ export class VueRobot {
     const r = suivi.enCours ? d.robot : null;
     let texte;
     if (!suivi.lieu) texte = ' — aucun lieu choisi';
-    else if (!suivi.enCours) texte = ' — « ' + suivi.lieu + ' » : ni simulation, ni répétition, ni robot en cours';
+    else if (!suivi.enCours) texte = ' — « ' + suivi.lieu + ' » : rien ne tourne';
     else if (!r) {
       texte = ' — « ' + suivi.lieu + ' » : robot pas encore repéré'
-        + (d.mode === 'simu' ? '' : ' (onglet Simulation, « Repérer le robot »)');
+        + (d.mode === 'simu' ? '' : ' (Naviguer › Repérer)');
     } else texte = ' — « ' + suivi.lieu + ' », ' + suivi.etage + (r.perimee ? ' : position ancienne' : '');
     this.etatCarte.textContent = texte;
     if (r) {

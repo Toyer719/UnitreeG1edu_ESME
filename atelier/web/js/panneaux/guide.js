@@ -170,7 +170,7 @@ export function monter(element, outils) {
     });
   }
   lectureGuide.then(dessinerReglages).catch(() => {
-    F.paragraphe(formulaire, 'Réglages illisibles : vérifiez lieu.yaml (onglet Lieux).', 'panneau-alerte');
+    F.paragraphe(formulaire, 'Réglages illisibles : vérifiez lieu.yaml (arbre › le lieu, Vérifier).', 'panneau-alerte');
   });
 
   function dessinerEvenements(evenements) {
