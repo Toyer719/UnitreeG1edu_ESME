@@ -1,0 +1,17 @@
+// Les barrières de sécurité, de la demande aux jambes (chapitre 9)
+digraph securite {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.35, ranksep=0.22, newrank=true];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#FBE3E1", color="#C0392B", margin="0.12,0.05", width=4.2];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  demande [label="Une demande de mouvement : « Y aller », joystick, danse…", fillcolor="#E3ECF7", color="#2F5597"];
+  arret [label="1. ARRÊT de l'Atelier (bouton ou Échap) : tout s'arrête\nen moins d'1 s ; en Réel, verrou jusqu'à « Débloquer »"];
+  maitre [label="2. Un seul maître des mouvements (/mouvement/maitre) :\nle guide ou le pilotage, jamais les deux"];
+  nav [label="3. Nav2 : Collision Monitor (ralentir à 1 m devant\net 0,7 m autour, arrêt à 0,4 m), zones interdites"];
+  pont [label="4. Le pont : repérage exigé, verrou /pont/arret,\nmode du robot (pas_en_marche), robot muet"];
+  plafonds [label="5. Plafonds 0,4 m/s, 0,25 m/s, 0,6 rad/s (NaN → arrêt) ;\npetite consigne montée à 0,2 m/s, minuscule → zéro"];
+  homme [label="6. Homme mort : chaque ordre ne vaut que 0,5 s ;\narrêt 0,3 s après la dernière consigne de Nav2"];
+  tele [label="7. La télécommande d'Unitree, toujours en main :\nprioritaire, c'est l'arrêt d'urgence (amortissement)"];
+  jambes [label="Les jambes du robot (contrôleur d'Unitree)", fillcolor="#FDEBD9", color="#C55A11"];
+  demande -> arret -> maitre -> nav -> pont -> plafonds -> homme -> tele -> jambes;
+}

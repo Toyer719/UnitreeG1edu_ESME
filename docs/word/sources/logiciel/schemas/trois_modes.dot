@@ -1,0 +1,41 @@
+// Les trois modes : où va la vitesse (chapitres 2 et 8)
+digraph trois_modes {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.22, ranksep=0.24, newrank=true];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.08,0.04", width=1.9];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  subgraph cluster_simu {
+    label="Simulation"; style="rounded"; color="#7F7F7F"; fontcolor="#404040";
+    s_nav [label="Nav2 + guide\n(sur le PC)"];
+    s_cmd [label="/cmd_vel", shape=box, style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+    s_pont [label="ros_gz_bridge\n(traduction ROS ↔ Gazebo)", fillcolor="#EFEFEF", color="#7F7F7F"];
+    s_vide1 [label="", style=invis];
+    s_gz [label="Gazebo : le robot\nproxy avance", fillcolor="#EFEFEF", color="#7F7F7F"];
+  }
+  subgraph cluster_rep {
+    label="Répétition (sans robot)"; style="rounded"; color="#548235"; fontcolor="#385723";
+    r_nav [label="Nav2 + guide\n(PC ou conteneur)"];
+    r_cmd [label="/cmd_vel", shape=box, style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+    r_pont [label="pont g1_bridge\nplafonds, minimum,\nrepérage, verrou", fillcolor="#E2F0D9", color="#548235"];
+    r_req [label="/api/sport/request\nordre 7105", shape=box, style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+    r_g1 [label="faux G1 (g1_jumeau)\n→ /g1_jumeau/cmd_vel\n→ Gazebo", fillcolor="#EFEFEF", color="#7F7F7F"];
+  }
+  subgraph cluster_reel {
+    label="Robot réel"; style="rounded"; color="#C55A11"; fontcolor="#843C0C";
+    v_nav [label="Nav2 + guide\n(conteneur du Jetson)"];
+    v_cmd [label="/cmd_vel", shape=box, style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+    v_pont [label="pont g1_bridge\n(le même code)", fillcolor="#E2F0D9", color="#548235"];
+    v_req [label="/api/sport/request\nordre 7105", shape=box, style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+    v_g1 [label="PC1 d'Unitree :\nservice sport, le G1\nmarche", fillcolor="#FDEBD9", color="#C55A11"];
+  }
+  s_nav -> s_cmd -> s_pont -> s_vide1 [style=invis];
+  s_pont -> s_gz;
+  s_nav -> s_cmd; s_cmd -> s_pont;
+  r_nav -> r_cmd -> r_pont -> r_req -> r_g1;
+  v_nav -> v_cmd -> v_pont -> v_req -> v_g1;
+  {rank=same; s_nav; r_nav; v_nav}
+  {rank=same; s_cmd; r_cmd; v_cmd}
+  {rank=same; s_pont; r_pont; v_pont}
+  {rank=same; s_vide1; r_req; v_req}
+  {rank=same; s_gz; r_g1; v_g1}
+}

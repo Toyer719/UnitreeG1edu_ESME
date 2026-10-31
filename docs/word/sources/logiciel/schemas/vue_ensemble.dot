@@ -1,0 +1,46 @@
+// Vue d'ensemble : qui tourne où (chapitre 2)
+digraph vue_ensemble {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.3, ranksep=0.3, newrank=true];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.10,0.05"];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  subgraph cluster_pc {
+    label="PC portable : Ubuntu 22.04, ROS 2 Humble"; labeljust=l; style="rounded"; color="#2F5597"; fontcolor="#1F3A5F";
+    navigateur [label="Navigateur (ou tablette)\nl'interface de l'Atelier\nHTML, CSS, JavaScript"];
+    serveur [label="Serveur de l'Atelier (Python)\nFastAPI + uvicorn, port 8000\n+ nœud ROS 2 « atelier_pont »"];
+    commandes [label="Commandes g1-*\ng1-lieu, g1-monde, g1-scan,\ng1-guide, g1-jetson…"];
+    visiteurs [label="g1-visiteurs\nYOLO sur la carte\ngraphique du PC"];
+    lieux [label="Fichiers des lieux\nlieux/<id>/ : YAML,\ncartes, nuages, scans", shape=folder, fillcolor="#FFF6D5", color="#BF9000"];
+    simu [label="Simulation sans robot\nGazebo : monde, robot\nproxy, piétons ; Nav2,\nguide ; faux G1", fillcolor="#EFEFEF", color="#7F7F7F"];
+  }
+
+  cable [label="Câble Ethernet\nréseau 192.168.123.x, PC en .99\nROS 2 (DDS, domaine 0) et HTTP", shape=box, style="filled", fillcolor="#FFFFFF", color="#4A4A4A"];
+
+  subgraph cluster_robot {
+    label="Robot Unitree G1 EDU"; labeljust=l; style="rounded"; color="#C55A11"; fontcolor="#843C0C";
+    conteneur [label="Jetson (PC2), .164\nnotre conteneur « g1-jetson »\n(ROS 2 Humble) : Nav2, guide,\nrelais, pont de marche,\npilotage, camera_usb", fillcolor="#E2F0D9", color="#548235"];
+    pc1 [label="PC1 d'Unitree, .161\n(fermé : on n'y touche pas)\nmarche, équilibre, SLAM,\nservices sport, slam_operate,\nvoice, arm, videohub", fillcolor="#FDEBD9", color="#C55A11"];
+    camera [label="Caméra de poitrine\nSee3CAM_11CUG", fillcolor="#E2F0D9", color="#548235"];
+    lidar [label="LiDAR Livox\nMID-360 (.120)", fillcolor="#FDEBD9", color="#C55A11"];
+    tele [label="Télécommande\n(arrêt d'urgence)", fillcolor="#FBE3E1", color="#C0392B"];
+  }
+
+  navigateur -> serveur [label=" HTTP +\n WebSocket", dir=both];
+  serveur -> commandes [label=" lance"];
+  visiteurs -> serveur [style=dashed, label=" visiteurs"];
+  commandes -> lieux [label=" écrivent"];
+  commandes -> simu [label=" lancent"];
+  lieux -> cable [style=invis];
+  simu -> cable [style=invis];
+  serveur -> cable [dir=both, constraint=false, label=" ROS 2"];
+  cable -> conteneur [dir=both];
+  cable -> pc1 [dir=both, label=" scan, état"];
+  conteneur -> pc1 [label="ordres\n7105, 1804…", dir=both];
+  conteneur -> camera [label=" USB", dir=back];
+  pc1 -> lidar [label=" nuages", dir=back];
+  pc1 -> tele [label=" radio", dir=back];
+  {rank=same; commandes; visiteurs}
+  {rank=same; lieux; simu}
+  {rank=same; conteneur; pc1}
+  {rank=same; camera; lidar; tele}
+}

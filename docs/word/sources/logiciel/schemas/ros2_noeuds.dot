@@ -1,0 +1,34 @@
+// ROS 2 avec le projet : nœuds, sujets, service, action (chapitre 4)
+digraph ros2_noeuds {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.3, ranksep=0.32, newrank=true];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.10,0.05"];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  atelier [label="nœud atelier_pont\n(dans le serveur de l'Atelier)"];
+  aller [label="/guide/aller\nstd_msgs/String", shape=box, style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+  etat [label="/guide/etat\nstd_msgs/String (JSON)", shape=box, style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+  guide [label="nœud guide\n(paquet g1_nav)"];
+  nav2 [label="Nav2 : bt_navigator,\nplanner, controller…", fillcolor="#EFEFEF", color="#7F7F7F"];
+  cmd [label="/cmd_vel\ngeometry_msgs/Twist", shape=box, style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+  pont [label="nœud pont_g1\n(paquet g1_bridge)\nparamètres : pont.yaml", fillcolor="#E2F0D9", color="#548235"];
+  req [label="/api/sport/request\nunitree_api/Request", shape=box, style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+  sport [label="service « sport »\ndu robot (PC1)", fillcolor="#FDEBD9", color="#C55A11"];
+  relais [label="nœud odom_vers_tf\n(g1_nav)"];
+  rep [label="/reperage/etat\n+ TF map → odom", shape=box, style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+
+  atelier -> aller [label=" publie"];
+  aller -> guide [label=" abonné"];
+  guide -> etat [label=" publie"];
+  etat -> atelier [label=" abonné", constraint=false];
+  guide -> nav2 [label=" action\n NavigateThroughPoses", style=bold];
+  atelier -> nav2 [label=" service\n get_state", style=dashed, constraint=false];
+  nav2 -> cmd;
+  cmd -> pont;
+  relais -> rep;
+  rep -> pont;
+  pont -> req;
+  req -> sport;
+  {rank=same; aller; etat}
+  {rank=same; nav2; relais}
+  {rank=same; cmd; rep}
+}

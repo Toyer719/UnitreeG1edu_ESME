@@ -1,0 +1,36 @@
+// Les fichiers d'un lieu : qui les écrit, qui les lit (chapitre 6)
+digraph donnees_lieu {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.25, ranksep=0.3, newrank=true];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=note, style="filled", fillcolor="#FFF6D5", color="#BF9000", margin="0.08,0.04"];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  lieu [label="lieu.yaml\nnom, étages, accueil"];
+  salles [label="salles.yaml\nsalles, point principal ★"];
+  itin [label="itineraires.yaml\nnœuds et couloirs"];
+  zones [label="zones.yaml\ninterdites, lentes"];
+  monde [label="mondes/rdc.monde.yaml\nmurs, objets, piétons"];
+  scan [label="scans/<session>/\nscan du vrai étage", fillcolor="#FDEBD9", color="#C55A11"];
+  generer [label="g1-monde generer\n(atelier.monde)", shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597"];
+  adopter [label="g1-scan adopter\n« Utiliser cette carte »", shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597"];
+  sdf [label="mondes/rdc.sdf\n(+ rdc_carte.stl si scanné)", fillcolor="#E2F0D9", color="#548235"];
+  carte [label="cartes/rdc.pgm + .yaml\ncarte de navigation", fillcolor="#E2F0D9", color="#548235"];
+  masque [label="cartes/rdc_interdit.*\nmasque des zones", fillcolor="#E2F0D9", color="#548235"];
+  nuage [label="cartes/rdc.nuage.bin\nnuage de la carte 3D", fillcolor="#E2F0D9", color="#548235"];
+  gz [label="Gazebo\n(simulation)", shape=box, style="rounded,filled", fillcolor="#EFEFEF", color="#7F7F7F"];
+  nav [label="Nav2, guide, routeur\n(lisent aussi salles\net itinéraires)", shape=box, style="rounded,filled", fillcolor="#EFEFEF", color="#7F7F7F"];
+  vue [label="carte 3D\nde l'Atelier", shape=box, style="rounded,filled", fillcolor="#EFEFEF", color="#7F7F7F"];
+
+  lieu -> zones [style=invis]; salles -> monde [style=invis]; itin -> scan [style=invis];
+  monde -> generer; zones -> generer;
+  scan -> adopter;
+  generer -> sdf; generer -> carte [label=" monde\n dessiné"]; generer -> masque;
+  adopter -> carte [label=" scan"]; adopter -> nuage; adopter -> generer [label=" puis", style=dashed, constraint=false];
+  sdf -> gz; carte -> nav; masque -> nav; nuage -> vue;
+  {rank=same; lieu; salles; itin}
+  {rank=same; zones; monde; scan}
+  {rank=same; generer; adopter}
+  {rank=same; sdf; carte}
+  {rank=same; masque; nuage}
+  {rank=same; gz; nav; vue}
+  sdf -> masque [style=invis]; carte -> nuage [style=invis];
+}

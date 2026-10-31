@@ -1,0 +1,26 @@
+digraph sol {
+  graph [layout=neato, bgcolor="white", pad=0.2, outputorder=edgesfirst, fontname="DejaVu Sans"];
+  node [fontname="DejaVu Sans", fontsize=13, shape=plaintext, margin=0];
+  edge [fontname="DejaVu Sans", fontsize=12];
+  zone [pos="3.188,0.02!", shape=box, style="dashed,rounded", color="#8A8A8A", width=5.000, height=2.05, fixedsize=true, label=""];
+  zone_txt [pos="3.188,0.82!", label="au moins 4 m libres devant le robot", fontcolor="#4D4D4D", fontsize=12.5];
+  fin [pos="6.562,0!", shape=point, width=0.01, style=invis];
+  o [pos="0,0!", label="✚", fontsize=34, fontcolor="#B42318"];
+  o -> fin [penwidth=3.4, color="#1C5CAB", arrowsize=1.3];
+  fleche_txt [pos="6.625,-0.55!", label="la flèche :\nle sens du robot\n(l'axe x)", fontcolor="#1C5CAB", fontsize=12.5];
+  yfin [pos="0,0.95!", shape=point, width=0.01, style=invis];
+  o -> yfin [style=dashed, color="#8A8A8A", arrowsize=0.8];
+  y_txt [pos="-0.62,0.86!", label="y : à gauche", fontcolor="#6B6B6B", fontsize=11.5];
+  o_txt [pos="0,-0.66!", label="la croix :\nle point\nprincipal", fontcolor="#B42318", fontsize=12.5];
+  r1 [pos="1.250,0!", shape=box, style=filled, fillcolor="#8A5A00", color="#8A5A00", width=0.075, height=0.44, fixedsize=true, label=""];
+  r1_txt [pos="1.250,-0.43!", label="1 m", fontcolor="#8A5A00", fontsize=13];
+  r2 [pos="2.500,0!", shape=box, style=filled, fillcolor="#8A5A00", color="#8A5A00", width=0.075, height=0.44, fixedsize=true, label=""];
+  r2_txt [pos="2.500,-0.43!", label="2 m", fontcolor="#8A5A00", fontsize=13];
+  r3 [pos="3.750,0!", shape=box, style=filled, fillcolor="#8A5A00", color="#8A5A00", width=0.075, height=0.44, fixedsize=true, label=""];
+  r3_txt [pos="3.750,-0.43!", label="3 m", fontcolor="#8A5A00", fontsize=13];
+  r4 [pos="5.000,0!", shape=box, style=filled, fillcolor="#8A5A00", color="#8A5A00", width=0.075, height=0.44, fixedsize=true, label=""];
+  r4_txt [pos="5.000,-0.43!", label="4 m", fontcolor="#8A5A00", fontsize=13];
+  but [pos="3.125,0.02!", label="★", fontsize=26, fontcolor="#2A78D6"];
+  but_txt [pos="3.125,0.42!", label="« Essai à 2,5 m » (étape F)", fontcolor="#1C5CAB", fontsize=12.5];
+  rep_txt [pos="3.188,-0.8!", label="repères au ruban (la personne s'y tient à l'étape G)", fontcolor="#8A5A00", fontsize=11.5];
+}

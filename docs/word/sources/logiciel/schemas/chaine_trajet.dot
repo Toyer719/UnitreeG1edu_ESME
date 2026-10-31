@@ -1,0 +1,37 @@
+// D'une salle à un pas du robot (chapitre 8)
+digraph chaine_trajet {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.55, ranksep=0.3, newrank=true, splines=line];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.08,0.05", width=1.95];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  subgraph cluster_a {
+    label="1. Le guide choisit\nle chemin"; style="rounded"; color="#2F5597"; fontcolor="#1F3A5F";
+    yaller [label="« Y aller » b204\n(Atelier) → /guide/aller"];
+    guide [label="nœud guide :\nétats, détours,\nvisiteur, retour"];
+    routeur [label="routeur A*\nsur itineraires.yaml"];
+    moteur [label="MoteurNav2 : la\nsuite des nœuds"];
+  }
+  subgraph cluster_b {
+    label="2. Nav2 calcule\nles vitesses"; style="rounded"; color="#7F7F7F"; fontcolor="#404040";
+    smac [label="planificateur\nSmac 2D (sur la carte\net le masque)", fillcolor="#EFEFEF", color="#7F7F7F"];
+    mppi [label="contrôleur MPPI\n(Omni), 20 fois par s,\nvoit le LiDAR", fillcolor="#EFEFEF", color="#7F7F7F"];
+    lisseur [label="lisseur de vitesse", fillcolor="#EFEFEF", color="#7F7F7F"];
+    cm [label="Collision Monitor :\nralentit près,\narrête à 0,4 m", fillcolor="#FBE3E1", color="#C0392B"];
+  }
+  subgraph cluster_c {
+    label="3. Le pont fait\nmarcher le robot"; style="rounded"; color="#548235"; fontcolor="#385723";
+    cmd [label="/cmd_vel\n(vx, vy, wz)", style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+    pont [label="pont g1_bridge :\nplafonds, minimum,\nmode, repérage, verrou", fillcolor="#E2F0D9", color="#548235"];
+    ordre [label="ordre 7105, 10 fois\npar s, valable 0,5 s", style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+    robot [label="service sport du\nPC1 : le G1 marche", fillcolor="#FDEBD9", color="#C55A11"];
+  }
+  yaller -> guide -> routeur -> moteur;
+  smac -> mppi -> lisseur -> cm;
+  cmd -> pont -> ordre -> robot;
+  moteur:e -> smac:w [constraint=false];
+  cm:e -> cmd:w [constraint=false];
+  {rank=same; yaller; smac; cmd}
+  {rank=same; guide; mppi; pont}
+  {rank=same; routeur; lisseur; ordre}
+  {rank=same; moteur; cm; robot}
+}
