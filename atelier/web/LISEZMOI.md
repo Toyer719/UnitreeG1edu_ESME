@@ -183,7 +183,8 @@ DISPLAY=:1 E2E_DOMAINE=101 tests_e2e/tout.sh 32 35                           # c
 - Revue de la vague 5 (`test_coque_navigateur.py`, fin du fichier) : l'arbre replié se rouvre ; un seul vrai
   clic sur ✓ après une saisie enregistre, Tab garde le curseur, Ctrl+S pendant une saisie ; le Plan 2D cadré
   après avoir été caché ; Échap n'arrête que ce qui tourne (`decisionEchap`) ; l'ARRÊT sans réponse et les
-  flèches lâchées ; « Démarrer » le pilotage depuis le ruban ; ordre et numéros des salles, textes sans jargon.
+  flèches lâchées ; l'ARRÊT (bouton et Échap) sur l'accueil pendant une simulation, absent quand rien ne
+  tourne ; « Démarrer » le pilotage depuis le ruban ; ordre et numéros des salles, textes sans jargon.
   Le critère 31 refait ces mesures (`parcours_revue_v5` de `test_coque_communs.py`).
 - Les écrans des vagues précédentes ont leurs tests dans Firefox sans fenêtre, réécrits sur les repères de la
   coque : `test_serveur_navigateur.py` (critère 9 : créer, dessiner, carte, salle, simulation, Y aller),

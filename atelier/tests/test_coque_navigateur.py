@@ -490,6 +490,57 @@ def test_arret_qui_ne_repond_pas_et_fleches_lachees(sans_ros, serveur, navigateu
     assert nav.js("return window.erreursAtelier") == []
 
 
+def _poster(base, chemin, corps=None):
+    """POST base + chemin, corps JSON ; la réponse en JSON."""
+    import urllib.request
+    requete = urllib.request.Request(base + chemin, data=json.dumps(corps or {}).encode(), method="POST",
+                                     headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(requete, timeout=30) as r:
+        return json.loads(r.read() or b"null")
+
+
+ARRET_ACCUEIL = """const z = document.querySelector('[data-role=accueil] .accueil-arret');
+return z && !z.hidden ? z.textContent : null;"""
+
+
+def test_arret_sur_l_accueil_quand_quelque_chose_tourne(sans_ros, serveur, navigateur, lieux):
+    """Revue de la vague 5 : revenu à l'accueil (⌂) pendant une simulation, l'ARRÊT y est (« En cours : la
+    simulation… ») ; Échap et le bouton l'envoient. Rien ne tourne : pas d'ARRÊT sur l'accueil, Échap n'envoie
+    rien. La simulation arrêtée, l'ARRÊT de l'accueil disparaît."""
+    _, base = serveur
+    nav = navigateur
+    nav.taille(1366, 768)
+    # rien ne tourne : l'accueil n'a pas d'ARRÊT, et Échap (état du serveur reçu) n'envoie rien
+    C.charger(nav, base + "/", C.ACCUEIL, "accueil")
+    nav.attendre("return (document.querySelector('[data-role=etat-serveur]') || {}).textContent"
+                 ".indexOf('Serveur prêt') === 0", message="serveur prêt sur l'accueil")
+    time.sleep(1.0)                                  # /ws/etat, ouvert en même temps, a donné l'état
+    assert nav.js(ARRET_ACCUEIL) is None, "ARRÊT sur l'accueil alors que rien ne tourne"
+    _touches(nav, "")
+    time.sleep(0.5)
+    assert C.requetes(nav, "POST", "/api/arret") == [], "Échap sur l'accueil a envoyé l'ARRÊT sans rien qui tourne"
+    # la simulation (faux Gazebo) tourne : ⌂ ramène à un accueil qui montre l'ARRÊT
+    _poster(base, "/api/lieux/demo/etages/rdc/monde/generer")
+    _poster(base, "/api/simulation/demarrer", {"lieu": "demo", "etage": "rdc", "navigation": False})
+    try:
+        C.ouvrir_espace(nav, base, "simu")
+        nav.clic("[data-role=accueil-retour]")
+        texte = nav.attendre(ARRET_ACCUEIL, delai=15.0, message="ARRÊT sur l'accueil pendant la simulation")
+        assert "la simulation" in texte, texte
+        assert nav.js("return !!document.querySelector('[data-role=accueil] [data-role=arret]')")
+        _touches(nav, "")                          # Échap sur l'accueil : l'ARRÊT part
+        nav.attendre(C.DERNIER_ARRET, 0, "/api/arret", delai=5.0, message="ARRÊT envoyé par Échap sur l'accueil")
+        nav.clic("[data-role=accueil] [data-role=arret]")  # le bouton aussi
+        nav.attendre(C.DERNIER_ARRET, 1, "/api/arret", delai=5.0, message="ARRÊT envoyé par le bouton de l'accueil")
+        assert nav.js(ARRET_ACCUEIL), "l'ARRÊT a disparu de l'accueil alors que la simulation tourne encore"
+    finally:
+        _poster(base, "/api/simulation/arreter")
+    nav.attendre("const z = document.querySelector('[data-role=accueil] .accueil-arret'); return !!z && z.hidden",
+                 delai=15.0, message="ARRÊT retiré de l'accueil, la simulation arrêtée")
+    assert C.fenetres_natives(nav) == []
+    assert nav.js("return window.erreursAtelier") == []
+
+
 @pytest.fixture
 def pilotage_absent(monkeypatch):
     """Le nœud pilotage attendu sur un port où rien n'écoute (jamais le 8010 de l'utilisateur)."""
