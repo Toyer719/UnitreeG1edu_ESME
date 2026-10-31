@@ -17,15 +17,18 @@ Sécurité (contrat) :
     une danse (les pieds bougent : 2 à 3 m libres) ;
   - les danses 401, 402 et 403 sont toujours refusées (le robot se couche par terre, ou inconnu) ;
   - la marche au joystick est plafonnée (LIMITES_MARCHE), chaque ordre ne vaut que DUREE_ORDRE_S,
-    et sans ordre depuis DELAI_HOMME_MORT_S le nœud pilotage arrête le robot ;
+    et sans ordre depuis DELAI_HOMME_MORT_S le nœud pilotage arrête le robot ; vague 5 (section
+    12.6 du plan) : elle passe par la vitesse minimale du pont (consigne_marche), et elle est
+    refusée quand le robot n'est pas en mode marche (message_pas_en_marche) ;
   - les bras d'une chorégraphie restent dans LIMITES_BRAS, à VITESSE_BRAS_MAX au plus, avec des
     rampes du poids de RAMPE_MIN_S au moins ; les pas restent sous LIMITES_PAS et le robot à
     DEPLACEMENT_MAX_M au plus de son départ (verifier_choregraphie).
 
 Danses du robot (source communautaire non officielle, github sondos-myi/g1-robot-moves, micrologiciel
 1.5.6 ; confirmée en partie par GetMimicMotion du SDK C++ d'Unitree) : liste par 7100
-{"fsm_id": 550, "api_id": 1}, lecture par 7101 {"data": 550000 + n}, départ debout immobile (801),
-retour seul en 801. À VÉRIFIER SUR LE ROBOT.
+{"fsm_id": 550, "api_id": 1}, lecture par 7101 {"data": 550000 + n}, départ debout immobile en mode
+marche (MODES_MARCHE : 500, 501 ou 801 ; le 27/10, la marche lue était 501), retour seul au mode
+marche (MODES_FIN_DANSE : 501 ou 801). À VÉRIFIER SUR LE ROBOT.
 
 Fichier de l'agent Pilotage et danses (vague 4). Les fonctions et valeurs marquées « contrat » sont
 livrées et testées par l'intégrateur (atelier/tests/test_contrats_vague4.py) : elles gardent leur
@@ -38,7 +41,8 @@ from pathlib import Path
 import atelier
 
 from .fichiers import ErreurLieu, lire_yaml
-from .robot import LIMITES_PONT
+from .robot import (LIMITES_PONT, MESSAGE_VITESSE_MAX_BASSE, VITESSE_MAX_MIN, VITESSES_MIN_PONT,
+                    ZONES_MORTES_PONT, vitesse_effective)
 
 # ---------------------------------------------------------------- services et api (SDK d'Unitree)
 
@@ -73,7 +77,9 @@ API_VOICE = {"tts": 1001, "asr": 1002, "start_play": 1003, "stop_play": 1004, "g
 POSTURES = {500: "Démarrer (prêt à marcher)", 706: "Accroupi ↔ debout", 702: "Se lever (depuis couché)",
             3: "S'asseoir", 1: "Amortir (le robot s'affaisse s'il n'est pas tenu)", 0: "Couple nul (moteurs relâchés)"}
 POSTURES_PORTIQUE = (0, 1)
-FSM_MARCHE = 801                            # mode marche lu après « démarrer » (départ et fin d'une danse)
+# Mode de marche lu sur le vrai G1 le 27/10 (marche normale, choisie à la télécommande) ; le faux G1
+# y va après « Démarrer » (500 pendant 1 s). Les vérifications passent par MODES_MARCHE (vague 5).
+FSM_MARCHE = 501
 FSM_GESTES = (500, 501, 801)                # gestes d'Unitree permis dans ces modes (sinon 7404)
 
 # Vague 5 (section 12.6 du plan). Modes lus par 7001 sur le vrai G1 le 27/10 : 0 (pas démarré),
@@ -82,6 +88,8 @@ FSM_GESTES = (500, 501, 801)                # gestes d'Unitree permis dans ces m
 # comparées par atelier/tests/test_contrats_vague5.py.
 MODES_MARCHE = (500, 501, 801)
 MODES_COURSE = (802,)                       # la navigation le refuse (paramètre modes_marche du pont)
+# Fin d'une danse : le robot revient seul à un de ces modes (501 ou 801 ; 500 n'est qu'un passage)
+MODES_FIN_DANSE = (501, 801)
 NOMS_MODES = {0: "pas démarré", 1: "amorti", 2: "accroupi", 3: "assis", 4: "debout, verrouillé",
               500: "démarrage", 501: "marche", 702: "se relève", 706: "accroupi ↔ debout", 801: "marche",
               802: "course"}
@@ -195,7 +203,7 @@ SUFFIXE_CHOREGRAPHIE = ".choregraphie.yaml"
 
 EXEMPLE_MAITRE = {"version": 1, "maitre": "pilotage", "par": "atelier", "depuis": "2026-10-26T10:00:00+01:00",
                   "message": "Le robot est piloté depuis l'onglet Pilotage : le guide attend."}
-EXEMPLE_ETAT_PILOTAGE = {"version": 1, "maitre": "pilotage", "robot_repond": True, "fsm": 801, "activite": "marche",
+EXEMPLE_ETAT_PILOTAGE = {"version": 1, "maitre": "pilotage", "robot_repond": True, "fsm": 501, "activite": "marche",
                          "message": "Marche au joystick.", "consigne": {"vx": 0.2, "vy": 0.0, "wz": 0.0},
                          "age_ordre_s": 0.04, "danse": None, "choregraphie": None, "bras_tenus": False,
                          "dernier_refus": None}
@@ -543,15 +551,19 @@ TEXTES_CONFIRMATION = {
 def limites_marche(vitesse_max=None):
     """Plafonds de la marche (vx, vy, wz). vitesse_max (m/s, G1_VITESSE_MAX) les baisse dans la même
     proportion, comme le pont (navigation.launch.py vitesse_max:=) ; jamais au-dessus du contrat.
-    ValueError pour une valeur absurde (non finie, nulle, négative ou plus que 0,4)."""
+    ValueError pour une valeur absurde (non finie, nulle, négative ou plus que 0,4), et, vague 5,
+    sous VITESSE_MAX_MIN (0,2 m/s : le robot ne ferait aucun pas)."""
     if vitesse_max in (None, ""):
         return dict(LIMITES_MARCHE)
     try:
-        v = float(vitesse_max)
+        v = float(str(vitesse_max).replace(",", "."))
     except (TypeError, ValueError):
         raise ValueError(f"vitesse maximale illisible : {vitesse_max!r} (ex. 0.2)") from None
     if not math.isfinite(v) or v <= 0 or v > LIMITES_MARCHE["vx"] + 1e-9:
         raise ValueError(f"vitesse maximale {vitesse_max} : il faut plus de 0 et au plus {LIMITES_MARCHE['vx']} m/s")
+    if v < VITESSE_MAX_MIN - 1e-9:
+        raise ValueError(f"vitesse maximale {_fr(v)} m/s refusée : {MESSAGE_VITESSE_MAX_BASSE} (le vrai robot ne "
+                         f"ferait aucun pas) ; mettez au moins {_fr(VITESSE_MAX_MIN)}")
     k = v / LIMITES_MARCHE["vx"]
     return {axe: round(m * k, 6) for axe, m in LIMITES_MARCHE.items()}
 
@@ -566,6 +578,73 @@ def plafonner_marche(vx, vy, wz, limites=None):
             return (0.0, 0.0, 0.0)
         sortie.append(max(-limites[axe], min(limites[axe], float(v))))
     return tuple(sortie)
+
+
+def consigne_marche(vx, vy, wz, limites=None):
+    """Ordre du joystick → consigne envoyée au robot (vague 5) : plafonds (plafonner_marche), puis la
+    vitesse minimale du pont (atelier.lieu.robot.vitesse_effective) : sous 0,2 m/s, le vrai robot ne
+    fait aucun pas ; une petite inclinaison du manche le fait donc marcher à 0,2 m/s, dans la même
+    direction. Sous les zones mortes : (0, 0, 0)."""
+    limites = limites or LIMITES_MARCHE
+    return vitesse_effective(*plafonner_marche(vx, vy, wz, limites), plafonds=limites)
+
+
+def pas_effectif(vx, vy, wz, plafonds=None, minimums=None, zones=None):
+    """Pas d'une chorégraphie → (facteur, (vx, vy, wz)) que le robot fera vraiment (vague 5).
+
+    vitesse_effective dit si le pas est assez rapide pour que le vrai robot marche (0,2 m/s, 0,3
+    rad/s). S'il faut le monter, TOUTE la consigne est multipliée par un même facteur (au moins 1,
+    borné par les plafonds), et le pas dure facteur fois moins : même trajet (mêmes distance et
+    rotation que prévu, donc deplacement_pas reste juste). facteur 1 : pas inchangé ; facteur 0 :
+    pas trop petit (zones mortes), le robot reste sur place. plafonds : LIMITES_PAS par défaut."""
+    p = LIMITES_PAS if plafonds is None else plafonds
+    entree = (float(vx), float(vy), float(wz))
+    sortie = vitesse_effective(*entree, plafonds=p, minimums=minimums, zones=zones)
+    if sortie == entree:
+        return 1.0, entree
+    if all(abs(c) < 1e-12 for c in sortie):
+        return 0.0, (0.0, 0.0, 0.0)
+    n0, n1 = math.hypot(entree[0], entree[1]), math.hypot(sortie[0], sortie[1])
+    facteur = n1 / n0 if n0 > 0 and n1 > 0 else abs(sortie[2]) / abs(entree[2])
+    for c, axe in zip(entree, ("vx", "vy", "wz")):
+        if c:
+            facteur = min(facteur, p[axe] / abs(c))
+    facteur = max(1.0, facteur)
+    return facteur, tuple(c * facteur for c in entree)
+
+
+def _fr(nombre, chiffres=None):
+    """Nombre écrit à la française (virgule) : _fr(0.15) → « 0,15 » ; chiffres : décimales fixes."""
+    texte = f"{nombre:.{chiffres}f}" if chiffres is not None else f"{nombre:g}"
+    return texte.replace(".", ",")
+
+
+def avertissements_choregraphie(d, limites=None):
+    """Avertissements d'une chorégraphie déjà vérifiée (vague 5), en français : pas sous la vitesse
+    minimale du vrai robot (faits plus vite et moins longtemps, même trajet), trop petits pour qu'il
+    bouge, ou qui restent sous le minimum même au plafond. Rien ne bloque : le fichier est gardé tel quel.
+    limites : plafonds de la marche (limites_marche) ; les pas restent aussi sous LIMITES_PAS."""
+    limites = limites or LIMITES_MARCHE
+    plafonds = {axe: min(LIMITES_PAS[axe], limites[axe]) for axe in LIMITES_PAS}
+    smin, wmin = VITESSES_MIN_PONT["lin"], VITESSES_MIN_PONT["rot"]
+    messages = []
+    for p in sorted(d.get("pas") or [], key=lambda q: q["t"]):
+        v = tuple(max(-plafonds[a], min(plafonds[a], float(p[a]))) for a in ("vx", "vy", "wz"))
+        facteur, faite = pas_effectif(*v, plafonds=plafonds)
+        if facteur == 1.0:
+            continue
+        ou = f"pas à {_fr(p['t'])} s (vx {_fr(v[0])}, vy {_fr(v[1])}, wz {_fr(v[2])})"
+        if facteur == 0.0:
+            messages.append(f"{ou} : trop petit, le vrai robot ne bougera pas (sous {_fr(ZONES_MORTES_PONT['lin'])} "
+                            f"m/s et {_fr(ZONES_MORTES_PONT['rot'])} rad/s)")
+        elif math.hypot(faite[0], faite[1]) >= smin - 1e-9 or abs(faite[2]) >= wmin - 1e-9:
+            messages.append(f"{ou} : sous la vitesse minimale du vrai robot ({_fr(smin)} m/s, {_fr(wmin)} rad/s), "
+                            f"il sera fait {_fr(facteur, 2)} fois plus vite, pendant {_fr(p['duree_s'] / facteur, 2)} "
+                            "s : même trajet")
+        else:
+            messages.append(f"{ou} : même au plafond, il reste sous la vitesse minimale du vrai robot "
+                            f"({_fr(smin)} m/s) : il risque de ne pas bouger")
+    return messages
 
 
 def lire_fsm(texte):

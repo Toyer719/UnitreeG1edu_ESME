@@ -13,13 +13,17 @@ section 11.5).
       interdits (403, rien n'arrive au faux G1) ; demandes absurdes (jamais 500, refus en français).
   outils_pilotage_e2e.py critere-29 --api URL --lieu ID --choregraphies DOSSIER
       même montage ; danses du robot (liste 7100, 401, 402, 403 interdites, zone libre, 7101
-      550604, joystick refusé pendant la danse, ARRÊT : StopMove et rien d'autre, retour en 801) ;
+      550604, joystick refusé pendant la danse, ARRÊT : StopMove et rien d'autre, retour en 501) ;
       chorégraphie exemple_kpop (rt/arm_sdk à 50 Hz, rampes, limites, vitesses, taille et jambes
       jamais pilotées, pas plafonnés et robot à 1 m au plus de son départ, LED et paroles à leur
       temps) ; ARRÊT au milieu (poids à 0 en moins de 1,5 s) ; chorégraphie fausse refusée.
 
 La vérité terrain est /g1_jumeau/odom. Code de sortie : 0 réussi, 1 échoué, 77 : une pièce d'un autre
 agent manque (le message dit laquelle), après que tout le reste a réussi.
+
+Vague 5 (section 12.6 du plan) : le faux G1 marche en 501 (la marche normale lue sur le vrai G1 le
+27/10) ; « Démarrer » (500) et « se relever » (702) y reviennent, et une danse aussi ; les postures
+501, 801 et 802 font partie des interdits (403).
 """
 import argparse
 import json
@@ -163,8 +167,8 @@ class Observateur(Temoin):
             return self.maitres[-1][1]['maitre'] if self.maitres else None
 
     def requetes_sport(self, t0, t1=math.inf):
-        """[(t, api_id, parameter dict)] des requêtes sport (pont et pilotage)."""
-        return [(r[0], r[2], r[4]) for r in self.requetes_entre(t0, t1)]
+        """[(t, api_id, parameter dict)] des requêtes sport (pont et pilotage), de tout api_id."""
+        return [(r[0], r[2], r[4]) for r in self.requetes_entre(t0, t1, api=None)]
 
     def deplacement(self, t0, t1=math.inf):
         v = self.verites_entre(t0, t1)
@@ -193,7 +197,7 @@ def preparer(args, obs, ecoute):
     dire(f"répétition prête et robot repéré en {time.monotonic() - debut:.0f} s")
     code, r = post(args.api, "/api/pilotage/demarrer", delai=60)
     verifier(code == 200, f"POST /api/pilotage/demarrer : {code} {r}")
-    obs.attendre(lambda: obs.jumeau is not None and obs.robot().get('fsm') == 801, 20,
+    obs.attendre(lambda: obs.jumeau is not None and obs.robot().get('fsm') == 501, 20,
                  "le faux G1 étendu ne publie pas son mode (robot.fsm de /g1_jumeau/etat)")
     code, etat = appel(args.api, "GET", "/api/pilotage/etat")
     verifier(code == 200 and etat["robot_repond"] and etat["maitre"] == "guide",
@@ -350,11 +354,11 @@ def postures(args, obs):
     code, r = post(a, "/api/pilotage/posture", {"fsm": 500})
     verifier(code == 409 and "main" in r["detail"], f"posture sans la main : {code} {r} (409)")
     prendre(args, obs)
-    posture(args, obs, 500, attendu=801)
+    posture(args, obs, 500, attendu=501)
     posture(args, obs, 706)
-    posture(args, obs, 706, attendu=801)
+    posture(args, obs, 706, attendu=501)
     posture(args, obs, 3)
-    dire("postures 500 (puis 801), 706, 706 (debout) et 3 acceptées : mode du faux G1 changé, lu par 7001")
+    dire("postures 500 (puis 501), 706, 706 (debout) et 3 acceptées : mode du faux G1 changé, lu par 7001")
     for fsm in (1, 0):
         t0 = time.monotonic()
         code, r = post(a, "/api/pilotage/posture", {"fsm": fsm})
@@ -370,8 +374,8 @@ def postures(args, obs):
         verifier(code == 200, f"posture {fsm} confirmée : {code} {r}")
         obs.attendre(lambda f=fsm: obs.robot().get('fsm') == f, 4, f"posture {fsm} confirmée : faux G1 pas en mode {fsm}")
     dire("postures 1 et 0 : refusées sans la case « portique » ni la confirmation double, acceptées avec")
-    posture(args, obs, 702, attendu=801, delai=8)
-    dire("posture 702 (se relever) : le faux G1 revient en 801")
+    posture(args, obs, 702, attendu=501, delai=8)
+    dire("posture 702 (se relever) : le faux G1 revient en 501 (marche)")
 
 
 def joystick(args, obs):
@@ -426,12 +430,15 @@ def gestes_voix(args, obs):
     verifier(code == 409 and r.get("code") == 7401 and "relâchez" in r["detail"], f"geste pendant que les bras tiennent : {code} {r}")
     dire(f"geste 26 accepté ; un autre geste pendant qu'il tient : 409 « {r['detail'][:60]}… » (7401)")
     code, r = post(a, "/api/pilotage/geste", {"action": 99})
-    verifier(code == 200 and not obs.robot().get('bras_tenus'), f"geste 99 : {code} {r}")
+    verifier(code == 200, f"geste 99 : {code} {r}")
+    # /g1_jumeau/etat n'est publié que deux fois par seconde : on attend le suivant
+    obs.attendre(lambda: not obs.robot().get('bras_tenus'), 2.0,
+                 f"geste 99 accepté ({r.get('detail')}) mais le faux G1 tient encore les bras")
     posture(args, obs, 3)
     code, r = post(a, "/api/pilotage/geste", {"action": 26})
     verifier(code == 409 and r.get("code") == 7404 and "debout" in r["detail"], f"geste assis : {code} {r}")
     dire(f"99 relâche ; geste en posture assise : 409 « {r['detail'][:60]}… » (7404)")
-    posture(args, obs, 500, attendu=801)
+    posture(args, obs, 500, attendu=501)
     texte = "Bonjour, je suis le robot d'accueil."
     for chemin, corps in (("/api/pilotage/voix", {"texte": texte}), ("/api/pilotage/volume", {"volume": 55}),
                           ("/api/pilotage/led", {"r": 12, "g": 34, "b": 56})):
@@ -457,13 +464,13 @@ def interdits(args, obs):
         code, r = post(a, "/api/pilotage/requete", corps)
         verifier(code == 403 and francais(r), f"{corps['api_id']} : {code} {r} (403)")
         refus.append(str(corps['api_id']))
-    for fsm in (2, 4, 801):
+    for fsm in (2, 4, 501, 801, 802):
         code, r = post(a, "/api/pilotage/posture", {"fsm": fsm})
         verifier(code == 403 and francais(r), f"posture {fsm} : {code} {r} (403)")
         refus.append(f"posture {fsm}")
     time.sleep(1.0)
     interdites = [(api_id, p) for _, api_id, p in obs.requetes_sport(t0)
-                  if api_id in (7104, 7110) or (api_id == 7101 and p and p.get('data') in (2, 4, 801))]
+                  if api_id in (7104, 7110) or (api_id == 7101 and p and p.get('data') in (2, 4, 501, 801, 802))]
     verifier(not interdites, f"des commandes interdites sont arrivées au faux G1 : {interdites}")
     verifier(obs.robot().get('nombre_interdits') == avant, "le faux G1 a compté des commandes interdites")
     dire(f"interdits refusés (403), aucune requête au faux G1 : {', '.join(refus)}")
@@ -563,13 +570,13 @@ def danses(args, obs):
     verifier(apres == [(7105, {"velocity": [0.0, 0.0, 0.0], "duration": 1.0})] and not autres,
              f"ARRÊT pendant la danse : {apres} {autres} (StopMove seulement)")
     dire("pendant la danse : joystick et gestes refusés ; ARRÊT : StopMove et rien d'autre")
-    obs.attendre(lambda: obs.robot().get('fsm') == 801, 25, "le faux G1 ne revient pas en 801 après la danse")
+    obs.attendre(lambda: obs.robot().get('fsm') == 501, 25, "le faux G1 ne revient pas en 501 après la danse")
 
     def finie():
         e = appel(a, "GET", "/api/pilotage/etat")[1]
-        return e.get("danse") is None and e.get("fsm") == 801
+        return e.get("danse") is None and e.get("fsm") == 501
     obs.attendre(finie, 15, "le pilotage ne voit pas la fin de la danse")
-    dire(f"danse 604 finie en {time.monotonic() - t2:.1f} s : retour en mode 801")
+    dire(f"danse 604 (partie de 501) finie en {time.monotonic() - t2:.1f} s : retour en mode 501")
 
 
 def choregraphie(args, obs):

@@ -102,8 +102,17 @@ API_SPORT_GET_FSM_ID = 7001     # GetFsmId : réponse {"data": N}
 PERIODE_LECTURE_MODE_S = 1.0    # une lecture par seconde
 DELAI_MODE_PERIME_S = 3.0       # un mode lu il y a plus longtemps est inconnu (il ne bloque rien)
 
+# Le pont publie ces champs depuis la vague 5 : l'exemple complet les a aussi (le test du paquet
+# g1_bridge veut les mêmes champs que Pont().etat()). Robot en marche (501), lu il y a 0,4 s.
+EXEMPLE_ETAT_PONT.update(
+    demande={"vx": 0.3, "vy": 0.0, "wz": 0.1},
+    minimums={"vitesse_min_lin": VITESSES_MIN_PONT["lin"], "vitesse_min_rot": VITESSES_MIN_PONT["rot"],
+              "zone_morte_lin": ZONES_MORTES_PONT["lin"], "zone_morte_rot": ZONES_MORTES_PONT["rot"]},
+    mode_robot={"fsm": 501, "nom": "marche", "en_marche": True, "age_s": 0.4, "modes_marche": [500, 501, 801],
+                "lectures": 412})
+
 # /pont/etat de la vague 5 : les champs facultatifs demande, minimums et mode_robot, avec l'état
-# pas_en_marche (l'agent Robot les ajoute aussi à EXEMPLE_ETAT_PONT quand le pont les publie)
+# pas_en_marche
 EXEMPLE_ETAT_PONT_V5 = dict(
     EXEMPLE_ETAT_PONT, etat="pas_en_marche", mouvement_permis=False,
     message="Le robot est assis (mode 3) : il ignore les ordres de marche. Mettez-le debout puis en marche "

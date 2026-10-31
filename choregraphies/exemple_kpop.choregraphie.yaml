@@ -9,6 +9,10 @@
 # Sûreté : bras à 1,41 rad/s au plus (1,5 permis), rampes du poids de 1,5 s, pas de 0,15 m au plus et
 # rotation cumulée de 1,5 rad ; le robot revient à son point de départ. Au portique et à mi-vitesse
 # d'abord sur le vrai robot (docs/seance-robot.md).
+# Vague 5 (section 12.6 du plan) : les pas sont à 0,2 m/s au moins (le 27/10, le vrai G1 ne faisait
+# aucun pas à 0,1 m/s) : de côté 0,2 m/s pendant 0,75 s, en avant et en arrière 0,2 m/s pendant 0,5 s,
+# soit le même déplacement qu'avant (0,15 m et 0,1 m). À mi-vitesse, le nœud pilotage les fait à
+# 0,2 m/s en moins de temps : même trajet.
 version: 1
 id: exemple_kpop
 nom: Exemple K-pop (battement généré)
@@ -119,12 +123,12 @@ bras:
     nom: bras bas
     q: {left_shoulder_pitch: -0.3, right_shoulder_pitch: -0.5, left_shoulder_roll: 0.1, right_shoulder_roll: -0.1, left_elbow: 0.3, right_elbow: 0.3}
 pas:
-- {t: 10.0, vx: 0.0, vy: 0.15, wz: 0.0, duree_s: 1.0}
-- {t: 12.0, vx: 0.0, vy: -0.15, wz: 0.0, duree_s: 1.0}
+- {t: 10.0, vx: 0.0, vy: 0.2, wz: 0.0, duree_s: 0.75}
+- {t: 12.0, vx: 0.0, vy: -0.2, wz: 0.0, duree_s: 0.75}
 - {t: 14.0, vx: 0.0, vy: 0.0, wz: 0.5, duree_s: 1.5}
 - {t: 16.0, vx: 0.0, vy: 0.0, wz: -0.5, duree_s: 1.5}
-- {t: 22.5, vx: 0.1, vy: 0.0, wz: 0.0, duree_s: 1.0}
-- {t: 24.5, vx: -0.1, vy: 0.0, wz: 0.0, duree_s: 1.0}
+- {t: 22.5, vx: 0.2, vy: 0.0, wz: 0.0, duree_s: 0.5}
+- {t: 24.5, vx: -0.2, vy: 0.0, wz: 0.0, duree_s: 0.5}
 led:
 - {t: 0.0, r: 255, g: 0, b: 128}
 - {t: 2.0, r: 0, g: 200, b: 255}

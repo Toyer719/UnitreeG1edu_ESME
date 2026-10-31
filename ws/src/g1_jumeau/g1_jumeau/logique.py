@@ -11,6 +11,11 @@ FauxSport : ce que fait le service de marche du G1 d'une requête unitree_api/Re
     (consigne remise à zéro) ; « aucune » : normal.
   Le texte JSON est lu par json.loads, sans dépendre du pont : clés dans n'importe quel ordre
   (le client C++ les trie), nombres entiers ou flottants.
+  Seuil de marche (vague 5, section 12.6 du plan), comme le vrai G1 le 27/10 (0,1 m/s : aucun
+  pas ; 0,2 m/s : il marche) : seuil_lin (m/s, sur la norme de vx, vy) et seuil_rot (rad/s, sur
+  |wz|). Sous les deux, la consigne est acceptée (code 0) mais le robot ne bouge pas ; norme sous
+  seuil_lin et |wz| au-dessus de seuil_rot : rotation seule ; norme au-dessus : tout est appliqué.
+  0 (défaut ici, pour les tests) : pas de seuil ; le nœud g1_jumeau en met un (0,15 et 0,2).
 
 OdometrieDerivee : /state_estimator/odom_pelvis tirée de la vérité terrain de Gazebo, avec une
 dérive : déplacements comptés 2 % trop longs, et 0,01 rad de lacet ajouté par mètre parcouru
@@ -61,7 +66,7 @@ def lire_set_velocity(parametre):
 class FauxSport:
     """Le faux service sport : traite les requêtes, garde la consigne et son échéance."""
 
-    def __init__(self, horloge=time.monotonic):
+    def __init__(self, horloge=time.monotonic, seuil_lin=0.0, seuil_rot=0.0):
         self.horloge = horloge
         self.panne = 'aucune'
         self.consigne_en_cours = (0.0, 0.0, 0.0)
@@ -70,6 +75,24 @@ class FauxSport:
         self.reponses = 0
         self.appliquees = 0
         self.dernier_code = None
+        self.changer_seuils(seuil_lin, seuil_rot)
+        self.sous_seuil = 0              # 7105 acceptés sans bouger : sous le seuil de marche
+
+    def changer_seuils(self, seuil_lin, seuil_rot):
+        """Seuil de marche (m/s, sur la norme de vx, vy) et de rotation (rad/s) ; 0 : aucun."""
+        for nom, v in (('seuil_lin', seuil_lin), ('seuil_rot', seuil_rot)):
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) \
+                    or not 0.0 <= v <= 1.0:
+                raise ValueError(f'{nom} = {v!r} : un nombre de 0 (aucun seuil) à 1')
+        self.seuil_lin, self.seuil_rot = float(seuil_lin), float(seuil_rot)
+
+    def appliquer_seuils(self, vx, vy, wz):
+        """Vitesses que le robot fait vraiment : rien, rotation seule, ou tout (voir l'en-tête)."""
+        if math.hypot(vx, vy) >= self.seuil_lin - 1e-9:
+            return (vx, vy, wz)                  # il fait des pas : tout est appliqué
+        if self.seuil_rot <= 0.0 or abs(wz) >= self.seuil_rot - 1e-9:
+            return (0.0, 0.0, wz)                # trop lent pour avancer : il tourne sur place
+        return (0.0, 0.0, 0.0)
 
     def changer_panne(self, panne):
         """aucune, muet ou refus ; ValueError sinon. refus remet la consigne à zéro."""
@@ -95,7 +118,10 @@ class FauxSport:
             except ValueError:
                 code = CODE_PARAMETRES
             else:
-                self.consigne_en_cours = (vx, vy, wz)
+                faite = self.appliquer_seuils(vx, vy, wz)
+                if faite != (vx, vy, wz) and any(abs(v) > 1e-9 for v in (vx, vy, wz)):
+                    self.sous_seuil += 1
+                self.consigne_en_cours = faite
                 self.fin = self.horloge() + duree
                 self.appliquees += 1
                 code = CODE_OK

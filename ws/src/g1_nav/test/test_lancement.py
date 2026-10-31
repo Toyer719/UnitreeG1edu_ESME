@@ -286,16 +286,63 @@ def test_vitesse_reduite(lancement, dossier):
                           vitesse_max='0.2'))['pont_g1']
     assert {k: parametres(pont)[k] for k in ('vx_max', 'vy_max', 'wz_max')} == {
         'vx_max': 0.2, 'vy_max': 0.125, 'wz_max': 0.3}
-    assert lancement.plafonds_pont('0,1') == {'vx_max': 0.1, 'vy_max': 0.062, 'wz_max': 0.15}
+    assert lancement.plafonds_pont('0,25') == {'vx_max': 0.25, 'vy_max': 0.156, 'wz_max': 0.375}
     assert lancement.plafonds_pont('0.4') == {'vx_max': 0.4, 'vy_max': 0.25, 'wz_max': 0.6}
     assert lancement.plafonds_pont(' ') is None
 
 
-@pytest.mark.parametrize('valeur', ['0', '-0.1', '0.5', '1e9', 'nan', 'inf', 'vite'])
+@pytest.mark.parametrize('valeur', ['0', '-0.1', '0.5', '1e9', 'nan', 'inf', 'vite', '0.15',
+                                    '0,1', '0.199'])
 def test_vitesse_reduite_refusee(lancement, dossier, valeur):
-    """Jamais au-delà des plafonds du contrat, jamais nulle, négative ou illisible."""
+    """Jamais au-delà des plafonds du contrat, jamais nulle, négative, illisible ou sous 0,2."""
     with pytest.raises(lancement.ErreurNavigation, match='vitesse_max'):
         actions(lancement, dossier, localisation='unitree', vitesse_max=valeur)
+
+
+def test_vitesse_sous_0_2_refusee_avec_le_message_du_contrat(lancement):
+    from atelier.lieu.robot import MESSAGE_VITESSE_MAX_BASSE
+    with pytest.raises(lancement.ErreurNavigation, match=MESSAGE_VITESSE_MAX_BASSE):
+        lancement.plafonds_pont('0.15')
+    assert lancement.plafonds_pont('0.2')['vx_max'] == 0.2
+
+
+def test_vitesse_reduite_aussi_pour_nav2(lancement, dossier):
+    """Vague 5 (section 12.6) : vitesse_max:=0.25 baisse aussi le contrôleur et le lisseur."""
+    liste = actions(lancement, dossier, localisation='unitree', vitesse_max='0.25')
+    n = noeuds(liste)
+    controleur = parametres(n['controller_server'])
+    assert {k: controleur[k] for k in ('FollowPath.vx_max', 'FollowPath.vy_max',
+                                       'FollowPath.wz_max')} == {
+        'FollowPath.vx_max': 0.25, 'FollowPath.vy_max': 0.125, 'FollowPath.wz_max': 0.375}
+    lisseur = parametres(n['velocity_smoother'])
+    assert list(lisseur['max_velocity']) == [0.25, 0.125, 0.375]       # launch_ros : un tuple
+    assert list(lisseur['min_velocity']) == [0.0, -0.125, -0.375]
+    guide = parametres(n['guide'])
+    assert guide['vitesse_max_nav2'] == pytest.approx(0.25)
+    assert guide['pourcentage_min'] == pytest.approx(80.0)      # 0,2 m/s sur 0,25
+    # sans vitesse_max : rien d'ajouté, les fichiers de réglages font foi
+    n = noeuds(actions(lancement, dossier, localisation='unitree'))
+    assert 'FollowPath.vx_max' not in parametres(n['controller_server'])
+    assert 'max_velocity' not in parametres(n['velocity_smoother'])
+    # sans pont (simulation) : vitesse_max ignorée, comme avant
+    liste = actions(lancement, dossier, simu='true', vitesse_max='0.25')
+    assert 'FollowPath.vx_max' not in parametres(noeuds(liste)['controller_server'])
+    assert any('vitesse_max ignorée' in texte(a.msg) for a in liste if isinstance(a, LogInfo))
+
+
+def test_reglages_du_guide_avec_le_pont(lancement, dossier):
+    """Avec le pont : tolérance de cap relevée, ralenti jamais sous la vitesse minimale."""
+    guide = parametres(noeuds(actions(lancement, dossier, localisation='unitree'))['guide'])
+    assert guide['tolerance_orientation_rad'] == lancement.TOLERANCE_ORIENTATION_PONT_RAD == 0.4
+    assert guide['pourcentage_min'] == pytest.approx(50.0)      # 0,2 m/s sur 0,4
+    assert guide['vitesse_max_nav2'] == pytest.approx(0.4)
+    # simulation sans pont : les valeurs du guide (0,09 rad, 10 %), rien n'est passé
+    guide = parametres(noeuds(actions(lancement, dossier, simu='true'))['guide'])
+    assert 'tolerance_orientation_rad' not in guide and 'pourcentage_min' not in guide
+    # répétition par le pont (localisation externe) : comme le vrai robot
+    guide = parametres(noeuds(actions(lancement, dossier, simu='true', localisation='externe',
+                                      pont='true'))['guide'])
+    assert guide['tolerance_orientation_rad'] == 0.4
 
 
 def detecteur(liste):

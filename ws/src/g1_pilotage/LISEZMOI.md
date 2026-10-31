@@ -89,21 +89,34 @@ la confirmation double) ; 504 le robot ne répond pas en 2 s.
 ## Les règles (logique.py)
 
 - **Homme mort** : chaque ordre du joystick donne un 7105 de 0,5 s, plafonné (`LIMITES_MARCHE`,
-  baissés par `G1_VITESSE_MAX`) ; au plus 20 ordres par seconde ; sans ordre depuis 0,5 s, StopMove ;
-  WebSocket fermé, StopMove tout de suite. Le robot est arrêté 0,6 s au plus après le dernier ordre.
+  baissés par `G1_VITESSE_MAX`, refusée sous 0,2 m/s : le nœud ne démarre pas) ; au plus 20 ordres
+  par seconde ; sans ordre depuis 0,5 s, StopMove ; WebSocket fermé, StopMove tout de suite. Le
+  robot est arrêté 0,6 s au plus après le dernier ordre.
+- **Vitesse minimale et mode (vague 5)** : l'ordre passe par la vitesse minimale du pont
+  (`consigne_marche`, `atelier.lieu.robot.vitesse_effective`) : sous 0,2 m/s le vrai G1 ne fait aucun
+  pas, une petite inclinaison du manche le fait donc marcher à 0,2 m/s dans la même direction (sous
+  0,05 m/s et 0,1 rad/s : arrêt). Le joystick est refusé (409, message qui dit quoi faire) quand le
+  mode lu par 7001 (moins de 3 s) n'est ni la marche (500, 501, 801) ni la course (802), par exemple
+  assis ; un mode inconnu ne bloque rien.
 - **Verrou** : sans la main, joystick, postures, gestes, danses et chorégraphies sont refusés (409) ;
   voix, volume, LED, geste 99 et ARRÊT restent permis. Prendre la main pendant une visite du guide :
   409, sauf `forcer` (/guide/stop, robot immobile, puis maître `pilotage`). Le pont ignore alors
   `/cmd_vel` (état `pilotage`) et le guide refuse `/guide/aller`.
-- **Danses** : liste lue dans le robot ; robot debout immobile en 801 ; confirmation « zone libre » ;
-  pendant la danse, joystick, gestes, postures et chorégraphies refusés ; ARRÊT : StopMove seulement
-  (aucun ordre connu n'interrompt une danse : la télécommande reste l'arrêt d'urgence) ; fin quand le
-  robot revient en 801 après la durée annoncée.
+- **Danses** : liste lue dans le robot ; robot debout immobile en mode marche (500, 501 ou 801 ; le
+  27/10, la marche lue était 501) ; confirmation « zone libre » ; pendant la danse, joystick, gestes,
+  postures et chorégraphies refusés ; ARRÊT : StopMove seulement (aucun ordre connu n'interrompt une
+  danse : la télécommande reste l'arrêt d'urgence) ; fin quand le robot est revenu en marche (501 ou
+  801, lu par 7001) : après la durée annoncée, ou plus tôt s'il a été vu danser puis revenu ; pas
+  revenu : supposée finie 10 s après la durée, avec un message.
 - **Chorégraphies** : vérifiées avant de jouer ; bras à 50 Hz, temps planifié régulier ; chaque ordre
   borné une seconde fois (limites, 1,5 rad/s au plus par pas de 20 ms, poids à 1 par seconde au
   plus) ; taille tenue à sa position mesurée au départ (gains ×4), jambes jamais écrites ; pas de
-  marche plafonnés (`LIMITES_PAS`), renvoyés à 10 Hz avec la durée qui reste ; LED, gestes et
-  paroles à leur temps ; départ 0,5 s après la demande (`debut_mur`, pour la musique de la page).
+  marche plafonnés (`LIMITES_PAS`), renvoyés à 10 Hz avec la durée qui reste ; vague 5 : un pas sous
+  la vitesse minimale du vrai robot est fait plus vite et moins longtemps, même trajet
+  (`atelier.lieu.pilotage.pas_effectif`, aussi à mi-vitesse de lecture), un pas trop petit (zones
+  mortes) est remplacé par un arrêt, et `avertissements_choregraphie` le dit (réponse de « jouer »,
+  et routes de l'Atelier) ; LED, gestes et paroles à leur temps ; départ 0,5 s après la demande
+  (`debut_mur`, pour la musique de la page).
 - **ARRÊT** : StopMove, chorégraphie arrêtée (poids ramené à 0 en 1 s, bras immobiles), geste relâché
   (99) si les bras tiennent un geste, `/guide/stop`.
 

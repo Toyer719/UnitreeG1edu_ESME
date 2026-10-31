@@ -13,7 +13,7 @@
 #     plus après le dernier ordre ; WebSocket coupé en marche : arrêt en 0,6 s ; plafonds ;
 #   - gestes : 26 accepté, un autre pendant qu'il tient → 7401 en français, 99 relâche, geste assis
 #     → 7404 en français ; voix, volume et LED reçus par le faux G1 avec les bons paramètres ;
-#   - interdits (7104, 7110, postures 2, 4 et 801) : 403, aucune requête au faux G1 ; demandes
+#   - interdits (7104, 7110, postures 2, 4, 501, 801 et 802) : 403, aucune requête au faux G1 ; demandes
 #     absurdes : jamais 500, refus en français ; aucun processus restant.
 # « En attente » (77) si le guide ne refuse pas encore /guide/aller pendant le pilotage (agent
 # Comportement du guide) : tout le reste est alors vérifié, et le pont garde le robot immobile.

@@ -109,8 +109,32 @@ REGLAGES_NOEUD = {
     'detour_facteur_max': 3.5,      # détour refusé au-delà de ce facteur du trajet direct...
     'detour_marge_m': 45.0,         # ... et de cette marge (m) : max(facteur × d, d + marge)
     'vitesse_max_nav2': 0.0,        # vx_max du contrôleur de Nav2 (m/s) ; 0 : inconnue
+    # Vague 5 (section 12.6) : rotation finale au point principal et ralenti, réglables. Défauts :
+    # ceux de la simulation (SEUIL_ORIENTATION_RAD, POURCENTAGE_MIN) ; avec le pont, le lancement
+    # en donne d'autres (navigation.launch.py, TOLERANCE_ORIENTATION_PONT_RAD)
+    'tolerance_orientation_rad': 0.09,   # écart de cap toléré à l'arrivée au point principal
+    'anticipation_rotation_rad': 0.0,    # la rotation demandée est raccourcie d'autant (au plus
+                                         # la moitié) : le dépassement mesuré du robot
+    'pourcentage_min': 10.0,             # /speed_limit jamais plus bas (pourcentage)
 }
 REGLAGES_DEFAUT = dict(DELAIS_GUIDE, **REGLAGES_NOEUD)
+# Réglages qu'on peut changer en marche (vague 5 : à la séance 2, sans relancer la navigation),
+# par exemple « ros2 param set /guide anticipation_rotation_rad 0.3 », avec leurs bornes
+REGLAGES_EN_MARCHE = {'tolerance_orientation_rad': (0.0, math.pi),
+                      'anticipation_rotation_rad': (0.0, 1.0), 'pourcentage_min': (0.0, 100.0)}
+
+
+def refus_reglage_en_marche(nom, valeur):
+    """None si le réglage nom peut prendre valeur en marche, sinon la raison, en français."""
+    if nom not in REGLAGES_EN_MARCHE:
+        return None
+    bas, haut = REGLAGES_EN_MARCHE[nom]
+    if isinstance(valeur, bool) or not isinstance(valeur, (int, float)) \
+            or not math.isfinite(valeur) or not bas <= valeur <= haut:
+        return f'{nom} = {valeur!r} : il faut un nombre de {bas:g} à {haut:g}'
+    return None
+
+
 # Passant qui bouche : personne vue à moins de DISTANCE_PASSANT_M, dans un cône de ±60° autour de
 # l'avant du robot ou de la direction du couloir de l'itinéraire, dans la dernière seconde.
 # Assemblage de la vague 4 (critère 25) : 2,5 m et non 1,5 m, car Nav2 arrête le robot à 2,4 m
@@ -140,7 +164,10 @@ DELAI_PERSONNES_PERIME_S = 1.0
 DELAI_TF_PERDU_S = 2.0
 # Retour : à l'arrivée, si le cap est à plus de SEUIL_ORIENTATION_RAD de la flèche, le robot se
 # tourne (ESSAIS_ORIENTATION fois au plus, DELAI_ORIENTATION_S chacune) ; but :
-# TOLERANCE_RETOUR_RAD
+# TOLERANCE_RETOUR_RAD. Vague 5 : le seuil est le réglage tolerance_orientation_rad (défaut
+# SEUIL_ORIENTATION_RAD, la simulation) ; avec le pont du vrai robot, la rotation ne descend pas
+# sous 0,3 rad/s et dépasse la flèche d'autant plus que le robot répond lentement : le lancement
+# relève le seuil (section 12.6 du plan), et anticipation_rotation_rad raccourcit la rotation.
 SEUIL_ORIENTATION_RAD = 0.09
 ESSAIS_ORIENTATION = 3
 DELAI_ORIENTATION_S = 15.0
@@ -520,16 +547,24 @@ class Guide:
         self._programmer_retour()
 
     def _orienter(self):
-        """Au point principal : se tourne dans le sens de la flèche. True si le robot tourne."""
+        """
+        Au point principal : se tourne dans le sens de la flèche. True si le robot tourne.
+
+        Pas de rotation sous tolerance_orientation_rad ; la rotation demandée est raccourcie de
+        anticipation_rotation_rad (au plus la moitié de l'écart) : le robot dépasse un peu.
+        """
         tourner = getattr(self.moteur, 'tourner', None)
         pose = self.position()
         if tourner is None or pose is None or self._essais_orientation >= ESSAIS_ORIENTATION:
             return False
         ecart = ecart_angle(self.routeur.pose_arrivee(self._cible)[2], pose[2])
-        if abs(ecart) <= SEUIL_ORIENTATION_RAD:
+        tolerance = float(self.reglages.get('tolerance_orientation_rad', SEUIL_ORIENTATION_RAD))
+        if abs(ecart) <= tolerance:
             return False
+        anticipation = max(0.0, float(self.reglages.get('anticipation_rotation_rad', 0.0)))
+        demande = ecart - math.copysign(min(anticipation, abs(ecart) / 2.0), ecart)
         self._essais_orientation += 1
-        if not tourner(ecart):
+        if not tourner(demande):
             return False
         self._orientation = self.horloge()
         self._changer('retour', f'se tourne de {math.degrees(ecart):.0f}° vers la flèche',
@@ -875,9 +910,14 @@ class Guide:
         ralenti = 100.0 * float(self.reglages['ralenti'])
         vmax = float(self.reglages.get('vitesse_max_nav2') or 0.0)
         v = self._vitesse_recente()
+        minimum = self._pourcentage_min()
         if vmax <= 0 or v is None or v < VITESSE_MESURABLE_M_S:
-            return ralenti
-        return round(max(POURCENTAGE_MIN, min(ralenti, ralenti * v / vmax)), 1)
+            return max(minimum, ralenti)
+        return round(max(minimum, min(ralenti, ralenti * v / vmax)), 1)
+
+    def _pourcentage_min(self):
+        """Limite de vitesse la plus basse (pourcentage) : avec le pont, la vitesse minimale."""
+        return min(100.0, max(0.0, float(self.reglages.get('pourcentage_min', POURCENTAGE_MIN))))
 
     def _couloir_actuel(self):
         """Couloir (a, b) de l'itinéraire où se trouve le robot, a étant le nœud déjà passé."""
@@ -1007,7 +1047,7 @@ class Guide:
                 self.journal('vitesse maximale de la personnalité ignorée : vitesse_max_nav2 '
                              'inconnue')
             elif float(vitesse) < vmax:
-                plafond = round(max(POURCENTAGE_MIN, 100.0 * float(vitesse) / vmax), 1)
+                plafond = round(max(self._pourcentage_min(), 100.0 * float(vitesse) / vmax), 1)
         if plafond != self._plafond_personnalite:
             self._plafond_personnalite = plafond
             self.journal(f'personnalité « {nom or "?"} » : '
@@ -1191,6 +1231,8 @@ class NoeudGuide(Node):
         self.lieu = lieu
         self._personnalite_du_fichier(chemin_lieu(lieu))
         self.create_subscription(String, '/personnalite/active', self._sur_personnalite, verrou)
+        # Vague 5 : tolérance de cap, anticipation et ralenti minimal réglables en marche
+        self.add_on_set_parameters_callback(self._sur_parametres)
         # Horloge murale : le guide continue de répondre même si la simulation est en pause
         self.create_timer(1.0 / frequence, self._sur_minuterie,
                           clock=Clock(clock_type=ClockType.STEADY_TIME))
@@ -1199,6 +1241,19 @@ class NoeudGuide(Node):
             f'guide prêt : lieu {lieu}, étage {etage}, moteur {nom_moteur}, '
             f'{len(routeur.noeuds)} nœuds, point principal {self.id_principal or "aucun"}. '
             f'Réglages : {options}. En attente sur /guide/aller.')
+
+    def _sur_parametres(self, parametres):
+        """« ros2 param set /guide … » : les REGLAGES_EN_MARCHE changent tout de suite."""
+        from rcl_interfaces.msg import SetParametersResult
+        for p in parametres:
+            raison = refus_reglage_en_marche(p.name, p.value)
+            if raison is not None:
+                return SetParametersResult(successful=False, reason=raison)
+        for p in parametres:
+            if p.name in REGLAGES_EN_MARCHE and self.guide.reglages.get(p.name) != p.value:
+                self.guide.reglages[p.name] = float(p.value)
+                self.get_logger().info(f'réglage changé en marche : {p.name} = {p.value:g}')
+        return SetParametersResult(successful=True)
 
     def position(self):
         """

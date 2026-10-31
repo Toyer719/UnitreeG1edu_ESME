@@ -7,8 +7,9 @@ Commande g1-guide : lancer la navigation, envoyer le robot, l'arrêter.
       Nav2, routeur et guide sur la carte du lieu (ros2 launch g1_nav navigation.launch.py) ;
       --localisation : défaut simu avec --simu, unitree sinon (repérage par 1804, section 10.5) ;
       --pont : /cmd_vel → ordres de marche du robot (défaut auto : avec Nav2, sauf en simu) ;
-      --vitesse-max : plafonds du pont abaissés (premiers essais, ex. 0.2) ; défaut : la
-      variable G1_VITESSE_MAX, sinon les plafonds du contrat ;
+      --vitesse-max : plafonds du pont et vitesses de Nav2 abaissés (premiers essais, ex. 0.2 ;
+      refusée sous 0,2 m/s) ; défaut : la variable G1_VITESSE_MAX, sinon les plafonds du
+      contrat ;
       --sans-personnes : sans le détecteur de personnes au LiDAR (ni accompagnement, ni attente
       des passants)
   g1-guide aller ID [--accompagner] [--sans-retour] [--sans-suivre]
@@ -34,7 +35,8 @@ import time
 TRADUCTIONS = [('the following arguments are required:', 'il manque :'),
                ('invalid choice:', 'choix inconnu :'), ('choose from', 'possibles :'),
                ('unrecognized arguments:', 'arguments inconnus :'),
-               ('expected one argument', 'il faut une valeur')]
+               ('expected one argument', 'il faut une valeur'),
+               ('invalid float value:', 'nombre attendu, pas')]
 
 # Délai pour trouver le guide sur le réseau ROS 2, en secondes
 DELAI_DECOUVERTE_S = 5.0
@@ -69,6 +71,32 @@ def texte_etat(etat):
         morceaux.append('par ' + ' → '.join(etat['itineraire']))
     texte = ', '.join(morceaux)
     return f'{texte} : {etat["message"]}' if etat.get('message') else texte
+
+
+def refus_vitesse_max(texte):
+    """
+    Raison du refus de --vitesse-max (ou de G1_VITESSE_MAX), ou None si elle est permise.
+
+    Vague 5 (section 12.6 du plan) : au plus 0,4 m/s (plafond du pont), au moins 0,2 m/s (le vrai
+    robot ne fait aucun pas plus lentement). Le lancement le vérifie aussi (plafonds_pont).
+    """
+    try:
+        from atelier.lieu.robot import LIMITES_PONT, MESSAGE_VITESSE_MAX_BASSE, VITESSE_MAX_MIN
+        plafond = LIMITES_PONT['vx']
+    except ImportError:        # atelier absent : les valeurs du contrat
+        plafond, VITESSE_MAX_MIN = 0.4, 0.2
+        MESSAGE_VITESSE_MAX_BASSE = 'le robot ne marche pas sous 0,2 m/s'
+    try:
+        vitesse = float(str(texte).strip().replace(',', '.'))
+    except ValueError:
+        vitesse = float('nan')
+    if not 0.0 < vitesse <= plafond:            # faux aussi pour NaN
+        return (f'--vitesse-max {texte} : il faut une vitesse en m/s, plus grande que 0 et au '
+                f'plus {plafond:g} (ex. 0.2)')
+    if vitesse < VITESSE_MAX_MIN - 1e-9:
+        return (f'--vitesse-max {texte} refusée : {MESSAGE_VITESSE_MAX_BASSE} (le vrai robot ne '
+                f'ferait aucun pas) ; mettez au moins {VITESSE_MAX_MIN:g}')
+    return None
 
 
 def commande_navigation(args):
@@ -228,9 +256,9 @@ def main(argv=None):
                      help='pont /cmd_vel → ordres de marche du robot (auto : avec Nav2, sauf en '
                           'simulation)')
     nav.add_argument('--vitesse-max', metavar='M_PAR_S',
-                     help='premiers essais : vitesse maximale en m/s (ex. 0.2), les plafonds du '
-                          'pont baissent dans la même proportion (défaut : $G1_VITESSE_MAX, sinon '
-                          '0,4 / 0,25 / 0,6)')
+                     help='premiers essais : vitesse maximale en m/s (ex. 0.2, au moins 0,2), '
+                          'les plafonds du pont et Nav2 baissent dans la même proportion '
+                          '(défaut : $G1_VITESSE_MAX, sinon 0,4 / 0,25 / 0,6)')
     nav.add_argument('--sans-personnes', action='store_true',
                      help='sans détecteur de personnes au LiDAR : le guide n\'accompagne pas le '
                           'visiteur et n\'attend pas les passants')
@@ -247,6 +275,12 @@ def main(argv=None):
     args = p.parse_args(argv)
 
     if args.action == 'navigation':
+        vitesse = getattr(args, 'vitesse_max', None) \
+            or os.environ.get('G1_VITESSE_MAX', '').strip()
+        refus = refus_vitesse_max(vitesse) if vitesse else None
+        if refus:
+            print(f'g1-guide : {refus}', file=sys.stderr)
+            return 2
         commande = commande_navigation(args)
         print(' '.join(commande))
         os.execvp(commande[0], commande)     # remplace ce processus : ne revient pas

@@ -1,7 +1,8 @@
 # Réglages de Nav2 (Humble) pour le vrai G1. Lu par launch/navigation.launch.py (simu:=false).
 # Mêmes réglages que nav2_g1_simu.yaml, sauf l'horloge (temps réel) et les vitesses, plafonnées
-# à vx 0,4 m/s, vy 0,2 m/s et wz 0,6 rad/s (test/test_reglages.py vérifie que seuls ces points
-# diffèrent). Réglages finaux à faire au milieu de vraies personnes (section 1 du plan).
+# à vx 0,4 m/s, vy 0,2 m/s et wz 0,6 rad/s, sans marche arrière (vague 5 : vx_min 0) ;
+# test/test_reglages.py vérifie que seuls ces points diffèrent. vitesse_max:= du lancement baisse
+# encore ces vitesses (vague 5). Réglages finaux à faire au milieu de vraies personnes.
 #
 #   Robot      : emprise circulaire de 0,35 m ; vx 0,4 m/s, vy 0,2 m/s, wz 0,6 rad/s au plus
 #   Planif.    : Smac 2D, sur la carte du lieu (static_layer) et le masque des zones interdites
@@ -120,7 +121,10 @@ controller_server:
       batch_size: 2000
       iteration_count: 1
       vx_max: 0.4
-      vx_min: -0.2
+      # Vague 5 (section 12.6) : pas de marche arrière sur le vrai robot. Le pont monte toute petite
+      # consigne à 0,2 m/s (le G1 ne fait aucun pas en dessous) : un recul de 0,05 deviendrait
+      # 0,2 m/s vers le visiteur qui suit. La simulation (nav2_g1_simu.yaml) garde -0,2.
+      vx_min: 0.0
       vy_max: 0.2
       wz_max: 0.6
       vx_std: 0.2
@@ -424,7 +428,7 @@ velocity_smoother:
     feedback: "OPEN_LOOP"
     # [vx, vy, wz]
     max_velocity: [0.4, 0.2, 0.6]
-    min_velocity: [-0.2, -0.2, -0.6]
+    min_velocity: [0.0, -0.2, -0.6]          # vague 5 : pas de marche arrière (vx ≥ 0)
     max_accel: [1.0, 1.0, 1.6]
     max_decel: [-1.0, -1.0, -1.6]
     odom_topic: "odom"

@@ -22,9 +22,9 @@ Il répond comme le vrai robot :
       appliquees, ..., robot}, pour les tests.
 
 Vague 4 (section 11.5 du plan), le faux G1 étendu (robot.py) :
-  /api/sport/request : aussi les modes (7001, 7101 : 0, 1, 3, 500 puis 801, 702 puis 801, 706),
-      les danses (7100, 7101 550000 + n, retour en 801), les tâches (7106), avec les refus
-      réalistes (7301, 7302, 7303) ; réponses avec leur data (7001 : {"data": mode}) ;
+  /api/sport/request : aussi les modes (7001, 7101 : 0, 1, 3, 500 puis 501, 702 puis 501, 706),
+      les danses (7100, 7101 550000 + n, retour au mode d'avant), les tâches (7106), avec les
+      refus réalistes (7301, 7302, 7303) ; réponses avec leur data (7001 : {"data": mode}) ;
   /api/arm/request → /api/arm/response : gestes (7106, 7401, 7402, 7404, 7400), liste (7107) ;
   /api/voice/request → /api/voice/response : TTS (1001), volume (1005, 1006), LED (1010) ;
   /arm_sdk (unitree_hg/LowCmd) reçu et vérifié (poids, rampes, limites, vitesses, taille,
@@ -33,7 +33,15 @@ Vague 4 (section 11.5 du plan), le faux G1 étendu (robot.py) :
   /api/videohub/request → /api/videohub/response : caméra de la tête (GetImageSample, 1001), une
       image de test JPEG dans binary à chaque demande (camera.py, section 11.13) ; rien en panne
       muet.
-Paramètres en plus : fsm_depart (801 : debout, prêt à marcher), echelle_danses (1,0).
+Paramètres en plus : fsm_depart (501 : en marche), echelle_danses (1,0).
+
+Vague 5 (section 12.6 du plan), fidèle au vrai G1 du 27/10 :
+  - 7105 hors marche (assis, pas démarré...) : code 0 sans bouger (hors_marche:=ignorer, défaut),
+    ou 7301 (hors_marche:=refuser, l'ancien faux G1) ; en course (802), 7105 est appliqué ;
+  - seuil de marche : seuil_marche_m_s (0,15, sur la norme de vx, vy) et seuil_rotation_rad_s
+    (0,2) : en dessous, 7105 est accepté mais le robot ne bouge pas (0 : pas de seuil) ;
+  - /g1_jumeau/mode (std_msgs/Int32, fiable) : sujet d'essai, le mode changé d'un coup (comme à la
+    télécommande : 3 assis, 802 course, 501 marche...), lu ensuite par 7001.
 
 Options pour les essais : latence_s (délai avant d'appliquer et de répondre), perte (part des
 requêtes perdues : ni appliquées ni répondues), graine (tirage des pertes).
@@ -47,7 +55,15 @@ import sys
 
 from .camera import FausseCamera
 from .logique import FauxSport, OdometrieDerivee, PANNES
-from .robot import BrasSimules, FauxG1
+from .robot import BrasSimules, FauxG1, FSM_MARCHE
+
+# Seuil de marche du faux G1 (vague 5, section 12.6 du plan) : le 27/10, le vrai G1 ne faisait
+# aucun pas à 0,1 m/s et marchait à 0,2 m/s ; 0,15 est entre les deux (sur la norme de vx, vy).
+# Le seuil de rotation est inconnu (à mesurer à la séance 2) ; 0,2 rad/s reste sous le minimum
+# de rotation du pont (0,3). Le pont monte ses consignes au-dessus : la répétition marche, et une
+# consigne trop petite qui passerait sans le pont ne ferait rien, comme sur le vrai robot.
+SEUIL_MARCHE_M_S = 0.15
+SEUIL_ROTATION_RAD_S = 0.2
 
 SERVICES = ('sport', 'arm', 'voice')
 PERIODE_LOWSTATE_S = 0.02
@@ -79,7 +95,7 @@ def creer_noeud():
     from rclpy.node import Node
     from rclpy.qos import (DurabilityPolicy, qos_profile_sensor_data, QoSProfile,
                            ReliabilityPolicy)
-    from std_msgs.msg import String
+    from std_msgs.msg import Int32, String
     from unitree_api.msg import Response
     from unitree_api.msg import Request
     from unitree_hg.msg import BmsState, LowCmd, LowState
@@ -97,12 +113,18 @@ def creer_noeud():
             echelle = float(self.declare_parameter('derive_echelle', 0.02).value)
             lacet = float(self.declare_parameter('derive_lacet_par_m', 0.01).value)
             panne = self.declare_parameter('panne', 'aucune').value
-            fsm_depart = int(self.declare_parameter('fsm_depart', 801).value)
+            fsm_depart = int(self.declare_parameter('fsm_depart', FSM_MARCHE).value)
             echelle_danses = float(self.declare_parameter('echelle_danses', 1.0).value)
+            hors_marche = str(self.declare_parameter('hors_marche', 'ignorer').value)
+            seuil_lin = float(self.declare_parameter('seuil_marche_m_s', SEUIL_MARCHE_M_S).value)
+            seuil_rot = float(self.declare_parameter('seuil_rotation_rad_s',
+                                                     SEUIL_ROTATION_RAD_S).value)
 
-            self.sport = FauxSport()
+            # ValueError (réglage refusé, message en français) : le nœud ne démarre pas
+            self.sport = FauxSport(seuil_lin=seuil_lin, seuil_rot=seuil_rot)
             self.sport.changer_panne(panne)
-            self.robot = FauxG1(self.sport, fsm=fsm_depart, echelle_danses=echelle_danses)
+            self.robot = FauxG1(self.sport, fsm=fsm_depart, echelle_danses=echelle_danses,
+                                hors_marche=hors_marche)
             self.bras = BrasSimules()
             self.LowState, self.BmsState = LowState, BmsState
             self.batterie = 87.0
@@ -142,6 +164,8 @@ def creer_noeud():
                                      qos_profile_sensor_data)
             self.create_subscription(String, '/g1_jumeau/panne', self._sur_panne,
                                      QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
+            self.create_subscription(Int32, '/g1_jumeau/mode', self._sur_mode,
+                                     QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
             self.create_timer(1.0 / frequence, self._publier_vitesse, clock=self.mural)
             self.create_timer(PERIODE_ETAT_S, self._publier_etat, clock=self.mural)
             if self.latence > 0:
@@ -153,6 +177,10 @@ def creer_noeud():
                 f'/g1_jumeau/odom → /state_estimator/odom_pelvis (dérive {echelle:g} et '
                 f'{lacet:g} rad/m) ; latence {self.latence:g} s, perte {self.perte:g}, '
                 f'panne {self.sport.panne}')
+            self.get_logger().info(
+                f'mode de départ {fsm_depart} ; 7105 hors marche : {hors_marche} ; seuil de '
+                f'marche {seuil_lin:g} m/s et de rotation {seuil_rot:g} rad/s (sous le seuil : '
+                'accepté sans bouger, comme le vrai G1)')
 
         # -------------------------------------------------------- requêtes
 
@@ -283,6 +311,16 @@ def creer_noeud():
             self._publier_vitesse()
             self._publier_etat()
 
+        def _sur_mode(self, msg):
+            try:
+                self.robot.changer_mode(int(msg.data))
+            except ValueError as erreur:
+                self.get_logger().warning(f'/g1_jumeau/mode : {erreur}')
+                return
+            self.get_logger().info(f'mode changé (sujet d\'essai) : {self.robot.fsm}')
+            self._publier_vitesse()
+            self._publier_etat()
+
         def _publier_etat(self):
             vx, vy, wz = self.sport.consigne()
             etat = {'version': 1, 'panne': self.sport.panne,
@@ -290,7 +328,10 @@ def creer_noeud():
                     'reste_s': round(self.sport.reste(), 3), 'requetes': self.sport.requetes,
                     'appliquees': self.sport.appliquees, 'reponses': self.sport.reponses,
                     'perdues': self.perdues, 'latence_s': self.latence, 'perte': self.perte,
-                    'pannes_possibles': list(PANNES), 'robot': self.robot.etat()}
+                    'pannes_possibles': list(PANNES),
+                    'seuils': {'marche_m_s': self.sport.seuil_lin,
+                               'rotation_rad_s': self.sport.seuil_rot},
+                    'sous_seuil': self.sport.sous_seuil, 'robot': self.robot.etat()}
             self.pub_etat.publish(self.String(data=json.dumps(etat)))
 
     return NoeudJumeau()

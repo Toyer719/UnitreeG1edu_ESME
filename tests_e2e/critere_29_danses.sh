@@ -5,7 +5,7 @@
 #   - la liste des danses est lue (7100) et montrée, 401, 402 et 403 marquées interdites ;
 #   - danse 604 avec la « zone libre » confirmée → le faux G1 reçoit 7101 {"data": 550604} ; sans
 #     confirmation : refus ; 401, 402 et 403 refusées même confirmées, rien d'envoyé ; pendant la
-#     danse, joystick refusé ; à la fin, mode 801 ; ARRÊT pendant la danse : StopMove, rien d'autre ;
+#     danse, joystick refusé ; à la fin, mode 501 (la marche du vrai G1) ; ARRÊT pendant la danse : StopMove, rien d'autre ;
 #   - exemple_kpop jouée (zone libre) : rt/arm_sdk à 50 Hz ± 10 %, rampes du poids de 1 s au moins,
 #     aucun angle hors de LIMITES_BRAS, aucune vitesse au-delà de VITESSE_BRAS_MAX, taille et jambes
 #     jamais pilotées, pas sous LIMITES_PAS et robot à 1 m au plus de son départ (vérité), LED et

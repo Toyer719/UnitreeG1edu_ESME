@@ -278,8 +278,28 @@ def test_reel_ne_differe_que_par_les_vitesses_et_l_horloge():
 
     comparer(simu, reel, ())
     autorisees = {'use_sim_time', 'vx_max', 'vy_max', 'wz_max', 'max_velocity', 'min_velocity',
-                  'max_rotational_vel'}
+                  'max_rotational_vel', 'vx_min'}         # vx_min : vague 5, pas de recul
     assert set(differences) <= autorisees, set(differences) - autorisees
+
+
+def test_pas_de_marche_arriere_sur_le_vrai_robot():
+    """Vague 5 (section 12.6) : le pont monte un petit recul à 0,2 m/s : Nav2 n'en demande plus."""
+    reel = charger('nav2_g1_reel.yaml')
+    assert params(reel, 'controller_server')['FollowPath']['vx_min'] == 0.0
+    assert params(reel, 'velocity_smoother')['min_velocity'] == [0.0, -0.2, -0.6]
+    simu = charger('nav2_g1_simu.yaml')          # la simulation, sans pont, garde son recul
+    assert params(simu, 'controller_server')['FollowPath']['vx_min'] == -0.2
+
+
+def test_rotation_des_secours_au_moins_le_minimum_du_pont():
+    """Spin (behavior_server) ne commande jamais moins que la rotation minimale du pont."""
+    pont = Path(__file__).resolve().parents[2] / 'g1_bridge' / 'config' / 'pont.yaml'
+    minimum = yaml.safe_load(pont.read_text(encoding='utf-8'))['pont_g1']['ros__parameters'][
+        'vitesse_min_rot']
+    for nom in ('nav2_g1_reel.yaml', 'nav2_g1_simu.yaml'):
+        secours = params(charger(nom), 'behavior_server')
+        assert secours['min_rotational_vel'] >= minimum, nom
+        assert secours['max_rotational_vel'] >= secours['min_rotational_vel'], nom
 
 
 def test_reperes_sujets_et_chaine_inchanges(reglages):

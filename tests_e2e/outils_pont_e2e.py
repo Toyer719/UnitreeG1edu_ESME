@@ -15,7 +15,8 @@
   navigation --lieu L --cible ID [--delai 240]
       lance « g1-guide aller ID » et mesure : le robot avance d'au moins 1 m et arrive à moins
       de 0,3 m (vérité terrain) ; requêtes 7105 au bon format, identity.id croissants, au moins
-      8 par seconde en marche, chacune avec sa réponse ; /pont/etat conforme
+      8 par seconde en marche, chacune avec sa réponse ; vague 5 : les seules autres requêtes
+      sont les lectures du mode du pont (7001, « {} », une par seconde) ; /pont/etat conforme
   essais-directs
       /cmd_vel du test : 0,9 m en 3 s et arrêt moins de 0,6 s après ; plafonds et NaN ;
       /guide/stop (arrêt en moins de 0,3 s, garde de 1 s) ; /pont/arret (arrêt en moins de 0,3 s,
@@ -24,6 +25,11 @@
 La vérité terrain de la répétition est /g1_jumeau/odom (repère du monde Gazebo = map), jamais
 /odom. Les mesures de temps sont en temps mural (celui du pont et du faux G1). Codes de sortie :
 0 réussi, 1 échoué.
+
+Vague 5 (section 12.6 du plan) : le pont lit aussi le mode du robot (7001) une fois par seconde
+sur /api/sport/request. Temoin.requetes_entre ne rend que les ordres de marche 7105 (api=None :
+toutes), Temoin.lectures_entre les lectures 7001 ; orienter tourne au-dessus de la rotation
+minimale du pont (0,3 rad/s).
 """
 import argparse
 import json
@@ -36,6 +42,13 @@ import time
 
 ARRET = '{"velocity": [0.0, 0.0, 0.0], "duration": 1.0}'
 SEUIL_ARRET = 0.02          # m/s : en dessous, le robot est arrêté
+API_MARCHE = 7105           # SetVelocity : les ordres de marche
+API_MODE = 7001             # GetFsmId : la lecture du mode par le pont (vague 5)
+# orienter : rotation au-dessus du minimum du pont (sinon il la monte à 0,3 rad/s lui-même),
+# arrêt sous ECART_ARRET_RAD, réussite sous ECART_REUSSI_RAD
+ROTATION_MIN = 0.3
+ECART_ARRET_RAD = 0.05
+ECART_REUSSI_RAD = 0.1
 
 
 # ---------------------------------------------------------------- ROS 2
@@ -332,9 +345,14 @@ class Temoin(Noeud):
             _, _, x, y, c = self.verites[-1]
         return x, y, c
 
-    def requetes_entre(self, t0, t1=math.inf):
+    def requetes_entre(self, t0, t1=math.inf, api=API_MARCHE):
+        """Requêtes vues entre t0 et t1 : les 7105 (défaut), celles de cet api_id, ou toutes."""
         with self.verrou:
-            return [r for r in self.requetes if t0 <= r[0] < t1]
+            return [r for r in self.requetes if t0 <= r[0] < t1 and (api is None or r[2] == api)]
+
+    def lectures_entre(self, t0, t1=math.inf):
+        """Lectures du mode (7001) vues entre t0 et t1."""
+        return self.requetes_entre(t0, t1, api=API_MODE)
 
     def verites_entre(self, t0, t1=math.inf):
         with self.verrou:
@@ -406,17 +424,24 @@ class Temoin(Noeud):
         return debut, dernier
 
     def orienter(self, cap_vise=0.0, delai=20.0):
-        """Tourne le robot (par /cmd_vel, donc par le pont) vers cap_vise ; puis l'arrête."""
+        """
+        Tourne le robot (par /cmd_vel, donc par le pont) vers cap_vise ; puis l'arrête.
+
+        Vague 5 : la rotation reste au-dessus du minimum du pont (0,3 rad/s ; en dessous, il la
+        monterait lui-même, et le régulateur ne convergerait plus) ; arrêt sous 0,05 rad, réussite
+        sous 0,1 rad.
+        """
         fin = time.monotonic() + delai
         while time.monotonic() < fin:
             ecart = angle_normal(cap_vise - self.pose()[2])
-            if abs(ecart) < 0.03:
+            if abs(ecart) < ECART_ARRET_RAD:
                 break
-            self.cmd_vel(0.0, 0.0, max(-0.5, min(0.5, 1.5 * ecart)))
+            self.cmd_vel(0.0, 0.0, math.copysign(max(ROTATION_MIN, min(0.5, 1.5 * abs(ecart))),
+                                                 ecart))
             time.sleep(0.05)
         self.cmd_vel(0.0, 0.0, 0.0)
         time.sleep(1.0)
-        return abs(angle_normal(cap_vise - self.pose()[2])) < 0.06
+        return abs(angle_normal(cap_vise - self.pose()[2])) < ECART_REUSSI_RAD
 
 
 def _vitesses(requete):
@@ -451,6 +476,28 @@ class Bilan:
         if self.erreurs:
             print(f'{len(self.erreurs)} vérification(s) échouée(s)')
         return 1 if self.erreurs else 0
+
+
+def format_lectures(lectures, bilan, duree=None):
+    """
+    Lectures du mode du pont (vague 5) : api_id 7001, parameter « {} », une par seconde.
+
+    duree : la durée d'observation (s) ; le rythme est alors vérifié (de 0,7 à 1,3 par seconde).
+    """
+    mauvaises = [r[3] for r in lectures if r[2] != API_MODE or r[3] != '{}']
+    bilan.verifier(lectures and not mauvaises, f'{len(lectures)} lectures du mode 7001 au format '
+                   '« {} »', f'lectures du mode absentes ou mal formées : {mauvaises[:3]} '
+                   f'({len(lectures)} lectures)')
+    if duree and lectures:
+        frequence = len(lectures) / duree
+        bilan.verifier(0.7 <= frequence <= 1.3, f'{frequence:.2f} lecture du mode par seconde '
+                       '(de 0,7 à 1,3)', f'{frequence:.2f} lecture du mode par seconde au lieu '
+                       'de 1')
+
+
+def autres_requetes(requetes):
+    """Requêtes de /api/sport/request qui ne sont ni des 7105 ni des lectures du mode 7001."""
+    return [r for r in requetes if r[2] not in (API_MARCHE, API_MODE)]
 
 
 def format_requetes(requetes, bilan):
@@ -516,6 +563,11 @@ def navigation(args):
                        f'arrivé à {ecart:.3f} m de {args.cible} (≥ 0,3 m)')
         requetes = temoin.requetes_entre(debut, fin + 1.0)
         format_requetes(requetes, bilan)
+        toutes = temoin.requetes_entre(debut, fin + 1.0, api=None)
+        bilan.verifier(not autres_requetes(toutes), 'sur /api/sport/request : des 7105 et les '
+                       'lectures du mode 7001, rien d\'autre',
+                       f'autres requêtes : {autres_requetes(toutes)[:3]}')
+        format_lectures(temoin.lectures_entre(debut, fin), bilan, fin - debut)
         mouvement = [r for r in requetes if not _nulle(r)]
         if mouvement:
             t0, t1 = mouvement[0][0], mouvement[-1][0]

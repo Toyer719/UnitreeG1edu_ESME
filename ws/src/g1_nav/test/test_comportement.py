@@ -672,7 +672,97 @@ def test_lire_personnes():
 
 def test_seuil_orientation_dans_la_tolerance():
     from atelier.lieu.comportement import TOLERANCE_RETOUR_RAD
+    from g1_nav.guide import POURCENTAGE_MIN, REGLAGES_NOEUD
     assert SEUIL_ORIENTATION_RAD < TOLERANCE_RETOUR_RAD
+    # vague 5 : les réglages du nœud gardent les valeurs de la simulation par défaut
+    assert REGLAGES_NOEUD['tolerance_orientation_rad'] == SEUIL_ORIENTATION_RAD
+    assert REGLAGES_NOEUD['anticipation_rotation_rad'] == 0.0
+    assert REGLAGES_NOEUD['pourcentage_min'] == POURCENTAGE_MIN
+
+
+class MoteurQuiDepasse(MoteurTournant):
+    """Moteur dont chaque rotation dépasse l'angle demandé (le vrai G1, à travers le pont)."""
+
+    def __init__(self, *args, depassement=0.3, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.depassement = depassement
+
+    def tourner(self, angle):
+        ok = super().tourner(angle)
+        fin, demande = self._rotation
+        self._rotation = (fin, demande + math.copysign(self.depassement, demande))
+        return ok
+
+
+def banc_qui_depasse(dossier, depassement, **reglages):
+    banc = Banc(dossier, erreur_cap=0.6, delai_avant_retour_s=1.0, **reglages)
+    m = banc.moteur
+    banc.moteur = MoteurQuiDepasse(depart=PRINCIPAL, vitesse=0.5, horloge=banc.horloge,
+                                   erreur_cap=0.6, depassement=depassement)
+    banc.guide.moteur = banc.moteur
+    assert m is not banc.moteur
+    return banc
+
+
+def test_rotation_qui_depasse_oscille_avec_la_tolerance_de_la_simulation(dossier):
+    """Dépassement de 0,3 rad (rotation jamais sous 0,3 rad/s) et seuil de 0,09 : 3 essais."""
+    banc = banc_qui_depasse(dossier, 0.3)
+    banc.guide.aller('amphi')
+    banc.tourner(60.0)
+    banc.tourner(80.0, jusqu_a=('attente',))
+    assert banc.guide.etat()['etat'] == 'attente'
+    rotations = banc.moteur.rotations
+    assert len(rotations) == 3 and rotations[0] < 0 < rotations[1]      # elle oscille
+
+
+def test_tolerance_relevee_une_seule_rotation(dossier):
+    """Avec le pont, tolérance de 0,4 rad : une rotation, puis attente (pas d'aller-retour)."""
+    banc = banc_qui_depasse(dossier, 0.3, tolerance_orientation_rad=0.4)
+    banc.guide.aller('amphi')
+    banc.tourner(60.0)
+    banc.tourner(80.0, jusqu_a=('attente',))
+    assert banc.guide.etat()['etat'] == 'attente' and len(banc.moteur.rotations) == 1
+    _, _, cap = banc.moteur.position
+    assert abs(ecart_angle(cap, PRINCIPAL[2])) == pytest.approx(0.3, abs=1e-6)
+    # arrivé déjà dans la tolérance : aucune rotation
+    banc = banc_qui_depasse(dossier, 0.3, tolerance_orientation_rad=0.7)
+    banc.guide.aller('amphi')
+    banc.tourner(60.0)
+    banc.tourner(80.0, jusqu_a=('attente',))
+    assert banc.guide.etat()['etat'] == 'attente' and banc.moteur.rotations == []
+
+
+def test_anticipation_de_la_rotation(dossier):
+    """anticipation_rotation_rad = le dépassement mesuré : la rotation finit sur la flèche."""
+    banc = banc_qui_depasse(dossier, 0.25, anticipation_rotation_rad=0.25)
+    banc.guide.aller('amphi')
+    banc.tourner(60.0)
+    banc.tourner(80.0, jusqu_a=('attente',))
+    (demande,) = banc.moteur.rotations
+    assert demande == pytest.approx(-0.6 + 0.25)
+    _, _, cap = banc.moteur.position
+    assert abs(ecart_angle(cap, PRINCIPAL[2])) < 1e-6
+    # jamais plus de la moitié de l'écart
+    banc = banc_qui_depasse(dossier, 0.0, anticipation_rotation_rad=5.0)
+    banc.guide.aller('amphi')
+    banc.tourner(60.0)
+    banc.tourner(80.0, jusqu_a=('attente',))
+    assert banc.moteur.rotations[0] == pytest.approx(-0.3)
+
+
+def test_ralenti_jamais_sous_la_vitesse_minimale_du_pont(dossier):
+    """Avec le pont (pourcentage_min 50 : 0,2 m/s sur 0,4), ni le ralenti ni la personnalité."""
+    distance = [1.0]
+    banc = Banc(dossier, vitesse_max_nav2=0.4, pourcentage_min=50.0, ralenti=0.3)
+    banc.vues = lambda g, m: [personne(7, -distance[0], 0.0)]
+    banc.guide.aller('b204', accompagner=True)
+    banc.tourner(6.0, jusqu_a=())
+    distance[0] = 2.6
+    banc.tourner(0.6, jusqu_a=())
+    limites = [x for x in banc.limites if x is not None]       # None : limite levée
+    assert limites and min(limites) >= 50.0
+    banc.guide.fixer_vitesse_max(0.1, 'Lente')
+    assert banc.guide._plafond_personnalite == 50.0
 
 
 def test_ralenti_sur_la_vitesse_mesuree(dossier):
@@ -826,3 +916,16 @@ def test_vitesse_max_sans_vitesse_nav2_ignoree(dossier):
     banc.guide.fixer_vitesse_max(0.25, 'Discret')
     assert all(v is None for v in banc.limites)
     assert any('vitesse_max_nav2 inconnue' in m for m in banc.messages)
+
+
+def test_reglages_changeables_en_marche():
+    from g1_nav.guide import REGLAGES_EN_MARCHE, refus_reglage_en_marche
+    assert set(REGLAGES_EN_MARCHE) == {'tolerance_orientation_rad', 'anticipation_rotation_rad',
+                                       'pourcentage_min'}
+    assert refus_reglage_en_marche('tolerance_orientation_rad', 0.3) is None
+    assert refus_reglage_en_marche('anticipation_rotation_rad', 0) is None
+    for nom, valeur in (('tolerance_orientation_rad', -0.1), ('anticipation_rotation_rad', 2.0),
+                        ('pourcentage_min', 101.0), ('pourcentage_min', math.nan),
+                        ('tolerance_orientation_rad', True), ('tolerance_orientation_rad', 'a')):
+        assert 'il faut un nombre' in refus_reglage_en_marche(nom, valeur), (nom, valeur)
+    assert refus_reglage_en_marche('delai_perdu_s', -5.0) is None       # pas de ce ressort

@@ -164,7 +164,10 @@ def test_moteur_unitree_absent(dossier):
 def test_lieu_introuvable(tmp_path):
     guide = lancer_guide(tmp_path / 'nulle_part')
     sortie, erreurs = guide.communicate(timeout=20)
-    assert guide.returncode == 1 and erreurs.startswith('guide : ')
+    # Avec ROS_LOCALHOST_ONLY=1, CycloneDDS écrit d'abord un avertissement sur la sortie d'erreur
+    # (multicast désactivé sur lo) : le message du guide est une des lignes, pas la première
+    assert guide.returncode == 1, erreurs
+    assert any(ligne.startswith('guide : ') for ligne in erreurs.splitlines()), erreurs
     assert 'Traceback' not in erreurs
 
 
@@ -354,3 +357,40 @@ def test_robot_perdu_par_le_relais(dossier):
         os.killpg(guide.pid, signal.SIGINT)
         sortie, erreurs = guide.communicate(timeout=10)
     assert 'Traceback' not in erreurs
+
+
+def test_reglages_de_la_rotation_finale_en_marche(dossier):
+    """Vague 5 : ros2 param set /guide tolerance_orientation_rad … change le réglage en marche."""
+    from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
+    from rcl_interfaces.srv import GetParameters, SetParameters
+    guide = lancer_guide(dossier, tolerance_orientation_rad=0.4)
+    ecoute = Ecoute()
+
+    def reglage(nom, valeur):
+        p = Parameter(name=nom, value=ParameterValue(type=ParameterType.PARAMETER_DOUBLE,
+                                                     double_value=valeur))
+        futur = changer.call_async(SetParameters.Request(parameters=[p]))
+        assert ecoute.attendre(futur.done, 5.0)
+        return futur.result().results[0]
+
+    def valeur(nom):
+        futur = lire.call_async(GetParameters.Request(names=[nom]))
+        assert ecoute.attendre(futur.done, 5.0)
+        return futur.result().values[0].double_value
+    try:
+        changer = ecoute.noeud.create_client(SetParameters, '/guide/set_parameters')
+        lire = ecoute.noeud.create_client(GetParameters, '/guide/get_parameters')
+        assert ecoute.attendre(lambda: changer.service_is_ready() and lire.service_is_ready(),
+                               20.0), 'le guide ne répond pas aux paramètres'
+        assert valeur('tolerance_orientation_rad') == pytest.approx(0.4)
+        assert reglage('anticipation_rotation_rad', 0.3).successful
+        assert valeur('anticipation_rotation_rad') == pytest.approx(0.3)
+        refus = reglage('tolerance_orientation_rad', -0.5)
+        assert not refus.successful and 'il faut un nombre de 0 à' in refus.reason
+        assert valeur('tolerance_orientation_rad') == pytest.approx(0.4)
+        assert not reglage('pourcentage_min', 150.0).successful
+    finally:
+        ecoute.fermer()
+        guide.send_signal(signal.SIGINT)
+        sortie, erreurs = guide.communicate(timeout=20)
+    assert 'réglage changé en marche : anticipation_rotation_rad = 0.3' in sortie + erreurs

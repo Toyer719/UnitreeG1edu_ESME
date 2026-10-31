@@ -44,7 +44,7 @@ class RobotMemoire:
                                                       if self.camera else (0, JPEG_MINIMAL)))
                 continue
             if self.robot is None:
-                reponse = (0, json.dumps({'data': 801}) if s.api_id == 7001 else '')
+                reponse = (0, json.dumps({'data': 501}) if s.api_id == 7001 else '')
             else:
                 reponse = self.robot.traiter(s.service, s.api_id, s.parametre)
             if reponse is not None:
@@ -98,7 +98,7 @@ class Base(testing.AsyncHTTPTestCase):
 class TestSansJeton(Base):
     def test_etat_conforme(self):
         code, etat = self.appel('/etat')
-        assert code == 200 and etat['maitre'] == 'guide' and etat['fsm'] == 801
+        assert code == 200 and etat['maitre'] == 'guide' and etat['fsm'] == 501      # marche
         lieu = pytest.importorskip('atelier.lieu')
         assert lieu.valider_message('etat_pilotage', etat) == []
 
@@ -122,7 +122,7 @@ class TestSansJeton(Base):
                        'zone_libre': True}):
             code, r = self.appel('/requete', corps)
             assert code == 403 and r['detail'], r
-        for fsm in (2, 4, 801):
+        for fsm in (2, 4, 501, 801, 802):
             code, r = self.appel('/posture', {'fsm': fsm})
             assert code == 403 and 'refusée' in r['detail']
         assert len([1 for _, s in self.robot.recues[avant:] if s.api_id != 7001]) == 0

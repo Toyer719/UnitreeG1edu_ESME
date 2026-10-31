@@ -14,15 +14,20 @@ horloge injectable (temps mural monotone, en secondes) pour les tester finement 
     volume, la LED et l'ARRÊT restent permis. Prendre la main est refusé pendant une visite du
     guide, sauf « forcer » (/guide/stop, robot immobile, puis maître pilotage) ;
   - joystick avec homme mort : chaque ordre donne un 7105 de 0,5 s, plafonné ; sans ordre depuis
-    0,5 s, StopMove ; à la fermeture du WebSocket, StopMove tout de suite ;
+    0,5 s, StopMove ; à la fermeture du WebSocket, StopMove tout de suite ; vague 5 (section 12.6
+    du plan) : consigne passée par la vitesse minimale du pont (D.consigne_marche : sous 0,2 m/s,
+    le vrai robot ne fait aucun pas), et refus 409 quand le mode lu (7001) n'est ni la marche ni
+    la course (assis, pas démarré : message_pas_en_marche) ;
   - danses du robot (7101 550000 + n) : jamais 401, 402, 403, ni une danse absente de la liste
-    lue dans le robot ; robot debout immobile en mode 801 ; pendant la danse, joystick, gestes et
-    chorégraphies refusés ; l'ARRÊT n'envoie que StopMove (aucun ordre connu n'interrompt une
-    danse : la télécommande reste l'arrêt d'urgence) ;
+    lue dans le robot ; robot debout immobile en mode marche (MODES_MARCHE : 500, 501 ou 801) ;
+    pendant la danse, joystick, gestes et chorégraphies refusés ; fin quand le robot est revenu en
+    marche (501 ou 801) ; l'ARRÊT n'envoie que StopMove (aucun ordre connu n'interrompt une danse :
+    la télécommande reste l'arrêt d'urgence) ;
   - chorégraphies : vérifiées (verifier_choregraphie) avant de jouer ; bras par rt/arm_sdk à
     50 Hz (poids de 0 à 1 et de 1 à 0 en rampes, angles et vitesses bornés une seconde fois ici),
     taille tenue à sa position mesurée au départ, jambes jamais écrites ; pas de marche d'Unitree
-    plafonnés ; LED, gestes et paroles à leur temps ;
+    plafonnés, et (vague 5) montés à la vitesse minimale du vrai robot en durant moins longtemps,
+    même trajet (D.pas_effectif) ; LED, gestes et paroles à leur temps ;
   - ARRÊT : toujours permis. StopMove, chorégraphie arrêtée (poids ramené à 0 en 1 s), geste
     relâché (99) si les bras tiennent un geste, /guide/stop ;
   - personnalité active (/personnalite/active, assemblage de la vague 4) : sa LED est mise (voice
@@ -66,6 +71,7 @@ LOWSTATE_FRAIS_S = 0.5          # /lowstate plus vieux : bras du robot inconnus
 VITESSES_LECTURE = (0.25, 1.0)  # vitesse de lecture d'une chorégraphie : jamais plus vite
 IMMOBILE_APRES_S = D.ARRET_MAX_S
 FIN_DANSE_MARGE_S = 10.0        # au-delà de la durée annoncée, la danse est supposée finie
+MODE_PERIME_S = 3.0             # mode lu (7001) plus vieux : inconnu (contrat DELAI_MODE_PERIME_S)
 TOLERANCE_POIDS = 1e-6
 GUIDE_PERIME_S = 30.0           # /guide/etat plus vieux : le guide ne compte plus comme en mission
 ECART_GESTE_AUTO_S = 10.0       # gestes demandés par l'équipe (/robot/geste) : un au plus par 10 s
@@ -128,7 +134,8 @@ class Lecture:
         self.prochain = 0                     # rang du prochain événement à faire
         self.limites_pas = limites_pas
         self.pas = None                       # pas en cours (dict) ; fin : temps de la danse
-        self.fin_pas = None
+        self.fin_pas = None                   # fin du pas, raccourci s'il est monté (vague 5)
+        self.vitesses_pas = (0.0, 0.0, 0.0)   # vitesses envoyées pendant le pas en cours
         self.t_dernier_pas = None
         self.bras = bool((d.get('bras') or {}).get('poses'))
         self.poids = 0.0
@@ -163,6 +170,9 @@ class Pilotage:
         self.t_7105 = None
         self.ordre_en_attente = False
         self.t_mouvement = None               # dernier ordre de marche non nul envoyé
+        # après un ARRÊT, le joystick reste sans effet jusqu'à ce qu'il soit lâché (assemblage
+        # de la vague 5 : un pouce resté sur le manche ne relance pas le robot)
+        self.joystick_bloque = False
         # danses, gestes, chorégraphies
         self.danses = None                    # {n: {nom, duree_s}} lu dans le robot (7100)
         self.t_danses = None
@@ -468,6 +478,13 @@ class Pilotage:
 
     # ------------------------------------------------------------ joystick (homme mort)
 
+    def mode_connu(self, t=None):
+        """Le mode lu par 7001 il y a moins de 3 s, sinon None (inconnu : il ne bloque rien)."""
+        t = self.maintenant() if t is None else t
+        if self.fsm is None or self.t_fsm is None or t - self.t_fsm > MODE_PERIME_S:
+            return None
+        return self.fsm
+
     def ordre_joystick(self, vx, vy, wz):
         """Ordre du joystick (toutes les 0,1 s tant que le manche est tenu) : un 7105 de 0,5 s."""
         t = self.maintenant()
@@ -475,14 +492,21 @@ class Pilotage:
             return refus(409, 'Joystick : prenez la main dans l\'onglet Pilotage (le guide a la '
                               'main).')
         occupe = self._occupe('Joystick')
+        if occupe is None:
+            fsm = self.mode_connu(t)
+            if fsm is not None and fsm not in D.MODES_MARCHE and fsm not in D.MODES_COURSE:
+                occupe = refus(409, 'Joystick : ' + D.message_pas_en_marche(fsm), fsm=fsm)
         if occupe is not None:
             if self.marche:
                 occupe.sorties.append(self._stop_move('joystick_refuse'))
             return occupe
-        consigne = D.plafonner_marche(vx, vy, wz, self.limites)
+        consigne = D.consigne_marche(vx, vy, wz, self.limites)
         self.t_ordre = t
         if all(abs(v) < 1e-3 for v in consigne):
             return self.lacher_joystick('manche lâché')
+        if self.joystick_bloque:
+            return refus(409, 'Joystick : ARRÊT demandé. Lâchez le joystick, puis reprenez-le '
+                              'pour repartir.')
         self.consigne = consigne
         self.marche = True
         self.message = 'Marche au joystick.'
@@ -502,8 +526,14 @@ class Pilotage:
         return self._envoi('sport', 7105, D.parametre_vitesse(vx, vy, wz, D.DUREE_ORDRE_S),
                            'joystick')
 
+    def joystick_ouvert(self):
+        """Un joystick (WebSocket) s'ouvre : le blocage d'après un ARRÊT ne vaut pas pour lui."""
+        self.joystick_bloque = False
+        return Resultat(200, {'consigne': self._consigne_dict()})
+
     def lacher_joystick(self, raison='WebSocket fermé'):
         """Manche lâché ou WebSocket fermé : StopMove tout de suite si le robot marchait."""
+        self.joystick_bloque = False          # lâché : le joystick refonctionne (après un ARRÊT)
         if not self.marche:
             self.consigne = (0.0, 0.0, 0.0)
             return Resultat(200, {'consigne': self._consigne_dict()})
@@ -723,13 +753,14 @@ class Pilotage:
         return D.danses_pour_l_interface(self.danses)
 
     def _debout_immobile(self, quoi, t):
-        if self.fsm is None or self.t_fsm is None or t - self.t_fsm > 3.0:
+        if self.mode_connu(t) is None:
             return refus(409, f'{quoi} : mode du robot inconnu (il ne répond pas à 7001) : '
                               'vérifiez la liaison.')
-        if self.fsm != D.FSM_MARCHE:
-            return refus(409, f'{quoi} : le robot doit être debout en mode marche (801), il est '
-                              'en mode '
-                              f'{self.fsm}. Utilisez la posture « Démarrer ».', fsm=self.fsm)
+        if self.fsm not in D.MODES_MARCHE:
+            return refus(409, f'{quoi} : le robot doit être debout en mode marche (500, 501 ou '
+                              f'801), il est en mode {self.fsm} ({D.nom_mode(self.fsm)}). '
+                              'Utilisez la posture « Démarrer » ou la télécommande.',
+                         fsm=self.fsm)
         if self.marche or (self.t_mouvement is not None and t - self.t_mouvement < 1.0):
             return refus(409, f'{quoi} : le robot doit être immobile ; lâchez le joystick et '
                               'attendez 1 s.')
@@ -772,7 +803,13 @@ class Pilotage:
                         attendre=envoi.identifiant)
 
     def _suivre_danse(self, t):
-        """Fin de la danse : retour en 801 après sa durée ; refusée par le robot : oubliée."""
+        """
+        Fin de la danse : le robot est revenu en marche (501 ou 801, lu par 7001).
+
+        Vu en train de danser (un autre mode que la marche) puis revenu : finie, même avant la
+        durée annoncée ; jamais vu ailleurs : finie à la durée annoncée, s'il est en marche ; pas
+        revenu : supposée finie FIN_DANSE_MARGE_S après la durée. Refusée par le robot : oubliée.
+        """
         d = self.danse
         reponse = self.reponses.get(d['envoi'])
         if reponse is not None and reponse[0] != 0:
@@ -780,21 +817,22 @@ class Pilotage:
             self.message = f'Le robot a refusé la danse : {D.message_refus(reponse[0])}'
             return
         if self.fsm is not None and self.t_fsm is not None and self.t_fsm > d['debut'] + 0.5 \
-                and self.fsm != D.FSM_MARCHE:
-            # le robot a quitté 801 : la danse a commencé
+                and self.fsm not in D.MODES_MARCHE:
+            # le robot a quitté la marche : la danse a commencé
             d['vu_ailleurs'] = True
         duree = d['duree_s'] if d['duree_s'] is not None else D.DUREE_DANSE_INCONNUE_S
         ecoule = t - d['debut']
-        revenu = (self.fsm == D.FSM_MARCHE and self.t_fsm is not None
+        revenu = (self.fsm in D.MODES_FIN_DANSE and self.t_fsm is not None
                   and self.t_fsm > d['debut'] + 1.0)
-        if revenu and (ecoule >= duree or (d['vu_ailleurs'] and d['duree_s'] is None)):
+        if revenu and (ecoule >= duree or d['vu_ailleurs']):
             self.danse = None
-            self.message = 'Danse finie : le robot est revenu en mode marche (801).'
+            self.message = f'Danse finie : le robot est revenu en mode marche ({self.fsm}).'
         elif ecoule >= duree + FIN_DANSE_MARGE_S:
             self.danse = None
             self.message = (f'Danse supposée finie ({duree + FIN_DANSE_MARGE_S:.0f} s) : le robot '
-                            'n\'est pas '
-                            f'revenu en 801 (mode {self.fsm}). Vérifiez-le avant de continuer.')
+                            'n\'est pas revenu en mode marche (501 ou 801 ; mode '
+                            f'{self.fsm}, {D.nom_mode(self.fsm)}). Vérifiez-le avant de '
+                            'continuer.')
 
     # ------------------------------------------------------------ chorégraphies
 
@@ -840,7 +878,7 @@ class Pilotage:
                                   'la chorégraphie des bras est refusée.')
             angles = self.lowstate[0]
             q_taille = {i: float(angles[i]) for i in D.ARTICULATIONS_TAILLE.values()}
-        avertissements = []
+        avertissements = D.avertissements_choregraphie(d, self.limites)
         if (d.get('musique') or {}).get('sortie') == 'robot':
             avertissements.append('Musique par le haut-parleur du robot (1003) : pas encore prise '
                                   'en charge '
@@ -897,6 +935,10 @@ class Pilotage:
             _, genre, e = lec.evenements[lec.prochain]
             lec.prochain += 1
             sorties += self._evenement(lec, genre, e, t)
+        if lec.pas is not None and not fini and te >= lec.fin_pas - 1e-9:
+            # pas monté à la vitesse minimale : fini plus tôt (même trajet), arrêt tout de suite
+            lec.pas = None
+            sorties.append(self._stop_move('fin_pas'))
         if lec.pas is not None and not fini and t - lec.t_dernier_pas >= PERIODE_PAS_S - 0.005:
             sorties.append(self._envoi_pas(lec, t, te))
         if lec.bras:
@@ -915,19 +957,33 @@ class Pilotage:
         return sorties
 
     def _envoi_pas(self, lec, t, te):
-        p = lec.pas
         reste = (lec.fin_pas - te) / lec.vitesse        # secondes réelles jusqu'à la fin du pas
         duree = max(0.05, min(D.DUREE_ORDRE_S, reste))
-        vx, vy, wz = (max(-lec.limites_pas[a], min(lec.limites_pas[a], float(p[a]) * lec.vitesse))
-                      for a in ('vx', 'vy', 'wz'))
+        vx, vy, wz = lec.vitesses_pas
         lec.t_dernier_pas = t
         self.t_mouvement = t
         return self._envoi('sport', 7105, D.parametre_vitesse(vx, vy, wz, duree), 'pas')
 
+    def _commencer_pas(self, lec, e, t):
+        """
+        Début d'un pas : vitesses plafonnées puis montées à la vitesse minimale (même trajet).
+
+        D.pas_effectif multiplie toute la consigne par un facteur (≥ 1) et le pas dure facteur fois
+        moins : à mi-vitesse de lecture aussi, le robot fait le trajet prévu. Pas trop petit
+        (facteur 0) : StopMove, le robot reste sur place.
+        """
+        v = tuple(max(-lec.limites_pas[a], min(lec.limites_pas[a], float(e[a]) * lec.vitesse))
+                  for a in ('vx', 'vy', 'wz'))
+        facteur, vitesses = D.pas_effectif(*v, plafonds=lec.limites_pas)
+        if facteur <= 0.0:
+            lec.pas = None
+            return [self._stop_move('pas_trop_petit')]
+        lec.pas, lec.fin_pas, lec.vitesses_pas = e, e['t'] + e['duree_s'] / facteur, vitesses
+        return [self._envoi_pas(lec, t, e['t'])]
+
     def _evenement(self, lec, genre, e, t):
         if genre == 'pas_debut':
-            lec.pas, lec.fin_pas = e, e['t'] + e['duree_s']
-            return [self._envoi_pas(lec, t, e['t'])]
+            return self._commencer_pas(lec, e, t)
         if genre == 'pas_fin':
             if lec.pas is not e:
                 return []
@@ -966,9 +1022,15 @@ class Pilotage:
     # ------------------------------------------------------------ ARRÊT
 
     def arret(self, par='atelier'):
-        """ARRÊT : toujours permis, quel que soit le maître."""
+        """
+        ARRÊT : toujours permis, quel que soit le maître.
+
+        Le joystick tenu est ignoré ensuite, jusqu'à ce qu'il soit lâché (ordre nul, « lacher »
+        ou WebSocket fermé) ou qu'un nouveau joystick s'ouvre.
+        """
         t = self.maintenant()
         self.t_arret = t
+        self.joystick_bloque = True
         if self.danse is not None:
             # aucun ordre connu n'interrompt une danse : StopMove seulement (à vérifier)
             self.message = ('ARRÊT envoyé (StopMove) : une danse du robot ne s\'interrompt pas, '

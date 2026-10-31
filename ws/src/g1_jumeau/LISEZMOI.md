@@ -16,10 +16,24 @@ ros2 run g1_jumeau jumeau --ros-args -p latence_s:=0.2 -p perte:=0.1  # seul, av
 | `/g1_jumeau/odom` | entrée | vérité terrain de Gazebo (repère du monde = map) |
 | `/state_estimator/odom_pelvis` | sortie | odométrie comme celle du robot (repère `odom` → `pelvis`, z 0,75 m), qui dérive de 2 % et de 0,01 rad par mètre |
 | `/g1_jumeau/panne` | entrée | `aucune`, `muet` (ne répond plus, n'applique plus rien) ou `refus` |
-| `/g1_jumeau/etat` | sortie | JSON à 2 Hz, pour les tests |
+| `/g1_jumeau/mode` | entrée | vague 5 : `std_msgs/Int32`, le mode changé d'un coup, comme à la télécommande (3 assis, 802 course, 501 marche...) |
+| `/g1_jumeau/etat` | sortie | JSON à 2 Hz, pour les tests (vague 5 : `seuils`, `sous_seuil`, et dans `robot` : `marche_possible`, `hors_marche`, `ignores_hors_marche`) |
 
 Paramètres : `latence_s` (délai avant d'appliquer et de répondre), `perte` (part des requêtes
 perdues), `graine`, `panne`. Le faux G1 n'a pas de plafond à lui : le vrai robot a les siens.
+
+Vague 5 (section 12.6 du plan), fidèle au vrai G1 du 27/10 :
+
+| Paramètre | Défaut | Rôle |
+|---|---|---|
+| `fsm_depart` | 501 | mode au lancement : la marche normale lue sur le vrai G1 |
+| `seuil_marche_m_s` | 0,15 | sous cette norme de (vx, vy), un 7105 est accepté (code 0) mais le robot ne fait aucun pas (le vrai : rien à 0,1, il marche à 0,2) ; 0 : pas de seuil |
+| `seuil_rotation_rad_s` | 0,2 | sous ce \|wz\| (et sous le seuil de marche), rien ; au-dessus : il tourne sur place |
+| `hors_marche` | `ignorer` | 7105 hors marche (assis, pas démarré...) : code 0 sans bouger, comme le vrai en mode 3 ; `refuser` : 7301 (le faux G1 d'avant) |
+
+Les seuils restent sous les minimums du pont (0,2 m/s et 0,3 rad/s) : ce que le pont envoie fait
+marcher le faux G1, et une petite consigne qui passerait sans lui ne fait rien, comme sur le vrai
+robot.
 
 ## Le faux G1 étendu (vague 4, section 11.5 du plan)
 
@@ -28,9 +42,9 @@ commandes (`g1_jumeau/robot.py`, logique sans ROS, classe `FauxG1`) :
 
 | Service | Ce qu'il fait |
 |---|---|
-| sport 7001 à 7006 | lectures ; 7001 rend `{"data": mode}` (801 au lancement : debout, prêt à marcher ; paramètre `fsm_depart`) |
-| sport 7101 | modes 0, 1, 3, 500 (puis 801 après 1 s), 702 (puis 801 après 2 s), 706 (accroupi ↔ debout) ; autre mode : 7302 ; danse 550000 + n depuis 801 seulement (7301 sinon), durée de la liste (paramètre `echelle_danses`), puis retour seul en 801 |
-| sport 7105 | comme avant (FauxSport) ; refusé (7301) hors de 500/801 et pendant une danse, sauf l'arrêt `[0, 0, 0]`, sans effet |
+| sport 7001 à 7006 | lectures ; 7001 rend toujours `{"data": mode}` (501 au lancement : en marche ; paramètre `fsm_depart`) |
+| sport 7101 | modes 0, 1, 3, 500 (puis 501 après 1 s), 702 (puis 501 après 2 s), 706 (accroupi ↔ debout) ; autre mode : 7302 (2, 4, 501, 801, 802 : aussi comptés comme interdits) ; danse 550000 + n depuis un mode de marche (500, 501, 801 ; 7301 sinon), durée de la liste (paramètre `echelle_danses`), puis retour seul au mode d'avant (501 ou 801) |
+| sport 7105 | appliqué en marche (500, 501, 801) et en course (802), par FauxSport avec son seuil de marche ; hors marche : code 0 sans bouger (`hors_marche`) ; pendant une danse : 7301, sauf l'arrêt `[0, 0, 0]`, sans effet |
 | sport 7100 | `{"fsm_id": 550, "api_id": 1}` : la liste `{"fsm_id", "api_id", "motion": {"604": {"name", "duration"}}}` (602, 603, 604, 574, et 401, 402, 403 pour éprouver les refus) ; autre paramètre : 3204 |
 | sport 7106 | tâches 0 à 3 (7303 sinon) |
 | sport 7102, 7103, 7104, 7107, 7110, 7111 | acceptées comme par le vrai robot, mais **comptées** (`nombre_interdits`) : les tests vérifient qu'il n'en arrive jamais |
@@ -58,7 +72,9 @@ s'arrête seul à la fin de `duration`).
 cd ~/robot-g1/ws/src/g1_jumeau && python3 -m pytest test     # environ 1 min 30, Gazebo sans fenêtre
 ```
 
-`test_logique.py` (service et dérive, sans ROS), `test_robot.py` (le faux G1 étendu, sans ROS), `test_noeud_jumeau.py` (le nœud en vrai, et le
+`test_logique.py` (service, seuil de marche et dérive, sans ROS), `test_robot.py` (le faux G1
+étendu, sans ROS : 501, 7105 hors marche, course, mode changé d'un coup), `test_noeud_jumeau.py`
+(le nœud en vrai : `/g1_jumeau/mode`, seuil, réglages ; et le
 client C++ d'Unitree `g1_loco_client_example` qui reçoit sa réponse), `test_lancement_sim.py`
 (argument `jumeau` de `g1_sim`, `g1-monde simuler --jumeau`), `test_gazebo.py` (pont → faux G1 →
 Gazebo : 0,9 m en 3 s, plafonds mesurés, arrêts, pont tué).

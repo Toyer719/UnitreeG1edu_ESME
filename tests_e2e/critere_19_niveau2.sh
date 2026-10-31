@@ -6,7 +6,7 @@
 #   - « Y aller » avant le repérage : 409 ; POST /api/robot/reperer ; attente de Nav2 ;
 #   - POST /api/guide/aller b204 : arrive en moins de 180 s, à moins de 0,3 m de b204 (vérité
 #     terrain /g1_jumeau/odom) ; tout le mouvement passe par le pont et le faux G1 (requêtes 7105
-#     comptées, rien dans Gazebo n'écoute /cmd_vel) ;
+#     comptées, rien dans Gazebo n'écoute /cmd_vel ; vague 5 : plus les lectures du mode 7001) ;
 #   - une boîte dans le couloir nord (comme au critère 5), puis POST /api/guide/aller accueil :
 #     bloque → detour → arrive, à moins de 0,3 m ;
 #   - POST /api/simulation/arreter : plus aucun processus ne reste.

@@ -4,7 +4,9 @@ Outils des tests ROS 2 du pont : lancer le nœud pont_g1, et un faux robot qui l
   pont = NoeudLance('pont', ['-p', 'exiger_reperage:=false'])   lance lib/g1_bridge/pont
   robot = FauxRobot()      nœud rclpy dans un fil : répond aux requêtes (ou se tait, refuse),
                            publie /cmd_vel, /reperage/etat, /guide/stop, /pont/arret ;
-                           lit /pont/etat
+                           lit /pont/etat ; répond aux lectures du mode (7001) avec robot.fsm
+                           (501 : marche ; None : réponse sans data), rangées dans
+                           robot.lectures (robot.requetes : les 7105 seulement)
 
 Isolement : ROS_LOCALHOST_ONLY=1, ROS_DOMAIN_ID de l'environnement (62 par défaut, celui de
 l'agent Pont). Les processus sont lancés dans leur propre groupe, et toujours arrêtés.
@@ -120,10 +122,12 @@ class FauxRobot:
             rclpy.init()
         self.noeud = rclpy.create_node(nom)
         self.verrou = threading.Lock()
-        self.requetes = []          # [(instant monotone, Request)]
+        self.requetes = []          # [(instant monotone, Request)] des 7105
+        self.lectures = []          # [(instant monotone, Request)] des lectures du mode (7001)
         self.etats = []             # [(instant, dict)]
         self.repondre = True
         self.code = 0
+        self.fsm = 501              # mode rendu par 7001 (vague 5) ; None : réponse sans data
         self.erreurs_schema = []
         n = self.noeud
         fiable = QoSProfile(depth=50, reliability=ReliabilityPolicy.RELIABLE)
@@ -178,15 +182,27 @@ class FauxRobot:
         time.sleep(0.07)
 
     def _sur_requete(self, msg):
+        lecture = msg.header.identity.api_id == 7001
         with self.verrou:
-            self.requetes.append((time.monotonic(), msg))
-            repondre, code = self.repondre, self.code
+            (self.lectures if lecture else self.requetes).append((time.monotonic(), msg))
+            repondre, code, fsm = self.repondre, self.code, self.fsm
         if repondre:
             r = Response()
             r.header.identity.id = msg.header.identity.id
             r.header.identity.api_id = msg.header.identity.api_id
-            r.header.status.code = code
+            r.header.status.code = 0 if lecture else code
+            if lecture and fsm is not None:
+                r.data = json.dumps({'data': fsm})
             self.pub_reponse.publish(r)
+
+    def reponse_etrangere(self, identifiant, api_id=7001, data='{"data": 3}', code=0):
+        """Réponse d'un autre programme du robot (pas à une requête du pont), sur le même sujet."""
+        r = Response()
+        r.header.identity.id = int(identifiant)
+        r.header.identity.api_id = int(api_id)
+        r.header.status.code = int(code)
+        r.data = data
+        self.pub_reponse.publish(r)
 
     def _sur_etat(self, msg):
         etat = json.loads(msg.data)
@@ -218,6 +234,10 @@ class FauxRobot:
     def requetes_depuis(self, t0, t1=math.inf):
         with self.verrou:
             return [(t, m) for t, m in self.requetes if t0 <= t < t1]
+
+    def lectures_depuis(self, t0, t1=math.inf):
+        with self.verrou:
+            return [(t, m) for t, m in self.lectures if t0 <= t < t1]
 
     def dernier_etat(self):
         with self.verrou:

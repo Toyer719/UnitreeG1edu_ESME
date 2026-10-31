@@ -22,7 +22,11 @@ Ce que lance ce fichier :
   - le pont g1_bridge (pont:=auto : avec Nav2, sauf en localisation simu) : /cmd_vel → ordres de
     marche 7105 du robot, avec ses sécurités (section 10.3) ; vitesse_max:=0.2 (m/s, premiers
     essais) abaisse ses plafonds dans la même proportion (0,2 ; 0,125 ; 0,3), vide : ceux du
-    contrat (0,4 ; 0,25 ; 0,6) ;
+    contrat (0,4 ; 0,25 ; 0,6). Vague 5 (section 12.6) : vitesse_max abaisse aussi les vitesses
+    maximales de Nav2 (FollowPath du controller_server et velocity_smoother), dans la même
+    proportion, et elle est refusée sous 0,2 m/s (le robot ne marche pas plus lentement) ; avec le
+    pont, le guide reçoit tolerance_orientation_rad (TOLERANCE_ORIENTATION_PONT_RAD) et un ralenti
+    qui ne descend pas sous la vitesse minimale du pont (pourcentage_min) ;
   - le guide (g1_nav/guide.py) : /guide/aller, /guide/stop, /guide/etat, /guide/evenement ;
   - personnes:=true (défaut, vague 4, section 11.4) : le détecteur de personnes au LiDAR
     (g1_nav/personnes.py, /points → /personnes/lidar), qui sert au guide pour accompagner le
@@ -55,6 +59,22 @@ POSE_LIDAR = (-0.004, 0.0, 1.245)
 # relocalisation il ne se place pas) : répétition, le LiDAR du robot proxy ; robot, à déterminer
 NUAGE_AMCL_REPETITION = '/g1_jumeau/points'
 NUAGE_AMCL_ROBOT = '/unitree/slam_relocation/points'
+# Vague 5 (section 12.6 du plan) : tolérance de cap du guide au point principal, avec le pont.
+# Le pont ne fait pas tourner le robot sous 0,3 rad/s (vitesse_min_rot) : une rotation (Spin de
+# Nav2 à 10 Hz, puis velocity_smoother à 20 Hz, puis le pont) finit à 0,3 rad/s au moins et
+# dépasse la flèche du même angle, presque quel que soit l'angle demandé. Simulation de cette
+# chaîne (g1_nav/rotation_pont.py, « python3 -m g1_nav.rotation_pont » ; odométrie en retard de
+# 0,05 s), selon le retard pur et la constante de temps du robot : 12° pour 0,1 + 0,1 s, 16° pour
+# 0,15 + 0,15 s, 19° pour 0,2 + 0,2 s, 23° pour 0,2 + 0,3 s, 26° pour 0,3 + 0,3 s. Une seconde
+# rotation dépasse d'autant dans l'autre sens : sous ce dépassement, le guide tournerait 3 fois
+# sans rien gagner (test/test_rotation_pont.py fige ce raisonnement). 0,40 rad
+# (23°), la tolérance de cap de Nav2 à l'arrivée (yaw_goal_tolerance), couvre un robot qui répond
+# en 0,5 s (une seule rotation, 23° au plus de la flèche). À mesurer à la séance 2 (dépassement
+# d'une rotation de 90°) ; puis anticipation_rotation_rad du guide = le dépassement mesuré, et
+# tolerance_orientation_rad = 0,6 × ce dépassement (même simulation, écarts de départ de 5° à
+# 180° : une seule rotation, et 10° au plus pour un robot qui répond en 0,5 s). En dessous de
+# 0,6 ×, un petit écart de départ fait encore tourner le robot trois fois.
+TOLERANCE_ORIENTATION_PONT_RAD = 0.40
 
 
 class ErreurNavigation(RuntimeError):
@@ -123,12 +143,18 @@ def masque_vide(carte):
     return chemin
 
 
-def noeuds_nav2(reglages, simu, arbre):
-    """Nœuds de Nav2 : planificateur, contrôleur, secours, bt_navigator, vitesses, sécurité."""
+def noeuds_nav2(reglages, simu, arbre, vitesses=None):
+    """
+    Nœuds de Nav2 : planificateur, contrôleur, secours, bt_navigator, vitesses, sécurité.
+
+    vitesses : paramètres en plus de vitesses_nav2 (vitesse_max:=), par nœud.
+    """
     params = [reglages, {'use_sim_time': simu}]
     vers_lisseur = [('cmd_vel', 'cmd_vel_nav')]
+    vitesses = vitesses or {}
 
     def noeud(paquet, executable, remap=(), autres=None):
+        autres = dict(autres or {}, **vitesses.get(executable, {}))
         return Node(package=paquet, executable=executable, name=executable, output='screen',
                     parameters=params + ([autres] if autres else []), remappings=list(remap))
 
@@ -243,9 +269,11 @@ def plafonds_pont(texte):
     vitesse_max:= (m/s) : plafonds du pont abaissés dans la même proportion, ou None (vide).
 
     Pour les premiers essais sur le robot : 0.2 donne (vx 0,2 ; vy 0,125 ; wz 0,3). Le pont
-    n'accepte jamais plus que les plafonds du contrat (atelier.lieu.LIMITES_PONT).
+    n'accepte jamais plus que les plafonds du contrat (atelier.lieu.LIMITES_PONT). Vague 5 :
+    refusée sous 0,2 m/s (VITESSE_MAX_MIN : le vrai robot ne ferait aucun pas).
     """
     from atelier.lieu import LIMITES_PONT
+    from atelier.lieu.robot import MESSAGE_VITESSE_MAX_BASSE, VITESSE_MAX_MIN
 
     texte = (texte or '').strip()
     if not texte:
@@ -258,6 +286,10 @@ def plafonds_pont(texte):
     if not math.isfinite(vitesse) or not 0.0 < vitesse <= vx:
         raise ErreurNavigation(f'vitesse_max:={texte} : il faut une vitesse en m/s, plus grande '
                                f'que 0 et au plus {vx} (plafond du pont), par exemple 0.2')
+    if vitesse < VITESSE_MAX_MIN - 1e-9:
+        raise ErreurNavigation(f'vitesse_max:={texte} refusée : {MESSAGE_VITESSE_MAX_BASSE} (le '
+                               f'vrai robot ne ferait aucun pas) ; mettez au moins '
+                               f'{VITESSE_MAX_MIN:g}')
     part = vitesse / vx
     return {'vx_max': round(vitesse, 3), 'vy_max': round(LIMITES_PONT['vy'] * part, 3),
             'wz_max': round(LIMITES_PONT['wz'] * part, 3)}
@@ -291,8 +323,14 @@ def noeud_g1_nav(executable, module, nom, parametres):
     return ExecuteProcess(cmd=commande, name=nom, output='screen')
 
 
-def vitesse_max_nav2(reglages):
-    """vx_max du contrôleur de Nav2 (FollowPath) dans le fichier de réglages, ou 0 si illisible."""
+def vitesse_max_nav2(reglages, vitesses=None):
+    """
+    vx_max du contrôleur de Nav2 (FollowPath), ou 0 si illisible.
+
+    Celui de vitesses_nav2 quand vitesse_max:= l'a baissé, sinon celui du fichier de réglages.
+    """
+    if vitesses:
+        return float(vitesses['controller_server']['FollowPath.vx_max'])
     import yaml
     try:
         with open(reglages, encoding='utf-8') as f:
@@ -300,6 +338,65 @@ def vitesse_max_nav2(reglages):
         return float(d['controller_server']['ros__parameters']['FollowPath']['vx_max'])
     except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError):
         return 0.0
+
+
+def vitesses_nav2(reglages, plafonds):
+    """
+    vitesse_max:= (vague 5) : vitesses maximales de Nav2 baissées comme les plafonds du pont.
+
+    Renvoie {nœud: paramètres} pour le controller_server (FollowPath.vx_max, vy_max, wz_max) et le
+    velocity_smoother (max_velocity, min_velocity), ou {} sans vitesse_max. Le rapport est
+    vitesse_max / vx_max du fichier (au plus 1) : vx_max de Nav2 vaut alors vitesse_max, et vy,
+    wz baissent d'autant. Le modèle de MPPI reste juste, et le Collision Monitor ralentit encore.
+    """
+    if not plafonds:
+        return {}
+    import yaml
+    with open(reglages, encoding='utf-8') as f:
+        d = yaml.safe_load(f)
+    suivi = d['controller_server']['ros__parameters']['FollowPath']
+    lisseur = d['velocity_smoother']['ros__parameters']
+    part = min(1.0, float(plafonds['vx_max']) / float(suivi['vx_max']))
+
+    def baisser(valeur):
+        return round(float(valeur) * part, 3) + 0.0       # + 0.0 : jamais de -0.0
+
+    return {
+        'controller_server': {f'FollowPath.{axe}': baisser(suivi[axe])
+                              for axe in ('vx_max', 'vy_max', 'wz_max')},
+        'velocity_smoother': {'max_velocity': [baisser(v) for v in lisseur['max_velocity']],
+                              'min_velocity': [baisser(v) for v in lisseur['min_velocity']]},
+    }
+
+
+def vitesse_min_pont():
+    """vitesse_min_lin du pont (config/pont.yaml de g1_bridge, sinon le contrat), en m/s."""
+    import yaml
+    from atelier.lieu.robot import VITESSES_MIN_PONT
+    dossier = partage('g1_bridge')
+    if dossier is not None:
+        try:
+            with open(dossier / 'config' / 'pont.yaml', encoding='utf-8') as f:
+                d = yaml.safe_load(f)
+            return float(d['pont_g1']['ros__parameters']['vitesse_min_lin'])
+        except (OSError, KeyError, TypeError, ValueError, yaml.YAMLError):
+            pass
+    return float(VITESSES_MIN_PONT['lin'])
+
+
+def reglages_guide_pont(vitesse_nav2):
+    """
+    Réglages du guide quand le pont mène le robot (vague 5, section 12.6 du plan).
+
+    Tolérance de cap au point principal relevée (TOLERANCE_ORIENTATION_PONT_RAD), et ralenti qui
+    ne descend pas sous la vitesse minimale du pont : 100 × vitesse_min_lin / vx_max de Nav2.
+    """
+    reglages = {'tolerance_orientation_rad': TOLERANCE_ORIENTATION_PONT_RAD}
+    minimum = vitesse_min_pont()
+    if vitesse_nav2 > 0 and minimum > 0:
+        reglages['pourcentage_min'] = round(min(100.0, max(10.0, 100.0 * minimum
+                                                           / vitesse_nav2)), 1)
+    return reglages
 
 
 def noeud_pont(simu, plafonds=None):
@@ -367,24 +464,35 @@ def _lancer(context):
                                      'node_names': noeuds_carte}]))
 
     actions += noeuds_localisation(localisation, simu, dossier, etage, partage_g1_nav, nuage)
+    vitesses = {}
     if pont:
         if plafonds:
             actions.append(LogInfo(msg=f'g1_nav : vitesse réduite, plafonds du pont : vx '
                                        f'{plafonds["vx_max"]} m/s, vy {plafonds["vy_max"]} m/s, '
                                        f'wz {plafonds["wz_max"]} rad/s'))
+            if moteur == 'nav2':
+                vitesses = vitesses_nav2(reglages, plafonds)
+                c, s = vitesses['controller_server'], vitesses['velocity_smoother']
+                actions.append(LogInfo(msg=f'g1_nav : Nav2 aussi : vx {c["FollowPath.vx_max"]} '
+                                           f'm/s, vy {c["FollowPath.vy_max"]} m/s, wz '
+                                           f'{c["FollowPath.wz_max"]} rad/s (lisseur '
+                                           f'{s["max_velocity"]})'))
         actions.append(noeud_pont(simu, plafonds))
     elif plafonds:
         actions.append(LogInfo(msg='g1_nav : vitesse_max ignorée : pas de pont dans ce lancement'))
 
     if moteur == 'nav2':
         actions += noeuds_nav2(reglages, simu,
-                               str(fichier_config(partage_g1_nav, 'naviguer_par_poses.xml')))
+                               str(fichier_config(partage_g1_nav, 'naviguer_par_poses.xml')),
+                               vitesses)
 
     # Vague 4 (section 11.4) : le détecteur de personnes au LiDAR, pour le guide
     parametres_guide = {'lieu': str(dossier), 'etage': etage, 'moteur': moteur,
                         'use_sim_time': simu}
     if moteur == 'nav2':     # le ralenti pour le visiteur se calcule sur la vitesse réelle
-        parametres_guide['vitesse_max_nav2'] = vitesse_max_nav2(reglages)
+        parametres_guide['vitesse_max_nav2'] = vitesse_max_nav2(reglages, vitesses)
+    if pont:                 # vague 5 : rotation finale et ralenti à travers le pont
+        parametres_guide.update(reglages_guide_pont(parametres_guide.get('vitesse_max_nav2', 0.0)))
     if personnes:
         actions.append(noeud_g1_nav('detecteur_personnes', 'g1_nav.personnes',
                                     'detecteur_personnes',
@@ -437,7 +545,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'vitesse_max', default_value='',
             description='Vitesse maximale en m/s pour les premiers essais (ex. 0.2) : les '
-                        'plafonds du pont baissent dans la même proportion. Vide : 0,4 / 0,25 '
-                        '/ 0,6.'),
+                        'plafonds du pont et les vitesses de Nav2 baissent dans la même '
+                        'proportion. Vide : 0,4 / 0,25 / 0,6. Refusée sous 0,2 m/s.'),
         OpaqueFunction(function=_lancer),
     ])

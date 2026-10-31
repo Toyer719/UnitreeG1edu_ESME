@@ -6,6 +6,8 @@
 #   - aucun lien direct entre /cmd_vel et Gazebo ;
 #   - Nav2 → pont → faux G1 → Gazebo : g1-guide aller hall_sud, arrivée à moins de 0,3 m,
 #     requêtes 7105 au bon format, identity.id croissants, 8 par seconde au moins, toutes répondues ;
+#     vague 5 (section 12.6) : les seules autres requêtes sont les lectures du mode du pont (7001,
+#     « {} », une par seconde, de 0,7 à 1,3) ;
 #   - /cmd_vel du test : 0,9 m en 3 s, arrêt moins de 0,6 s après, 7105 [0, 0, 0] envoyé ;
 #   - plafonds (0,4 ; 0,25 ; 0,6) et NaN ; /guide/stop (0,3 s, garde de 1 s) ;
 #     /pont/arret (0,3 s, immobile 3 s, reprise seulement au /cmd_vel suivant) ;

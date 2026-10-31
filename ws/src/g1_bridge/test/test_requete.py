@@ -17,8 +17,9 @@ import time
 
 import pytest
 
-from g1_bridge.requete import (API_SET_VELOCITY, Identifiants, parametre_arret,
-                               parametre_vitesse, remplir_requete, SUJET_REQUETE)
+from g1_bridge.requete import (API_GET_FSM_ID, API_SET_VELOCITY, Identifiants, lire_mode,
+                               parametre_arret, parametre_lecture_mode, parametre_vitesse,
+                               remplir_requete, SUJET_REQUETE)
 
 CONSIGNES = [(0.3, 0.0, 0.0, 0.5), (0.4, -0.25, 0.6, 0.5), (-0.123456789, 0.2, -0.6, 0.5),
              (0.0, 0.0, 0.0, 1.0), (1e-4, 0.0, 0.0, 0.5), (0.1, 0.0, 0.0, 0.25)]
@@ -49,6 +50,40 @@ def test_arret_comme_stopmove():
     client.StopMove()
     assert parametre_arret() == client.captures[-1][1]
     assert parametre_arret() == '{"velocity": [0.0, 0.0, 0.0], "duration": 1.0}'
+
+
+def test_lecture_du_mode_comme_le_sdk_python():
+    """7001 (GetFsmId) : parameter « {} » comme LocoClient.GetFsmId ; réponse {"data": N}."""
+    client = _loco_client_du_sdk()
+    client._Call = lambda api, parametre: (client.captures.append((api, parametre))
+                                           or (0, '{"data": 501}'))
+    code, fsm = client.GetFsmId()
+    api, attendu = client.captures[-1]
+    assert api == API_GET_FSM_ID == 7001
+    assert parametre_lecture_mode() == attendu == '{}'
+    assert (code, fsm) == (0, 501) and lire_mode('{"data": 501}') == 501
+
+
+@pytest.mark.parametrize('data,attendu', [
+    ('{"data": 501}', 501), ('{"data": 0}', 0), ('{"data": 550604}', 550604), ('', None),
+    ('{}', None), ('{"data": "501"}', None), ('{"data": true}', None), ('{"data": -1}', None),
+    ('{"data": 5.0}', None), ('pas du json', None), ('[501]', None), (None, None)])
+def test_lire_mode(data, attendu):
+    assert lire_mode(data) == attendu
+
+
+def test_requete_de_lecture_du_mode():
+    """Même en-tête qu'un 7105, api_id 7001 (un faux message suffit : pas de ROS ici)."""
+    class Champ:
+        pass
+    requete = Champ()
+    requete.header = Champ()
+    for nom in ('identity', 'lease', 'policy'):
+        setattr(requete.header, nom, Champ())
+    remplir_requete(requete, 42, parametre_lecture_mode(), API_GET_FSM_ID)
+    assert (requete.header.identity.id, requete.header.identity.api_id) == (42, 7001)
+    assert requete.parameter == '{}' and requete.binary == []
+    assert requete.header.lease.id == 0 and requete.header.policy.noreply is False
 
 
 def test_parametre_en_flottants():

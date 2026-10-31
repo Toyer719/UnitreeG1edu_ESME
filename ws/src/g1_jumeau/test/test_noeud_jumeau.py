@@ -2,7 +2,8 @@
 Le nœud g1_jumeau en vrai (ROS 2, sans Gazebo) : réponses, vitesses vers Gazebo, odométrie.
 
 Le test joue le client (le pont, ou le client C++ d'Unitree) et la vérité terrain de Gazebo
-(/g1_jumeau/odom). Environ 1 min.
+(/g1_jumeau/odom). Vague 5 (section 12.6) : mode 501, sujet d'essai /g1_jumeau/mode, 7105 hors
+marche accepté sans bouger, seuil de marche. Environ 1 min 30.
 """
 import json
 import math
@@ -217,3 +218,60 @@ def test_etat_json_a_2_hz(client, lancer):
     etat = etats[-1][1]
     assert set(etat) >= {'version', 'panne', 'consigne', 'reste_s', 'requetes', 'appliquees'}
     json.dumps(etat)
+
+
+# ---------------------------------------------------------------- vague 5 (section 12.6)
+
+def test_mode_501_et_sujet_d_essai(client, lancer):
+    """501 au départ ; assis par /g1_jumeau/mode : 7105 accepté (code 0) sans bouger."""
+    pret(client, lancer)
+    assert client.lire_mode() == 501
+    client.mode(3)
+    client.attendre(lambda: client.etats and client.etats[-1][1]['robot']['fsm'] == 3, 2.0,
+                    'le mode ne passe pas à 3')
+    assert client.lire_mode() == 3
+    t0 = time.monotonic()
+    ident = client.vitesse(0.3, 0.0, 0.0, 0.5)
+    _, r = client.attendre(lambda: client.reponse(ident), 2.0, 'pas de réponse assis')
+    assert r.header.status.code == 0
+    time.sleep(0.6)
+    assert {v for _, v in client.depuis(client.vitesses, t0)} == {(0.0, 0.0, 0.0)}
+    client.attendre(lambda: client.etats[-1][1]['robot']['ignores_hors_marche'] >= 1, 2.0,
+                    'le 7105 hors marche n\'est pas compté')
+    client.mode(802)                                     # course : 7105 appliqué
+    time.sleep(0.3)
+    client.vitesse(0.3, 0.0, 0.0, 0.5)
+    client.attendre(lambda: client.vitesses[-1][1] == (0.3, 0.0, 0.0), 2.0, 'course immobile')
+
+
+def test_seuil_de_marche_par_defaut(client, lancer):
+    """Comme le vrai G1 le 27/10 : 0,1 m/s accepté sans bouger, 0,2 m/s marche."""
+    pret(client, lancer)
+    t0 = time.monotonic()
+    ident = client.vitesse(0.1, 0.0, 0.0, 0.5)
+    _, r = client.attendre(lambda: client.reponse(ident), 2.0, 'pas de réponse à 0,1 m/s')
+    assert r.header.status.code == 0
+    time.sleep(0.6)
+    assert {v for _, v in client.depuis(client.vitesses, t0)} == {(0.0, 0.0, 0.0)}
+    client.vitesse(0.2, 0.0, 0.0, 0.5)
+    client.attendre(lambda: client.vitesses[-1][1] == (0.2, 0.0, 0.0), 2.0, '0,2 m/s immobile')
+    etat = client.attendre(lambda: client.etats and client.etats[-1][1].get('sous_seuil') == 1
+                           and client.etats[-1][1], 2.0, 'sous_seuil absent')
+    assert etat['seuils'] == {'marche_m_s': 0.15, 'rotation_rad_s': 0.2}
+
+
+def test_reglages_de_la_vague_5(client, lancer):
+    """Sans seuil (0), départ assis et hors_marche:=refuser (7301), réglage inconnu refusé."""
+    pret(client, lancer, '-p', 'seuil_marche_m_s:=0.0', '-p', 'fsm_depart:=3',
+         '-p', 'hors_marche:=refuser')
+    assert client.lire_mode() == 3
+    ident = client.vitesse(0.1, 0.0, 0.0, 0.5)
+    _, r = client.attendre(lambda: client.reponse(ident), 2.0, 'pas de réponse')
+    assert r.header.status.code == 7301
+    client.mode(501)
+    time.sleep(0.3)
+    client.vitesse(0.1, 0.0, 0.0, 0.5)                   # sans seuil : 0,1 m/s appliqué
+    client.attendre(lambda: client.vitesses[-1][1] == (0.1, 0.0, 0.0), 2.0, '0,1 m/s immobile')
+    refuse = lancer('-p', 'hors_marche:=oublier', nom='jumeau_refuse')
+    assert refuse.attendre(15) == 1
+    assert 'réglage refusé' in refuse.texte() and 'ignorer ou refuser' in refuse.texte()

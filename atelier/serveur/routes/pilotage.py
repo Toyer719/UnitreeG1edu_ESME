@@ -39,6 +39,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 import atelier
 from atelier.lieu import ErreurLieu
 from atelier.lieu import pilotage as D
+from atelier.lieu import robot as R
 from atelier.lieu.fichiers import lire_yaml
 
 from ..communs import ErreurAtelier
@@ -90,8 +91,7 @@ def _entetes():
 def _injoignable(erreur=None):
     mode = "Avec le robot : vérifiez le conteneur du Jetson (g1-jetson etat) et le Wi-Fi."
     if noeud_local():
-        mode = ("En simulation ou en répétition : cliquez sur « Démarrer le pilotage » dans l'onglet "
-                "Pilotage.")
+        mode = ("En répétition : cliquez sur « Démarrer le pilotage » dans Réel › Piloter.")
     return ErreurAtelier(503, f"Le nœud pilotage ne répond pas ({url_noeud()}). {mode}",
                          sortie=None if erreur is None else str(erreur)[:300])
 
@@ -149,10 +149,12 @@ def _etat(request):
 def config(request: Request):
     """Valeurs du contrat dont l'onglet a besoin (rien n'est demandé au robot)."""
     etat = _etat(request)
+    refus_vitesse = None
     try:
         limites = D.limites_marche(os.environ.get("G1_VITESSE_MAX") or None)
-    except ValueError:
-        limites = dict(D.LIMITES_MARCHE)
+    except ValueError as e:
+        # G1_VITESSE_MAX refusée (ex. sous 0,2 m/s) : le nœud pilotage refusera de démarrer
+        limites, refus_vitesse = dict(D.LIMITES_MARCHE), f"G1_VITESSE_MAX : {e}"
     return {
         "url": url_noeud(), "jeton": bool(jeton()), "local": noeud_local(),
         "noeud_lance": etat.gestionnaire.en_cours("pilotage"), "mode": etat.mode_navigation(),
@@ -164,7 +166,9 @@ def config(request: Request):
         "danses_essayees": {str(n): t for n, t in D.DANSES_ESSAYEES.items()},
         "danses_non_essayees": {str(n): t for n, t in D.DANSES_NON_ESSAYEES.items()},
         "confirmations": dict(D.TEXTES_CONFIRMATION),
-        "limites_marche": limites, "periode_joystick_s": D.PERIODE_JOYSTICK_S,
+        "limites_marche": limites, "vitesse_max_refusee": refus_vitesse,
+        "vitesses_min": dict(R.VITESSES_MIN_PONT), "modes_marche": list(D.MODES_MARCHE),
+        "periode_joystick_s": D.PERIODE_JOYSTICK_S,
         "delai_homme_mort_s": D.DELAI_HOMME_MORT_S,
         "articulations": [{"nom": nom, "indice": i, "bas": D.LIMITES_BRAS[nom][0], "haut": D.LIMITES_BRAS[nom][1]}
                           for nom, i in D.ARTICULATIONS_BRAS.items()],
@@ -307,6 +311,20 @@ def _id_choregraphie(ident):
     return ident
 
 
+def _avertissements(d, erreurs):
+    """Avertissements d'une chorégraphie sans erreur (pas sous la vitesse minimale du vrai robot)."""
+    if erreurs:
+        return []
+    try:
+        limites = D.limites_marche(os.environ.get("G1_VITESSE_MAX") or None)
+    except ValueError:
+        limites = None
+    try:
+        return D.avertissements_choregraphie(d, limites)
+    except (KeyError, TypeError, ValueError):
+        return []
+
+
 def _lire_choregraphie(ident):
     """(contenu, erreurs) d'un fichier ; 404 s'il n'existe pas ; 422 s'il n'est pas du YAML lisible."""
     chemin = D.chemin_choregraphie(_id_choregraphie(ident), dossier_choregraphies())
@@ -354,15 +372,16 @@ def lister():
             sortie.append({"id": ident, "nom": ident, "duree_s": None, "erreurs": [e.detail, *e.erreurs]})
             continue
         sortie.append({"id": ident, "nom": contenu.get("nom", ident), "duree_s": contenu.get("duree_s"),
-                       "erreurs": erreurs, "protegee": ident == EXEMPLE_PROTEGE})
+                       "erreurs": erreurs, "avertissements": _avertissements(contenu, erreurs),
+                       "protegee": ident == EXEMPLE_PROTEGE})
     return {"dossier": str(dossier_choregraphies()), "choregraphies": sortie}
 
 
 @routeur.get("/api/pilotage/choregraphies/{ident}")
 def lire(ident: str):
     contenu, erreurs = _lire_choregraphie(ident)
-    return {"choregraphie": contenu, "erreurs": erreurs, "resume": resume_choregraphie(contenu),
-            "protegee": ident == EXEMPLE_PROTEGE}
+    return {"choregraphie": contenu, "erreurs": erreurs, "avertissements": _avertissements(contenu, erreurs),
+            "resume": resume_choregraphie(contenu), "protegee": ident == EXEMPLE_PROTEGE}
 
 
 @routeur.post("/api/pilotage/choregraphies/verifier")
@@ -372,7 +391,8 @@ async def verifier(request: Request):
     if not isinstance(d, dict):
         raise ErreurAtelier(400, "« choregraphie » : le contenu de la chorégraphie (objet JSON).")
     erreurs = D.verifier_choregraphie(d)
-    return {"erreurs": erreurs, "sure": not erreurs, "resume": resume_choregraphie(d)}
+    return {"erreurs": erreurs, "sure": not erreurs, "avertissements": _avertissements(d, erreurs),
+            "resume": resume_choregraphie(d)}
 
 
 def _ecrire_yaml(chemin, contenu):
@@ -404,14 +424,15 @@ async def ecrire(ident: str, request: Request):
     dossier.mkdir(parents=True, exist_ok=True)
     chemin = D.chemin_choregraphie(ident, dossier)
     await run_in_threadpool(_ecrire_yaml, chemin, d)
-    return {"enregistre": [str(chemin)], "choregraphie": d, "resume": resume_choregraphie(d)}
+    return {"enregistre": [str(chemin)], "choregraphie": d, "avertissements": _avertissements(d, []),
+            "resume": resume_choregraphie(d)}
 
 
 @routeur.delete("/api/pilotage/choregraphies/{ident}")
 def supprimer(ident: str):
     _id_choregraphie(ident)
     if ident == EXEMPLE_PROTEGE:
-        raise ErreurAtelier(409, "L'exemple K-pop du dépôt ne se supprime pas depuis l'onglet.")
+        raise ErreurAtelier(409, "L'exemple K-pop du dépôt ne se supprime pas depuis l'Atelier.")
     chemin = D.chemin_choregraphie(ident, dossier_choregraphies())
     if not chemin.is_file():
         raise ErreurAtelier(404, f"La chorégraphie « {ident} » n'existe pas.")

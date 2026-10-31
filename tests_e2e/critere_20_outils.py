@@ -43,7 +43,8 @@ ICI = Path(__file__).resolve().parent
 sys.path.insert(0, str(ICI))
 
 from critere_18_outils import Echec, francais  # noqa: E402
-from outils_pont_e2e import Bilan, Temoin, _cmd_vel_en_fond, _nulle, _vitesses  # noqa: E402
+from outils_pont_e2e import (Bilan, Temoin, _cmd_vel_en_fond, _nulle, _vitesses,  # noqa: E402
+                             autres_requetes, format_lectures)
 
 TOLERANCE_HORS_FENETRE_M = 0.05
 PLAFONDS = (0.4, 0.25, 0.6)
@@ -629,8 +630,10 @@ def securite(args):
         fautes = requetes_sous_plafonds(g.requetes_entre(t_debut))
         b.verifier(not fautes, f'{len(g.requetes_entre(t_debut))} ordres 7105 en tout, tous sous les plafonds',
                    f'ordres 7105 au-delà des plafonds : {fautes[:3]}')
-        autres = [r for r in g.requetes_entre(t_debut) if r[2] != 7105]
-        b.verifier(not autres, 'aucun autre ordre que 7105 sur /api/sport/request', f'autres ordres : {autres[:3]}')
+        autres = autres_requetes(g.requetes_entre(t_debut, api=None))
+        b.verifier(not autres, 'aucun autre ordre que 7105 (et les lectures du mode 7001, vague 5) sur '
+                   '/api/sport/request', f'autres ordres : {autres[:3]}')
+        format_lectures(g.lectures_entre(t_debut), b)
         erreurs_500 = [(m, c, code) for m, c, _, code, _ in api.reponses if code >= 500 and code not in (502, 503, 504)]
         b.verifier(not erreurs_500, f'{len(api.reponses)} appels à l\'API, jamais d\'erreur 500',
                    f'erreurs 500 : {erreurs_500[:3]}')

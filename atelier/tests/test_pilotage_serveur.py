@@ -132,6 +132,35 @@ def test_config_sans_robot(client):
     assert [p for p in c["postures"] if p["fsm"] == 1][0]["confirmation"] == "portique"
     assert c["danses_interdites"] == [401, 402, 403] and len(c["articulations"]) == 14
     assert c["limites_marche"] == D.LIMITES_MARCHE and c["local"] is True
+    # vague 5 (section 12.6) : vitesse minimale et modes de marche, rien de refusé
+    assert c["vitesse_max_refusee"] is None and c["vitesses_min"] == {"lin": 0.2, "rot": 0.3}
+    assert c["modes_marche"] == [500, 501, 801]
+
+
+def test_config_vitesse_max_sous_0_2_refusee(client, monkeypatch):
+    monkeypatch.setenv("G1_VITESSE_MAX", "0.15")
+    c = client.get("/api/pilotage/config").json()
+    assert "le robot ne marche pas sous 0,2 m/s" in c["vitesse_max_refusee"]
+    assert c["limites_marche"] == D.LIMITES_MARCHE          # le nœud, lui, refusera de démarrer
+    monkeypatch.setenv("G1_VITESSE_MAX", "0.25")
+    c = client.get("/api/pilotage/config").json()
+    assert c["vitesse_max_refusee"] is None and c["limites_marche"]["vx"] == 0.25
+
+
+def test_avertissements_des_pas_sous_la_vitesse_minimale(client):
+    """Un pas à 0,1 m/s n'est pas une erreur : un avertissement dit qu'il sera fait à 0,2 m/s."""
+    d = client.get("/api/pilotage/choregraphies/exemple_kpop").json()
+    assert d["avertissements"] == []
+    lente = json.loads(json.dumps(d["choregraphie"]))
+    lente["pas"][0].update(vy=0.1, duree_s=1.0)
+    r = client.post("/api/pilotage/choregraphies/verifier", json={"choregraphie": lente}).json()
+    assert r["sure"] and r["erreurs"] == []
+    (avertissement,) = r["avertissements"]
+    assert "pas à 10 s" in avertissement and "même trajet" in avertissement
+    r = client.put("/api/pilotage/choregraphies/lente", json={"choregraphie": lente}).json()
+    assert len(r["avertissements"]) == 1
+    liste = {c["id"]: c for c in client.get("/api/pilotage/choregraphies").json()["choregraphies"]}
+    assert len(liste["lente"]["avertissements"]) == 1 and liste["exemple_kpop"]["avertissements"] == []
 
 
 def test_noeud_injoignable_503_en_francais(client, monkeypatch):
@@ -189,7 +218,7 @@ def test_danses_lues_et_interdites(client, noeud):
     for n in (401, 402, 403):
         assert client.post("/api/pilotage/danse", json={"id": n, "zone_libre": True}).status_code == 403
     assert client.post("/api/pilotage/danse", json={"id": 604}).status_code == 428
-    time.sleep(1.1)                                                     # lecture du mode : 801
+    time.sleep(1.1)                                                     # lecture du mode : 501
     r = client.post("/api/pilotage/danse", json={"id": 604, "zone_libre": True})
     assert r.status_code == 200, r.json()
     assert noeud.robot.etat()["danse"]["id"] == 604 and noeud.robot.danses_jouees == [604]

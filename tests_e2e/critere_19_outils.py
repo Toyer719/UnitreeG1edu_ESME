@@ -11,7 +11,8 @@ critère 19 ; section 10).
          publie /g1_jumeau/cmd_vel) ;
       4. POST /api/guide/aller b204 : arrive en moins de 180 s, à moins de 0,3 m de b204 (vérité
          terrain /g1_jumeau/odom) ; toutes les requêtes de /api/sport/request sont des 7105,
-         comptées, et ont leur réponse ;
+         comptées, et ont leur réponse, ou (vague 5) les lectures du mode du pont (7001, « {} »,
+         une par seconde) ;
       5. une boîte dans le couloir nord, en (12 ; 13), comme au critère 5, puis POST /api/guide/aller
          accueil : bloque → detour → arrive, à moins de 0,3 m de l'accueil ;
       6. /pont/etat et /reperage/etat conformes à leur schéma tout du long.
@@ -34,7 +35,8 @@ sys.path.insert(0, str(ICI))
 
 from critere_18_outils import (Echec, Ecoute, appel, attendre_relais, demarrer, francais,  # noqa: E402
                                reperer, verifier)
-from outils_pont_e2e import Temoin, format_requetes, Bilan, _nulle  # noqa: E402
+from outils_pont_e2e import (Temoin, autres_requetes, format_lectures, format_requetes,  # noqa: E402
+                             Bilan, _nulle)
 
 DELAI_B204_S = 180.0
 DELAI_DETOUR_S = 480.0
@@ -139,14 +141,19 @@ def aller(api, obs, lieu, cible, delai, suite=()):
     ecart = math.hypot(x - cx, y - cy)
     dire(f"arrivé à {cible} en {duree:.0f} s, à {ecart:.3f} m (vérité terrain)")
     verifier(ecart < TOLERANCE_ARRIVEE_M, f"arrivé à {ecart:.3f} m de {cible} (max {TOLERANCE_ARRIVEE_M} m)")
-    return duree, ecart, obs.requetes_entre(debut), vus
+    return duree, ecart, obs.requetes_entre(debut, api=None), vus
 
 
 def bilan_requetes(obs, requetes, quoi):
-    """Toutes des 7105 bien formées, avec leur réponse ; au moins 8 par seconde en marche."""
+    """Des 7105 bien formées, avec leur réponse, au moins 8 par seconde en marche ; et les lectures
+    du mode du pont (7001, vague 5), une par seconde ; rien d'autre."""
     bilan = Bilan()
-    autres = [r for r in requetes if r[2] != 7105]
-    verifier(not autres, f"{quoi} : requêtes autres que 7105 sur /api/sport/request : {autres[:3]}")
+    autres = autres_requetes(requetes)
+    verifier(not autres, f"{quoi} : requêtes autres que 7105 et 7001 sur /api/sport/request : {autres[:3]}")
+    lectures = [r for r in requetes if r[2] == 7001]
+    duree = requetes[-1][0] - requetes[0][0] if len(requetes) > 1 else None
+    format_lectures(lectures, bilan, duree)
+    requetes = [r for r in requetes if r[2] == 7105]
     format_requetes(requetes, bilan)
     mouvement = [r for r in requetes if not _nulle(r)]
     verifier(len(mouvement) > 50, f"{quoi} : seulement {len(mouvement)} ordres de mouvement 7105")
@@ -158,7 +165,8 @@ def bilan_requetes(obs, requetes, quoi):
     verifier(frequence >= 8.0, f"{quoi} : {frequence:.1f} requêtes par seconde en marche (8 au moins)")
     verifier(not bilan.erreurs, f"{quoi} : {bilan.erreurs}")
     dire(f"{quoi} : {len(requetes)} requêtes 7105 ({len(mouvement)} de mouvement), {frequence:.1f} par "
-         "seconde en marche, toutes répondues : tout le mouvement passe par le pont et le faux G1")
+         f"seconde en marche, toutes répondues, et {len(lectures)} lectures du mode 7001 : tout le "
+         "mouvement passe par le pont et le faux G1")
 
 
 def poser_boite():

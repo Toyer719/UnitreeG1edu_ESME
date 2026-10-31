@@ -317,6 +317,8 @@ class Joystick(websocket.WebSocketHandler):
             self.close(4009, 'joystick deja ouvert')
             return
         Joystick.ouverts.add(self)
+        # un nouveau joystick n'est pas bloqué par un ARRÊT d'avant
+        self.coeur.faire('joystick_ouvert')
         self.envoyer({'type': 'bienvenue', 'detail': 'Joystick relié au nœud '
                                                      'pilotage.', 'etat': self.coeur.etat()})
         self.minuteur = ioloop.PeriodicCallback(self.etat, PERIODE_ETAT_WS_S * 1000)

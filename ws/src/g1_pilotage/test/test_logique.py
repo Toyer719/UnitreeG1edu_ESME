@@ -2,7 +2,9 @@
 Logique du nœud pilotage, sans ROS, avec une horloge à la main (section 11.5 du plan).
 
 Interdits, confirmations, verrou, homme mort, danses, chorégraphies (rampes, limites, vitesses,
-taille tenue, jambes jamais écrites, pas) et ARRÊT.
+taille tenue, jambes jamais écrites, pas) et ARRÊT. Vague 5 (section 12.6) : marche en 501,
+joystick par la vitesse minimale et refusé hors marche, danses depuis 501 et retour, pas des
+chorégraphies montés à la vitesse minimale (même trajet), vitesse maximale sous 0,2 refusée.
 """
 import copy
 import json
@@ -42,11 +44,20 @@ def p(h):
     return Pilotage(horloge=h, mur=lambda: 1.7e9 + h.t)
 
 
+def en_mode(p, h, fsm):
+    """Le robot répond à la prochaine lecture 7001 avec ce mode."""
+    lectures = envois(p.pas(), 'sport', 7001)
+    if not lectures:
+        h.t += 1.0
+        lectures = envois(p.pas(), 'sport', 7001)
+    for e in lectures:
+        p.sur_reponse(e.identifiant, 0, json.dumps({'data': fsm}))
+    assert p.fsm == fsm
+
+
 def en_801(p, h):
     """Le robot répond à 7001 : mode 801 (debout, prêt à marcher)."""
-    for e in envois(p.pas(), 'sport', 7001):
-        p.sur_reponse(e.identifiant, 0, json.dumps({'data': 801}))
-    assert p.fsm == 801
+    en_mode(p, h, 801)
 
 
 def prendre(p, h):
@@ -70,7 +81,7 @@ def avancer(p, h, duree, pas=0.02):
 
 # ---------------------------------------------------------------- interdits et confirmations
 
-@pytest.mark.parametrize('fsm', [2, 4, 801, 5, 702000, 550401, 550402, 550403])
+@pytest.mark.parametrize('fsm', [2, 4, 501, 801, 802, 5, 702000, 550401, 550402, 550403])
 def test_postures_interdites_rien_d_envoye(p, h, fsm):
     prendre(p, h)
     avant = p.requetes
@@ -551,6 +562,40 @@ def test_arret_toujours_permis(p, h):
     assert [json.loads(e.parametre) for e in envois(r, 'arm', 7106)] == [{'action_id': 99}]
 
 
+def test_arret_joystick_ignore_jusqu_a_ce_qu_il_soit_lache(p, h):
+    """Un pouce resté sur le manche après l'ARRÊT ne relance pas le robot : il faut le lâcher."""
+    prendre(p, h)
+    assert envois(p.ordre_joystick(0.3, 0.0, 0.0), 'sport', 7105)
+    h.t += 0.1
+    r = p.arret()
+    vitesses = [json.loads(e.parametre)['velocity'] for e in envois(r, 'sport', 7105)]
+    assert vitesses == [[0.0, 0.0, 0.0]]
+    for _ in range(5):                      # le manche toujours tenu : refusé, rien n'est envoyé
+        h.t += 0.1
+        r = p.ordre_joystick(0.3, 0.0, 0.0)
+        assert r.statut == 409 and 'Lâchez le joystick' in r.corps['detail']
+        assert not envois(r)
+        assert not p.marche
+    h.t += 0.1
+    assert p.ordre_joystick(0.0, 0.0, 0.0).statut == 200      # lâché (ordre nul)
+    h.t += 0.1
+    (e,) = envois(p.ordre_joystick(0.3, 0.0, 0.0), 'sport', 7105)    # repris : il repart
+    assert json.loads(e.parametre)['velocity'] == [0.3, 0.0, 0.0]
+    # « lacher » ou WebSocket fermé débloquent aussi
+    h.t += 0.1
+    p.arret()
+    h.t += 0.1
+    assert p.ordre_joystick(0.3, 0.0, 0.0).statut == 409
+    p.lacher_joystick('WebSocket fermé')
+    h.t += 0.1
+    assert p.ordre_joystick(0.3, 0.0, 0.0).statut == 200
+    h.t += 0.1
+    p.arret()                               # un nouveau joystick (WebSocket ouvert) : pas bloqué
+    h.t += 0.1
+    p.joystick_ouvert()
+    assert p.ordre_joystick(0.3, 0.0, 0.0).statut == 200
+
+
 def test_quitter_rend_la_main_au_guide(p, h):
     prendre(p, h)
     sorties = p.quitter()
@@ -585,9 +630,12 @@ def test_vitesse_de_lecture_moitie(p, h):
     assert vitesse_max <= D.VITESSE_BRAS_MAX / 2 + 0.01
     leds = [t - debut for t, s in sorties if isinstance(s, Envoi) and s.api_id == 1010]
     assert leds == pytest.approx([2 * e['t'] for e in d['led']], abs=0.03)
-    pas = [json.loads(s.parametre) for _, s in sorties
+    pas = [(t, json.loads(s.parametre)) for t, s in sorties
            if isinstance(s, Envoi) and s.api_id == 7105]
-    assert max(abs(x['velocity'][1]) for x in pas) == pytest.approx(0.075)
+    # vague 5 : les pas de côté (0,2 m/s, donc 0,1 à mi-vitesse) sont refaits à 0,2 m/s, en deux
+    # fois moins de temps : le vrai robot fait le même trajet
+    assert max(abs(x['velocity'][1]) for _, x in pas) == pytest.approx(0.2)
+    assert integrer(pas, h.t) == pytest.approx(D.deplacement_pas(d)[0], abs=0.03)
 
 
 def test_guide_muet_en_pleine_visite_compte_encore(p, h):
@@ -620,3 +668,175 @@ def test_geste_en_cours_dans_l_etat(p, h):
     repondre(p, p.geste(26))
     p.arret()                                      # ARRÊT relâche les bras : 99 montré
     assert p.etat()['geste']['id'] == D.GESTE_RELACHER
+
+
+# ---------------------------------------------------------------- vague 5 (section 12.6)
+
+def integrer(pas, fin_t):
+    """Distance maximale au départ des ordres de marche envoyés [(t, parameter)], intégrés."""
+    x = y = cap = loin = 0.0
+    for (t, prm), suivant in zip(pas, pas[1:] + [(fin_t, None)]):
+        fin = min(t + prm['duration'], suivant[0])
+        vx, vy, wz = prm['velocity']
+        n = max(1, int((fin - t) / 0.01))
+        for _ in range(n):
+            ddt = (fin - t) / n
+            x += (vx * math.cos(cap) - vy * math.sin(cap)) * ddt
+            y += (vx * math.sin(cap) + vy * math.cos(cap)) * ddt
+            cap += wz * ddt
+            loin = max(loin, math.hypot(x, y))
+    return loin
+
+
+def test_joystick_par_la_vitesse_minimale(p, h):
+    """Le 27/10, 0,1 m/s ne faisait aucun pas : le manche peu incliné fait marcher à 0,2 m/s."""
+    prendre(p, h)
+    (e,) = envois(p.ordre_joystick(0.1, 0.0, 0.0), 'sport', 7105)
+    assert json.loads(e.parametre)['velocity'] == pytest.approx([0.2, 0.0, 0.0])
+    h.t += 0.1
+    (e,) = envois(p.ordre_joystick(0.0, 0.0, 0.15), 'sport', 7105)
+    assert json.loads(e.parametre)['velocity'] == pytest.approx([0.0, 0.0, 0.3])
+    h.t += 0.1
+    r = p.ordre_joystick(0.03, 0.0, 0.0)                 # zone morte : manche lâché, StopMove
+    (e,) = envois(r, 'sport', 7105)
+    assert json.loads(e.parametre)['velocity'] == [0.0, 0.0, 0.0] and not p.marche
+
+
+def test_joystick_refuse_hors_marche(p, h):
+    prendre(p, h)
+    en_mode(p, h, 3)
+    r = p.ordre_joystick(0.3, 0.0, 0.0)
+    assert r.statut == 409 and 'assis' in r.corps['detail'] and not envois(r)
+    assert r.corps['fsm'] == 3
+    en_mode(p, h, 0)
+    assert "n'est pas démarré" in p.ordre_joystick(0.3, 0.0, 0.0).corps['detail']
+    for permis in (501, 500, 801, 802):                    # marche et course : permis
+        en_mode(p, h, permis)
+        h.t += 0.1
+        assert p.ordre_joystick(0.3, 0.0, 0.0).statut == 200, permis
+    # assis pendant la marche au joystick (la lecture arrive pendant que le manche est tenu) :
+    # refus et StopMove
+    h.t += 1.0
+    (lecture,) = envois(p.pas(h.t), 'sport', 7001)
+    assert p.ordre_joystick(0.3, 0.0, 0.0).statut == 200 and p.marche
+    p.sur_reponse(lecture.identifiant, 0, json.dumps({'data': 3}))
+    h.t += 0.1
+    r = p.ordre_joystick(0.3, 0.0, 0.0)
+    assert r.statut == 409 and [json.loads(e.parametre)['velocity'] for e in envois(r)] == \
+        [[0.0, 0.0, 0.0]]
+    # mode inconnu (plus de réponse depuis 3 s) : rien n'est bloqué
+    h.t += 3.5
+    assert p.ordre_joystick(0.3, 0.0, 0.0).statut == 200
+
+
+def test_vitesse_maximale_sous_0_2_refusee():
+    for v in (0.15, '0.1', 0.05):
+        with pytest.raises(ValueError, match='le robot ne marche pas sous 0,2 m/s'):
+            Pilotage(vitesse_max=v)
+    Pilotage(vitesse_max=0.2)
+
+
+def test_danse_depuis_501_et_retour_en_501(p, h):
+    """Le vrai robot marche en 501 : la danse y est permise, sa fin est vue au retour en 501."""
+    prendre(p, h)
+    danses_lues(p)
+    en_mode(p, h, 501)
+    r = p.danser(604, zone_libre=True)
+    assert r.statut == 200 and envois(r, 'sport', 7101)
+    repondre(p, r)
+    debut = p.danse['debut']
+    fin = None
+    while h.t < debut + 25.0:
+        h.t = round(h.t + 0.05, 6)
+        for s in envois(p.pas(h.t), 'sport', 7001):
+            p.sur_reponse(s.identifiant, 0,
+                          json.dumps({'data': 501 if h.t - debut > 18.2 else 550604}))
+        if fin is None and p.danse is None:
+            fin = h.t
+    assert fin is not None and 18.2 <= fin - debut <= 19.5
+    assert 'finie' in p.message and '501' in p.message
+
+
+def test_danse_finie_au_retour_meme_avant_la_duree(p, h):
+    """Vue en train de danser, puis revenue en marche plus tôt (télécommande) : finie."""
+    prendre(p, h)
+    danses_lues(p)
+    en_mode(p, h, 501)
+    repondre(p, p.danser(604, zone_libre=True))
+    debut = p.danse['debut']
+    while p.danse is not None and h.t < debut + 15.0:
+        h.t = round(h.t + 0.05, 6)
+        for s in envois(p.pas(h.t), 'sport', 7001):
+            p.sur_reponse(s.identifiant, 0, json.dumps({'data': 501 if h.t - debut > 5.0
+                                                        else 550604}))
+    assert p.danse is None and h.t - debut < 7.0
+
+
+def test_danse_pas_revenue_en_marche(p, h):
+    """Le robot reste en 500 (passage) ou ailleurs : danse supposée finie après durée + 10 s."""
+    prendre(p, h)
+    danses_lues(p)
+    en_mode(p, h, 501)
+    repondre(p, p.danser(602, zone_libre=True))
+    debut = p.danse['debut']
+    while p.danse is not None and h.t < debut + 30.0:
+        h.t = round(h.t + 0.05, 6)
+        for s in envois(p.pas(h.t), 'sport', 7001):
+            p.sur_reponse(s.identifiant, 0, json.dumps({'data': 500 if h.t - debut > 9.0
+                                                        else 550602}))
+    assert p.danse is None and 9.0 + 10.0 <= h.t - debut <= 9.0 + 10.2
+    assert 'supposée finie' in p.message and 'démarrage' in p.message
+
+
+def choregraphie_pas(pas):
+    """Chorégraphie sans bras, avec ces pas."""
+    d = copy.deepcopy(D.charger_choregraphie('exemple_kpop'))
+    del d['bras']
+    d['pas'] = pas
+    d['gestes'], d['led'], d['paroles'] = [], [], []
+    return d
+
+
+def test_pas_lent_monte_a_la_vitesse_minimale_meme_trajet(p, h):
+    """Un pas de côté à 0,1 m/s pendant 1 s : fait à 0,2 m/s pendant 0,5 s, puis StopMove."""
+    d = choregraphie_pas([{'t': 2.0, 'vx': 0.0, 'vy': 0.1, 'wz': 0.0, 'duree_s': 1.0},
+                          {'t': 5.0, 'vx': 0.0, 'vy': 0.0, 'wz': 0.15, 'duree_s': 2.0}])
+    assert D.verifier_choregraphie(d) == []
+    prendre(p, h)
+    en_801(p, h)
+    r = p.jouer(d, zone_libre=True)
+    assert r.statut == 200 and len(r.corps['avertissements']) == 2
+    assert 'même trajet' in r.corps['avertissements'][0]
+    debut = h.t + 0.5
+    sorties = avancer(p, h, d['duree_s'] + 1.0)
+    pas = [(t, json.loads(s.parametre)) for t, s in sorties
+           if isinstance(s, Envoi) and s.api_id == 7105]
+    cote = [(t - debut, x) for t, x in pas if x['velocity'][1]]
+    assert {tuple(x['velocity']) for _, x in cote} == {(0.0, 0.2, 0.0)}
+    assert 2.0 - 0.03 <= cote[0][0] and cote[-1][0] + cote[-1][1]['duration'] <= 2.5 + 0.03
+    arret = [t - debut for t, x in pas if x['velocity'] == [0.0, 0.0, 0.0] and t - debut > 2.0]
+    assert arret and arret[0] == pytest.approx(2.5, abs=0.03)
+    rotation = [x for _, x in pas if x['velocity'][2]]
+    assert {tuple(x['velocity']) for x in rotation} == {(0.0, 0.0, 0.3)}
+    assert integrer(pas, h.t) == pytest.approx(D.deplacement_pas(d)[0], abs=0.01)
+
+
+def test_pas_trop_petit_le_robot_reste_sur_place(p, h):
+    d = choregraphie_pas([{'t': 2.0, 'vx': 0.03, 'vy': 0.0, 'wz': 0.05, 'duree_s': 1.0}])
+    prendre(p, h)
+    en_801(p, h)
+    r = p.jouer(d, zone_libre=True)
+    assert r.statut == 200 and 'ne bougera pas' in r.corps['avertissements'][0]
+    sorties = avancer(p, h, d['duree_s'] + 1.0)
+    vitesses = [json.loads(s.parametre)['velocity'] for _, s in sorties
+                if isinstance(s, Envoi) and s.api_id == 7105]
+    assert vitesses and all(v == [0.0, 0.0, 0.0] for v in vitesses)
+
+
+def test_exemple_kpop_sans_avertissement_et_meme_deplacement():
+    d = D.charger_choregraphie('exemple_kpop')
+    assert D.avertissements_choregraphie(d) == []
+    assert D.deplacement_pas(d) == pytest.approx((0.15, 1.5), abs=1e-6)
+    for pas in d['pas']:
+        if pas['vx'] or pas['vy']:
+            assert math.hypot(pas['vx'], pas['vy']) >= D.VITESSES_MIN_PONT['lin']

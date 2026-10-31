@@ -30,7 +30,7 @@ from geometry_msgs.msg import Twist  # noqa: E402
 from nav_msgs.msg import Odometry  # noqa: E402
 from rclpy.executors import SingleThreadedExecutor  # noqa: E402
 from rclpy.qos import qos_profile_sensor_data, QoSProfile, ReliabilityPolicy  # noqa: E402
-from std_msgs.msg import String  # noqa: E402
+from std_msgs.msg import Int32, String  # noqa: E402
 from unitree_api.msg import Request, Response  # noqa: E402
 
 
@@ -154,6 +154,7 @@ class Client:
         fiable = QoSProfile(depth=100, reliability=ReliabilityPolicy.RELIABLE)
         self.pub_requete = n.create_publisher(Request, '/api/sport/request', fiable)
         self.pub_panne = n.create_publisher(String, '/g1_jumeau/panne', fiable)
+        self.pub_mode = n.create_publisher(Int32, '/g1_jumeau/mode', fiable)
         self.pub_verite = None if verite else n.create_publisher(Odometry, '/g1_jumeau/odom', 10)
         self.pub_cmd_vel = n.create_publisher(Twist, '/cmd_vel', 10)
         self.pub_reperage = n.create_publisher(String, '/reperage/etat', 10)
@@ -229,6 +230,17 @@ class Client:
 
     def panne(self, nom):
         self.pub_panne.publish(String(data=nom))
+
+    def mode(self, fsm):
+        """Change le mode du faux G1 d'un coup (sujet d'essai /g1_jumeau/mode, vague 5)."""
+        self.pub_mode.publish(Int32(data=int(fsm)))
+
+    def lire_mode(self, delai=2.0):
+        """Mode rendu par 7001 (GetFsmId), comme le pont et le pilotage le lisent."""
+        ident = self.requete('{}', api_id=7001)
+        _, r = self.attendre(lambda: self.reponse(ident), delai, 'pas de réponse à 7001')
+        assert r.header.status.code == 0
+        return json.loads(r.data)['data']
 
     def verite(self, x, y, theta, stamp_s=0.0, vx=0.0):
         self.pub_verite.publish(odometrie(x, y, theta, stamp_s, vx))

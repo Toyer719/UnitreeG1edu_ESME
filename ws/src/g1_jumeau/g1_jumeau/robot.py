@@ -4,14 +4,18 @@ Le faux G1 étendu (vague 4, section 11.5 du plan), sans ROS, à horloge injecta
 Services sport, arm et voice, rt/arm_sdk vérifié et /lowstate simulé.
 
 FauxG1 répond comme le vrai robot (réponses (code, data)) :
-  - sport : machine d'états des modes (0, 1, 3, 500 puis 801, 702 puis 801, 706 ; 7001 rend le
-    mode) et les refus réalistes : 7301 pour marcher hors de 500/801, 7302 pour un mode
-    inconnu ; la liste 7100 des danses ({"fsm_id": 550, "api_id": 1, "motion": {...}}) et
-    leur lecture (7101 550000 + n depuis 801, durée, retour seul en 801 ; marche refusée
-    pendant la danse) ; les tâches 7106 ; les commandes que l'Atelier interdit (7102, 7103,
-    7104, 7107, 7110, 7111) sont acceptées comme par le vrai robot, mais comptées
-    (interdits_recus) : les tests vérifient qu'il n'en arrive jamais. 7105 passe toujours par
-    FauxSport (logique.py, inchangé) ;
+  - sport : machine d'états des modes (0, 1, 3, 500 puis 501, 702 puis 501, 706 ; 7001 rend le
+    mode) et les refus réalistes : 7302 pour un mode inconnu ; la liste 7100 des danses
+    ({"fsm_id": 550, "api_id": 1, "motion": {...}}) et leur lecture (7101 550000 + n depuis un
+    mode de marche, durée, retour seul au mode d'avant la danse ; marche refusée pendant la
+    danse) ; les tâches 7106 ; les commandes que l'Atelier interdit (7102, 7103, 7104, 7107,
+    7110, 7111) sont acceptées comme par le vrai robot, mais comptées (interdits_recus) : les
+    tests vérifient qu'il n'en arrive jamais. 7105 passe par FauxSport (logique.py) ;
+  - vague 5 (section 12.6 du plan), fidèle au 27/10 : le mode de marche après « Démarrer » est
+    501 (la marche normale de la télécommande) ; 7105 marche dans MODES_MARCHE (500, 501, 801)
+    et en course (802) ; hors marche (assis, pas démarré...), il répond 0 sans bouger, comme le
+    vrai en mode 3 (hors_marche « ignorer », défaut ; « refuser » : 7301, l'ancien faux G1) ;
+    le mode se change aussi d'un coup par changer_mode (sujet d'essai /g1_jumeau/mode) ;
   - arm : gestes 7106 {"action_id"} (7402 inconnu, 7404 hors de 500/501/801, 7400 si rt/arm_sdk
     pilote les bras, 7401 pour un autre geste pendant que les bras tiennent le précédent ; 99, ou
     le même geste, les relâche ; un geste tient au plus 20 s), liste 7107, gestes appris 7108 ;
@@ -26,12 +30,22 @@ import math
 from pathlib import Path
 import sys
 
-FSM_MARCHE = 801
+from .logique import lire_set_velocity
+
+# Mode de marche après « Démarrer » (500 puis 501) et après une posture qui relève le robot (702) :
+# 501, la marche normale lue le 27/10 sur le vrai G1 (vague 5, section 12.6 du plan)
+FSM_MARCHE = 501
 POSTURES = (0, 1, 3, 500, 702, 706)
 FSM_GESTES = (500, 501, 801)
 # Modes où le vrai robot marche (vague 5, section 12.6 du plan) : copie exacte de
 # atelier.lieu.pilotage.MODES_MARCHE, comparée par atelier/tests/test_contrats_vague5.py
 MODES_MARCHE = (500, 501, 801)
+MODES_COURSE = (802,)           # la course : 7105 appliqué (le pont, lui, le refuse par défaut)
+# 7105 hors marche : « ignorer » (code 0 sans bouger, comme le vrai en mode 3 le 27/10) ou
+# « refuser » (7301, comme le faux G1 d'avant la vague 5)
+HORS_MARCHE = ('ignorer', 'refuser')
+# Postures que l'Atelier n'envoie jamais (7101) : refusées par le faux G1 et comptées
+POSTURES_JAMAIS = (2, 4, 501, 801, 802)
 DANSE_PREFIXE = 550000
 GESTES = {99: 'release '
               'arm', 11: 'two-hand kiss', 12: 'left kiss', 13: 'right kiss', 15: 'hands up',
@@ -40,7 +54,7 @@ GESTES = {99: 'release '
 TENUE_MAX_S = 20.0              # un geste tient les bras au plus 20 s (SDK C++)
 # rt/arm_sdk pilote les bras : poids > 0 reçu il y a moins de ce temps
 ARM_SDK_ACTIF_S = 0.5
-DUREES_POSTURE_S = {500: 1.0, 702: 2.0}     # 500 puis 801, 702 puis 801
+DUREES_POSTURE_S = {500: 1.0, 702: 2.0}     # 500 puis 501, 702 puis 501
 # Danses du faux G1 : celles essayées par la communauté, l'accueil, et les interdites (pour les
 # refus)
 DANSES = {602: ('popping', 9.0), 603: ('capture', 12.0), 604: ('robot_dance', 18.2),
@@ -93,12 +107,18 @@ def entier(v):
 class FauxG1:
     """Services sport (modes, danses, tâches), arm et voice du faux G1 ; 7105 par FauxSport."""
 
-    def __init__(self, sport, horloge=None, fsm=FSM_MARCHE, danses=None, echelle_danses=1.0):
+    def __init__(self, sport, horloge=None, fsm=FSM_MARCHE, danses=None, echelle_danses=1.0,
+                 hors_marche='ignorer'):
         # FauxSport : 7105, pannes, échéance de la consigne
         self.sport = sport
         self.horloge = horloge or sport.horloge
         self.fsm = int(fsm)
-        self.fsm_suivant = None                  # (mode, instant) : 500 → 801, 702 → 801
+        self.fsm_suivant = None                  # (mode, instant) : 500 → 501, 702 → 501
+        if hors_marche not in HORS_MARCHE:
+            raise ValueError(f'hors_marche « {hors_marche} » inconnu : ignorer ou refuser')
+        self.hors_marche = hors_marche
+        self.ignores_hors_marche = 0             # 7105 non nuls reçus hors marche (code 0, rien)
+        self.fsm_avant_danse = None              # mode de marche où revenir après une danse
         self.danses = dict(DANSES if danses is None else danses)
         self.echelle_danses = float(echelle_danses)
         self.danse = None                        # {id, debut, fin}
@@ -123,15 +143,30 @@ class FauxG1:
         return float(self.horloge())
 
     def mettre_a_jour(self, t=None):
-        """Fins de transition (500 → 801, 702 → 801), de danse et de geste tenu."""
+        """Fins de transition (500 → 501, 702 → 501), de danse et de geste tenu."""
         t = self.maintenant() if t is None else t
         if self.fsm_suivant is not None and t >= self.fsm_suivant[1]:
             self.fsm, self.fsm_suivant = self.fsm_suivant[0], None
         if self.danse is not None and t >= self.danse['fin']:
             self.danse = None
-            self.fsm = FSM_MARCHE
+            self.fsm = self.fsm_avant_danse or FSM_MARCHE       # retour au mode d'avant la danse
         if self.tenu is not None and t - self.tenu[1] >= TENUE_MAX_S:
             self.tenu = None
+
+    def marche_possible(self):
+        """Vrai si 7105 fait marcher le robot maintenant : mode de marche ou course, sans danse."""
+        return self.danse is None and (self.fsm in MODES_MARCHE or self.fsm in MODES_COURSE)
+
+    def changer_mode(self, fsm):
+        """Mode changé d'un coup (sujet d'essai /g1_jumeau/mode : télécommande simulée)."""
+        if isinstance(fsm, bool) or not isinstance(fsm, int) or fsm < 0:
+            raise ValueError(f'mode {fsm!r} impossible : un nombre entier positif (ex. 3, 501)')
+        self.fsm, self.fsm_suivant = int(fsm), None
+        self.danse = None
+        if self.fsm not in FSM_GESTES:
+            self.tenu = None
+        if not self.marche_possible():
+            self.sport.consigne_en_cours, self.sport.fin = (0.0, 0.0, 0.0), None
 
     def etat(self):
         t = self.maintenant()
@@ -147,6 +182,8 @@ class FauxG1:
             'postures': list(self.postures[-20:]),
             'interdits_recus': list(self.interdits_recus[-20:]),
             'nombre_interdits': len(self.interdits_recus),
+            'marche_possible': self.marche_possible(), 'hors_marche': self.hors_marche,
+            'ignores_hors_marche': self.ignores_hors_marche,
             'requetes_services': dict(self.requetes),
             'voix': {'tts': self.tts, 'tts_nombre': len(self.tts_historique),
                      'volume': self.volume,
@@ -177,18 +214,27 @@ class FauxG1:
         return reponse
 
     def _marche(self, parametre):
-        """7105 : refusé (7301) hors de 500/801 ou pendant une danse, sauf l'arrêt (sans effet)."""
+        """
+        7105 : appliqué en marche (MODES_MARCHE) et en course (802), par FauxSport.
+
+        Pendant une danse : refusé (7301), sauf l'arrêt. Hors marche (assis, pas démarré...) :
+        code 0 sans bouger, comme le vrai robot assis le 27/10 (hors_marche « ignorer ») ; ou 7301
+        (« refuser »). L'arrêt passe toujours, sans effet.
+        """
         self.mettre_a_jour()
-        hors_marche = self.danse is not None or self.fsm not in (500, FSM_MARCHE)
-        if self.sport.panne == 'aucune' and hors_marche:
-            d = lire_json(parametre) or {}
-            vitesse = d.get('velocity')
-            nul = isinstance(vitesse, list) and all(isinstance(v, (int, float)) and abs(v) < 1e-9
-                                                    for v in vitesse)
+        if self.sport.panne == 'aucune' and not self.marche_possible():
+            try:
+                vitesse = lire_set_velocity(parametre)[:3]
+            except ValueError:
+                return (self.sport.traiter(7105, parametre), '')   # illisible : 3204, partout
+            nul = all(abs(v) < 1e-9 for v in vitesse)
             self.sport.requetes += 1
             self.sport.reponses += 1
-            if nul:
-                self.sport.consigne_en_cours, self.sport.fin = (0.0, 0.0, 0.0), None
+            self.sport.consigne_en_cours, self.sport.fin = (0.0, 0.0, 0.0), None
+            refuser = self.danse is not None or self.hors_marche == 'refuser'
+            if nul or not refuser:
+                if not nul:
+                    self.ignores_hors_marche += 1
                 self.sport.dernier_code = CODE_OK
                 return (CODE_OK, '')
             self.sport.dernier_code = CODE_MODE
@@ -218,7 +264,7 @@ class FauxG1:
             tache = d.get('data')
             if not entier(tache) or tache not in (0, 1, 2, 3):
                 return (CODE_TACHE, '')
-            if self.danse is not None or self.fsm not in (500, FSM_MARCHE):
+            if self.danse is not None or self.fsm not in MODES_MARCHE:
                 return (CODE_MODE, '')
             self.taches.append(tache)
             return (CODE_OK, '')
@@ -236,12 +282,14 @@ class FauxG1:
             n = fsm - DANSE_PREFIXE
             if n not in self.danses:
                 code = CODE_FSM_INCONNU
-            elif self.fsm != FSM_MARCHE:
+            elif self.fsm not in MODES_MARCHE:
                 code = CODE_MODE
             else:
                 duree = self.danses[n][1] * self.echelle_danses
                 self.danse = {'id': n, 'debut': t, 'fin': t + duree}
                 self.danses_jouees.append(n)
+                # retour au mode de marche d'avant (501 ou 801 ; 500 : la marche qui suit, 501)
+                self.fsm_avant_danse = self.fsm if self.fsm in (501, 801) else FSM_MARCHE
                 self.fsm, self.fsm_suivant = fsm, None
                 self.tenu = None
                 code = CODE_OK
@@ -250,7 +298,7 @@ class FauxG1:
         elif fsm in POSTURES:
             code = CODE_OK
             if fsm == 706:
-                self.fsm = 706 if self.fsm in (500, FSM_MARCHE) else FSM_MARCHE
+                self.fsm = 706 if self.fsm in MODES_MARCHE else FSM_MARCHE
                 self.fsm_suivant = None
             elif fsm in DUREES_POSTURE_S:
                 self.fsm, self.fsm_suivant = fsm, (FSM_MARCHE, t + DUREES_POSTURE_S[fsm])
@@ -260,7 +308,7 @@ class FauxG1:
                 self.tenu = None
         else:
             code = CODE_FSM_INCONNU
-            if fsm in (2, 4, FSM_MARCHE):
+            if fsm in POSTURES_JAMAIS:
                 self.interdits_recus.append(('sport', 7101, json.dumps({'data': fsm})))
         self.postures.append((round(t, 3), fsm, code))
         return (code, '')

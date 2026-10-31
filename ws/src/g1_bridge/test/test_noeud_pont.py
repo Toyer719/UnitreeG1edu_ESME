@@ -4,8 +4,10 @@ Le nœud pont_g1 en vrai (ROS 2, sans Gazebo) : le test joue le robot (outils_po
 Arrêt de lancement et vérification du lien, cadence de 10 Hz, chien de garde de 0,3 s,
 plafonds et NaN, /guide/stop et sa garde, verrou /pont/arret (y compris après un redémarrage du
 pont : transient_local), repérage exigé, robot muet, refus, arrêt envoyé à la sortie (SIGINT et
-SIGTERM), réglage refusé, temps simulé sans effet, aucune publication hors du contrat. Chaque
-/pont/etat reçu est validé par le schéma etat_pont. Environ 1 min 30.
+SIGTERM), réglage refusé, temps simulé sans effet, aucune publication hors du contrat. Vague 5
+(section 12.6) : vitesse minimale (0,1 m/s envoyé à 0,2), vx_max sous le minimum refusé, lecture du
+mode à 1 Hz, robot assis (pas_en_marche) puis démarré, réponses des autres programmes ignorées.
+Chaque /pont/etat reçu est validé par le schéma etat_pont. Environ 2 min.
 """
 import signal
 import time
@@ -333,3 +335,125 @@ def test_publications_du_contrat_seulement(robot, lancer):
     abonnements = dict(robot.noeud.get_subscriber_names_and_types_by_node('pont_g1', '/'))
     assert {'/cmd_vel', '/api/sport/response', '/reperage/etat', '/guide/stop',
             '/pont/arret'} <= set(abonnements)
+
+
+# ---------------------------------------------------------------- vague 5 (section 12.6)
+
+def test_marche_lente_envoyee_a_la_vitesse_minimale(robot, lancer):
+    """Marche à 0,1 m/s (le 27/10, aucun pas) : 7105 à 0,2 ; wz 0,15 seul : 0,3 ; 0,03 : rien."""
+    demarre(robot, lancer)
+    t0 = time.monotonic()
+    robot.cmd_vel = (0.1, 0.0, 0.0)
+    etat = robot.attendre_etat('en_mouvement', delai=2.0)
+    time.sleep(1.0)
+    robot.cesser('cmd_vel')
+    assert etat['demande'] == {'vx': 0.1, 'vy': 0.0, 'wz': 0.0}
+    assert etat['consigne'] == {'vx': 0.2, 'vy': 0.0, 'wz': 0.0}
+    assert etat['minimums']['vitesse_min_lin'] == 0.2
+    mouvement = [m for _, m in robot.requetes_depuis(t0) if not est_arret(m)]
+    assert mouvement and all(vitesses(m) == (0.2, 0.0, 0.0, 0.5) for m in mouvement)
+    time.sleep(0.5)
+    debut, fin = marcher(robot, (0.0, 0.0, 0.15), 1.0)
+    mouvement = [m for _, m in robot.requetes_depuis(debut, fin) if not est_arret(m)]
+    assert mouvement and all(vitesses(m) == (0.0, 0.0, 0.3, 0.5) for m in mouvement)
+    time.sleep(0.5)
+    debut, fin = marcher(robot, (0.03, 0.0, 0.0), 1.0)
+    assert all(est_arret(m) for _, m in robot.requetes_depuis(debut))
+
+
+def test_vx_max_sous_la_vitesse_minimale_refuse(lancer):
+    pont = lancer('-p', 'vx_max:=0.1')
+    assert pont.attendre(15) == 1
+    texte = pont.texte()
+    assert 'réglage refusé' in texte and 'vx_max 0,1 est sous la vitesse minimale' in texte
+    # Mesure au portique : accepté avec les minimums à 0, et signalé dans le journal
+    mesure = lancer('-p', 'vx_max:=0.1', '-p', 'wz_max:=0.15', '-p', 'vitesse_min_lin:=0.0',
+                    '-p', 'vitesse_min_rot:=0.0', '-p', 'zone_morte_lin:=0.0',
+                    '-p', 'zone_morte_rot:=0.0', nom='pont_mesure')
+    time.sleep(4.0)
+    assert mesure.vivant(), mesure.texte()[-500:]
+    assert 'vitesse minimale désactivée' in mesure.texte()
+
+
+def test_lecture_du_mode_une_fois_par_seconde(robot, lancer):
+    demarre(robot, lancer)
+    time.sleep(1.0)
+    t0 = time.monotonic()
+    time.sleep(4.0)
+    lectures = robot.lectures_depuis(t0)
+    assert 3 <= len(lectures) <= 5, len(lectures)
+    assert all(m.parameter == '{}' and m.header.identity.api_id == 7001 for _, m in lectures)
+    etat = robot.dernier_etat()
+    assert etat['mode_robot']['fsm'] == 501 and etat['mode_robot']['en_marche'] is True
+    assert etat['envoyees'] == etat['reponses']           # les lectures ne comptent pas
+    assert robot.requetes_depuis(t0) == []                # au repos, aucun 7105
+
+
+def test_robot_assis_pas_en_marche_puis_demarre(robot, lancer):
+    demarre(robot, lancer)
+    robot.cmd_vel = (0.3, 0.0, 0.0)
+    robot.attendre_etat('en_mouvement', delai=2.0)
+    t_assis = time.monotonic()
+    robot.fsm = 3                                          # assis à la télécommande
+    etat = robot.attendre_etat('pas_en_marche', delai=2.5)
+    assert 'assis' in etat['message'] and 'télécommande' in etat['message']
+    assert etat['mode_robot']['fsm'] == 3 and not etat['mouvement_permis']
+    # l'état change à la réponse de la lecture ; l'arrêt part au pas suivant (20 ms au plus)
+    arret = robot.attendre(lambda: premier_arret(robot, t_assis), 1.0, 'pas d\'arrêt (assis)')
+    assert arret - t_assis < 1.5
+    time.sleep(1.5)
+    assert all(est_arret(m) for _, m in robot.requetes_depuis(arret + MARGE_S))
+    robot.cesser('cmd_vel')
+    # « Démarrer » : 500 puis 501 ; prêt, rien ne part sans /cmd_vel neuf
+    robot.fsm = 500
+    robot.attendre_etat('pret', delai=2.5)
+    robot.fsm = 501
+    time.sleep(1.5)
+    t0 = time.monotonic()
+    time.sleep(1.0)
+    assert robot.requetes_depuis(t0) == [] and robot.dernier_etat()['etat'] == 'pret'
+    debut, fin = marcher(robot, (0.3, 0.0, 0.0), 1.0)
+    assert any(not est_arret(m) for _, m in robot.requetes_depuis(debut))
+
+
+def test_course_et_mode_inconnu(robot, lancer):
+    """Course (802) : pas_en_marche ; réponse sans data (mode inconnu) : rien n'est bloqué."""
+    demarre(robot, lancer)
+    robot.fsm = 802
+    etat = robot.attendre_etat('pas_en_marche', delai=2.5)
+    assert 'mode course' in etat['message']
+    robot.fsm = None
+    etat = robot.attendre_etat('pret', delai=2.5)
+    assert etat['mode_robot']['fsm'] is None and etat['mode_robot']['en_marche'] is None
+    debut, fin = marcher(robot, (0.3, 0.0, 0.0), 1.0)
+    assert any(not est_arret(m) for _, m in robot.requetes_depuis(debut))
+
+
+def test_reponses_des_autres_programmes_ignorees(robot, lancer):
+    """Rafale de réponses à d'autres programmes (7001 « assis », 7105 refusés) : rien ne change."""
+    demarre(robot, lancer)
+    robot.cmd_vel = (0.3, 0.0, 0.0)
+    robot.attendre_etat('en_mouvement', delai=2.0)
+    fin = time.monotonic() + 3.0
+    i = 0
+    while time.monotonic() < fin:
+        robot.reponse_etrangere(10 ** 9 + i, 7001, '{"data": 3}')
+        robot.reponse_etrangere(2 * 10 ** 9 + i, 7105, '', code=7301)
+        i += 1
+        time.sleep(0.005)
+    etat = robot.dernier_etat()
+    robot.cmd_vel = None
+    assert i > 200
+    assert etat['etat'] == 'en_mouvement' and etat['code'] == 0, etat
+    assert etat['mode_robot']['fsm'] == 501 and etat['reponses'] <= etat['envoyees']
+
+
+@pytest.mark.parametrize('reglage,mot', [('modes_marche:=501', 'modes_marche'),
+                                         ('lire_mode:=3', 'lire_mode'),
+                                         ('vitesse_min_lin:=0.5', 'vitesse_min_lin')])
+def test_reglages_de_la_vague_5_refuses_en_francais(lancer, reglage, mot):
+    """Mauvais type ou valeur : le pont ne démarre pas et dit quoi corriger, sans trace Python."""
+    pont = lancer('-p', reglage)
+    assert pont.attendre(15) == 1
+    texte = pont.texte()
+    assert 'réglage refusé' in texte and mot in texte and 'Traceback' not in texte

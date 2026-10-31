@@ -14,6 +14,9 @@ du plan :
   - binary : vide.
 L'arrêt est {"velocity": [0.0, 0.0, 0.0], "duration": 1.0} : StopMove du SDK.
 
+Vague 5 (section 12.6 du plan) : la lecture du mode du robot, 7001 (GetFsmId), même en-tête, avec
+le parameter « {} » de LocoClient.GetFsmId du SDK Python ; la réponse porte {"data": N} dans data.
+
 Ce module ne dépend pas de ROS : remplir_requete accepte tout objet qui a les champs de
 unitree_api/msg/Request (le vrai message, ou un faux dans les tests).
 """
@@ -25,6 +28,8 @@ import time
 SUJET_REQUETE = '/api/sport/request'
 SUJET_REPONSE = '/api/sport/response'
 API_SET_VELOCITY = 7105
+# Lecture du mode du robot (GetFsmId) : réponse {"data": N} (atelier.lieu.API_SPORT_GET_FSM_ID)
+API_GET_FSM_ID = 7001
 
 # Durée d'un arrêt : StopMove du SDK appelle SetVelocity(0, 0, 0) avec sa durée par défaut, 1 s
 DUREE_ARRET_S = 1.0
@@ -41,6 +46,23 @@ def parametre_vitesse(vx, vy, wz, duree):
 def parametre_arret(duree=DUREE_ARRET_S):
     """Texte JSON d'un arrêt : vitesses nulles pendant duree (1 s, comme StopMove)."""
     return parametre_vitesse(0.0, 0.0, 0.0, duree)
+
+
+def parametre_lecture_mode():
+    """Texte JSON du champ parameter d'un 7001 (GetFsmId) : « {} », comme le SDK Python."""
+    return json.dumps({})
+
+
+def lire_mode(data):
+    """Mode (entier ≥ 0) de la réponse à 7001 ({"data": N}) ; None si elle est illisible."""
+    try:
+        d = json.loads(data) if data else None
+    except (TypeError, ValueError):
+        return None
+    v = d.get('data') if isinstance(d, dict) else None
+    if isinstance(v, bool) or not isinstance(v, int) or v < 0:
+        return None
+    return v
 
 
 def remplir_requete(requete, identifiant, parametre, api_id=API_SET_VELOCITY):

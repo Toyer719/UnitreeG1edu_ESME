@@ -64,11 +64,27 @@ def test_vitesse_reduite(monkeypatch):
     monkeypatch.delenv('G1_VITESSE_MAX', raising=False)
     commande.main(['navigation', '--lieu', 'demo', '--etage', 'rdc', '--vitesse-max', '0.2'])
     assert lance[-1][-1] == 'vitesse_max:=0.2'
-    monkeypatch.setenv('G1_VITESSE_MAX', '0.15')
+    monkeypatch.setenv('G1_VITESSE_MAX', '0.25')
     commande.main(['navigation', '--lieu', 'demo', '--etage', 'rdc'])
-    assert lance[-1][-1] == 'vitesse_max:=0.15'
+    assert lance[-1][-1] == 'vitesse_max:=0.25'
     commande.main(['navigation', '--lieu', 'demo', '--etage', 'rdc', '--vitesse-max', '0.3'])
     assert lance[-1][-1] == 'vitesse_max:=0.3'
+
+
+@pytest.mark.parametrize('valeur', ['0.15', '0,1', '0.5', 'vite', 'nan', '-0.2'])
+def test_vitesse_reduite_refusee_avant_le_lancement(monkeypatch, capsys, valeur):
+    """Vague 5 : sous 0,2 m/s (ou absurde), refusée tout de suite, sans lancer ROS."""
+    lance = []
+    monkeypatch.setattr(commande.os, 'execvp', lambda prog, args: lance.append(args))
+    monkeypatch.delenv('G1_VITESSE_MAX', raising=False)
+    assert commande.main(['navigation', '--lieu', 'demo', '--etage', 'rdc',
+                          '--vitesse-max', valeur]) == 2
+    erreur = capsys.readouterr().err
+    assert lance == [] and erreur.startswith('g1-guide : --vitesse-max')
+    if valeur in ('0.15', '0,1'):
+        assert 'le robot ne marche pas sous 0,2 m/s' in erreur
+    monkeypatch.setenv('G1_VITESSE_MAX', '0.1')
+    assert commande.main(['navigation', '--lieu', 'demo', '--etage', 'rdc']) == 2
 
 
 def test_aller_en_json_et_sans_personnes(monkeypatch):

@@ -1,9 +1,10 @@
 """
 Faux G1 étendu, sans ROS (section 11.5 du plan).
 
-Modes et refus du service sport, danses (liste 7100, lecture, retour en 801), gestes (7401,
-7404, 7400, 99), voix, LED, commandes interdites comptées, vérification de rt/arm_sdk et bras
-simulés de /lowstate.
+Modes et refus du service sport, danses (liste 7100, lecture, retour au mode d'avant), gestes
+(7401, 7404, 7400, 99), voix, LED, commandes interdites comptées, vérification de rt/arm_sdk et
+bras simulés de /lowstate. Vague 5 (section 12.6) : marche en 501, 7105 hors marche accepté sans
+bouger (ou refusé), course 802, mode changé d'un coup, seuil de marche.
 """
 import json
 
@@ -45,21 +46,24 @@ def vitesse(vx, d=0.5):
 
 
 def test_modes_et_transitions(g1, h):
-    assert fsm(g1) == 801                         # debout, prêt à marcher (posé par l'utilisateur)
+    assert fsm(g1) == 501                   # en marche (posé par l'utilisateur), comme le 27/10
     assert sport(g1, 7101, {'data': 706}) == (0, '') and fsm(g1) == 706
-    assert sport(g1, 7105, vitesse(0.3))[0] == 7301                 # accroupi : pas de marche
+    # accroupi : 7105 accepté (code 0) sans bouger, comme le vrai robot assis le 27/10
+    assert sport(g1, 7105, vitesse(0.3)) == (0, '') and g1.sport.consigne() == (0.0, 0.0, 0.0)
+    assert g1.etat()['ignores_hors_marche'] == 1 and not g1.etat()['marche_possible']
     assert sport(g1, 7105, {'velocity': [0, 0, 0], 'duration': 1.0}) == (0, '')   # l'arrêt passe
-    assert sport(g1, 7101, {'data': 706}) == (0, '') and fsm(g1) == 801
+    assert sport(g1, 7101, {'data': 706}) == (0, '') and fsm(g1) == 501
     assert sport(g1, 7101, {'data': 3}) == (0, '') and fsm(g1) == 3
     assert sport(g1, 7101, {'data': 500}) == (0, '') and fsm(g1) == 500
+    assert sport(g1, 7105, vitesse(0.2)) == (0, '') and g1.sport.consigne() == (0.2, 0.0, 0.0)
     h.t += 1.01
-    assert fsm(g1) == 801
+    assert fsm(g1) == 501                         # « Démarrer » : 500 pendant 1 s, puis 501
     assert sport(g1, 7105, vitesse(0.3)) == (0, '') and g1.sport.consigne() == (0.3, 0.0, 0.0)
     assert sport(g1, 7101, {'data': 1}) == (0, '') and fsm(g1) == 1
     assert sport(g1, 7101, {'data': 0}) == (0, '') and fsm(g1) == 0
     assert sport(g1, 7101, {'data': 702}) == (0, '') and fsm(g1) == 702
     h.t += 2.01
-    assert fsm(g1) == 801
+    assert fsm(g1) == 501
     assert [p[1:] for p in g1.etat()['postures']] == [(706, 0), (706, 0), (3, 0), (500, 0), (1, 0),
                                                       (0, 0), (702, 0)]
 
@@ -77,9 +81,11 @@ def test_refus_realistes(g1):
 def test_commandes_interdites_comptees(g1):
     for api in (7104, 7110, 7102, 7111):
         assert sport(g1, api, {'data': 1})[0] == 0
-    assert sport(g1, 7101, {'data': 2})[0] == 7302 and sport(g1, 7101, {'data': 801})[0] == 7302
-    assert g1.etat()['nombre_interdits'] == 6
-    assert [x[1] for x in g1.interdits_recus] == [7104, 7110, 7102, 7111, 7101, 7101]
+    for posture in (2, 4, 501, 801, 802):             # postures que l'Atelier n'envoie jamais
+        assert sport(g1, 7101, {'data': posture})[0] == 7302
+    assert fsm(g1) == 501
+    assert g1.etat()['nombre_interdits'] == 9
+    assert [x[1] for x in g1.interdits_recus] == [7104, 7110, 7102, 7111] + [7101] * 5
 
 
 def test_liste_et_lecture_des_danses(g1, h):
@@ -100,10 +106,17 @@ def test_liste_et_lecture_des_danses(g1, h):
     assert sport(g1, 7101, {'data': 500})[0] == 7301
     assert g1.traiter('arm', 7106, json.dumps({'action_id': 26}))[0] == 7404
     h.t += 18.21
-    assert fsm(g1) == 801 and g1.etat()['danse'] is None and g1.danses_jouees == [604]
+    assert fsm(g1) == 501 and g1.etat()['danse'] is None and g1.danses_jouees == [604]
 
 
-def test_danse_hors_de_801_refusee(g1):
+def test_danse_depuis_801_retour_en_801(h):
+    g1 = FauxG1(FauxSport(horloge=h), fsm=801)
+    assert sport(g1, 7101, {'data': 550602}) == (0, '') and fsm(g1) == 550602
+    h.t += 9.01
+    assert fsm(g1) == 801
+
+
+def test_danse_hors_de_la_marche_refusee(g1):
     sport(g1, 7101, {'data': 3})
     assert sport(g1, 7101, {'data': 550604})[0] == 7301
 
@@ -156,7 +169,64 @@ def test_panne_muet_sur_tous_les_services(g1):
     assert g1.traiter('voice', 1010, json.dumps({'R': 1, 'G': 2, 'B': 3})) is None
     assert sport(g1, 7001) is None and sport(g1, 7105, vitesse(0.2)) is None
     g1.sport.changer_panne('aucune')
-    assert fsm(g1) == 801
+    assert fsm(g1) == 501
+
+
+# ---------------------------------------------------------------- vague 5 : modes et 7105
+
+def test_hors_marche_refuser_comme_avant(h):
+    g1 = FauxG1(FauxSport(horloge=h), fsm=3, hors_marche='refuser')
+    assert sport(g1, 7105, vitesse(0.3)) == (7301, '')
+    assert sport(g1, 7105, {'velocity': [0, 0, 0], 'duration': 1.0}) == (0, '')
+    assert g1.etat()['ignores_hors_marche'] == 0
+    with pytest.raises(ValueError, match='ignorer ou refuser'):
+        FauxG1(FauxSport(horloge=h), hors_marche='oublier')
+
+
+def test_parametres_illisibles_refuses_meme_hors_marche(h):
+    g1 = FauxG1(FauxSport(horloge=h), fsm=3)
+    assert g1.traiter('sport', 7105, 'pas du json') == (3204, '')
+    assert sport(g1, 7105, {'velocity': [0.1, 0.0], 'duration': 0.5}) == (3204, '')
+    assert g1.etat()['ignores_hors_marche'] == 0
+
+
+def test_course_802_marche(h):
+    g1 = FauxG1(FauxSport(horloge=h), fsm=802)
+    assert fsm(g1) == 802 and g1.etat()['marche_possible']
+    assert sport(g1, 7105, vitesse(0.3)) == (0, '') and g1.sport.consigne() == (0.3, 0.0, 0.0)
+
+
+def test_mode_change_d_un_coup(g1, h):
+    """Sujet d'essai /g1_jumeau/mode : la télécommande simulée (assis, course, marche)."""
+    assert sport(g1, 7105, vitesse(0.3, 5.0)) == (0, '') and g1.sport.consigne()[0] == 0.3
+    g1.changer_mode(3)                             # assis en pleine marche : il s'arrête
+    assert fsm(g1) == 3 and g1.sport.consigne() == (0.0, 0.0, 0.0)
+    g1.changer_mode(802)
+    assert fsm(g1) == 802
+    sport(g1, 7101, {'data': 550604})
+    g1.changer_mode(501)
+    assert fsm(g1) == 501
+    sport(g1, 7101, {'data': 550604})
+    assert g1.etat()['danse'] is not None
+    g1.changer_mode(0)                             # même pendant une danse
+    assert fsm(g1) == 0 and g1.etat()['danse'] is None
+    for faux in (-1, 'marche', True, 3.5):
+        with pytest.raises(ValueError):
+            g1.changer_mode(faux)
+
+
+def test_7001_rend_toujours_le_mode(g1, h):
+    for mode in (0, 1, 3, 500, 501, 702, 706, 801, 802):
+        g1.changer_mode(mode)
+        assert sport(g1, 7001) == (0, json.dumps({'data': mode}))
+
+
+def test_seuil_de_marche_par_le_faux_g1(h):
+    """Avec le seuil du nœud (0,15 m/s ; 0,2 rad/s) : 0,1 m/s ne bouge pas, 0,2 m/s marche."""
+    g1 = FauxG1(FauxSport(horloge=h, seuil_lin=0.15, seuil_rot=0.2))
+    assert sport(g1, 7105, vitesse(0.1)) == (0, '') and g1.sport.consigne() == (0.0, 0.0, 0.0)
+    assert sport(g1, 7105, vitesse(0.2)) == (0, '') and g1.sport.consigne() == (0.2, 0.0, 0.0)
+    assert g1.sport.sous_seuil == 1
 
 
 # ---------------------------------------------------------------- rt/arm_sdk vérifié

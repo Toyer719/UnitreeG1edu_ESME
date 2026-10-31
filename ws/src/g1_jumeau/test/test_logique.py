@@ -160,3 +160,37 @@ def test_valeurs_du_contrat():
     lieu = pytest.importorskip('atelier.lieu')
     o = OdometrieDerivee()
     assert (o.echelle, o.lacet_par_m) == (lieu.DERIVE_ECHELLE, lieu.DERIVE_LACET_PAR_M)
+
+
+# ---------------------------------------------------------------- vague 5 : seuil de marche
+
+@pytest.mark.parametrize('consigne,faite', [
+    ((0.1, 0.0, 0.0), (0.0, 0.0, 0.0)),            # le 27/10 : 0,1 m/s, aucun pas
+    ((0.2, 0.0, 0.0), (0.2, 0.0, 0.0)),            # 0,2 m/s : il marche
+    ((0.1, 0.1, 0.0), (0.0, 0.0, 0.0)),            # norme 0,14 : sous 0,15
+    ((0.12, 0.1, 0.05), (0.12, 0.1, 0.05)),        # norme 0,156 : tout est appliqué
+    ((0.1, 0.0, 0.3), (0.0, 0.0, 0.3)),            # trop lent pour avancer : il tourne
+    ((0.0, 0.0, 0.15), (0.0, 0.0, 0.0)),           # rotation sous 0,2 : rien
+    ((0.0, 0.0, -0.3), (0.0, 0.0, -0.3)),
+    ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))])
+def test_seuil_de_marche(consigne, faite):
+    h = Horloge()
+    sport = FauxSport(horloge=h, seuil_lin=0.15, seuil_rot=0.2)
+    assert sport.traiter(7105, parametre(*consigne, 0.5)) == 0          # toujours accepté
+    assert sport.consigne() == pytest.approx(faite)
+    assert sport.appliquees == 1
+    assert sport.sous_seuil == (1 if faite != consigne else 0)
+
+
+def test_sans_seuil_par_defaut():
+    sport = FauxSport(horloge=Horloge())
+    assert (sport.seuil_lin, sport.seuil_rot) == (0.0, 0.0)
+    sport.traiter(7105, parametre(0.01, 0.0, 0.01, 0.5))
+    assert sport.consigne() == (0.01, 0.0, 0.01)
+
+
+@pytest.mark.parametrize('seuils', [(-0.1, 0.2), (0.15, math.nan), (2.0, 0.2), (True, 0.2),
+                                    ('0.15', 0.2)])
+def test_seuils_absurdes_refuses(seuils):
+    with pytest.raises(ValueError):
+        FauxSport(horloge=Horloge(), seuil_lin=seuils[0], seuil_rot=seuils[1])
