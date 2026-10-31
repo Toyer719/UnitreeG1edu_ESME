@@ -139,7 +139,7 @@ export function ouvrir(racine, options) {
   const titre = el(haut, 'div', 'scan-titre', null, 'scan-titre');
   const compteurs = el(haut, 'div', 'scan-compteurs', null, 'scan-compteurs');
   const valeurs = {};
-  [['duree', 'Durée'], ['distance', 'Distance'], ['points', 'Points'], ['nuages', 'Nuages']].forEach((c) => {
+  [['duree', 'Durée'], ['distance', 'Distance'], ['points', 'Points mesurés'], ['nuages', 'Nuages']].forEach((c) => {
     const b = el(compteurs, 'div', 'scan-compteur');
     b.dataset.compteur = c[0];
     el(b, 'span', 'scan-compteur-valeur', '—');
@@ -154,8 +154,9 @@ export function ouvrir(racine, options) {
     b.addEventListener('click', action);
     return b;
   };
+  // une barre de vues comme celle de la carte 3D (Dessus, Iso, Suivre, plafond, taille des points)
   boutonOutil('Dessus', 'Regarder l\'étage de dessus', () => nuage.vue('dessus'));
-  boutonOutil('Vue 3D', 'Regarder l\'étage en biais', () => nuage.vue('iso'));
+  boutonOutil('Iso', 'Regarder l\'étage en biais', () => nuage.vue('iso'));
   const boutonSuivre = boutonOutil('Suivre', 'La vue suit le robot', () => nuage.suivre(true));
   boutonSuivre.dataset.role = 'scan-suivre';
   const casePlafond = el(outilsVue, 'label', 'scan-outil scan-case');
@@ -165,6 +166,18 @@ export function ouvrir(racine, options) {
   casePlafond.appendChild(document.createTextNode(' Plafond'));
   casePlafond.title = 'Montrer aussi les points au-dessus de 2,2 m';
   entreePlafond.addEventListener('change', () => nuage.plafond(entreePlafond.checked));
+  const ligneTaille = el(outilsVue, 'label', 'scan-outil scan-taille');
+  ligneTaille.title = 'Taille des points';
+  ligneTaille.appendChild(document.createTextNode('Points '));
+  const curseurTaille = el(ligneTaille, 'input');
+  curseurTaille.type = 'range';
+  curseurTaille.min = '0.4';
+  curseurTaille.max = '2.5';
+  curseurTaille.step = '0.1';
+  curseurTaille.value = '1';
+  curseurTaille.dataset.role = 'scan-taille-points';
+  curseurTaille.setAttribute('aria-label', 'Taille des points');
+  curseurTaille.addEventListener('input', () => nuage.facteurTaille(curseurTaille.value));
   const message = el(ecran, 'p', 'scan-message', '', 'scan-message');
   const teleopZone = el(ecran, 'div', 'scan-teleop', null, 'scan-teleop');
   teleopZone.hidden = true;
@@ -305,7 +318,9 @@ export function ouvrir(racine, options) {
     valeurs.duree.textContent = s ? texteDuree(s.etat === 'en_cours' ? dureeSession(s) : st.duree_s) : '—';
     valeurs.distance.textContent = st.distance_m !== undefined ? nb(st.distance_m, 1) + ' m' : '—';
     valeurs.points.textContent = entier(st.points);
-    valeurs.nuages.textContent = entier(st.nuages);
+    // le résultat : le même nombre de nuages que le résumé (ceux relus pour fabriquer la carte)
+    const relus = s && etat.nuagesRelus && etat.nuagesRelus.session === s.id ? etat.nuagesRelus.nombre : null;
+    valeurs.nuages.textContent = entier(relus !== null && s.etat === 'termine' ? relus : st.nuages);
   }
 
   function vueDe(s) {
@@ -441,6 +456,8 @@ export function ouvrir(racine, options) {
   }
 
   function suivre(session) {
+    // une autre session : l'ancien message (« Pas encore de carte… ») ne reste pas affiché
+    if (session !== etat.suivie && coque && coque.effacerMessage) coque.effacerMessage();
     etat.suivie = session;
     clearTimeout(etat.minuteur);
     interroger();
@@ -481,6 +498,7 @@ export function ouvrir(racine, options) {
         const r = await telechargerNuage(urlScan('nuage', lieu, s.id) + '&apercu=1');
         if (!etat.ferme && r.entete.date !== etat.dateNuage) {
           etat.dateNuage = r.entete.date;
+          nuage.grilleNuage(r.entete.grille);
           nuage.afficherPoints(r.positions, r.entete.bornes);
           ecran.dataset.points = String(r.positions.length / 3);
         }
@@ -528,13 +546,28 @@ export function ouvrir(racine, options) {
       if (rapport.nuages) {
         lignes.push(entier(rapport.nuages.utilises) + ' nuages assemblés sur ' + entier(rapport.nuages.recus)
           + (rapport.nuages.ignores ? ' (' + entier(rapport.nuages.ignores) + ' ignorés)' : '') + '.');
+        etat.nuagesRelus = { session: s.id, nombre: rapport.nuages.recus };
+        valeurs.nuages.textContent = entier(rapport.nuages.recus);
       }
-      if (rapport.affichage) lignes.push(entier(rapport.affichage.points) + ' points dans le nuage 3D.');
+      if (rapport.affichage) {
+        lignes.push(entier(rapport.affichage.points) + ' points gardés dans la carte 3D (un par case de '
+          + nb((rapport.affichage.grille || 0.05) * 100, 0) + ' cm).');
+      }
       if (rapport.mobiles_retires !== undefined) lignes.push(entier(rapport.mobiles_retires) + ' points de passants retirés.');
-      if (rapport.sol) lignes.push('Sol trouvé, penché de ' + nb(rapport.sol.inclinaison_deg, 2) + '°.');
+      if (rapport.sol) {
+        const plat = rapport.sol.methode === 'centile';
+        lignes.push(plat ? 'Sol peu vu : pris à plat (un scan plus long le verra mieux).'
+          : 'Sol trouvé, penché de ' + nb(rapport.sol.inclinaison_deg, 2) + '°.');
+      }
       if (rapport.carte) lignes.push('Carte 2D : ' + rapport.carte.largeur + ' × ' + rapport.carte.hauteur + ' pixels de 5 cm.');
       lignes.forEach((t) => el(resume, 'p', 'scan-note', t));
-      (rapport.avertissements || []).forEach((t) => el(resume, 'p', 'scan-alerte', t));
+      (rapport.avertissements || []).forEach((t) => {
+        // anciennes sessions : la note de développeur sur le repère devient une phrase simple (détail en infobulle)
+        const technique = /^Repère des points/.test(t);
+        const p = el(resume, 'p', 'scan-alerte', technique ? 'Scan du vrai robot : regardez la carte avant de '
+          + 'l\'utiliser, elle ne doit être ni dédoublée ni tournée.' : t);
+        if (technique) p.title = t;
+      });
     } catch (e) {
       // rapport illisible : le résumé reste vide
     }

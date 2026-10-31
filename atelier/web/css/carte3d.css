@@ -247,10 +247,43 @@
   margin-bottom: 4px;
 }
 
+.carte3d-ligne-degrade {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.carte3d-sol {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 8px;
+  border-radius: var(--rayon-pilule);
+  background: var(--nuage-sol);
+  box-shadow: 0 0 0 1px var(--vue-texte-doux);
+}
+
 .carte3d-degrade {
+  flex: 1 1 auto;
   height: 8px;
   border-radius: var(--rayon-pilule);
   background: linear-gradient(to right, var(--nuage-bas), var(--nuage-milieu), var(--nuage-haut));
+}
+
+/* consigne de l'outil de pose, près du pointeur */
+.carte3d-bulle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 4;
+  max-width: 260px;
+  padding: 6px 10px;
+  border-radius: var(--rayon);
+  background: var(--vue-barre);
+  color: var(--vue-texte);
+  font-size: 12.5px;
+  line-height: 1.35;
+  pointer-events: none;
+  box-shadow: var(--ombre-forte);
 }
 
 .carte3d-graduations {

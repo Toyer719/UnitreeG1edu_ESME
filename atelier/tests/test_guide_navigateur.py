@@ -28,7 +28,10 @@ def test_panneau_du_comportement(serveur, navigateur, lieux):
     ouvrir_espace(nav, base, mode="simu", hash_="#simulation")
     nav.ecran("simulation")
     nav.attendre("const p = document.querySelector('[data-role=panneau-comportement]');"
-                 "return p && !p.hidden && p.textContent.includes('Comportement du guide')", message="panneau")
+                 "return p && !p.hidden && !!p.querySelector('.comportement-reglages')", message="panneau")
+    # en Simulation, « Accompagner un visiteur » est dans le ruban (cases et Y aller) : pas de doublon ici
+    assert nav.js("return document.querySelector('.comportement-accompagner').hidden") is True
+    assert nav.js("return document.querySelector('.comportement-faux-visiteur').hidden") is False
     # la section est repliée ; la commande Avancé « Réglages du guide » l'ouvre sur les réglages
     assert nav.js("return document.querySelector('[data-section=comportement]').open") is False
     nav.commande("simulation.reglages-guide")
@@ -39,8 +42,9 @@ def test_panneau_du_comportement(serveur, navigateur, lieux):
     options = nav.js("return Array.from(document.querySelectorAll('.comportement-accompagner option'))"
                      ".map((o) => o.textContent)")
     assert "Accueil (point principal)" in options and "Salle B204" in options
-    # « Guide non lancé », ou l'état d'un guide qui tourne dans le même domaine ROS
-    assert nav.js("return document.querySelector('.comportement-etat').textContent")
+    # l'état du guide n'est dit qu'une fois, en haut du panneau
+    assert nav.js("return document.querySelector('.comportement-etat')") is None
+    assert nav.js("return document.querySelector('[data-role=guide]').textContent")
     nav.attendre("return document.querySelectorAll('.comportement-reglages .champ').length === 8",
                  message="les huit réglages du guide")
     assert nav.js(CHANGER, "Attente à destination avant le retour", 7)

@@ -91,6 +91,7 @@
   --nuage-bas: #2e9e6b;                  /* couleur des points par la hauteur au-dessus du sol : */
   --nuage-milieu: #ccad78;               /* vert (sol) → jaune → rose (2,2 m), comme Unitree Explore */
   --nuage-haut: #db3866;
+  --nuage-sol: #4b5468;                  /* le sol (moins de 0,12 m) : gris bleuté, il ne domine plus la vue */
   --manche: #c9c8c6;                     /* manche des joysticks (dégradé vers --manche-ombre) */
   --manche-ombre: #8e8d8b;
 

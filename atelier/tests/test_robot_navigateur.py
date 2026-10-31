@@ -76,7 +76,7 @@ def test_reperage_dans_naviguer(serveur, navigateur, relais, faux_bin):
     nav.attendre("return document.querySelector('[data-role=consigne-reperage]').textContent.includes('Accueil')",
                  message="consigne de l'accueil")
     texte = nav.js("return document.querySelector('[data-role=consigne-reperage]').textContent")
-    assert texte == "Posez le robot sur l'accueil « Accueil » (étoile sur la carte), tourné dans le sens de la flèche.", texte
+    assert texte == "Posez le robot sur l'accueil «\u00a0Accueil\u00a0» (étoile sur la carte), tourné dans le sens de la flèche.", texte
     nav.vue("plan")
     nav.attendre("return document.querySelector('[data-ecran=simulation] path.marque-principal')",
                  message="accueil entouré sur le plan")
@@ -185,7 +185,7 @@ def test_pont_pas_en_marche_dans_la_coque(faux_pont, serveur, navigateur, faux_b
     pastille = nav.attendre("const p = document.querySelector('[data-role=barre-outils] [data-etat=robot]');"
                             "return p && !p.hidden && p.getAttribute('data-genre') === 'ko' ? [p.textContent, p.title] : null",
                             delai=20.0, message="pastille Robot « pas en marche »")
-    assert "pas en marche" in pastille[0] and "assis" in pastille[1], pastille
+    assert "pas en marche" in pastille[0].lower() and "assis" in pastille[1], pastille
     nav.onglet("naviguer")
     texte = nav.attendre("const p = document.querySelector('.pastille-pont');"
                          "return p && p.textContent.indexOf('pas en mode marche') >= 0 ? p.textContent : null",

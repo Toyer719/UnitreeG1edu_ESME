@@ -94,8 +94,9 @@ def test_page_d_essai(camera_et_visiteurs, serveur, navigateur):
     assert _flux_ouverts(base, 1)
     # l'image analysée par g1-visiteurs : il ne tourne pas, la vue dit quoi faire
     nav.js("document.querySelector('[data-role=essai-source]').click()")
-    nav.attendre("return document.querySelector('[data-role=camera-etat]').textContent.includes('g1-visiteurs --image')",
-                 message="message sans g1-visiteurs")
+    # la phrase dit ce qui manque (sans commande) ; la commande est dans l'infobulle (revue de la vague 5)
+    nav.attendre("const e = document.querySelector('[data-role=camera-etat]'); return e.textContent.includes('visiteurs ne tourne pas')"
+                 " && e.title.includes('g1-visiteurs --image')", message="message sans g1-visiteurs")
     assert nav.js("return document.querySelector('.camera-vue').dataset.source") == "visiteurs"
     # incrustation (petite vue) sur la caméra
     nav.js("document.querySelector('[data-role=essai-source]').click()")
@@ -112,7 +113,10 @@ def test_sans_camera(serveur, navigateur):
     nav.attendre("return document.querySelector('[data-role=camera-etat]').textContent.includes('Pas d\\'image')",
                  delai=15, message="« Pas d'image »")
     texte = nav.js("return document.querySelector('[data-role=camera-etat]').textContent")
-    assert "camera_usb" in texte and "ROS_DOMAIN_ID" in texte
+    detail = nav.js("return document.querySelector('[data-role=camera-etat]').title")
+    # phrase courte à l'écran ; le détail technique (nœud, commande, domaine) en infobulle
+    assert "camera_usb" not in texte and "branchée" in texte, texte
+    assert "camera_usb" in detail and "ROS_DOMAIN_ID" in detail, detail
     assert nav.js("return document.querySelector('.camera-vue').dataset.etat") == "sans-image"
     assert nav.js("return window.erreursAtelier") == []
 

@@ -6,8 +6,14 @@
 // G1 : la vraie chaîne du robot, repérage et pont compris) ou « reel » (la navigation dans le conteneur du
 // Jetson). En répétition et avec le robot, la section Repérage rappelle de poser le robot sur l'accueil
 // (l'étoile sur la carte, tourné dans le sens de sa flèche), puis « Repérer » ; sans accueil sur l'étage,
-// c'est la marque au sol de la vague 3. « Y aller » reste grisé tant que le robot n'est pas repéré ou que
-// Nav2 n'est pas prêt, avec la raison dans l'infobulle et dans le panneau.
+// c'est la marque au sol de la vague 3. « Y aller » reste grisé tant que rien ne tourne, que le robot n'est
+// pas repéré ou que Nav2 n'est pas prêt, avec la raison dans l'infobulle et dans le panneau.
+//
+// Revue de la vague 5 : le panneau montre l'état et la tâche en cours (lancement, repérage, guide, salles),
+// pas une deuxième barre de commandes : Lancer, Arrêter, Repérer, Bloquer et Débloquer sont dans le ruban.
+// Une seule section repliable ouverte à la fois (Visite guidée, Passants) ; une commande Avancé ouvre la
+// sienne en haut du panneau. Une partie qui s'arrête seule (code de sortie, nœud planté) est signalée,
+// avec « Relancer ».
 
 import { api, urlLieu } from '../api.js';
 import { contexte } from '../contexte.js';
@@ -18,6 +24,7 @@ import * as F from '../formulaire.js';
 import * as G from '../geometrie.js';
 import { afficherErreur } from '../messages.js';
 import { creerPlan, iconeOrientee, ll, lls, suivrePointeur } from '../plan.js';
+import { sallesDansLOrdre } from '../carte3d/geometrie3d.js';
 import { etiquetteSalle, iconePrincipal, sallePrincipale } from './salles.js';
 // Vague 4 (section 11 du plan) : panneaux des agents Comportement du guide et Passants
 import * as panneauGuide from '../panneaux/guide.js';
@@ -73,7 +80,8 @@ export function ouvrir(racine, options) {
   const mode = ecran.mode === 'reel' || ecran.mode === 'repetition' ? ecran.mode : 'simu';
   const defMode = MODES[mode];
   const etat = {
-    salles: [], noeuds: {}, monde: null, dernierItineraire: '', enCours: false, modeActif: null,
+    salles: [], noeuds: {}, monde: null, dernierItineraire: '', enCours: false, modeActif: null, navEnCours: false,
+    panne: '',              // parties plantées déjà signalées (la barre d'état ne le dit qu'une fois)
     marque: null,           // pose où poser le robot {x, y, theta}, repère map : l'accueil, sinon la marque au sol
     principal: null,        // point principal de l'étage {salle, nom, etage, x, y, theta}, ou null
     repere: false, reperageEnCours: false, placement: null, choixPosition: false, lancement: false,
@@ -104,19 +112,18 @@ export function ouvrir(racine, options) {
   textesBandeau.appendChild(F.el('div', 'mode-bandeau-texte', defMode.texte));
   bandeau.appendChild(textesBandeau);
   z.appendChild(bandeau);
-  // état et lancement
+  // état du lancement (Lancer et Arrêter sont dans le ruban)
+  const NOM_LANCEMENT = mode === 'simu' ? 'la simulation' : (mode === 'repetition' ? 'la répétition' : 'la navigation');
   const blocEtat = section(z, null, 'etat');
   const texteEtat = F.el('p', 'etat-action', 'Simulation arrêtée');
   texteEtat.setAttribute('data-role', 'etat-simu');
   blocEtat.appendChild(texteEtat);
-  const boutons = F.el('div', 'boutons-simulation');
-  const boutonLancer = F.bouton(boutons, mode === 'simu' ? 'Lancer la simulation' : (mode === 'repetition'
-    ? 'Lancer la répétition' : 'Lancer sur le robot'), () => lancer(), 'bouton bouton-principal bouton-grand');
-  boutonLancer.setAttribute('data-role', 'lancer');
-  const boutonArreter = F.bouton(boutons, mode === 'simu' ? 'Arrêter la simulation' : (mode === 'repetition'
-    ? 'Arrêter la répétition' : 'Arrêter la navigation'), () => arreter(), 'bouton');
-  boutonArreter.setAttribute('data-role', 'arreter');
-  blocEtat.appendChild(boutons);
+  const aideLancer = F.paragraphe(blocEtat, '« Lancer », en haut dans le ruban, démarre ' + NOM_LANCEMENT
+    + (mode === 'reel' ? ' sur le robot.' : ' : Gazebo et le guide.'), 'panneau-note');
+  aideLancer.setAttribute('data-role', 'aide-lancer');
+  const boutonRelancer = F.bouton(blocEtat, 'Relancer ' + NOM_LANCEMENT, () => relancer(), 'bouton bouton-principal');
+  boutonRelancer.setAttribute('data-role', 'relancer');
+  boutonRelancer.hidden = true;
   // repérage (répétition et robot)
   const blocReperage = section(z, 'Repérage', 'reperage');
   blocReperage.classList.add('panneau-reperage');
@@ -124,8 +131,7 @@ export function ouvrir(racine, options) {
   blocReperage.hidden = mode === 'simu';
   const consigne = F.paragraphe(blocReperage, 'Posez le robot sur l\'accueil (étoile sur la carte), tourné dans le sens de la flèche.');
   consigne.setAttribute('data-role', 'consigne-reperage');
-  const boutonReperer = F.bouton(blocReperage, 'Repérer le robot', () => reperer(null), 'bouton bouton-principal bouton-grand bouton-reperer');
-  boutonReperer.setAttribute('data-role', 'reperer');
+  F.paragraphe(blocReperage, 'Puis « Repérer », en haut dans le ruban.', 'panneau-note');
   const lienPosition = F.bouton(blocReperage, 'Le robot n\'est pas sur l\'accueil', () => choisirPosition(!etat.choixPosition), 'bouton-lien');
   lienPosition.setAttribute('data-role', 'pas-sur-marque');
   const aidePosition = F.paragraphe(blocReperage, 'Cliquez sur le plan là où se trouve le robot, puis glissez vers son avant : '
@@ -141,12 +147,6 @@ export function ouvrir(racine, options) {
   const pastillePont = F.el('div', 'pastille-pont', 'Pont vers la marche : —');
   pastillePont.setAttribute('data-role', 'pont');
   blocReperage.appendChild(pastillePont);
-  const verrous = F.el('div', 'boutons-verrou');
-  const boutonBloquer = F.bouton(verrous, 'Bloquer le robot', () => verrouiller(true), 'bouton bouton-danger');
-  boutonBloquer.setAttribute('data-role', 'bloquer');
-  const boutonDebloquer = F.bouton(verrous, 'Débloquer', () => verrouiller(false), 'bouton');
-  boutonDebloquer.setAttribute('data-role', 'debloquer');
-  blocReperage.appendChild(verrous);
   // guide
   const blocGuide = section(z, 'Envoyer le robot', 'guide');
   const etatGuide = F.el('div', 'guide-etat', 'Guide non lancé');
@@ -175,17 +175,35 @@ export function ouvrir(racine, options) {
   detailsPassants.hidden = mode !== 'simu';
   z.appendChild(detailsPassants);
 
-  const outilsPanneaux = { lieu: lieu, etage: etage, plan: plan, carte: carte };
+  const outilsPanneaux = { lieu: lieu, etage: etage, plan: plan, carte: carte, mode: mode };
   const panneaux = [panneauGuide.monter(zoneComportement, outilsPanneaux)];
   if (mode === 'simu') panneaux.push(panneauPassants.monter(zonePassants, outilsPanneaux));
 
+  // une seule section repliable ouverte à la fois : le panneau reste court
+  const sectionsRepliables = [detailsComportement, detailsPassants];
+  sectionsRepliables.forEach((d) => d.addEventListener('toggle', () => {
+    if (d.open) sectionsRepliables.forEach((x) => { if (x !== d) x.open = false; });
+  }));
+
+  // commande Avancé : sa section s'ouvre (seule) et vient en haut du panneau
   function ouvrirSection(details, sousPartie) {
+    sectionsRepliables.forEach((x) => { if (x !== details) x.open = false; });
     details.open = true;
+    let cible = details;
     if (sousPartie) {
       const d = details.querySelector(sousPartie);
-      if (d) d.open = true;
+      if (d) {
+        d.open = true;
+        cible = d;
+      }
     }
-    details.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    const haut = () => {
+      const r = cible.getBoundingClientRect();
+      const c = z.getBoundingClientRect();
+      z.scrollTop += r.top - c.top - 6;
+    };
+    haut();
+    requestAnimationFrame(haut);       // après la mise en page de la section ouverte
   }
 
   // ---------------------------------------------------------------- incrustation de la caméra (Réel)
@@ -228,11 +246,13 @@ export function ouvrir(racine, options) {
   function textesPose() {
     const p = etat.principal;
     if (p) {
+      // espaces insécables dans les guillemets : « » ne commence jamais une ligne
+      const nom = '«\u00a0' + p.nom + '\u00a0»';
       return {
-        consigne: 'Posez le robot sur l\'accueil « ' + p.nom + ' » (étoile sur la carte), tourné dans le sens de la flèche.',
+        consigne: 'Posez le robot sur l\'accueil ' + nom + ' (étoile sur la carte), tourné dans le sens de la flèche.',
         lien: 'Le robot n\'est pas sur l\'accueil',
         annuler: 'Annuler : le robot est sur l\'accueil',
-        court: 'sur l\'accueil « ' + p.nom + ' »',
+        court: 'sur l\'accueil ' + nom,
       };
     }
     return {
@@ -291,8 +311,6 @@ export function ouvrir(racine, options) {
   async function reperer(pose) {
     if (etat.reperageEnCours) return;
     etat.reperageEnCours = true;
-    boutonReperer.disabled = true;
-    boutonReperer.textContent = 'Repérage…';
     coque.griser('reperer', 'Repérage en cours…');
     const corps = { lieu: lieu, etage: etage };
     if (pose) {
@@ -307,8 +325,6 @@ export function ouvrir(racine, options) {
       afficherErreur(e);
     } finally {
       etat.reperageEnCours = false;
-      boutonReperer.textContent = 'Repérer le robot';
-      boutonReperer.disabled = false;
     }
   }
 
@@ -385,12 +401,13 @@ export function ouvrir(racine, options) {
     const avecRobot = !!etat.modeActif && etat.modeActif !== 'simu';
     let titre = 'Non repéré';
     let classe = 'reperage-non_repere';
-    let message = 'Lancez la navigation, puis posez le robot ' + textesPose().court + '.';
+    let message = 'Lancez ' + NOM_LANCEMENT + ', puis posez le robot ' + textesPose().court + '.';
     etat.repere = false;
+    const relaisPret = !!(r && !r.perime);
     if (avecRobot) {
-      if (!r || r.perime) {
-        titre = 'Relais de position…';
-        message = 'Le relais de position démarre : « Repérer » sera possible dans quelques secondes.';
+      if (!relaisPret) {
+        titre = 'Le robot se prépare…';
+        message = 'Le robot n\'est pas encore prêt à être repéré : « Repérer » sera possible dans quelques secondes.';
       } else {
         titre = ETATS_REPERAGE[r.etat] || r.etat;
         classe = 'reperage-' + r.etat;
@@ -408,14 +425,13 @@ export function ouvrir(racine, options) {
     etatReperage.className = 'etat-reperage ' + classe;
     messageReperage.textContent = message;
     const ros = !!(d.ros && d.ros.actif);
-    boutonReperer.disabled = !(avecRobot && ros) || etat.reperageEnCours;
-    lienPosition.disabled = !(avecRobot && ros);
-    boutonBloquer.disabled = !ros;
-    boutonDebloquer.disabled = !ros;
-    coque.griser('reperer', !avecRobot ? 'Lancez d\'abord la navigation' : (!ros ? 'Pas de liaison ROS 2' : (etat.reperageEnCours ? 'Repérage en cours…' : null)));
-    coque.griser('position', !(avecRobot && ros) ? 'Lancez d\'abord la navigation' : null);
-    coque.griser('bloquer', ros ? null : 'Pas de liaison ROS 2');
-    coque.griser('debloquer', ros ? null : 'Pas de liaison ROS 2');
+    lienPosition.disabled = !(avecRobot && ros && relaisPret);
+    const raisonReperer = !avecRobot ? 'Lancez d\'abord ' + NOM_LANCEMENT : (!ros ? 'Pas de liaison avec le robot (ROS 2)'
+      : (!relaisPret ? 'Le robot se prépare : encore quelques secondes' : (etat.reperageEnCours ? 'Repérage en cours…' : null)));
+    coque.griser('reperer', raisonReperer);
+    coque.griser('position', !avecRobot ? 'Lancez d\'abord ' + NOM_LANCEMENT : (raisonReperer && !etat.reperageEnCours ? raisonReperer : null));
+    coque.griser('bloquer', ros ? null : 'Pas de liaison avec le robot (ROS 2)');
+    coque.griser('debloquer', ros ? null : 'Pas de liaison avec le robot (ROS 2)');
     const p = d.pont;
     if (!p || p.perime) {
       pastillePont.textContent = 'Pont vers la marche : ' + (avecRobot ? 'pas encore de nouvelles' : '—');
@@ -435,23 +451,28 @@ export function ouvrir(racine, options) {
     return s ? s.nom : id;
   }
 
+  // dans l'ordre des épingles de la vue 3D : [{salle, numero}]
   function sallesIci() {
     const p = sallePrincipale(etat.salles);
-    return etat.salles.filter((s) => s.etage === etage)
-      .sort((a, b) => (a === p ? -1 : (b === p ? 1 : a.nom.localeCompare(b.nom, 'fr'))));
+    return sallesDansLOrdre(etat.salles.filter((s) => s.etage === etage), p ? p.id : null);
   }
 
   function remplirListeSalles() {
     listeSalles.textContent = '';
-    const salles = sallesIci();
+    const numerotees = sallesIci();
+    const salles = numerotees.map((n) => n.salle);
     const p = sallePrincipale(etat.salles);
     if (!salles.length) listeSalles.appendChild(F.el('li', 'vide', 'Aucune salle : placez-en (Placer › Salle).'));
-    salles.forEach((s) => {
+    numerotees.forEach((n) => {
+      const s = n.salle;
       const li = F.el('li');
       li.setAttribute('data-salle', s.id);
       if (s === p) li.appendChild(F.el('span', 'etoile', '★'));
+      else if (n.numero !== null && n.numero !== undefined) li.appendChild(F.el('span', 'numero-salle', String(n.numero)));
       li.appendChild(F.el('span', 'nom-salle', s.nom));
-      F.bouton(li, 'Y aller', () => allerVers(s.id), 'bouton bouton-principal');
+      const b = F.bouton(li, 'Y aller', () => allerVers(s.id), 'bouton bouton-principal bouton-petit');
+      b.dataset.titre = 'Le robot va à « ' + s.nom + ' »';
+      b.title = b.dataset.titre;
       listeSalles.appendChild(li);
     });
     coque.menu('y-aller', salles.map((s) => ({ valeur: s.id, libelle: (s === p ? '★ ' : '') + s.nom })));
@@ -471,6 +492,10 @@ export function ouvrir(racine, options) {
   }
 
   async function allerVers(id) {
+    if (!etat.navEnCours) {
+      coque.message('Lancez d\'abord ' + NOM_LANCEMENT + ' (« Lancer », dans le ruban) : le guide démarre avec elle.', 'avertissement');
+      return;
+    }
     if (etat.attente) {
       coque.message('« Y aller » attend : ' + etat.attente, 'avertissement');
       return;
@@ -484,8 +509,9 @@ export function ouvrir(racine, options) {
     }
     try {
       const r = await api.envoyer('/api/guide/aller', corps);
-      coque.message('Destination envoyée : ' + nomDe(id) + (corps.accompagner ? ', en accompagnant le visiteur' : '') + '.', 'info');
+      // « Destination envoyée » seulement si un guide l'a reçue ; sinon, le seul avertissement
       if (r.avertissement) coque.message(r.avertissement, 'avertissement');
+      else coque.message('Destination envoyée : ' + nomDe(id) + (corps.accompagner ? ', en accompagnant le visiteur' : '') + '.', 'info');
     } catch (e) {
       afficherErreur(e);
     }
@@ -512,7 +538,7 @@ export function ouvrir(racine, options) {
     if (mode === 'reel' && !(await confirmerRobot())) return;
     if (mode === 'reel') coque.noterTelecommande(true);
     etat.lancement = true;
-    boutonLancer.disabled = true;
+    etat.panne = '';
     coque.griser('lancer', 'Lancement…');
     texteEtat.textContent = 'Lancement…';
     try {
@@ -526,7 +552,6 @@ export function ouvrir(racine, options) {
       av.forEach((m) => coque.message(m, 'avertissement'));
     } catch (e) {
       afficherErreur(e);
-      boutonLancer.disabled = false;
       coque.griser('lancer', null);
     } finally {
       etat.lancement = false;
@@ -534,17 +559,45 @@ export function ouvrir(racine, options) {
   }
 
   async function arreter() {
-    boutonArreter.disabled = true;
     texteEtat.textContent = 'Arrêt en cours… (quelques secondes)';
+    coque.griser('arreter', 'Arrêt en cours…');
     try {
       await api.envoyer('/api/simulation/arreter');
       coque.message(etat.modeActif === 'robot' ? 'Navigation du robot arrêtée.' : (mode === 'repetition'
         ? 'Répétition arrêtée.' : 'Simulation arrêtée.'), 'info');
     } catch (e) {
       afficherErreur(e);
-    } finally {
-      boutonArreter.disabled = false;
     }
+  }
+
+  // une partie s'est arrêtée seule : tout arrêter, puis relancer
+  async function relancer() {
+    boutonRelancer.disabled = true;
+    try {
+      await arreter();
+      etat.enCours = false;
+      await lancer();
+    } finally {
+      boutonRelancer.disabled = false;
+    }
+  }
+
+  // Parties lancées par l'Atelier qui se sont arrêtées seules (code de sortie) ou nœuds plantés dans la
+  // navigation (« process has died » de ros2 launch) : [phrases]
+  const NOMS_PARTIES = { simulation: 'Gazebo', navigation: 'la navigation', faux_slam: 'le faux service de cartographie' };
+  function partiesPlantees(procs) {
+    const fautes = [];
+    Object.keys(NOMS_PARTIES).forEach((role) => {
+      const p = procs[role];
+      if (!p) return;
+      if (!p.en_cours && !p.arret_demande && p.code !== null && p.code !== undefined && p.code !== 0) {
+        fautes.push(NOMS_PARTIES[role] + ' s\'est arrêté (code ' + p.code + ')');
+      } else if (p.en_cours && p.plantages && p.plantages.length) {
+        fautes.push('dans ' + NOMS_PARTIES[role] + ', ' + p.plantages.slice(0, 3).join(', ')
+          + (p.plantages.length > 3 ? '…' : '') + ' ' + (p.plantages.length > 1 ? 'ont planté' : 'a planté'));
+      }
+    });
+    return fautes;
   }
 
   // ---------------------------------------------------------------- en direct
@@ -593,11 +646,24 @@ export function ouvrir(racine, options) {
       texte += ' — mode ' + (etat.modeActif === 'simu' ? 'simulation' : etat.modeActif);
     }
     if (!d.ros || !d.ros.actif) texte += ' — pas de liaison ROS 2' + (d.ros && d.ros.erreur ? ' (' + d.ros.erreur + ')' : '');
+    // une partie plantée pendant que le reste tourne : la répétition (ou la simulation) n'a pas bien démarré
+    const fautes = enCours || (procs.navigation && procs.navigation.en_cours) ? partiesPlantees(procs) : [];
+    if (fautes.length) {
+      texte = (mode === 'simu' ? 'La simulation' : (mode === 'repetition' ? 'La répétition' : 'La navigation'))
+        + ' n\'a pas démarré correctement : ' + fautes.join(' ; ') + '.';
+      const cle = fautes.join('|');
+      if (cle !== etat.panne) {
+        etat.panne = cle;
+        coque.message(texte + ' « Relancer » (panneau) ou « Ce qui tourne » pour le détail.', 'erreur');
+      }
+    }
     texteEtat.textContent = texte;
-    boutonLancer.disabled = enCours || etat.lancement;
-    boutonArreter.disabled = !enCours && !(procs.navigation && procs.navigation.en_cours);
+    texteEtat.classList.toggle('panneau-alerte', fautes.length > 0);
+    boutonRelancer.hidden = !fautes.length;
+    aideLancer.hidden = enCours || etat.lancement;
+    const rienNeTourne = !enCours && !(procs.navigation && procs.navigation.en_cours);
     coque.griser('lancer', enCours ? 'Déjà lancée : « Arrêter » d\'abord' : (etat.lancement ? 'Lancement…' : null));
-    coque.griser('arreter', boutonArreter.disabled ? 'Rien ne tourne' : null);
+    coque.griser('arreter', rienNeTourne ? 'Rien ne tourne' : null);
     if (avecReperage()) majReperage(d);
 
     const memeLieu = !!sim && sim.lieu === lieu && sim.etage === etage;
@@ -638,6 +704,7 @@ export function ouvrir(racine, options) {
     const nav = procs.navigation;
     const nav2 = d.ros ? d.ros.nav2 : null;
     const navEnCours = robot || !!(nav && nav.en_cours);
+    etat.navEnCours = navEnCours;
     const attendreNav2 = navEnCours && !!(d.ros && d.ros.actif)
       && (nav2 === false || (nav2 === null && (robot || nav.duree_s < 60)));
     // répétition et robot : il faut d'abord repérer le robot (la carte globale de Nav2 attend sa position)
@@ -653,8 +720,14 @@ export function ouvrir(racine, options) {
       etat.attente = 'Nav2 se prépare';
     }
     if (g && g.message && !attendreReperage) t.detail = g.message + (t.detail ? ' ' + t.detail : '');
-    listeSalles.querySelectorAll('button').forEach((b) => { b.disabled = attendreNav2 || attendreReperage; });
-    coque.griser('y-aller', attendreReperage ? 'Repérez d\'abord le robot' : (attendreNav2 ? 'Nav2 se prépare…' : null));
+    // rien ne tourne : pas de guide pour recevoir « Y aller »
+    const raisonYAller = !navEnCours ? 'Lancez d\'abord ' + NOM_LANCEMENT + ' (« Lancer »)'
+      : (attendreReperage ? 'Repérez d\'abord le robot' : (attendreNav2 ? 'Nav2 se prépare…' : null));
+    listeSalles.querySelectorAll('button').forEach((b) => {
+      b.disabled = !!raisonYAller;
+      b.title = raisonYAller || b.dataset.titre || '';
+    });
+    coque.griser('y-aller', raisonYAller);
     etatGuide.textContent = t.titre;
     etatGuide.className = 'guide-etat' + (g ? ' guide-' + g.etat : '');
     detailGuide.textContent = t.detail;
@@ -713,7 +786,9 @@ export function ouvrir(racine, options) {
     vue: (nom) => {
       incrustationSelonVue(nom);
       plan.carte.invalidateSize();
+      if (nom === 'plan' && plan.cadrageEnAttente) plan.recadrer();
     },
+    recadrer: () => plan.recadrer(),
     fermer: () => {
       etat.ferme = true;
       if (desabonner) desabonner();

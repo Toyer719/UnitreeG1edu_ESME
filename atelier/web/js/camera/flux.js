@@ -129,8 +129,10 @@ export function creerVueCamera(conteneur, options) {
     else debrancher();
   }
 
-  function montrerEtat(message, genre) {
+  // message : la phrase courte ; detail : le détail technique, en infobulle (vague 5, I10)
+  function montrerEtat(message, genre, detail) {
     texte.textContent = message || '';
+    texte.title = detail || '';
     racine.setAttribute('data-etat', genre);
     texte.hidden = !message;
   }
@@ -212,7 +214,7 @@ export function creerVueCamera(conteneur, options) {
     const source = dernierEtat.sources ? dernierEtat.sources[o.source] : null;
     const pourquoi = dernierEtat.messages ? dernierEtat.messages[o.source] : null;
     if (pourquoi) {
-      montrerEtat(pourquoi, 'sans-image');
+      montrerEtat(pourquoi, 'sans-image', dernierEtat.details ? dernierEtat.details[o.source] : null);
     } else if (source) {
       const vus = dernierEtat.visiteurs && !dernierEtat.visiteurs.perime ? dernierEtat.visiteurs.nombre : null;
       const morceaux = [];

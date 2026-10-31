@@ -703,7 +703,7 @@ export function ouvrir(racine, options) {
 
   async function abandonner() {
     if (!etat.modifie) return;
-    if (!(await coque.confirmer('Abandonner les modifications du monde et relire le fichier ?',
+    if (!(await coque.confirmer('Abandonner les changements du monde et revenir à la version enregistrée ?',
       { titre: 'Annuler les modifications', ok: 'Abandonner', annuler: 'Garder', danger: true }))) return;
     await charger();
   }
@@ -796,7 +796,10 @@ export function ouvrir(racine, options) {
     peutDefaire: () => hist.peutAnnuler,
     peutRefaire: () => hist.peutRefaire,
     commande: commande,
-    vue: () => plan.carte.invalidateSize(),
+    vue: () => {
+      plan.carte.invalidateSize();
+      if (plan.cadrageEnAttente) plan.recadrer();
+    },
     recadrer: () => {
       const em = etat.monde && etat.monde.emprise;
       if (em) plan.cadrer(em.min[0], em.min[1], em.max[0], em.max[1]);

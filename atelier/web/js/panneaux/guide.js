@@ -1,6 +1,9 @@
 // Panneau du comportement du guide dans l'onglet Simulation (vague 4, section 11.4 du plan) :
 // agent Comportement du guide. simulation.js appelle monter(element, outils) et, en fermant
-// l'onglet, fermer() de l'objet renvoyé. outils : {lieu, etage, plan, carte}.
+// l'onglet, fermer() de l'objet renvoyé. outils : {lieu, etage, plan, carte, mode}.
+// Vague 5 (revue) : l'état du guide n'est plus répété ici (il est en haut du panneau), « Accompagner un
+// visiteur » n'est montré qu'en Réel (en Simulation, les cases du ruban le font), le faux visiteur
+// seulement en Simulation, et les messages au visiteur sont repliés.
 //
 // Il montre ce que fait le guide (mission, visiteur suivi, retour prévu), les messages dits au
 // visiteur (/guide/evenement, champ evenements de /ws/etat), permet d'accompagner un visiteur
@@ -66,13 +69,14 @@ export function monter(element, outils) {
   }
   element.hidden = false;
   element.textContent = '';
-  F.titre(element, 'Comportement du guide');
-  const etatLigne = element.appendChild(F.el('div', 'comportement-etat', 'Guide non lancé'));
+  // l'état du guide est déjà en haut du panneau (« Envoyer le robot ») : ici, la visite seulement
   const visiteurLigne = element.appendChild(F.el('div', 'comportement-visiteur', ''));
   const retourLigne = element.appendChild(F.el('div', 'comportement-retour', ''));
 
-  // Accompagner un visiteur
+  // Accompagner un visiteur : en Simulation, les cases « Accompagner » et « Retour » du ruban et « Y aller »
+  // le font déjà ; en Réel, c'est ici
   const bloc = element.appendChild(F.el('div', 'comportement-accompagner'));
+  bloc.hidden = outils.mode === 'simu';
   let cible = '';
   let retour = true;
   const choix = F.listeDeroulante(bloc, 'Destination', '', [{ id: '', texte: 'Chargement…' }], (v) => { cible = v; });
@@ -106,6 +110,7 @@ export function monter(element, outils) {
 
   // Faux visiteur de la simulation
   const faux = element.appendChild(F.el('details', 'comportement-faux-visiteur'));
+  faux.hidden = outils.mode !== 'simu';
   faux.appendChild(F.el('summary', '', 'Faux visiteur (simulation)'));
   F.paragraphe(faux, 'Avec une scène d\'accompagnement : le piéton « visiteur » suit le robot, traîne ou s\'en va.',
     'panneau-note');
@@ -125,7 +130,6 @@ export function monter(element, outils) {
 
   // Messages au visiteur
   const messages = element.appendChild(F.el('details', 'comportement-evenements'));
-  messages.open = true;
   messages.appendChild(F.el('summary', '', 'Messages au visiteur'));
   const liste = messages.appendChild(F.el('ul', 'liste-evenements'));
   let derniereCle = '';
@@ -170,7 +174,7 @@ export function monter(element, outils) {
     });
   }
   lectureGuide.then(dessinerReglages).catch(() => {
-    F.paragraphe(formulaire, 'Réglages illisibles : vérifiez lieu.yaml (arbre › le lieu, Vérifier).', 'panneau-alerte');
+    F.paragraphe(formulaire, 'Réglages illisibles : vérifiez la fiche du lieu (arbre › le lieu, Vérifier le lieu).', 'panneau-alerte');
   });
 
   function dessinerEvenements(evenements) {
@@ -194,20 +198,15 @@ export function monter(element, outils) {
   const desabonner = abonner((d) => {
     const g = d.guide;
     if (!g) {
-      etatLigne.textContent = 'Guide non lancé';
-      etatLigne.className = 'comportement-etat';
       visiteurLigne.textContent = '';
       retourLigne.textContent = '';
     } else {
-      let t = LIBELLES_ETATS[g.etat] || ('État : ' + g.etat);
-      if (g.cible && g.etat !== 'attente') t += ' (' + g.cible + ')';
-      if (g.depuis_s !== undefined && g.etat !== 'attente') t += ' depuis ' + Math.round(g.depuis_s) + ' s';
-      etatLigne.textContent = t;
-      etatLigne.className = 'comportement-etat comportement-' + g.etat;
       visiteurLigne.textContent = texteVisiteur(g);
       retourLigne.textContent = (g.retour_dans_s !== undefined && g.retour_dans_s !== null)
-        ? 'Retour au point principal dans ' + Math.ceil(g.retour_dans_s) + ' s.' : (g.message || '');
+        ? 'Retour au point principal dans ' + Math.ceil(g.retour_dans_s) + ' s.' : '';
     }
+    visiteurLigne.hidden = !visiteurLigne.textContent;
+    retourLigne.hidden = !retourLigne.textContent;
     dessinerEvenements(d.evenements || []);
   });
   return { fermer: () => desabonner() };

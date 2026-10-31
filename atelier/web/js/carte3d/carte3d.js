@@ -77,7 +77,13 @@ const JETONS = {
   salle: ['--repere-salle', '#6577e0'], choisi: ['--repere-choisi', '#ffffff'], robot: ['--repere-robot', '#e8772e'],
   itineraire: ['--itineraire', '#22d3ee'], zoneInterdite: ['--zone-interdite', '#ef4444'],
   zoneLente: ['--zone-lente', '#f59e0b'], trajet: ['--trajet', '#e0453a'], nuageBas: ['--nuage-bas', '#2e9e6b'],
-  nuageMilieu: ['--nuage-milieu', '#ccad78'], nuageHaut: ['--nuage-haut', '#db3866'],
+  nuageMilieu: ['--nuage-milieu', '#ccad78'], nuageHaut: ['--nuage-haut', '#db3866'], nuageSol: ['--nuage-sol', '#4b5468'],
+};
+// Consigne de l'outil de pose, dans une bulle près du pointeur (avec un aperçu du repère sous le pointeur)
+const CONSIGNES_OUTILS = {
+  salle: 'Cliquez sur le sol devant la porte, puis tirez vers la salle',
+  accueil: 'Cliquez où le robot attend, puis tirez dans le sens où il regarde',
+  noeud: 'Cliquez pour poser le nœud',
 };
 const COULEUR_PIETON = '#9fb4d8';
 
@@ -261,9 +267,15 @@ export function creerCarte3D(conteneur, options) {
   const nuage = new THREE.Points(new THREE.BufferGeometry(), materiauNuage);
   nuage.frustumCulled = false;
   groupes.nuage.add(nuage);
-  // le sol (SEUIL_SOL) : mêmes uniformes, sans écrire la profondeur, dessiné avec les repères au sol, après
-  // la grille (ordre 1) et la carte 2D (2), avant le trajet (5), les zones (6, 7) et les couloirs (8)
-  const materiauSol = new THREE.ShaderMaterial({ uniforms: uniformes, vertexShader: NUANCEUR_POINTS,
+  // le sol (SEUIL_SOL) : mêmes uniformes (taille, coupe…), sans écrire la profondeur, dessiné avec les repères
+  // au sol, après la grille (ordre 1) et la carte 2D (2), avant le trajet (5), les zones (6, 7) et les couloirs
+  // (8). Sa couleur est la sienne (--nuage-sol, gris bleuté) : le vert du dégradé ne domine plus la vue (revue
+  // de la vague 5), le dégradé reste pour ce qui dépasse du sol
+  const couleurSol = vecteur3(couleurs.nuageSol);
+  const uniformesSol = Object.assign({}, uniformes, {
+    couleurBas: { value: couleurSol }, couleurMilieu: { value: couleurSol }, couleurHaut: { value: couleurSol },
+  });
+  const materiauSol = new THREE.ShaderMaterial({ uniforms: uniformesSol, vertexShader: NUANCEUR_POINTS,
     fragmentShader: NUANCEUR_COULEUR, transparent: true, depthWrite: false });
   const nuageSol = new THREE.Points(new THREE.BufferGeometry(), materiauSol);
   nuageSol.frustumCulled = false;
@@ -278,6 +290,11 @@ export function creerCarte3D(conteneur, options) {
   chargement.setAttribute('data-role', 'carte3d-chargement');
   chargement.hidden = true;
   racine.appendChild(chargement);
+  // consigne de l'outil de pose, près du pointeur (revue de la vague 5 : la barre d'état seule passait inaperçue)
+  const bulle = element('div', 'carte3d-bulle');
+  bulle.setAttribute('data-role', 'carte3d-bulle');
+  bulle.hidden = true;
+  racine.appendChild(bulle);
 
   // ------------------------------------------------------------ état
   const etat = {
@@ -774,11 +791,12 @@ export function creerCarte3D(conteneur, options) {
     return { repere: principal ? couleurs.accueil : couleurs.salle, choisi: couleurs.choisi };
   }
 
+  // fantome : vrai (« Nouvelle salle »), ou le texte de l'étiquette de l'aperçu
   function creerHtmlSalle(s, principal, numero, fantome) {
     const tete = element('div', 'carte3d-tete' + (principal ? ' principal' : '') + (fantome ? ' fantome' : ''));
     tete.appendChild(element('span', 'carte3d-numero', principal ? '★' : String(numero || '+')));
     const nom = element('div', 'carte3d-etiquette' + (principal ? ' principal' : '') + (fantome ? ' fantome' : ''),
-      fantome ? 'Nouvelle salle' : s.nom);
+      fantome ? (typeof fantome === 'string' ? fantome : 'Nouvelle salle') : s.nom);
     if (!fantome) {
       tete.setAttribute('data-salle', s.id);
       nom.setAttribute('data-salle', s.id);
@@ -1116,6 +1134,7 @@ export function creerCarte3D(conteneur, options) {
     if (OUTILS.indexOf(nom) < 0) nom = 'naviguer';
     if (geste) annulerGeste(true);
     retirerFantome();
+    bulle.hidden = true;
     if (nom !== 'mesurer') effacerMesure();
     etat.outil = nom;
     etat.idOutil = options2 && options2.id !== undefined && options2.id !== null ? String(options2.id) : null;
@@ -1142,10 +1161,55 @@ export function creerCarte3D(conteneur, options) {
     return { x: r.position.x, y: r.position.y, theta: genre === 'salle' ? (r.userData.theta || 0) : null };
   }
 
+  // oriente : la flèche a été tirée pendant la pose (un simple clic garde l'orientation de départ)
   function emettrePose(g, fini, extra) {
     const e = Object.assign({ outil: etat.outil, genre: g.genre, id: g.id, x: g.x, y: g.y,
-      theta: g.genre === 'salle' ? g.theta : null, fini: !!fini, geste: g.type }, extra || {});
+      theta: g.genre === 'salle' ? g.theta : null, fini: !!fini, geste: g.type, oriente: !!g.bouge }, extra || {});
     emettre('pose', e);
+  }
+
+  // Aperçu sous le pointeur avec un outil de pose, avant l'appui : un repère translucide là où il sera posé
+  // (accroché à 5 cm), et la consigne dans une bulle près du pointeur. Sans outil de pose : rien.
+  function apercuOutil(p, sol) {
+    if (OUTILS_POSE.indexOf(etat.outil) < 0 || geste || !p || !sol) {
+      bulle.hidden = true;
+      if (!geste && salles.fantome && salles.fantome.apercu) retirerFantome();
+      return;
+    }
+    const cible = cibleOutil();
+    const principal = etat.outil === 'accueil';
+    if (!salles.fantome) {
+      let objet;
+      let html;
+      if (cible.genre === 'salle') {
+        objet = R.creerRepereSalle(couleursSalle(principal), principal, true);
+        html = creerHtmlSalle(null, principal, null, principal ? 'Accueil' : 'Nouvelle salle');
+      } else {
+        objet = R.creerRepereNoeud(couleurs);
+        html = { tete: element('div', 'carte3d-tete fantome noeud'), nom: element('div', 'carte3d-etiquette fantome', 'Nouveau nœud') };
+        html.tete.appendChild(element('span', 'carte3d-numero', '+'));
+        calqueHtml.appendChild(html.tete);
+        calqueHtml.appendChild(html.nom);
+      }
+      groupeOutils.add(objet);
+      salles.fantome = { objet: objet, html: html, apercu: true };
+    }
+    const q = G3.accrocherPosition(sol.x, sol.y);
+    const r = salles.fantome.objet;
+    r.position.set(q.x, q.y, 0);
+    if (cible.genre === 'salle') {
+      const avant = principal ? poseActuelle('salle', salles.principal) : null;
+      const t = avant ? avant.theta : 0;
+      r.userData.theta = t;
+      R.orienterRepere(r, t);
+    }
+    bulle.textContent = CONSIGNES_OUTILS[etat.outil] || '';
+    const t = taille();
+    const x = Math.min(p[0] + 18, Math.max(8, t.l - bulle.offsetWidth - 8));
+    const y = p[1] + 22 + bulle.offsetHeight > t.h - 8 ? p[1] - 16 - bulle.offsetHeight : p[1] + 22;
+    bulle.style.transform = 'translate(' + Math.round(x) + 'px, ' + Math.round(y) + 'px)';
+    bulle.hidden = false;
+    demanderRendu();
   }
 
   // Montre la pose du geste en cours : le repère de l'élément, ou un fantôme pour un nouvel élément
@@ -1183,6 +1247,9 @@ export function creerCarte3D(conteneur, options) {
   }
 
   function demarrerGeste(type, cible, sol, p, ev) {
+    // l'aperçu du pointeur laisse la place au repère du geste
+    bulle.hidden = true;
+    if (salles.fantome && salles.fantome.apercu) retirerFantome();
     const avant = poseActuelle(cible.genre, cible.id);
     geste = {
       type: type, genre: cible.genre, id: cible.id, avant: avant, depart: p, bouge: false, pointeur: ev.pointerId,
@@ -1391,10 +1458,12 @@ export function creerCarte3D(conteneur, options) {
     if (p === 'dehors') {
       emettre('pointeur', null);
       racine.classList.remove('survol-repere', 'survol-choix');
+      apercuOutil(null, null);
       return;
     }
     const sol = versSol(p[0], p[1]);
     emettre('pointeur', sol ? G3.accrocherPosition(sol.x, sol.y, 0.01) : null);
+    apercuOutil(p, sol);
     const t = etat.outil === 'naviguer' ? toucher(p) : null;
     racine.classList.toggle('survol-repere', !!t && modifiable(t.genre));      // main : on peut le glisser
     racine.classList.toggle('survol-choix', !!t && !modifiable(t.genre));      // doigt : on peut le choisir
@@ -1576,9 +1645,15 @@ export function creerCarte3D(conteneur, options) {
   legende.setAttribute('data-role', 'carte3d-legende');
   legende.hidden = true;
   legende.appendChild(element('div', 'carte3d-legende-titre', 'Hauteur au-dessus du sol'));
-  legende.appendChild(element('div', 'carte3d-degrade'));
+  // le sol a sa couleur à lui (pastille), puis le dégradé de ce qui dépasse
+  const ligneDegrade = element('div', 'carte3d-ligne-degrade');
+  const pastilleSol = element('span', 'carte3d-sol');
+  pastilleSol.title = 'Le sol (moins de 12 cm)';
+  ligneDegrade.appendChild(pastilleSol);
+  ligneDegrade.appendChild(element('div', 'carte3d-degrade'));
+  legende.appendChild(ligneDegrade);
   const graduations = element('div', 'carte3d-graduations');
-  ['0', '1,1', '2,2 m'].forEach((t) => graduations.appendChild(element('span', '', t)));
+  ['sol', '1,1', '2,2 m'].forEach((t) => graduations.appendChild(element('span', '', t)));
   legende.appendChild(graduations);
   const lignePlafond = element('label', 'carte3d-reglage');
   casePlafond = element('input');

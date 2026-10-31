@@ -154,7 +154,7 @@ class EcranPilotage {
     const barre = F.el('div', 'pilotage-barre');
     barre.setAttribute('data-role', 'etat-robot');
     const ligne = F.el('div', 'pilotage-ligne');
-    this.pastille = F.el('span', 'pastille-pilotage', 'Nœud pilotage : …');
+    this.pastille = F.el('span', 'pastille-pilotage', 'Pilotage : …');
     this.etatBatterie = F.el('span', 'etat-batterie', '');
     ligne.appendChild(this.pastille);
     ligne.appendChild(this.etatBatterie);
@@ -165,7 +165,7 @@ class EcranPilotage {
     barre.appendChild(this.etatRobot);
     const actions = F.el('div', 'pilotage-actions');
     this.boutonDemarrer = F.bouton(actions, 'Démarrer le pilotage', () => this.demarrerNoeud(), 'bouton bouton-principal');
-    this.boutonDemarrer.title = 'Lance le nœud pilotage sur ce PC (répétition sans robot)';
+    this.boutonDemarrer.title = 'Lance le pilotage sur ce PC (répétition sans robot) ; aussi « Démarrer » dans le ruban';
     this.boutonMain = F.bouton(actions, 'Prendre la main', () => this.basculerMain(), 'bouton bouton-principal');
     barre.appendChild(actions);
     this.message = F.el('p', 'pilotage-message', '');
@@ -227,7 +227,9 @@ class EcranPilotage {
   // Une commande du ruban : (nom, valeur) ; voir COMMANDES de js/coque/ruban.js
   commandeRuban(nom, valeur) {
     if (!this.config) return;
-    if (nom === 'main') this.basculerMain();
+    // pilotage pas démarré, en répétition : la première commande du ruban le démarre
+    if (nom === 'main' && !this.etat && this.config.local) this.demarrerNoeud();
+    else if (nom === 'main') this.basculerMain();
     else if (nom === 'postures' && valeur !== undefined) this.commande('/api/pilotage/posture', { fsm: Number(valeur) });
     else if (nom === 'gestes' && valeur !== undefined) this.geste('bras', Number(valeur));
     else if (nom === 'joysticks') {
@@ -277,7 +279,7 @@ class EcranPilotage {
   majEntete() {
     const e = this.etat;
     if (this.joignable === false) {
-      this.pastille.textContent = 'Nœud pilotage injoignable';
+      this.pastille.textContent = 'Pilotage pas démarré';
       this.pastille.className = 'pastille-pilotage pastille-ko';
       this.pastille.title = this.detailInjoignable || '';
     } else if (e) {
@@ -312,13 +314,19 @@ class EcranPilotage {
     if (p && p.etat === 'pas_en_marche') this.alerteMode.textContent = p.message || 'Le robot n\'est pas en mode marche.';
     // pilule sur la vue : mode, activité, main
     this.pilule.textContent = e ? (nomMode + ' · ' + (main ? 'vous pilotez' : 'le guide a la main'))
-      : (this.joignable === false ? 'Nœud pilotage injoignable' : '…');
+      : (this.joignable === false ? 'Pilotage pas démarré' : '…');
     this.pilule.classList.toggle('pilule-main', main);
     this.contenu.classList.toggle('sans-main', !main);
-    const raison = !e ? 'Le nœud pilotage ne répond pas' : (!main ? 'Prenez d\'abord la main' : null);
+    const sansNoeud = local ? 'Pilotage pas démarré : « Démarrer », au début du ruban'
+      : 'Pilotage pas démarré : il démarre avec le conteneur du robot (Jetson)';
+    const raison = !e ? sansNoeud : (!main ? 'Prenez d\'abord la main' : null);
     this.coque.griser('postures', raison);
     this.coque.griser('gestes', raison);
-    this.coque.griser('main', e ? null : 'Le nœud pilotage ne répond pas');
+    this.coque.griser('voix', e ? null : sansNoeud);
+    this.coque.griser('led', e ? null : sansNoeud);
+    // en répétition, sans pilotage : la première commande du ruban le démarre
+    this.coque.griser('main', e || local ? null : sansNoeud);
+    if (!e && local) this.coque.libelle('main', 'Démarrer');
     if (this.joystick) this.joystick.activer(main && !(e && e.danse));
     if (this.vueRobot) this.vueRobot.majEtat(this.etat, this.joignable);
     if (this.majSection) this.majSection();
@@ -484,7 +492,7 @@ class EcranPilotage {
     const champ = F.champTexte(s, 'Phrase', texte, (v) => { texte = v; }, { lignes: 2 });
     champ.addEventListener('input', () => { texte = champ.value; });
     F.bouton(s, 'Dire', () => this.commande('/api/pilotage/voix', { texte }), 'bouton bouton-principal');
-    F.paragraphe(s, 'La voix de l\'équipe (personnalités) parle par un autre chemin.', 'panneau-note');
+    F.paragraphe(s, 'Le robot dit cette phrase tout de suite ; ses phrases d\'accueil se règlent dans Équipe › Personnalités.', 'panneau-note');
   }
 
   sectionVolume() {
@@ -587,7 +595,7 @@ class EcranPilotage {
     s.appendChild(this.progresDanse);
     this.tableDanses = F.el('table', 'tableau tableau-danses');
     s.appendChild(this.tableDanses);
-    F.paragraphe(s, '401, 402 et 403 sont interdites (le robot peut se coucher par terre). Une danse jamais essayée : '
+    F.paragraphe(s, 'Les danses qui couchent le robot par terre ne sont pas proposées. Une danse jamais essayée : '
       + 'au portique d\'abord.', 'panneau-note');
     this.danses = null;
     this.lireDanses(false);

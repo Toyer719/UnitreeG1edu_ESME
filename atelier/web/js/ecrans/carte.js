@@ -13,6 +13,17 @@ import { nb } from '../geometrie.js';
 import { afficherErreur, afficherRapport } from '../messages.js';
 import { creerPlan } from '../plan.js';
 
+// Légende de la carte du plan : en thème sombre, l'image est inversée (atelier.css : obstacles clairs sur
+// fond sombre) ; la légende dit donc ce qu'on voit, dans les deux thèmes
+export function legendeCarte(theme) {
+  return theme === 'clair' ? 'Noir : obstacle ; blanc : libre ; gris : inconnu. Le robot s\'en sert pour se déplacer.'
+    : 'Clair : obstacle ; sombre : libre ; gris : inconnu (thème sombre). Le robot s\'en sert pour se déplacer.';
+}
+
+function themeCourant() {
+  return document.documentElement.getAttribute('data-theme') === 'clair' ? 'clair' : 'sombre';
+}
+
 export function ouvrir(racine, options) {
   const ecran = preparerEcran(racine, options);
   const coque = ecran.coque;
@@ -29,8 +40,7 @@ export function ouvrir(racine, options) {
   }
 
   function afficherInfos() {
-    const p = ouvrirPanneau(ecran.panneau, { titre: 'Carte du robot',
-      aide: 'Noir : obstacle ; blanc : libre ; gris : inconnu. Le robot s\'en sert pour se déplacer.' });
+    const p = ouvrirPanneau(ecran.panneau, { titre: 'Carte du robot', aide: legendeCarte(themeCourant()) });
     const z = p.corps;
     if (!info) {
       F.paragraphe(z, 'Pas encore de carte pour cet étage.' + (scannee() ? ' Faites un scan (Scanner › Scan).'
@@ -90,14 +100,24 @@ export function ouvrir(racine, options) {
     }
   }
 
+  // la légende suit le thème
+  const surTheme = () => afficherInfos();
+  document.addEventListener('atelier-theme', surTheme);
+
   ecran.vue.classList.add('chargement');
   const pret = afficher().finally(() => ecran.vue.classList.remove('chargement'));
   if (ecran.commande === 'refaire') pret.then(refaire);
   return {
     modifie: () => false,
     commande: (nom) => { if (nom === 'refaire') refaire(); },
-    vue: () => plan.carte.invalidateSize(),
+    vue: () => {
+      plan.carte.invalidateSize();
+      if (plan.cadrageEnAttente) plan.recadrer();
+    },
     recadrer: () => { if (info) plan.cadrer(info.bornes.xmin, info.bornes.ymin, info.bornes.xmax, info.bornes.ymax); },
-    fermer: () => plan.detruire(),
+    fermer: () => {
+      document.removeEventListener('atelier-theme', surTheme);
+      plan.detruire();
+    },
   };
 }

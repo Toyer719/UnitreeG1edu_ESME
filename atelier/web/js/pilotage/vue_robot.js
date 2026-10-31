@@ -486,7 +486,7 @@ export class VueRobot {
     }
     // légende
     let posture = P.POSTURES[nomPosture].texte;
-    if (!e) posture = this.joignable === false ? 'Nœud pilotage injoignable : la vue est figée' : 'État du robot inconnu';
+    if (!e) posture = this.joignable === false ? 'Pilotage pas démarré : la vue est figée' : 'État du robot inconnu';
     else if (P.postureDuMode(e.fsm) === null) posture = 'Mode du robot inconnu (' + (e.fsm === null ? '?' : e.fsm) + ')';
     else posture += ' · mode ' + e.fsm;
     this.ecrire('posture', this.lignePosture, posture);

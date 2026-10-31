@@ -445,6 +445,15 @@ export function numerosSalles(salles, principal) {
   return numeros;
 }
 
+// Les salles dans l'ordre de leurs épingles : le point principal d'abord, puis 1, 2, 3… (numerosSalles). L'arbre
+// et les listes des panneaux s'en servent, avec le même numéro que l'épingle : [{salle, numero}] (numero null
+// pour le principal).
+export function sallesDansLOrdre(salles, principal) {
+  const numeros = numerosSalles(salles, principal);
+  return (salles || []).map((s) => ({ salle: s, numero: s.id === principal ? null : numeros[s.id] }))
+    .sort((a, b) => (a.numero === null ? -1 : (b.numero === null ? 1 : a.numero - b.numero)));
+}
+
 // Étiquettes des salles sans chevauchement. Le nom d'une salle se met à droite de sa tête numérotée, à
 // défaut à gauche, dessus ou dessous ; sinon il est caché (la tête reste, et la liste du panneau donne
 // le nom). candidats : [{id, x, y, largeur, hauteur, rayon}] (pixels ; x, y : centre de la tête ; rayon :

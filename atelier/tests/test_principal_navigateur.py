@@ -130,7 +130,7 @@ def test_point_principal_dans_la_coque(sans_ros, serveur, navigateur, lieux, fau
     nav.attendre("return document.querySelector('[data-role=consigne-reperage]').textContent.includes('Salle B204')",
                  message="consigne du repérage")
     assert nav.js("return document.querySelector('[data-role=consigne-reperage]').textContent") == (
-        "Posez le robot sur l'accueil « Salle B204 » (étoile sur la carte), tourné dans le sens de la flèche.")
+        "Posez le robot sur l'accueil «\u00a0Salle B204\u00a0» (étoile sur la carte), tourné dans le sens de la flèche.")
     assert nav.js("return document.querySelector('[data-role=pas-sur-marque]').textContent") == \
         "Le robot n'est pas sur l'accueil"
     nav.vue("plan")

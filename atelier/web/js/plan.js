@@ -68,7 +68,13 @@ export function creerPlan(element) {
     grille: L.layerGroup().addTo(carte),
     monde: L.layerGroup().addTo(carte),
   };
-  const observateur = new ResizeObserver(() => carte.invalidateSize());
+  // la vue Plan 2D cachée (l'écran s'ouvre en 3D) n'a pas de taille : un cadrage demandé alors attend
+  // qu'elle en ait une (sinon Leaflet zoome au maximum et le plan paraît vide)
+  const observateur = new ResizeObserver(() => {
+    carte.invalidateSize();
+    const t = carte.getSize();
+    if (plan.cadrageEnAttente && t.x > 0 && t.y > 0 && plan.dernierCadre) plan.cadrer.apply(plan, plan.dernierCadre);
+  });
   observateur.observe(fond);
 
   const plan = {
@@ -77,12 +83,28 @@ export function creerPlan(element) {
     calques: calques,
     infoCarte: null,
     cadre_initial: false,
+    bornesTout: null,            // tout le plan de l'étage (la carte, sinon le monde) : « Recadrer » y revient
+    dernierCadre: null,
+    cadrageEnAttente: false,
 
     // Recentre la vue sur un rectangle (xmin, ymin, xmax, ymax) en mètres
     cadrer: function (xmin, ymin, xmax, ymax) {
+      plan.dernierCadre = [xmin, ymin, xmax, ymax];
       carte.invalidateSize();
+      const t = carte.getSize();
+      if (!(t.x > 0 && t.y > 0)) {
+        plan.cadrageEnAttente = true;
+        return;
+      }
+      plan.cadrageEnAttente = false;
       // sans animation : un clic pendant l'animation serait converti avec l'ancien zoom
       carte.fitBounds([[ymin, xmin], [ymax, xmax]], { padding: [20, 20], animate: false });
+    },
+
+    // Tout voir (bouton Recadrer, touche F) : tout le plan de l'étage, à défaut le dernier rectangle cadré
+    recadrer: function () {
+      const b = plan.bornesTout || plan.dernierCadre;
+      if (b) plan.cadrer(b[0], b[1], b[2], b[3]);
     },
 
     // Grille de pas mètres sur le rectangle donné (traits plus marqués tous les mètres)
@@ -146,9 +168,10 @@ export function creerPlan(element) {
       const info = await plan.afficherCarte(lieu, etage);
       if (!info) plan.afficherMondeFond(monde);
       else calques.monde.clearLayers();
+      if (info) plan.bornesTout = [info.bornes.xmin, info.bornes.ymin, info.bornes.xmax, info.bornes.ymax];
+      else if (monde) plan.bornesTout = [monde.emprise.min[0], monde.emprise.min[1], monde.emprise.max[0], monde.emprise.max[1]];
       if (!plan.cadre_initial) {
-        if (info) plan.cadrer(info.bornes.xmin, info.bornes.ymin, info.bornes.xmax, info.bornes.ymax);
-        else if (monde) plan.cadrer(monde.emprise.min[0], monde.emprise.min[1], monde.emprise.max[0], monde.emprise.max[1]);
+        if (plan.bornesTout) plan.cadrer.apply(plan, plan.bornesTout);
         plan.cadre_initial = true;
       }
       return { info: info, monde: monde };

@@ -13,6 +13,7 @@
 // avoir choisi un autre.
 
 import { api, urlLieu } from '../api.js';
+import { sallesDansLOrdre } from '../carte3d/geometrie3d.js';
 import { contexte, rechargerLieu } from '../contexte.js';
 import { blocAvance, panneauEdition, preparerEcran } from '../coque/ecran.js';
 import * as F from '../formulaire.js';
@@ -273,7 +274,8 @@ export function ouvrir(racine, options) {
     if (!carte3d) return;
     const p = principale();
     carte3d.afficherSalles(etat.salles, p ? p.id : null);
-    if (etat.choisi) carte3d.choisir('salle', etat.choisi);
+    // la même salle choisie dans la vue 3D et dans le panneau (aucune : plus d'anneau ni de poignée)
+    carte3d.choisir(etat.choisi ? 'salle' : null, etat.choisi || null);
   }
 
   // surPose de la carte 3D : {outil, genre, id, x, y, theta, fini, geste, annule}
@@ -312,6 +314,11 @@ export function ouvrir(racine, options) {
       if (pose) {
         choisirOutil('choisir');
         if (e.outil === 'salle') focaliserNom();
+        // un simple clic : la salle regarde vers 0° ; on dit comment la tourner
+        if (e.outil === 'salle' && e.geste === 'poser' && e.oriente === false) {
+          coque.message('Salle posée, tournée vers 0° (la droite du plan) : glissez la poignée blanche au bout de sa '
+            + 'flèche pour la tourner, ou corrigez l\'orientation à droite.', 'info');
+        }
       }
     } else {
       // pendant le geste : le plan 2D et le panneau suivent sans tout redessiner
@@ -463,8 +470,10 @@ export function ouvrir(racine, options) {
     }
     const ici = sallesEtage();
     const liste = F.el('ul', 'liste-choix liste-points');
-    const tries = ici.slice().sort((a, b) => (a === p ? -1 : (b === p ? 1 : a.nom.localeCompare(b.nom, 'fr'))));
-    tries.forEach((x) => {
+    // dans l'ordre des épingles de la vue 3D, avec leur numéro
+    const tries = sallesDansLOrdre(ici, p ? p.id : null);
+    tries.forEach((n) => {
+      const x = n.salle;
       const li = F.el('li');
       const b = F.bouton(li, x.nom, () => {
         choisir(x.id);
@@ -475,6 +484,8 @@ export function ouvrir(racine, options) {
       if (x === p) {
         b.insertBefore(F.el('span', 'etoile', '★'), b.firstChild);
         badge(b);
+      } else if (n.numero !== null && n.numero !== undefined) {
+        b.insertBefore(F.el('span', 'numero-salle', String(n.numero)), b.firstChild);
       }
       liste.appendChild(li);
     });
@@ -501,9 +512,12 @@ export function ouvrir(racine, options) {
     try {
       const r = await api.ecrire(urlLieu(lieu) + '/salles?synchroniser=true', etat.salles);
       etat.modifie = false;
-      const autres = r.enregistre.filter((f) => f !== 'salles.yaml');
+      // les fichiers mis à jour en plus, dits avec des mots (itineraires.yaml : les itinéraires, lieu.yaml…)
+      const NOMS_FICHIERS = { 'itineraires.yaml': 'les itinéraires', 'lieu.yaml': 'la fiche du lieu' };
+      const autres = r.enregistre.filter((f) => f !== 'salles.yaml').map((f) => NOMS_FICHIERS[f] || 'le départ du robot');
+      const uniques = autres.filter((x, i) => autres.indexOf(x) === i);
       const p = principale();
-      afficherRapport(r.rapport, 'Salles enregistrées' + (autres.length ? ' (et ' + autres.join(', ') + ')' : '') + '.'
+      afficherRapport(r.rapport, 'Salles enregistrées' + (uniques.length ? ' ; mis à jour aussi : ' + uniques.join(', ') : '') + '.'
         + (p ? ' Accueil : « ' + p.nom + ' ».' : ''));
       rechargerLieu().catch(() => {});
       coque.lieuModifie('salles');
@@ -517,7 +531,7 @@ export function ouvrir(racine, options) {
 
   async function abandonner() {
     if (!etat.modifie) return;
-    if (!(await coque.confirmer('Abandonner les modifications des salles et relire le fichier ?',
+    if (!(await coque.confirmer('Abandonner les changements des salles et revenir à la version enregistrée ?',
       { titre: 'Annuler les modifications', ok: 'Abandonner', annuler: 'Garder', danger: true }))) return;
     await charger();
   }
@@ -601,8 +615,10 @@ export function ouvrir(racine, options) {
     },
     vue: () => {
       plan.carte.invalidateSize();
+      if (plan.cadrageEnAttente) plan.recadrer();
       choisirOutil(etat.outil);
     },
+    recadrer: () => plan.recadrer(),
     fermer: () => {
       etat.ferme = true;
       document.removeEventListener('keydown', clavier);

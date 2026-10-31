@@ -61,9 +61,13 @@ export function ouvrir(racine, options) {
       annuler: () => editeur.abandonner() };
   }
 
+  // Réglages de la caméra (Avancé) : sans camera.yaml, il n'y a rien à régler ; la commande est grisée
+  const SANS_FICHIER = 'Pas encore de réglages de caméra : partez de l\'exemple d\'abord (Équipe › Caméra)';
+
   function rendre(etat) {
     const d = etat.donnees;
     const zone = etat.zones.contenu;
+    ecran.coque.griser('reglages', d ? null : SANS_FICHIER);
     zone.innerHTML = '';
     const gauche = F.el('div', 'equipe-liste cam-liste');
     zone.appendChild(gauche);
@@ -176,10 +180,10 @@ export function ouvrir(racine, options) {
     if (!zone) return;
     const v = direct && direct.visiteurs;
     if (!direct || !direct.ros || !direct.ros.actif) {
-      zone.textContent = 'ROS 2 n\'est pas actif dans le serveur de l\'Atelier : les visiteurs ne s\'affichent pas.';
+      zone.textContent = 'L\'Atelier n\'est pas relié à ROS 2 : les visiteurs ne s\'affichent pas.';
     } else if (!v) {
-      zone.textContent = 'Aucun visiteur reçu : lancez g1-visiteurs sur ce PC (ou la fausse caméra : ros2 run '
-        + 'g1_equipe fausse_camera).';
+      zone.textContent = 'Aucun visiteur vu : la détection des visiteurs ne tourne pas sur ce PC.';
+      zone.title = 'Lancez g1-visiteurs (ou, pour essayer, la fausse caméra : ros2 run g1_equipe fausse_camera).';
     } else {
       const n = (v.personnes || []).length;
       zone.textContent = n + ' visiteur' + (n > 1 ? 's' : '') + ' vu' + (n > 1 ? 's' : '') + ' par la caméra ('
@@ -391,6 +395,7 @@ export function ouvrir(racine, options) {
 
   function panneauSansFichier() {
     if (editeur && editeur.etat.donnees) return;
+    ecran.coque.griser('reglages', SANS_FICHIER);
     const z = panneauEdition(ecran.panneau, 'Caméra', null, actions()).corps;
     F.paragraphe(z, 'Ce lieu n\'a pas encore de réglages de caméra : partez de l\'exemple (au centre), '
       + 'puis réglez ici la caméra, sa place sur le robot et la détection.', 'panneau-note');
@@ -424,7 +429,12 @@ export function ouvrir(racine, options) {
       if (nom === 'reglages') {
         avanceOuvert = true;
         const bloc = document.querySelector('[data-role="reglages-avances"]');
-        if (bloc) bloc.open = true;
+        if (bloc) {
+          bloc.open = true;
+          bloc.scrollIntoView({ block: 'start' });
+        } else {
+          afficherMessage('Partez d\'abord de l\'exemple (au centre) : les réglages de la caméra viendront ensuite.', 'info');
+        }
       }
     },
     fermer: () => {

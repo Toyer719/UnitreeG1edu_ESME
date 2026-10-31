@@ -174,10 +174,10 @@ export function ouvrir(racine, options) {
       const choix = Object.keys(gestes).map((k) => ({ id: k, texte: k + ' — ' + gestes[k] }));
       F.listeDeroulante(z, 'Geste', String(r.geste || 26), choix.length ? choix : [{ id: '26', texte: '26' }],
         (v) => modifier((x) => { x.geste = parseInt(v, 10); }));
-      note(z, 'Le nœud pilotage fait le geste (/robot/geste) seulement robot au repos : ni piloté à la main, ni en '
-        + 'visite, ni pendant une danse ; un toutes les 10 s au plus, puis les bras sont relâchés.');
+      note(z, 'Le robot fait le geste seulement au repos : ni piloté à la main, ni en visite, ni pendant une '
+        + 'danse ; un toutes les 10 s au plus, puis les bras sont relâchés.');
     }
-    if (r.action === 'stop') note(z, 'Le robot s\'arrête aussitôt (/guide/stop), quoi qu\'il fasse.');
+    if (r.action === 'stop') note(z, 'Le robot s\'arrête aussitôt, quoi qu\'il fasse.');
     const bas = F.el('div', 'formulaire-ligne');
     F.bouton(bas, 'Supprimer la règle', async () => {
       if (!(await coque.confirmer('Supprimer la règle « ' + r.id + ' » ?',
@@ -257,11 +257,11 @@ export function ouvrir(racine, options) {
     } else if (r.action === 'guider' && r.raison === 'autre_etage') {
       ajouter('La salle ' + r.nom_salle + ' est à un autre étage : pas de guidage.');
     } else if (r.action === 'personnalite') {
-      ajouter('Action : passer à la personnalité « ' + r.personnalite + ' » (/personnalite/active).');
+      ajouter('Action : passer à la personnalité « ' + r.personnalite + ' ».');
     } else if (r.action === 'stop') {
-      ajouter('Action : arrêter le robot (/guide/stop).');
+      ajouter('Action : arrêter le robot.');
     } else if (r.action === 'geste') {
-      ajouter('Action : répondre, puis le geste ' + r.geste + ' (/robot/geste, fait par le nœud pilotage, robot au repos).');
+      ajouter('Action : répondre, puis le geste ' + r.geste + ' (robot au repos).');
     } else {
       ajouter('Action : répondre seulement.');
     }

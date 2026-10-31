@@ -68,9 +68,10 @@ export function ouvrir(racine, options) {
       const ligne = F.el('button', 'fiche-etage' + (e.id === contexte.etage ? ' courant' : ''));
       ligne.type = 'button';
       ligne.setAttribute('data-etage', e.id);
-      ligne.appendChild(F.el('strong', '', e.nom));
+      ligne.appendChild(F.el('strong', 'fiche-etage-nom', e.nom));
       const etatsFichiers = [e.source_carte === 'scan' ? 'carte du scan' : 'monde dessiné',
         e.a_carte ? 'carte prête' : 'pas encore de carte'];
+      if (e.id === contexte.etage) etatsFichiers.push('ouvert');
       ligne.appendChild(F.el('span', 'fiche-etage-detail', etatsFichiers.join(' · ')));
       ligne.title = e.id === contexte.etage ? 'Étage ouvert' : 'Ouvrir cet étage';
       ligne.addEventListener('click', () => {
@@ -104,7 +105,9 @@ export function ouvrir(racine, options) {
       enregistrerFiche(nouvelle, 'Lieu renommé.');
     });
     nom.parentNode.setAttribute('data-champ', 'nom');
-    const b = F.bouton(z, 'Vérifier le lieu', verifier, 'bouton bouton-principal');
+    const actions = F.el('div', 'panneau-actions');
+    z.appendChild(actions);
+    const b = F.bouton(actions, 'Vérifier le lieu', verifier, 'bouton bouton-principal');
     b.setAttribute('data-role', 'verifier');
     const s = section(z, 'Ajouter un étage', 'ajouter-etage');
     const nouvel = { nom: '' };
@@ -113,7 +116,7 @@ export function ouvrir(racine, options) {
       nouvel.nom = ev.target.value;
       if (champId) champId.value = idDepuisNom(ev.target.value);
     });
-    const avance = blocAvance(s, 'Avancé');
+    const avance = blocAvance(s, 'Identifiant de l\'étage');
     champId = F.champTexte(avance, 'Identifiant', '', () => {}, { indice: 'ex. etage1' });
     F.bouton(s, 'Ajouter l\'étage', () => {
       const id = (champId.value || idDepuisNom(nouvel.nom)).trim();
@@ -127,7 +130,7 @@ export function ouvrir(racine, options) {
       nouvelle.etages.push({ id: id, nom: nomEtage, source_carte: 'monde' });
       enregistrerFiche(nouvelle, 'Étage « ' + nomEtage + ' » ajouté : choisissez-le dans la barre d\'outils.');
     });
-    const plus = blocAvance(z, 'Avancé');
+    const plus = blocAvance(z, 'Dossier et source des cartes');
     F.valeur(plus, 'Dossier', info.dossier);
     info.etages.forEach((e, i) => {
       F.listeDeroulante(plus, 'Carte de « ' + e.nom + ' »', e.source_carte,

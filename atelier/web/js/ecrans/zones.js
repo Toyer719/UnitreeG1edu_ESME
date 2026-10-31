@@ -246,7 +246,7 @@ export function ouvrir(racine, options) {
 
   async function abandonner() {
     if (!etat.modifie) return;
-    if (!(await coque.confirmer('Abandonner les modifications des zones et relire le fichier ?',
+    if (!(await coque.confirmer('Abandonner les changements des zones et revenir à la version enregistrée ?',
       { titre: 'Annuler les modifications', ok: 'Abandonner', annuler: 'Garder', danger: true }))) return;
     await charger();
   }
@@ -310,7 +310,11 @@ export function ouvrir(racine, options) {
         rafraichir();
       }
     },
-    vue: () => plan.carte.invalidateSize(),
+    vue: () => {
+      plan.carte.invalidateSize();
+      if (plan.cadrageEnAttente) plan.recadrer();
+    },
+    recadrer: () => plan.recadrer(),
     fermer: () => {
       document.removeEventListener('keydown', clavier);
       arreterPointeur();

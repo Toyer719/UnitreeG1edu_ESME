@@ -17,8 +17,10 @@ const ROBOT = { longueur: 0.208, largeur: 0.477, hauteur: 1.315 };
 // Couleurs de repli si le thème ne se lit pas (mêmes valeurs que css/theme.css)
 const REPLI = {
   '--vue-fond': '#1e1e1e', '--vue-grille': '#34343c', '--nuage-bas': '#2e9e6b', '--nuage-milieu': '#ccad78',
-  '--nuage-haut': '#db3866', '--trajet': '#e0453a', '--repere-robot': '#e8772e',
+  '--nuage-haut': '#db3866', '--trajet': '#e0453a', '--repere-robot': '#e8772e', '--nuage-sol': '#4b5468',
 };
+// m : les points plus bas sont le sol, de la couleur --nuage-sol (comme la carte 3D : SEUIL_SOL)
+export const SEUIL_SOL = 0.12;
 
 function jeton(nom) {
   try {
@@ -115,6 +117,7 @@ export class Nuage3D {
     this.scene.background = new THREE.Color(jeton('--vue-fond'));
     this.couleurs = [new THREE.Color(jeton('--nuage-bas')), new THREE.Color(jeton('--nuage-milieu')),
       new THREE.Color(jeton('--nuage-haut'))];
+    this.couleurSol = new THREE.Color(jeton('--nuage-sol'));
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 800);
     this.camera.up.set(0, 0, 1);
     this.camera.position.set(-8, -14, 14);
@@ -271,7 +274,8 @@ export class Nuage3D {
       positions[3 * k] = p[3 * i];
       positions[3 * k + 1] = p[3 * i + 1];
       positions[3 * k + 2] = z;
-      this.couleur(z, c);
+      if (z < SEUIL_SOL) c.copy(this.couleurSol);       // le sol ne domine pas la vue
+      else this.couleur(z, c);
       couleurs[3 * k] = c.r;
       couleurs[3 * k + 1] = c.g;
       couleurs[3 * k + 2] = c.b;
@@ -288,8 +292,27 @@ export class Nuage3D {
   async chargerBinaire(url) {
     const r = await telechargerNuage(url);
     const b = r.entete.bornes;
+    this.grilleNuage(r.entete.grille);
     this.afficherPoints(r.positions, b ? { xmin: b.xmin, ymin: b.ymin, xmax: b.xmax, ymax: b.ymax } : null);
     return { points: r.positions.length / 3, entete: r.entete };
+  }
+
+  // Taille des points : celle de la grille du nuage montré (5 cm pour un nuage traité, 10 cm pour l'aperçu en
+  // direct : le nuage paraît plein, pas clairsemé), fois le facteur du curseur « Taille des points »
+  grilleNuage(grille) {
+    if (grille > 0) this.taille = Math.max(TAILLE_POINTS, 1.15 * grille);
+    this.majTaille();
+  }
+
+  facteurTaille(f) {
+    this.facteur = Math.min(3, Math.max(0.3, Number(f) || 1));
+    this.majTaille();
+  }
+
+  majTaille() {
+    if (!this.ok) return;
+    this.points.material.size = this.taille * (this.facteur || 1);
+    this.demanderRendu();
   }
 
   // Trajet [[x, y, theta], …], dessiné juste au-dessus du sol

@@ -49,6 +49,16 @@ export function classeDistance(d) {
   return 'passants-loin';
 }
 
+// La phrase de but d'une scène, sans détails techniques (la description entière est dans « Détails ») :
+// la première phrase, sans les parenthèses qui citent un réglage (« (reaction: aucune) », « (x = 2,5) »)
+export function phraseCourte(description) {
+  const texte = String(description || '').trim();
+  const fin = texte.search(/\.(\s|$)/);
+  let phrase = fin >= 0 ? texte.slice(0, fin + 1) : texte;
+  phrase = phrase.replace(/\s*\([^()]*[:=_][^()]*\)/g, '');
+  return phrase.replace(/\s+([,.;])/g, '$1');
+}
+
 export function monter(element, outils) {   // eslint-disable-line no-unused-vars
   element.hidden = false;
   element.innerHTML = `
@@ -57,8 +67,8 @@ export function monter(element, outils) {   // eslint-disable-line no-unused-var
     <ul class="passants-liste" data-role="pietons"></ul>
     <details class="passants-details">
       <summary>Scènes d'essai</summary>
-      <p class="panneau-note">Chaque scène se joue sur une copie du lieu, avec la commande indiquée
-        (Gazebo et la navigation sont lancés par le banc) : résultats en CSV, avec les contacts.</p>
+      <p class="panneau-note">Des passants qui gênent le robot, pour vérifier qu'il s'en sort. Chaque scène se
+        joue sur une copie du lieu, avec la commande de ses détails.</p>
       <ul class="passants-scenes" data-role="scenes"><li class="panneau-note">Chargement…</li></ul>
     </details>
     <details class="passants-details">
@@ -114,7 +124,11 @@ export function monter(element, outils) {   // eslint-disable-line no-unused-var
       r.scenes.forEach((s) => {
         const li = el('li', 'passants-scene');
         li.append(el('strong', '', s.nom));
-        if (s.description) li.append(el('p', 'panneau-note', s.description));
+        if (s.description) li.append(el('p', 'panneau-note', phraseCourte(s.description)));
+        // seuils, commande et description entière : sous « Détails »
+        const details = el('details', 'passants-scene-details');
+        details.append(el('summary', '', 'Détails'));
+        if (s.description) details.append(el('p', 'panneau-note', s.description));
         const seuils = [];
         const m = s.mesures || {};
         if (m.reussite_min !== undefined) seuils.push('réussite ≥ ' + Math.round(100 * m.reussite_min) + ' %');
@@ -125,8 +139,9 @@ export function monter(element, outils) {   // eslint-disable-line no-unused-var
         if (m.longueur_max_m !== undefined) seuils.push('≤ ' + m.longueur_max_m + ' m parcourus');
         const essais = s.hasard ? s.hasard + ' trajets tirés au sort'
           : s.trajets.map((t) => t.join(' → ')).join(', ') + ' × ' + s.essais;
-        li.append(el('p', 'panneau-note', essais + (seuils.length ? ' ; seuils : ' + seuils.join(', ') : '')));
-        li.append(el('code', 'passants-commande', s.commande));
+        details.append(el('p', 'panneau-note', essais + (seuils.length ? ' ; seuils : ' + seuils.join(', ') : '')));
+        details.append(el('code', 'passants-commande', s.commande));
+        li.append(details);
         liste.append(li);
       });
       (r.erreurs || []).forEach((e) => liste.append(el('li', 'passants-erreur', e.fichier + ' : ' + e.detail)));
@@ -154,7 +169,11 @@ export function monter(element, outils) {   // eslint-disable-line no-unused-var
         li.append(el('p', 'panneau-note' + (b.contacts_robot ? ' passants-contact' : ''), texte));
         liste.append(li);
       });
-      if (!r.bancs.length) liste.append(el('li', 'panneau-note', 'Aucun banc dans ' + r.dossier + '.'));
+      if (!r.bancs.length) {
+        const vide = el('li', 'panneau-note', 'Aucun banc pour l\'instant.');
+        vide.title = 'Résultats des bancs : ' + r.dossier;
+        liste.append(vide);
+      }
     } catch (e) {
       if (!ferme) liste.textContent = e.message;
     }

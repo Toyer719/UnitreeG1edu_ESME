@@ -76,7 +76,8 @@ export function creerRepereSalle(couleurs, principal, fantome) {
     ? aPlat(new THREE.ShapeGeometry(formeEtoile(0.36, 0.15, 5)), c, Z_SOL.repere, 11, { opacite: opacite })
     : aPlat(new THREE.CircleGeometry(0.2, 32), c, Z_SOL.repere, 11, { opacite: opacite });
   g.add(base);
-  const fleche = flecheAuSol(longueur, principal ? 0.1 : 0.08, c, 12);
+  // flèche assez large pour se voir sur le nuage (revue de la vague 5)
+  const fleche = flecheAuSol(longueur, principal ? 0.14 : 0.12, c, 12);
   fleche.children.forEach((m) => { m.material.opacity = opacite; });
   fleche.name = 'fleche';
   g.add(fleche);
@@ -92,7 +93,12 @@ export function creerRepereSalle(couleurs, principal, fantome) {
   anneau.name = 'anneau';
   anneau.visible = false;
   g.add(anneau);
-  const poignee = aPlat(new THREE.CircleGeometry(0.13, 24), couleurs.choisi, Z_SOL.repere + 0.004, 15);
+  // poignée d'orientation : un disque blanc cerclé de la couleur du repère, assez grand pour le doigt et la
+  // souris (24 px et plus à la distance habituelle ; la zone de prise est de RAYON_TOUCHE_PX autour)
+  const poignee = aPlat(new THREE.CircleGeometry(0.26, 32), couleurs.choisi, Z_SOL.repere + 0.004, 15);
+  const cercle = aPlat(new THREE.RingGeometry(0.26, 0.34, 32), c, Z_SOL.repere + 0.003, 15);
+  cercle.position.z = -0.001;
+  poignee.add(cercle);
   poignee.name = 'poignee';
   poignee.position.x = longueur;
   poignee.visible = false;

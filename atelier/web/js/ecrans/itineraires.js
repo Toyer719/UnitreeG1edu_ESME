@@ -19,8 +19,12 @@ const PAS = 0.25;
 const OUTILS = [
   { id: 'choisir', texte: 'Choisir', aide: "Cliquez sur un nœud ou un couloir pour le modifier ; glissez un nœud pour le déplacer." },
   { id: 'noeud', texte: 'Nœud', aide: "Cliquez pour poser un point de passage, au milieu des couloirs et à chaque croisement." },
-  { id: 'relier', texte: 'Relier', aide: "Cliquez sur un nœud, puis sur un autre : un couloir les relie. Échap pour repartir." },
+  { id: 'relier', texte: 'Relier', aide: "Cliquez sur un nœud, puis sur un autre : un couloir les relie. Clic dans le vide (ou Échap) pour repartir." },
 ];
+
+function pluriel(n, mot) {
+  return n + ' ' + mot + (n > 1 ? 's' : '');
+}
 
 export function ouvrir(racine, options) {
   const ecran = preparerEcran(racine, options);
@@ -40,6 +44,11 @@ export function ouvrir(racine, options) {
 
   const noeuds = () => etat.itin.noeuds;
   const estSalle = (id) => etat.salles.some((s) => s.id === id);
+  // un nœud de salle se nomme comme sa salle ; les autres gardent leur identifiant
+  const nomNoeud = (id) => {
+    const s = etat.salles.find((x) => x.id === id);
+    return s ? s.nom : id;
+  };
   const longueur = (c) => G.distance([noeuds()[c[0]].x, noeuds()[c[0]].y], [noeuds()[c[1]].x, noeuds()[c[1]].y]);
   const memeCouloir = (c, a, b) => (c[0] === a && c[1] === b) || (c[0] === b && c[1] === a);
 
@@ -78,7 +87,7 @@ export function ouvrir(racine, options) {
         icon: L.divIcon({ className: 'noeud' + (estSalle(id) ? ' noeud-salle' : '') + (choisi ? ' choisi' : ''), iconSize: [18, 18], iconAnchor: [9, 9] }),
         draggable: etat.outil === 'choisir', keyboard: false,
       });
-      m.bindTooltip(id, { permanent: estSalle(id), direction: 'top', offset: [0, -8], className: 'etiquette' });
+      m.bindTooltip(nomNoeud(id), { permanent: estSalle(id), direction: 'top', offset: [0, -8], className: 'etiquette' });
       m.on('click', (e) => {
         L.DomEvent.stopPropagation(e);
         cliquerNoeud(id);
@@ -133,6 +142,9 @@ export function ouvrir(racine, options) {
     } else if (etat.outil === 'choisir') {
       etat.choisi = null;
       rafraichir();
+    } else if (etat.outil === 'relier' && etat.depuis) {
+      etat.depuis = null;         // repartir d'un autre nœud
+      rafraichir();
     }
   });
 
@@ -172,9 +184,9 @@ export function ouvrir(racine, options) {
       { modifie: () => etat.modifie, enregistrer: enregistrer, annuler: abandonner }).corps;
     if (ch && ch.genre === 'noeud' && noeuds()[ch.id]) {
       const n = noeuds()[ch.id];
-      F.titre(z, '« ' + ch.id + ' »');
+      F.titre(z, '« ' + nomNoeud(ch.id) + ' »');
       if (estSalle(ch.id)) {
-        F.paragraphe(z, 'C\'est le nœud de la salle « ' + ch.id + ' » : il suit la salle (Placer › Salle).', 'panneau-note');
+        F.paragraphe(z, 'C\'est le nœud de la salle « ' + nomNoeud(ch.id) + ' » : il suit la salle (Placer › Salle).', 'panneau-note');
         F.valeur(z, 'Position', '[' + G.nb(n.x) + ' ; ' + G.nb(n.y) + '] m');
       } else {
         F.champNombre(z, 'x', n.x, { pas: PAS, unite: 'm' }, (v) => modifier(() => { n.x = v; }));
@@ -194,7 +206,7 @@ export function ouvrir(racine, options) {
         });
       }
       const voisins = etat.itin.couloirs.filter((c) => c.indexOf(ch.id) >= 0).map((c) => (c[0] === ch.id ? c[1] : c[0]));
-      F.valeur(z, 'Relié à', voisins.length ? voisins.join(', ') : 'rien (le guide ne pourra pas y passer)');
+      F.valeur(z, 'Relié à', voisins.length ? voisins.map(nomNoeud).join(', ') : 'rien (le guide ne pourra pas y passer)');
       F.bouton(z, 'Supprimer le nœud', () => modifier(() => {
         delete noeuds()[ch.id];
         etat.itin.couloirs = etat.itin.couloirs.filter((c) => c.indexOf(ch.id) < 0);
@@ -204,7 +216,7 @@ export function ouvrir(racine, options) {
     }
     if (ch && ch.genre === 'couloir' && etat.itin.couloirs[ch.indice]) {
       const c = etat.itin.couloirs[ch.indice];
-      F.titre(z, 'Couloir ' + c[0] + ' – ' + c[1]);
+      F.titre(z, 'Couloir ' + nomNoeud(c[0]) + ' – ' + nomNoeud(c[1]));
       const l = longueur(c);
       F.valeur(z, 'Longueur', G.nb(l, 2) + ' m');
       if (l > G.COULOIR_MAX) F.paragraphe(z, 'Plus de 8 m : coupez-le en deux (ou plus).', 'panneau-alerte');
@@ -217,14 +229,15 @@ export function ouvrir(racine, options) {
     }
     const ids = Object.keys(noeuds()).filter((k) => noeuds()[k].etage === etage);
     const couloirs = etat.itin.couloirs.filter((c) => noeuds()[c[0]] && noeuds()[c[1]] && noeuds()[c[0]].etage === etage);
-    F.paragraphe(z, ids.length + ' nœuds, ' + couloirs.length + ' couloirs : le guide va de nœud en nœud par le plus court chemin.');
+    F.paragraphe(z, pluriel(ids.length, 'nœud') + ', ' + pluriel(couloirs.length, 'couloir')
+      + ' : le guide va de nœud en nœud par le plus court chemin.');
     const trop = couloirs.filter((c) => longueur(c) > G.COULOIR_MAX);
     if (trop.length) {
       const p = F.paragraphe(z, trop.length + ' couloir(s) de plus de 8 m (en rouge) :', 'panneau-alerte');
       const ul = F.el('ul', 'liste-choix');
       trop.forEach((c) => {
         const li = F.el('li');
-        F.bouton(li, c[0] + ' – ' + c[1] + ' : ' + G.nb(longueur(c), 1) + ' m', () => {
+        F.bouton(li, nomNoeud(c[0]) + ' – ' + nomNoeud(c[1]) + ' : ' + G.nb(longueur(c), 1) + ' m', () => {
           etat.choisi = { genre: 'couloir', indice: etat.itin.couloirs.indexOf(c) };
           rafraichir();
         }, 'bouton-lien');
@@ -234,9 +247,11 @@ export function ouvrir(racine, options) {
     }
     const isoles = etat.salles.filter((s) => s.etage === etage && !etat.itin.couloirs.some((c) => c.indexOf(s.id) >= 0));
     if (isoles.length) {
-      F.paragraphe(z, 'Salles reliées à rien : ' + isoles.map((s) => s.id).join(', ') + '. Reliez leur nœud (vert) au reste.', 'panneau-alerte');
+      F.paragraphe(z, (isoles.length > 1 ? 'Salles reliées à rien : ' : 'Salle reliée à rien : ')
+        + isoles.map((s) => '« ' + s.nom + ' »').join(', ') + '. Reliez ' + (isoles.length > 1 ? 'leur nœud' : 'son nœud')
+        + ' (carré bleu) au reste : Placer › Relier.', 'panneau-alerte');
     }
-    F.paragraphe(z, 'Les nœuds carrés sont ceux des salles : ils se créent en enregistrant les salles.', 'panneau-note');
+    F.paragraphe(z, 'Les nœuds carrés bleus sont ceux des salles : ils se créent en enregistrant les salles.', 'panneau-note');
   }
 
   function afficher3D() {
@@ -276,7 +291,7 @@ export function ouvrir(racine, options) {
 
   async function abandonner() {
     if (!etat.modifie) return;
-    if (!(await coque.confirmer('Abandonner les modifications des itinéraires et relire le fichier ?',
+    if (!(await coque.confirmer('Abandonner les changements des itinéraires et revenir à la version enregistrée ?',
       { titre: 'Annuler les modifications', ok: 'Abandonner', annuler: 'Garder', danger: true }))) return;
     await charger();
   }
@@ -339,7 +354,11 @@ export function ouvrir(racine, options) {
       }
       rafraichir();
     },
-    vue: () => plan.carte.invalidateSize(),
+    vue: () => {
+      plan.carte.invalidateSize();
+      if (plan.cadrageEnAttente) plan.recadrer();
+    },
+    recadrer: () => plan.recadrer(),
     fermer: () => {
       document.removeEventListener('keydown', clavier);
       plan.detruire();
