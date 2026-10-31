@@ -71,7 +71,7 @@ def test_g1_atelier_demarre_repond_et_s_arrete(serveur, faux_bin):
     code, corps = _curl(base + "/api/lieux/demo/etages/rdc/monde")
     assert code == 200 and len(json.loads(corps)["murs"]) == 18
     code, corps = _curl(base + "/api/lieux/demo/etages/rdc/carte.png")
-    assert code == 404 and "Fabriquer la carte" in json.loads(corps)["detail"]
+    assert code == 404 and "Simulation › Dessiner" in json.loads(corps)["detail"]
     code, _ = _curl("-X", "POST", base + "/api/lieux/demo/etages/rdc/monde/generer")
     assert code == 200
     r = subprocess.run(["curl", "-s", "-o", "/dev/null", "-w", "%{http_code} %{content_type}",

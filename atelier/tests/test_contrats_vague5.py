@@ -140,7 +140,10 @@ def test_exemples_conformes(nom):
 
 
 def test_anciens_messages_et_fichiers_toujours_conformes():
-    assert L.valider_message("etat_pont", L.EXEMPLE_ETAT_PONT) == []        # sans les champs de la vague 5
+    # EXEMPLE_ETAT_PONT a reçu les champs de la vague 5 (agent Robot) : un message d'avant, sans eux, reste conforme
+    ancien = {k: v for k, v in L.EXEMPLE_ETAT_PONT.items() if k not in ("demande", "minimums", "mode_robot")}
+    assert L.valider_message("etat_pont", ancien) == []
+    assert L.valider_message("etat_pont", L.EXEMPLE_ETAT_PONT) == []
     assert L.valider_message("personnes", {"version": 1, "source": "lidar", "temps": 3.0, "personnes": []}) == []
     assert L.valider_donnees("camera", E.exemple_equipe("camera")) == []
     assert L.valider_donnees("monde", monde_du_demo()) == []

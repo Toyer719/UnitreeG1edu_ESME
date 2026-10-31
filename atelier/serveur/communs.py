@@ -47,8 +47,8 @@ def dossier_du_lieu(id_lieu):
     verifier_id(id_lieu, "identifiant de lieu")
     dossier = atelier.chemin_lieu(id_lieu)
     if not (dossier / FICHE).is_file():
-        raise ErreurAtelier(404, f"Le lieu « {id_lieu} » n'existe pas. Choisissez-en un dans l'onglet "
-                                 "Lieux, ou créez-le.")
+        raise ErreurAtelier(404, f"Le lieu « {id_lieu} » n'existe pas. Choisissez-en un sur l'accueil de "
+                                 "l'Atelier (⌂), ou créez-le.")
     return dossier
 
 
@@ -84,7 +84,7 @@ def exiger_point_principal(dossier):
                             e.erreurs) from None
     if principal is None:
         raise ErreurAtelier(409, "Ce lieu n'a pas de point principal (l'accueil, où le robot démarre et revient "
-                                 "après chaque visite) : dans l'onglet Salles, faites d'une salle le point principal.")
+                                 "après chaque visite) : posez-le dans Placer › Accueil.")
     return principal
 
 

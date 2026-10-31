@@ -1,16 +1,22 @@
-# Exemple de réglages de la caméra (vague 4, section 11.6 du plan), à copier dans lieux/<id>/.
-# Format : atelier/lieu/schemas/camera.schema.json. Position dans base_link (m, rad) : à mesurer
+# Exemple de réglages de la caméra (vague 4, section 11.6 du plan ; vague 5, section 12.7), à copier dans
+# lieux/<id>/. Format : atelier/lieu/schemas/camera.schema.json. Position dans base_link (m, rad) : à mesurer
 # sur le robot, une fois la See3CAM montée. Convention de ROS : tangage positif = la caméra regarde
 # vers le bas ; ici −0,21 rad, soit 12° vers le haut (caméra prévue inclinée de 10 à 15° vers le haut).
+# Le périphérique est le nom stable de la See3CAM du projet (ls /dev/v4l/by-id/) : il ne change pas d'un
+# branchement à l'autre, contrairement à /dev/video0 (sur le PC portable, /dev/video0 est sa webcam).
+# Dans le conteneur du Jetson, la caméra est toujours /dev/g1_camera (g1-jetson demarrer la passe).
 version: 1
 camera:
   modele: See3CAM_11CUG
-  peripherique: /dev/video0
+  peripherique: /dev/v4l/by-id/usb-e-con_Systems_See3CAM_11CUG_1A15C950-video-index0
   largeur: 1280
   hauteur: 720
   ips: 30
   champ_horizontal_deg: 90.0
   position: {x: 0.08, y: 0.0, z: 1.10, roulis: 0.0, tangage: -0.21, lacet: 0.0}
+  # Facultatifs (vague 5), avec leurs valeurs par défaut :
+  # exposition: {mode: auto}               # ou {mode: manuelle, temps_100us: 156, gain: 4}
+  # publication: {frequence_hz: 10, largeur: 640, qualite_jpeg: 70}
 detection:
   actif: true
   # Modèle de pose YOLO déjà sur le PC (modeles/yolo/yolo11n-pose.pt) ; un autre se choisit ici
@@ -18,3 +24,6 @@ detection:
   confiance_min: 0.5
   distance_max_m: 4.0
   frequence_hz: 10
+  # Facultatifs (vague 5), pour l'étalonnage des distances (séance 2) :
+  # taille_personne_m: 1.7
+  # correction_distance: 1.0

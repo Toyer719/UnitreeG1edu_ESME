@@ -135,7 +135,7 @@ LISEZMOI_SAUVEGARDE = "LISEZMOI.txt"
 _VERROU = threading.RLock()     # deux écritures du même processus (serveur) ne se mélangent pas
 
 SANS_PRINCIPAL = (f"le lieu n'a pas de point principal : donnez l'étiquette « {ETIQUETTE_PRINCIPAL} » à la salle "
-                  "où le robot accueille les visiteurs (onglet Salles, « Faire de cette salle le point principal »)")
+                  "où le robot accueille les visiteurs (Placer › Accueil, ou « Faire de cette salle l'accueil »)")
 
 
 class SalleInconnue(ErreurLieu):
@@ -557,7 +557,7 @@ def definir_principal(lieu, salle=None, x=None, y=None, theta=None):
             if cible is None:
                 connues = ", ".join(s.id for s in charge.salles) or "aucune"
                 raise SalleInconnue(f"la salle « {salle} » n'existe pas dans salles.yaml (salles : {connues}) ; "
-                                    "placez-la d'abord dans l'onglet Salles")
+                                    "placez-la d'abord (Placer › Salle)")
         else:
             cible = point_principal(charge)
             if cible is None:
@@ -604,7 +604,7 @@ def ecrire_salles(lieu, salles, synchroniser=False):
                 raise PerteDuPrincipal(
                     f"salles.yaml : la salle « {ancien.nom} » ({ancien.id}) est le point principal du lieu "
                     "(l'accueil, où le robot démarre et revient après chaque visite) ; choisissez d'abord un autre "
-                    f"point principal (onglet Salles, « Faire de cette salle le point principal »), puis {quoi}")
+                    f"point principal (Placer › Accueil, ou « Faire de cette salle l'accueil »), puis {quoi}")
         if not synchroniser:
             avant = [s.vers_dict() for s in anciennes] if anciennes else None
             _ecrire_tout([(dossier / SALLES, _texte_salles(dossier / SALLES, avant, [s.vers_dict() for s in salles]))])
@@ -718,7 +718,7 @@ def migrer_lieu(lieu, depuis_depart=False, a_blanc=False):
         cible = marquees[0] if marquees else charge.salle(ID_PRINCIPAL_IMPLICITE)
         if cible is None:
             raise ErreurLieu("ce lieu n'a ni salle étiquetée « principal » ni salle « accueil » : choisissez son point "
-                             "principal dans l'onglet Salles (« Faire de cette salle le point principal »)")
+                             "principal (Placer › Accueil, ou « Faire de cette salle l'accueil »)")
         if charge.etage(cible.etage) is None:
             raise ErreurLieu(f"salles.yaml, salle « {cible.id} » : l'étage « {cible.etage} » n'existe pas dans "
                              "lieu.yaml ; corrigez la salle avant de migrer")
@@ -737,7 +737,7 @@ def migrer_lieu(lieu, depuis_depart=False, a_blanc=False):
                 f"mondes/{cible.etage}.monde.yaml : l'ancien départ du robot ({_texte_pose(d)}) n'était pas le point "
                 f"principal « {cible.nom} » ({_texte_pose(pose)}) ; la simulation partira désormais du point "
                 "principal. L'ancien départ reste dans la sauvegarde ; pour en faire le point principal, déplacez "
-                "celui-ci dans l'onglet Salles (sa flèche donne le sens du robot), ou restaurez la sauvegarde puis "
+                "celui-ci (Placer › Accueil ; sa flèche donne le sens du robot), ou restaurez la sauvegarde puis "
                 f"g1-lieu migrer --lieu {dossier.name} --depuis-depart")
         avant = copy.deepcopy(charge)
         _aligner(charge, cible, pose, etiqueter=True)
