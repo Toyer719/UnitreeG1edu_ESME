@@ -39,7 +39,7 @@ manque, on garde l'ordre et on saute H.
 touché ; sur le Jetson, seulement notre image Docker (environ 2 Go) et le dossier `~/robot-g1` ;
 rien n'est installé dans Ubuntu, ROS ou les programmes d'Unitree ; notre conteneur ne redémarre
 jamais tout seul. Pour tout retirer :
-`ssh unitree@192.168.123.164 'docker rmi g1-jetson:arm64; rm -rf ~/robot-g1'`.
+d'abord `g1-jetson arreter`, puis `ssh unitree@192.168.123.164 'docker rmi g1-jetson:arm64; rm -rf ~/robot-g1'`.
 
 ---
 
@@ -202,7 +202,7 @@ On mesure **ce que fait vraiment le robot** pour de petites vitesses. Le pont to
 2. **T2, le pont en consignes brutes :**
 
    ```bash
-   ros2 run g1_bridge pont --ros-args -p exiger_reperage:=false -p vitesse_min_lin:=0.0 -p vitesse_min_rot:=0.0 -p zone_morte_lin:=0.0 -p zone_morte_rot:=0.0
+   ros2 run g1_bridge pont --ros-args -p exiger_reperage:=false -p vitesse_min_lin:=0.0 -p vitesse_min_rot:=0.0 -p zone_morte_lin:=0.0 -p zone_morte_rot:=0.0 -p vx_max:=0.2 -p vy_max:=0.2 -p wz_max:=0.4
    ```
 
 3. **T3, l'état du pont :**
@@ -310,7 +310,9 @@ C'est la reprise des points C3 à C5 et C7 de la séance n° 1, avec le nouveau 
 
    - Attendu : le robot s'arrête en **moins d'une seconde**.
    - **S'il continue : télécommande, amortissement, fin de la séance.**
-   - Relance le pont dans T2 (même commande qu'au point 1).
+   - **Avant de relancer le pont, arrête la marche dans T5 (Ctrl+C)**, ou attends qu'elle soit finie :
+     sinon le nouveau pont reprend ces ordres et **le robot repart tout seul**.
+   - Relance ensuite le pont dans T2 (même commande qu'au point 1).
 5. **C5. La télécommande reste-t-elle prioritaire ?** C'est **la condition pour continuer** (ligne C5).
    Relance la marche de 10 s ; pendant ce temps, la personne à la télécommande arrête le robot.
    Attendu : la télécommande gagne **tout de suite**.
@@ -354,7 +356,7 @@ C'est la reprise des points C3 à C5 et C7 de la séance n° 1, avec le nouveau 
    Attendu, ligne de la caméra : « caméra See3CAM : OK … USB 5000 Mbit/s ». Une vitesse plus basse
    (480) : la caméra est sur un port USB 2, change de port.
 3. Note dans la feuille (ligne D) : la durée d'`envoyer`, la ligne de la caméra, le groupe du
-   périphérique (video ?), et ce que `verifier` dit des sujets du robot.
+   périphérique (un nombre, celui du groupe video), et ce que `verifier` dit des sujets du robot.
 
 Si `verifier` dit « Docker inutilisable sans sudo », voir la séance n° 1 (étape D). Si le conteneur ne
 marche pas, fais E et F avec le **plan B** (section 4).
@@ -387,7 +389,8 @@ La carte est celle du 27/10, retraitée : l'accueil (le point principal) est sur
    de la réponse et la durée.
 7. Dans T5, `g1-scan carte-unitree` doit finir pendant ce temps : il écrit
    `lieux/seance/cartes/rdc_unitree.pcd` et son nuage. **Note ce qu'il affiche** : le nombre de points,
-   ou « rien reçu » (dans ce cas, note-le : la documentation non officielle se trompait peut-être).
+   ou « Erreur : aucune carte reçue… » (dans ce cas, note-le : la documentation non officielle se
+   trompait peut-être).
 8. **Ce que publie le robot** (ligne E2). Dans T5 :
 
    ```bash
@@ -396,8 +399,9 @@ La carte est celle du 27/10, retraitée : l'accueil (le point principal) est sur
    ```
 
 9. **La précision** (ligne E3), **à la télécommande** : avance le robot d'environ 2 m, tourne-le
-   d'un quart de tour. Compare la position de la vue 3D (le robot sur le nuage) avec le mètre ruban
-   depuis la croix. Trois mesures. Attendu : **moins de 10 cm**.
+   d'un quart de tour. Compare la position du robot avec le mètre ruban depuis la croix. Les chiffres
+   exacts sont dans le champ `pose` de (T5) : `ros2 topic echo --once /reperage/etat --field data`.
+   Trois mesures. Attendu : **moins de 10 cm**.
 
 ### Étape F : le premier trajet, 2,5 m à 0,2 m/s (15 min)
 
@@ -466,7 +470,7 @@ Le conteneur tourne depuis l'étape E, avec la caméra.
    ```
 
    Note la distance affichée pour chaque repère. La correction est : distance vraie ÷ distance affichée,
-   en moyenne. Mets-la dans **Équipe › Caméra › Réglages avancés › correction_distance**.
+   en moyenne. Mets-la dans **Équipe › Caméra › Réglages avancés › Correction des distances**.
 6. **G6. Le champ de vision** : une règle ou un mètre à 1 m, d'un bord à l'autre de l'image. Note la
    largeur vue (le champ supposé est de 90°).
 7. Ctrl+C dans T5 (`g1-visiteurs`).
@@ -475,7 +479,14 @@ Le conteneur tourne depuis l'étape E, avec la caméra.
 
 Le but : comparer la carte de la **nouvelle chaîne** à celle d'Unitree Explore.
 
-1. Ruban **Naviguer › Arrêter** d'abord (la navigation et le conteneur s'arrêtent).
+1. Garde d'abord le journal de la navigation, dans T5 (le conteneur l'emporte avec lui quand il
+   s'arrête) :
+
+   ```bash
+   g1-jetson journal --lignes 100000 > ~/robot-g1/docs/releves/seance-2_navigation.log 2>&1
+   ```
+
+   Puis ruban **Naviguer › Arrêter** (la navigation et le conteneur s'arrêtent).
 2. **Robot sur la croix**, dans le sens de la flèche, en mode marche.
 3. Ruban **Scanner › Scan**. L'écran passe en plein écran : le nuage se remplit en direct.
 4. Promène le robot à la télécommande, **plus lentement que le 27/10** : moins de 0,5 m/s, virages
@@ -487,6 +498,10 @@ Le but : comparer la carte de la **nouvelle chaîne** à celle d'Unitree Explore
    et chaises reconnaissables ? carte ni dédoublée ni tournée ?
 
 ### Étape P : le pilotage et une danse sûre (25 min)
+
+**Si tu as sauté l'étape H**, le conteneur de la navigation tourne encore et `g1-jetson demarrer`
+refuserait (« le conteneur g1-jetson tourne déjà ») : fais d'abord le point 1 de l'étape H (journal,
+puis **Naviguer › Arrêter**).
 
 1. **Robot raccroché au portique**, pieds au sol, en mode marche.
 2. Le nœud pilotage seul, sur le Jetson. Dans T5 :
@@ -519,14 +534,19 @@ Le but : comparer la carte de la **nouvelle chaîne** à celle d'Unitree Explore
    ```
 
    Note la durée et le mode à la fin. **Jamais 401, 402 ni 403.**
-8. **P5.** **Rendre la main**, puis dans T5 : `g1-jetson arreter`.
+8. **P5.** **Rendre la main**, puis dans T5, garde le journal du pilotage **avant** d'arrêter :
+
+   ```bash
+   g1-jetson journal --lignes 100000 > ~/robot-g1/docs/releves/seance-2_pilotage.log 2>&1
+   g1-jetson arreter
+   ```
 
 ### Fin (5 min)
 
 1. Si le conteneur tourne encore, garde son journal **avant** de l'arrêter :
 
    ```bash
-   g1-jetson journal > ~/robot-g1/docs/releves/seance-2_conteneur.log
+   g1-jetson journal --lignes 100000 > ~/robot-g1/docs/releves/seance-2_conteneur.log 2>&1
    g1-jetson arreter
    ```
 
@@ -546,10 +566,10 @@ Le but : comparer la carte de la **nouvelle chaîne** à celle d'Unitree Explore
 | `mesure` n'envoie rien | Le pont n'est pas `pret` : regarde T3. |
 | Le robot ne s'arrête pas seul (C4) | Télécommande, amortissement, **fin de la séance**. |
 | `verifier` : pas de ligne caméra, ou USB 480 | Rebranche la See3CAM sur un port USB 3 (bleu) du Jetson, puis relance le conteneur. |
-| Vue Caméra : « Pas d'image » | `ros2 topic hz /camera_poitrine/image/compressed` ; `g1-jetson journal \| grep -i cam`. |
+| Vue Caméra : « Pas d'image » | `ros2 topic hz /camera_poitrine/image/compressed` ; `g1-jetson journal 2>&1 \| grep -i cam`. |
 | Image noire | Équipe › Caméra › Réglages avancés : exposition automatique ; note la lumière de la pièce. |
-| « Repérer » échoue | Note le message, `ros2 topic echo --once /slam_info` et `g1-jetson journal \| tail -n 30`. |
-| `carte-unitree` : rien reçu | Note-le ; relance-le, puis **Repérer** de nouveau pendant l'attente. |
+| « Repérer » échoue | Note le message, `ros2 topic echo --once /slam_info` et `g1-jetson journal 2>&1 \| tail -n 30`. |
+| `carte-unitree` : « aucune carte reçue » | Note-le ; relance-le, puis **Repérer** de nouveau pendant l'attente. |
 | Le robot oscille à la fin d'un trajet | Fais F5. |
 | Quelque chose bouge sans qu'on l'ait demandé | Télécommande, amortissement, **fin de la séance**. |
 
