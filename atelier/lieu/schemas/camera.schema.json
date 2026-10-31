@@ -19,6 +19,27 @@
         "hauteur": {"description": "Hauteur de l'image, en pixels.", "type": "integer", "minimum": 120, "maximum": 3072},
         "ips": {"description": "Images par seconde.", "type": "integer", "minimum": 1, "maximum": 120},
         "champ_horizontal_deg": {"description": "Facultatif : champ de vision horizontal, en degrés.", "type": "number", "exclusiveMinimum": 0, "maximum": 200},
+        "exposition": {
+          "description": "Facultatif (vague 5, section 12.7 du plan) : exposition réglée par le nœud camera_usb au démarrage. auto par défaut (la See3CAM démarre en manuel à 15,6 ms : image noire dans une pièce sombre) ; manuelle : temps_100us (en centaines de microsecondes, 156 = 15,6 ms) et gain.",
+          "type": "object",
+          "required": ["mode"],
+          "additionalProperties": false,
+          "properties": {
+            "mode": {"type": "string", "enum": ["auto", "manuelle"]},
+            "temps_100us": {"type": "integer", "minimum": 1, "maximum": 100000},
+            "gain": {"type": "integer", "minimum": 0, "maximum": 1000}
+          }
+        },
+        "publication": {
+          "description": "Facultatif (vague 5, section 12.7 du plan) : images publiées par le nœud camera_usb sur /camera_poitrine/image/compressed (défauts : 10 Hz, 640 pixels de large, qualité JPEG 70).",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "frequence_hz": {"type": "number", "exclusiveMinimum": 0, "maximum": 30},
+            "largeur": {"type": "integer", "minimum": 160, "maximum": 4096},
+            "qualite_jpeg": {"type": "integer", "minimum": 10, "maximum": 100}
+          }
+        },
         "position": {
           "description": "Pose de la caméra dans base_link.",
           "type": "object",
@@ -45,7 +66,9 @@
         "modele": {"description": "Facultatif : fichier du modèle de détection, dans ~/robot-g1/modeles/ (ex. yolov8n.pt).", "type": "string", "pattern": "^[^/]+$"},
         "confiance_min": {"description": "Seuil de confiance, de 0 à 1.", "type": "number", "minimum": 0, "maximum": 1},
         "distance_max_m": {"description": "Personnes plus loin ignorées, en mètres.", "type": "number", "exclusiveMinimum": 0, "maximum": 20},
-        "frequence_hz": {"description": "Fréquence de publication sur /visiteurs/detectes.", "type": "number", "exclusiveMinimum": 0, "maximum": 60}
+        "frequence_hz": {"description": "Fréquence de publication sur /visiteurs/detectes.", "type": "number", "exclusiveMinimum": 0, "maximum": 60},
+        "taille_personne_m": {"description": "Facultatif (vague 5) : taille supposée d'une personne debout, en mètres, pour estimer sa distance (1,70 par défaut).", "type": "number", "minimum": 1.0, "maximum": 2.2},
+        "correction_distance": {"description": "Facultatif (vague 5) : facteur qui corrige les distances estimées, mesuré avec des repères au sol à 1, 2, 3 et 4 m (1,0 par défaut).", "type": "number", "minimum": 0.5, "maximum": 2.0}
       }
     }
   }

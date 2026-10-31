@@ -16,6 +16,10 @@ journaux/
 ws/build_*/
 ws/install_*/
 ws/log_*/
+# Vague 5 : compilations d'un agent lancées depuis la racine (colcon --build-base build_v5_<agent> ...)
+/build_v5_*/
+/install_v5_*/
+/log_v5_*/
 # Installations Python en mode éditable et caches de pytest
 *.egg-info/
 .pytest_cache/

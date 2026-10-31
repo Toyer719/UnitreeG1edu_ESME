@@ -476,15 +476,39 @@ class Pieton:
                    depart_s=_nombre(d.get("depart_s")), repeter=d.get("repeter"), pilote=d.get("pilote"))
 
 
+# Vague 5 (section 12.5 du plan) : hauteur des blocs de la carte extrudée d'un étage scanné, et nom
+# du modèle Gazebo qui la porte (réservé, comme sol et g1_proxy)
+HAUTEUR_CARTE_EXTRUDEE = 1.5
+MODELE_CARTE_EXTRUDEE = "carte_du_scan"
+
+
+@dataclass
+class CarteExtrudee:
+    """La carte 2D d'un étage scanné extrudée en un seul maillage STL (vague 5, section 12.5 du plan).
+    Fichier : {fichier: <etage>_carte.stl (dans mondes/), hauteur: 1.5}. Écrite par g1-monde generer."""
+    fichier: str
+    hauteur: float = HAUTEUR_CARTE_EXTRUDEE
+
+    def vers_dict(self):
+        return {"fichier": self.fichier, "hauteur": _nombre(self.hauteur)}
+
+    @classmethod
+    def depuis_dict(cls, d):
+        return cls(d["fichier"], _nombre(d["hauteur"]))
+
+
 @dataclass
 class Monde:
-    """Environnement inventé d'un étage : emprise, murs, objets, piétons et départ du robot."""
+    """Environnement inventé d'un étage : emprise, murs, objets, piétons et départ du robot.
+    carte_extrudee (vague 5, facultatif, absent du fichier quand il vaut None) : la carte d'un étage
+    scanné en un seul maillage (CarteExtrudee)."""
     emprise: Emprise
     depart_robot: Pose
     murs: List[Mur] = field(default_factory=list)
     objets: List[Objet] = field(default_factory=list)
     pietons: List[Pieton] = field(default_factory=list)
     version: int = VERSION
+    carte_extrudee: Optional[CarteExtrudee] = None
 
     def ids(self):
         """Ids des murs, objets et piétons (ils deviennent les noms des modèles Gazebo)."""
@@ -495,19 +519,24 @@ class Monde:
         return next((e for e in (*self.murs, *self.objets, *self.pietons) if e.id == id), None)
 
     def vers_dict(self):
-        return {"version": self.version, "emprise": self.emprise.vers_dict(),
-                "murs": [m.vers_dict() for m in self.murs],
-                "objets": [o.vers_dict() for o in self.objets],
-                "pietons": [p.vers_dict() for p in self.pietons],
-                "depart_robot": self.depart_robot.vers_dict()}
+        d = {"version": self.version, "emprise": self.emprise.vers_dict(),
+             "murs": [m.vers_dict() for m in self.murs],
+             "objets": [o.vers_dict() for o in self.objets],
+             "pietons": [p.vers_dict() for p in self.pietons],
+             "depart_robot": self.depart_robot.vers_dict()}
+        if self.carte_extrudee is not None:
+            d["carte_extrudee"] = self.carte_extrudee.vers_dict()
+        return d
 
     @classmethod
     def depuis_dict(cls, d):
+        carte = d.get("carte_extrudee")
         return cls(Emprise.depuis_dict(d["emprise"]), Pose.depuis_dict(d["depart_robot"]),
                    [Mur.depuis_dict(m) for m in d.get("murs", [])],
                    [Objet.depuis_dict(o) for o in d.get("objets", [])],
                    [Pieton.depuis_dict(p) for p in d.get("pietons", [])],
-                   d.get("version", VERSION))
+                   d.get("version", VERSION),
+                   None if carte is None else CarteExtrudee.depuis_dict(carte))
 
 
 # ---------------------------------------------------------------- cartes/<etage>.yaml

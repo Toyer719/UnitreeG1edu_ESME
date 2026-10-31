@@ -25,6 +25,8 @@ Messages JSON (std_msgs/String) : schémas etat_pont, etat_reperage, demande_rep
 atelier/lieu/schemas ; valider_message(type, donnees) renvoie la liste des erreurs (vide : conforme).
 Elle connaît aussi les messages de la vague 4 (section 11 du plan, TYPES_MESSAGES).
 """
+import math
+
 from .conversions import carte_vers_unitree, unitree_vers_carte
 from .fichiers import ErreurLieu, chemin_monde, charger_fiche, charger_monde
 from .modeles import Pose
@@ -59,7 +61,11 @@ DERIVE_LACET_PAR_M = 0.01       # rad de lacet ajoutés par mètre parcouru
 HAUTEUR_PELVIS = 0.75           # m, z de odom_pelvis (le relais projette au sol)
 
 ETATS_PONT = ("demarrage", "attente_reperage", "pret", "en_mouvement", "arret", "arret_verrouille",
-              "robot_muet", "refus", "pilotage")     # pilotage : vague 4 (section 11.5), verrou des mouvements
+              "robot_muet", "refus", "pilotage",     # pilotage : vague 4 (section 11.5), verrou des mouvements
+              "pas_en_marche")                       # vague 5 (section 12.6) : le mode lu (7001) n'est pas la marche
+# Ordre de priorité des états du pont (le premier qui vaut l'emporte), vague 5 (section 12.6)
+PRIORITE_ETATS_PONT = ("arret_verrouille", "robot_muet", "pas_en_marche", "refus", "pilotage", "attente_reperage",
+                       "arret", "demarrage", "en_mouvement", "pret")
 ETATS_REPERAGE = ("non_repere", "en_cours", "repere", "perdu", "echec")
 LOCALISATIONS = ("simu", "unitree", "amcl", "externe")     # argument localisation de navigation.launch.py
 MODES_NAVIGATION = ("simu", "repetition", "robot")          # champ mode de POST /api/simulation/demarrer
@@ -78,6 +84,102 @@ EXEMPLE_ETAT_REPERAGE = {
     "demande": "atelier-1", "carte": CARTE_REPETITION,
     "repere_unitree": {"x": 2.5, "y": 10.0, "theta": 0.0}, "sauts": 0}
 EXEMPLE_DEMANDE_REPERAGE = {"id": "atelier-1", "x": 2.5, "y": 10.0, "theta": 0.0}
+
+
+# ---------------------------------------------------------------- vague 5 (section 12.6 du plan)
+
+# Vitesse minimale de marche du pont (règle 11). Le 27/10, le vrai G1 acceptait 7105 à 0,1 m/s sans
+# faire un pas, et marchait à 0,2 m/s : sous un seuil (sur la norme de vx, vy), il reste sur place.
+# Paramètres ROS du pont : vitesse_min_lin, vitesse_min_rot, zone_morte_lin, zone_morte_rot (0 : désactivé).
+VITESSES_MIN_PONT = {"lin": 0.20, "rot": 0.30}     # m/s (mesuré le 27/10), rad/s (à mesurer à la séance 2)
+ZONES_MORTES_PONT = {"lin": 0.05, "rot": 0.10}     # sous ces valeurs, la composante vaut 0
+VITESSE_MIN_LIN_MAX = 0.30      # un réglage plus haut est refusé (une faute de frappe ne fait pas courir le robot)
+VITESSE_MIN_ROT_MAX = 0.50
+VITESSE_MAX_MIN = 0.20          # G1_VITESSE_MAX, --vitesse-max et vitesse_max:= refusés en dessous
+MESSAGE_VITESSE_MAX_BASSE = "le robot ne marche pas sous 0,2 m/s"
+# Lecture du mode du robot par le pont (règle 12)
+API_SPORT_GET_FSM_ID = 7001     # GetFsmId : réponse {"data": N}
+PERIODE_LECTURE_MODE_S = 1.0    # une lecture par seconde
+DELAI_MODE_PERIME_S = 3.0       # un mode lu il y a plus longtemps est inconnu (il ne bloque rien)
+
+# /pont/etat de la vague 5 : les champs facultatifs demande, minimums et mode_robot, avec l'état
+# pas_en_marche (l'agent Robot les ajoute aussi à EXEMPLE_ETAT_PONT quand le pont les publie)
+EXEMPLE_ETAT_PONT_V5 = dict(
+    EXEMPLE_ETAT_PONT, etat="pas_en_marche", mouvement_permis=False,
+    message="Le robot est assis (mode 3) : il ignore les ordres de marche. Mettez-le debout puis en marche "
+            "avec la télécommande (ou « Démarrer » dans Piloter).",
+    consigne={"vx": 0.0, "vy": 0.0, "wz": 0.0}, demande={"vx": 0.1, "vy": 0.0, "wz": 0.0},
+    minimums={"vitesse_min_lin": VITESSES_MIN_PONT["lin"], "vitesse_min_rot": VITESSES_MIN_PONT["rot"],
+              "zone_morte_lin": ZONES_MORTES_PONT["lin"], "zone_morte_rot": ZONES_MORTES_PONT["rot"]},
+    mode_robot={"fsm": 3, "nom": "assis", "en_marche": False, "age_s": 0.4, "modes_marche": [500, 501, 801],
+                "lectures": 37})
+
+
+def vitesse_effective(vx, vy, wz, plafonds=None, minimums=None, zones=None):
+    """Consigne déjà plafonnée → consigne envoyée au robot (règle 11 du pont, section 12.6 du plan).
+
+    1. Le robot marche déjà franchement (norme de (vx, vy) ≥ minimum linéaire, ou |wz| ≥ minimum de
+       rotation) : la consigne passe telle quelle, petites corrections de cap ou de côté comprises.
+    2. Sinon, toute la consigne est petite : zones mortes (norme de (vx, vy) sous la zone linéaire →
+       (vx, vy) = 0 ; |wz| sous la zone de rotation → wz = 0). Tout à 0 : un arrêt.
+    3. Puis l'intention dominante (norme / minimum linéaire comparée à |wz| / minimum de rotation) :
+       marche : (vx, vy) porté à la norme du minimum, même direction (borné pour qu'aucune composante
+       ne dépasse son plafond), wz gardé ; rotation : (0, 0, ±minimum de rotation), borné par wz_max.
+    Un minimum (ou une zone) à 0 est désactivé : avec un minimum à 0, l'axe compte comme franc dès
+    qu'il n'est pas nul. Une valeur non finie donne un arrêt.
+    plafonds : {"vx", "vy", "wz"} (LIMITES_PONT) ; minimums, zones : {"lin", "rot"}. Renvoie (vx, vy, wz).
+
+    Le pont (g1_bridge, qui tourne sans atelier) en a une copie exacte ; le joystick du pilotage
+    (g1_pilotage) appelle celle-ci. Cas de référence : EXEMPLES_VITESSE_MIN.
+    """
+    p = LIMITES_PONT if plafonds is None else plafonds
+    m = VITESSES_MIN_PONT if minimums is None else minimums
+    z = ZONES_MORTES_PONT if zones is None else zones
+    if not all(math.isfinite(v) for v in (vx, vy, wz)):
+        return (0.0, 0.0, 0.0)
+    smin, wmin = m["lin"], m["rot"]
+    n, a = math.hypot(vx, vy), abs(wz)
+    if (smin > 0 and n >= smin) or (wmin > 0 and a >= wmin):
+        return (vx, vy, wz)
+    if n < z["lin"]:
+        vx = vy = n = 0.0
+    if a < z["rot"]:
+        wz = a = 0.0
+    lin_petit = 0.0 < n < smin
+    rot_petit = 0.0 < a < wmin
+    if (n > 0.0 and not lin_petit) or (a > 0.0 and not rot_petit) or not (lin_petit or rot_petit):
+        return (vx, vy, wz)        # minimum désactivé sur cet axe, ou consigne nulle
+    if lin_petit and (not rot_petit or n / smin >= a / wmin):
+        k = smin / n
+        if vx:
+            k = min(k, p["vx"] / abs(vx))
+        if vy:
+            k = min(k, p["vy"] / abs(vy))
+        return (vx * k, vy * k, wz)
+    return (0.0, 0.0, math.copysign(min(wmin, p["wz"]), wz))
+
+
+# Cas de référence de vitesse_effective, avec les valeurs par défaut (et les plafonds de G1_VITESSE_MAX
+# 0.2 pour le dernier) : (entrée, sortie attendue, plafonds). Le pont et le pilotage s'y conforment.
+PLAFONDS_VITESSE_MAX_0_2 = {"vx": 0.2, "vy": 0.125, "wz": 0.3}
+EXEMPLES_VITESSE_MIN = (
+    ((0.1, 0.0, 0.0), (0.2, 0.0, 0.0), None),            # marche montée au minimum
+    ((0.0, 0.1, 0.0), (0.0, 0.2, 0.0), None),            # pas de côté (vy_max 0,25 ≥ 0,2)
+    ((0.1, 0.1, 0.0), (0.141421, 0.141421, 0.0), None),  # norme 0,2, direction gardée
+    ((0.15, 0.02, 0.0), (0.198246, 0.026433, 0.0), None),  # × 1,32
+    ((0.3, 0.05, 0.05), (0.3, 0.05, 0.05), None),        # marche franche : telle quelle
+    ((0.1, 0.0, 0.4), (0.1, 0.0, 0.4), None),            # |wz| ≥ 0,3 : telle quelle
+    ((0.15, 0.0, 0.1), (0.2, 0.0, 0.1), None),           # la marche domine (0,75 > 0,33)
+    ((0.08, 0.0, 0.2), (0.0, 0.0, 0.3), None),           # la rotation domine (0,67 > 0,4)
+    ((0.0, 0.0, 0.15), (0.0, 0.0, 0.3), None),           # rotation sur place
+    ((0.0, 0.0, -0.15), (0.0, 0.0, -0.3), None),
+    ((0.03, 0.0, 0.0), (0.0, 0.0, 0.0), None),           # zone morte linéaire : arrêt
+    ((0.0, 0.0, 0.08), (0.0, 0.0, 0.0), None),           # zone morte de rotation : arrêt
+    ((0.1, 0.0, 0.05), (0.2, 0.0, 0.0), None),           # wz dans la zone morte, marche montée
+    ((-0.1, 0.0, 0.0), (-0.2, 0.0, 0.0), None),          # marche arrière montée (Nav2 n'en envoie plus)
+    ((0.0, 0.1, 0.0), (0.0, 0.125, 0.0), PLAFONDS_VITESSE_MAX_0_2),   # borné par vy_max
+    ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), None),
+)
 
 
 def valider_message(type_message, donnees):

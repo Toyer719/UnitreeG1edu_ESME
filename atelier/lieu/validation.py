@@ -33,7 +33,10 @@ TYPES_FICHIERS = ("lieu", "monde", "salles", "itineraires", "zones", "carte", "s
                   "personnalites", "dialogues", "camera", "scene", "choregraphie",
                   "etat_guide", "evenement_guide", "demande_guide", "pietons_etat", "pietons_consigne",
                   "personnes", "maitre_mouvement", "etat_pilotage", "robot_dire", "personnalite_active",
-                  "robot_geste")
+                  "robot_geste",
+                  # vague 5 (section 12 du plan) : en-tête d'un nuage d'affichage (cartes/<etage>.nuage.json),
+                  # puis état du nœud caméra (/camera_poitrine/etat)
+                  "nuage", "etat_camera")
 # Les messages ne sont pas des fichiers : ce sont les messages JSON (std_msgs/String) du pont, du
 # repérage (section 10 du plan) et des sujets de la vague 4 ; le nom affiché est celui du sujet ROS 2.
 NOMS_FICHIERS = {"lieu": "lieu.yaml", "monde": "monde.yaml", "salles": "salles.yaml",
@@ -47,11 +50,13 @@ NOMS_FICHIERS = {"lieu": "lieu.yaml", "monde": "monde.yaml", "salles": "salles.y
                  "pietons_etat": "/pietons/etat", "pietons_consigne": "/pietons/consigne",
                  "personnes": "/personnes/lidar", "maitre_mouvement": "/mouvement/maitre",
                  "etat_pilotage": "/pilotage/etat", "robot_dire": "/robot/dire",
-                 "personnalite_active": "/personnalite/active", "robot_geste": "/robot/geste"}
+                 "personnalite_active": "/personnalite/active", "robot_geste": "/robot/geste",
+                 "nuage": "en-tête du nuage", "etat_camera": "/camera_poitrine/etat"}
 TYPES_MESSAGES = ("etat_pont", "etat_reperage", "demande_reperage", "etat_guide", "evenement_guide",
                   "demande_guide", "pietons_etat", "pietons_consigne", "personnes", "maitre_mouvement",
-                  "etat_pilotage", "robot_dire", "personnalite_active", "robot_geste")
-IDS_RESERVES = ("sol", "g1_proxy")                 # noms de modèles Gazebo déjà pris
+                  "etat_pilotage", "robot_dire", "personnalite_active", "robot_geste", "etat_camera")
+# noms de modèles Gazebo déjà pris (carte_du_scan : la carte extrudée d'un étage scanné, vague 5)
+IDS_RESERVES = ("sol", "g1_proxy", "carte_du_scan")
 IDS_BOOLEENS = ("yes", "no", "on", "off", "y", "n", "true", "false")
 REGLE_ID = ("lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, "
             "en commençant par une lettre ou un chiffre (ex. salle_b204)")
@@ -588,9 +593,11 @@ def regles_carte(d, fichier="carte.yaml"):
     return []
 
 
+# Vague 5 (section 12.5 du plan) : l'étape nuage remplace reconnaissance et monde, gardées pour les
+# anciennes sessions
 ETATS_ETAPES = {"en_cours": ("preparation", "enregistrement"), "arret_en_cours": ("arret",),
-                "traitement": ("carte_3d", "carte_2d", "reconnaissance", "monde"), "termine": ("fini",),
-                "echec": ("preparation", "enregistrement", "arret", "carte_3d", "carte_2d", "reconnaissance",
+                "traitement": ("carte_3d", "carte_2d", "nuage", "reconnaissance", "monde"), "termine": ("fini",),
+                "echec": ("preparation", "enregistrement", "arret", "carte_3d", "carte_2d", "nuage", "reconnaissance",
                           "monde")}
 
 
@@ -699,6 +706,20 @@ def regles_etat_pont(d, fichier="/pont/etat"):
                             f"{d['limites'][axe]}")
     if d["reponses"] > d["envoyees"]:
         messages.append(f"{fichier} : plus de réponses ({d['reponses']}) que de requêtes ({d['envoyees']})")
+    # vague 5 (section 12.6 du plan) : mode du robot lu par 7001
+    mode = d.get("mode_robot")
+    if d["etat"] == "pas_en_marche":
+        if d["mouvement_permis"]:
+            messages.append(f"{fichier} : etat pas_en_marche alors que mouvement_permis est vrai")
+        if not isinstance(mode, dict) or mode.get("en_marche") is not False:
+            messages.append(f"{fichier} : etat pas_en_marche sans mode_robot.en_marche faux (le mode lu doit dire "
+                            "que le robot ne marche pas)")
+    if isinstance(mode, dict) and mode.get("en_marche") is False \
+            and d["etat"] not in ("arret_verrouille", "robot_muet", "pas_en_marche"):
+        messages.append(f"{fichier} : le robot n'est pas en mode marche (mode {mode.get('fsm')}) : l'état doit être "
+                        f"pas_en_marche (ou arret_verrouille, robot_muet, qui passent avant), pas {d['etat']}")
+    if isinstance(mode, dict) and mode.get("en_marche") is not None and mode.get("fsm") is None:
+        messages.append(f"{fichier} : mode_robot.en_marche vaut {mode['en_marche']} alors que le mode (fsm) est inconnu")
     return messages
 
 
@@ -797,6 +818,44 @@ def regles_pietons_etat(d, fichier="/pietons/etat"):
     return _ids_uniques(d["pietons"], fichier, "le piéton")
 
 
+# ---------------------------------------------------------------- vague 5 (section 12 du plan)
+
+def regles_personnes(d, fichier="/personnes/lidar"):
+    """Cadres « boite » (caméra) : x_min < x_max, y_min < y_max, dans l'image si sa taille est donnée."""
+    messages = []
+    image = d.get("image")
+    for p in d["personnes"]:
+        boite = p.get("boite")
+        if boite is None:
+            continue
+        x0, y0, x1, y1 = boite
+        ou = f"{fichier}, personne {p['id']}, boite {[nombre(v) for v in boite]}"
+        if not (x0 < x1 and y0 < y1):
+            messages.append(f"{ou} : il faut x_min < x_max et y_min < y_max ([x_min, y_min, x_max, y_max], en pixels)")
+        if image is not None and (x1 > image["largeur"] or y1 > image["hauteur"]):
+            messages.append(f"{ou} : sort de l'image ({image['largeur']} × {image['hauteur']} pixels)")
+    return messages
+
+
+def regles_nuage(d, fichier="en-tête du nuage"):
+    """Bornes cohérentes (min ≤ max) quand le nuage a des points. La taille du binaire se vérifie avec
+    le fichier (atelier.lieu.nuage.lire_entete_nuage)."""
+    messages = []
+    if d["points"] > 0:
+        b = d["bornes"]
+        for axe in ("x", "y", "z"):
+            if b[f"{axe}min"] > b[f"{axe}max"]:
+                messages.append(f"{fichier} : bornes en {axe} : min ({nombre(b[axe + 'min'])}) est plus grand que "
+                                f"max ({nombre(b[axe + 'max'])})")
+    return messages
+
+
+def regles_etat_camera(d, fichier="/camera_poitrine/etat"):
+    if d["publiees"] > d["images"]:
+        return [f"{fichier} : plus d'images publiées ({d['publiees']}) que d'images lues ({d['images']})"]
+    return []
+
+
 def _sans_regle(d, fichier=""):
     return []
 
@@ -809,9 +868,10 @@ REGLES = {"lieu": regles_lieu_v4, "monde": regles_monde, "salles": regles_salles
           "personnalites": regles_personnalites, "dialogues": regles_dialogues, "camera": _sans_regle,
           "scene": regles_scene, "choregraphie": regles_choregraphie,
           "etat_guide": _sans_regle, "evenement_guide": _sans_regle, "demande_guide": _sans_regle,
-          "pietons_etat": regles_pietons_etat, "pietons_consigne": _sans_regle, "personnes": _sans_regle,
+          "pietons_etat": regles_pietons_etat, "pietons_consigne": _sans_regle, "personnes": regles_personnes,
           "maitre_mouvement": _sans_regle, "etat_pilotage": _sans_regle, "robot_dire": _sans_regle,
-          "personnalite_active": _sans_regle, "robot_geste": _sans_regle}
+          "personnalite_active": _sans_regle, "robot_geste": _sans_regle,
+          "nuage": regles_nuage, "etat_camera": regles_etat_camera}
 
 
 def valider_donnees(type_fichier, donnees, fichier=None):
@@ -820,7 +880,7 @@ def valider_donnees(type_fichier, donnees, fichier=None):
     type_fichier : lieu, monde, salles, itineraires, zones, carte, session_scan, reconnaissance,
     ou un message du vrai robot : etat_pont, etat_reperage, demande_reperage (section 10 du plan) ;
     vague 4 (section 11) : personnalites, dialogues, camera, scene, choregraphie, et les messages de
-    TYPES_MESSAGES.
+    TYPES_MESSAGES ; vague 5 (section 12) : nuage (en-tête d'un nuage d'affichage), etat_camera.
     fichier : nom affiché au début de chaque message (par défaut : salles.yaml, monde.yaml...).
     Renvoie une liste vide si tout va bien.
     """

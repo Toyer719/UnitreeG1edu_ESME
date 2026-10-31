@@ -10,6 +10,8 @@ Vague 3, le vrai robot (conteneur du Jetson, pont vers la marche, repérage au d
 
 Vague 4 (point principal, passants, comportement du guide, pilotage et danses, emplacements de l'équipe) : chaque agent lit aussi la section 11 en entier. Ses contrats font foi au même titre que ceux des sections 4, 9 et 10.
 
+Vague 5 (interface à la SolidWorks, carte 3D, scan corrigé sans reconnaissance, vitesse minimale et mode du pont, caméra See3CAM) : chaque agent lit aussi la section 12 en entier. Ses contrats font foi au même titre que ceux des sections 4 et 9 à 11.
+
 ---
 
 ## 1. Le but
@@ -119,6 +121,7 @@ Principe : le serveur ne contient aucune logique robotique. Il appelle les bibli
 │   ├── web/                       # agent Interface (HTML, CSS, JS modules, sans compilation)
 │   │   ├── index.html
 │   │   ├── js/  css/
+│   │   ├── js/coque/, js/carte3d/, js/camera/, css/theme.css   # vague 5 : coque, carte 3D, caméra (section 12)
 │   │   └── vendor/                # leaflet, three.js copiés en local (fonctionne sans Internet)
 │   └── tests/                     # tests unitaires (chaque agent dans ses fichiers)
 ├── ws/src/
@@ -159,6 +162,9 @@ lieux/<id>/
 ├── cartes/<etage>_interdit.pgm + .yaml   # masque Keepout (généré depuis zones.yaml), même taille et origine que la carte
 ├── cartes/<etage>_lent.pgm + .yaml       # masque des zones lentes (facultatif, phase 3)
 ├── cartes/<etage>.pcd             # nuage 3D du scan (facultatif)
+├── cartes/<etage>.nuage.bin + .json      # nuage d'affichage de la carte 3D (vague 5, section 12.5)
+├── cartes/<etage>_unitree.pcd, _unitree.nuage.bin + .json   # carte d'Unitree (g1-scan carte-unitree, 12.5)
+├── mondes/<etage>_carte.stl       # carte d'un étage scanné extrudée en un maillage (champ carte_extrudee, 12.5)
 ├── scans/<session>/               # sessions du scan intégré (section 9.2), une par scan
 ├── salles.yaml
 ├── itineraires.yaml
@@ -265,6 +271,8 @@ Vague 3 (section 10) : sujets du pont (`/api/sport/*`, `/pont/etat`, `/pont/arre
 
 Vague 4 (section 11) : nouveaux états et champs de `/guide/etat`, `/guide/aller` en JSON, `/guide/evenement` (11.4) ; `/pietons/etat`, `/pietons/consigne` (11.3) ; `/personnes/lidar`, `/faux_visiteur/mode`, `/speed_limit` (11.4) ; `/mouvement/maitre`, `/pilotage/etat`, `/api/arm/*`, `/api/voice/*`, `/arm_sdk`, `/lowstate` (11.5) ; `/visiteur/texte`, `/visiteurs/detectes`, `/personnalite/active`, `/robot/dire` (11.6).
 
+Vague 5 (section 12) : requêtes 7001 du pont sur `/api/sport/request`, état `pas_en_marche` et champ `mode_robot` de `/pont/etat`, `/g1_jumeau/mode` (12.6) ; `/camera_poitrine/image/compressed`, `/camera_poitrine/etat`, `/visiteurs/image/compressed`, champs `boite` et `image` de `/visiteurs/detectes` (12.7) ; `/unitree/slam_relocation/global_map` (12.5).
+
 ### 4.3 Commandes
 
 | Commande | Rôle | Agent |
@@ -286,6 +294,8 @@ Vague 2 (section 9.5) : `g1-scan demarrer|arreter|traiter|etat|adopter`, agent O
 Vague 3 (section 10) : `g1-jetson construire|envoyer|lieu|demarrer|arreter|etat|journal|verifier` (agent Jetson) ; `g1-monde simuler … --jumeau` (agent Pont et faux G1) ; `g1-guide navigation … --localisation simu|unitree|amcl|externe --pont auto|oui|non` et `g1-slam faux-service --jumeau --lieu L --etage E` (agent Repérage). Ajouts acceptés à l'assemblage (10.12) : `g1-jetson tester-local|shell`, `construire --contexte|--incomplet`, `demarrer --vitesse-max` ; `g1-guide navigation … --vitesse-max`.
 
 Vague 4 (section 11) : `g1-lieu migrer --lieu L [--depuis-depart] [--a-blanc]` (agent Point principal) ; `g1-banc … --scene ID` (agent Passants) ; `g1-pilotage` (agent Pilotage et danses, facultatif : les commandes de l'onglet Pilotage en ligne de commande).
+
+Vague 5 (section 12) : `g1-scan traiter --refaire` et `g1-scan carte-unitree --lieu L [--etage E]` (agent Scan) ; `g1-visiteurs` et l'exécutable `camera_usb` de `g1_equipe` (agent Caméra) ; `--vitesse-max` refusée sous 0,2 m/s.
 
 Ajouts de la phase 1, acceptés à l'assemblage : `g1-lieu liste` ; `g1-monde simuler … [--monde F.sdf] [--afficher]` ; `g1-guide etat` et `g1-guide aller ID --sans-suivre` ; `g1-banc … [--simu] [--lancer] [--graine N] [--seuil P] [--csv F]` ; `g1-slam etat` et `g1-slam faux-service [--gazebo] [--relocalise]`, `scan-fin --lieu L` (note `carte_unitree`) ; `g1-atelier [--sans-navigateur] [--hote H]`.
 
@@ -313,6 +323,8 @@ Vague 3 (section 10.8) : champ `mode` (`simu`, `repetition`, `robot`) de `POST /
 
 Vague 4 (section 11) : `GET/PUT /api/lieux/{id}/principal` (11.2) ; `/api/pilotage/*` et `/ws/pilotage` (11.5) ; `GET/PUT /api/lieux/{id}/personnalites`, `…/dialogues`, `…/camera` (11.6) ; `evenements`, `maitre`, `personnes` et `visiteurs` dans `/ws/etat`, et `pietons` tiré de `/pietons/etat` quand il est publié.
 
+Vague 5 (section 12.4) : `POST /api/arret`, `POST /api/arret/debloquer`, `GET /api/arret`, `GET /api/robot/liaison`, `GET …/etages/{e}/nuage` et `…/nuage/info`, `GET …/etages/{e}/monde/maillage`, `GET /api/scan/nuage` et `…/info`, `GET /api/camera/image`, `…/flux` et `…/etat` ; champ `arret` dans `/ws/etat` ; retirées : `GET/PUT /api/scan/sessions/{s}/reconnaissance`, `GET /api/scan/sessions/{s}/monde`.
+
 ### 4.5 Lancements ROS 2
 
 ```
@@ -335,6 +347,7 @@ ros2 launch g1_nav navigation.launch.py lieu:=DOSSIER etage:=ID simu:=true|false
 - Le monde Gazebo porte le nom de l'étage (`<world name="rdc">`) : sujets `/world/rdc/…`.
 - `moteur:=factice` (ajout de la phase 1) : `MoteurFactice`, sans Gazebo ni Nav2, pour les essais.
 - Vague 4 (section 11) : `pietons:=corps|acteurs` pour g1_sim (11.3, défaut `corps`) ; `personnes:=true|false` pour g1_nav (11.4, détecteur de personnes au LiDAR, défaut true).
+- Vague 5 (section 12.6) : `vitesse_max:=` de g1_nav baisse aussi les vitesses maximales de Nav2 et refuse moins de 0,2 m/s ; paramètre `tolerance_orientation_rad` du guide.
 - Vague 3 (section 10) : `jumeau:=true|false` pour g1_sim (10.4, défaut `false` : rien ne change) ; `localisation:=simu|unitree|amcl|externe` et `pont:=auto|true|false` pour g1_nav (10.7), plus `nuage:=SUJET` et `vitesse_max:=M_PAR_S` (ajouts acceptés à l'assemblage, 10.12). `simu:=false` lance le relais `odom_vers_tf` de la section 10.5, qui remplace celui de la vague 1.
 - Si `cartes/<etage>_interdit.yaml` manque, g1_nav crée un masque tout libre dans `/tmp` et le signale ; si la carte manque, il s'arrête et propose `g1-monde generer`.
 - Les deux lancements sont complets depuis la phase 1 (agents Simulation et Navigation). Ils sont compilés dans `ws/install` : `cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_sim g1_nav`.
@@ -370,7 +383,7 @@ Sept agents. Chacun possède ses dossiers, et personne n'écrit dans les dossier
 | 6. Interface | `atelier/serveur/`, `atelier/web/`, `bin/g1-atelier` | Données, Monde ; Simulation et Navigation pour l'intégration |
 | 7. Scan et Testeur | `atelier/scan/`, `ws/src/g1_nav/g1_nav/moteur_unitree.py`, `bin/g1-slam`, `g1-carte-*`, `g1-salle`, `tests_e2e/` | Données, Simulation, Navigation (guide) |
 
-Vague 2 : agents et fichiers en 9.9. Vague 3 : agents Jetson, Pont et faux G1, Repérage, en 10.10. Vague 4 : agents Point principal, Passants, Comportement du guide, Pilotage et danses, Équipe, en 11.7.
+Vague 2 : agents et fichiers en 9.9. Vague 3 : agents Jetson, Pont et faux G1, Repérage, en 10.10. Vague 4 : agents Point principal, Passants, Comportement du guide, Pilotage et danses, Équipe, en 11.7. Vague 5 : agents Coquille, Carte 3D, Scan, Robot, Caméra, en 12.8.
 
 ### Phases
 
@@ -628,7 +641,7 @@ Critères 11 à 15 (vague 2, scan intégré) : section 9.10. Critères 16 à 20 
     - consignes absurdes (NaN, 1e9) : jamais au-delà des plafonds ;
     - messages en français, jamais d'erreur 500.
 
-Critères 21 à 30 (vague 4 : point principal, passants, comportement du guide, pilotage, équipe ; section 11), ci-dessous ; `tests_e2e/tout.sh` lance les trente et affiche « N / 30 ». Un critère dont la pièce d'un autre agent manque répond « en attente » (77). Mesures dans le lieu `demo` (couloirs nord et sud de 2,85 m libres), sur des copies ; vérité terrain : `/odom` en simulation, `/g1_jumeau/odom` en répétition.
+Critères 21 à 30 (vague 4 : point principal, passants, comportement du guide, pilotage, équipe ; section 11), ci-dessous ; `tests_e2e/tout.sh` lance les trente et affiche « N / 30 » (« N / 36 » depuis la vague 5 : critères 31 à 36 en 12.10). Un critère dont la pièce d'un autre agent manque répond « en attente » (77). Mesures dans le lieu `demo` (couloirs nord et sud de 2,85 m libres), sur des copies ; vérité terrain : `/odom` en simulation, `/g1_jumeau/odom` en répétition.
 
 21. **Point principal** (`critere_21_point_principal.sh`, agent Point principal). Sur des copies du demo :
     - un lieu sans principal (ni étiquette ni salle `accueil`) : `g1-lieu valider` en erreur (« pas de point principal ») et `POST /api/simulation/demarrer` répond 409 ; deux principaux : `PUT …/salles` répond 422 ; un lieu migré dont `PUT …/salles` perdrait le principal : 422 ;
@@ -1810,3 +1823,341 @@ Toutes les poses clés et les poses échantillonnées (gestes toutes les 0,05 s,
 À vérifier sur le robot : `docs/seance-robot.md`, 6.12 (le service existe-t-il sur ce G1, le format de la réponse, le débit par le Wi-Fi et l'effet sur le joystick).
 
 **Tests** : `ws/src/g1_pilotage/test/test_camera.py` (une demande à la fois, 5 par seconde, refus, image illisible, silence, cœur multi-fil), `test_serveur.py` (`/camera` sans la main, jeton), `test_logique.py` (`geste` de l'état) ; `ws/src/g1_jumeau/test/test_camera.py` (image de test, puis de bout en bout avec ROS 2 : faux G1 ← nœud pilotage ← `GET /camera`) ; `atelier/tests/test_pilotage_serveur.py` (relais, partage, nœud absent, caméra muette) ; `atelier/tests/test_pilotage_vue_navigateur.py` (Firefox sans fenêtre, en répétition avec le pont ROS 2 de l'Atelier : vue sous Commandes et Danses et pas sous Mes chorégraphies, robot et passants sur la carte, G1 en 3D chargé et posé au sol, posture amortie, geste, marche, danse et sa barre, chorégraphie aux poses exactes, image de test de la caméra à quelques images par seconde, ARRÊT visible en bas de page et sur une tablette en portrait, aucune pose hors limites).
+
+---
+
+## 12. Interface à la SolidWorks, carte 3D, scan corrigé, robot et caméra (vague 5)
+
+Contrats figés par l'agent Contrats le 31/10/2026, avant le travail en parallèle de cinq agents (12.8). Comme les sections 4 et 9 à 11, cette section fait foi ; on ne la modifie qu'en passant par l'assemblage. Les choix viennent des décisions de l'intégrateur (l'utilisateur dort et a tout délégué), qui tranchent les cinq rapports de la phase « comprendre » (interface, recherche d'interface, scan, robot, tests) : les rapports donnent les détails (fichiers, lignes, mesures), cette section donne les choix et les interfaces entre agents.
+
+Ce que l'utilisateur a demandé (31/10, résumé) :
+- **une interface « à la SolidWorks »** : au début, deux grands boutons Simulation et Réel, puis un espace épuré (barre d'outils, ruban à onglets, arbre à gauche, grande vue au centre, panneau à droite), habillé comme Unitree Explore, « simple et ludique », où tout défile correctement ;
+- **placer les points dans une carte 3D** faite des points du scan (accueil, salles, orientation), qu'on tourne et déplace ;
+- **retirer la reconnaissance des tables et des chaises** (« il y en a de toute sorte »), et un scan aussi bon que celui d'Unitree Explore ;
+- **la caméra See3CAM** du PC sur le robot (conteneur du Jetson, image dans l'Atelier) et la détection des visiteurs ;
+- **les corrections du pont** : vitesse minimale (le 27/10, 0,1 m/s ne faisait aucun pas, 0,2 m/s marchait), lecture du mode du robot (lus : 0, 3, 501, 802), marche en mode 501.
+
+Code partagé déjà livré et testé (`atelier/tests/test_contrats_vague5.py`) :
+- les schémas : `nuage` (en-tête d'un nuage d'affichage) et `etat_camera` (nouveaux) ; l'état `pas_en_marche` et les champs facultatifs `mode_robot`, `demande` et `minimums` de `etat_pont` ; les champs facultatifs `boite` et `image` de `personnes` ; `carte_extrudee` de `monde` ; l'étape `nuage` de `session_scan` ; les réglages facultatifs `exposition`, `publication`, `taille_personne_m` et `correction_distance` de `camera` ; leurs règles dans `validation.py`. Les lieux et les mondes existants restent valides et s'enregistrent à l'identique ;
+- `atelier.lieu.nuage` (emplacements, en-tête, lecture et écriture d'un nuage d'affichage, en-têtes HTTP) ; `CarteExtrudee` (champ `Monde.carte_extrudee`) et `chemin_maillage` ; l'id réservé `carte_du_scan` ; l'avertissement de `verifier_lieu` quand le maillage manque ou date d'avant la carte ;
+- `atelier.lieu.robot` : `VITESSES_MIN_PONT`, `ZONES_MORTES_PONT`, `VITESSE_MIN_LIN_MAX`, `VITESSE_MIN_ROT_MAX`, `VITESSE_MAX_MIN`, `MESSAGE_VITESSE_MAX_BASSE`, `API_SPORT_GET_FSM_ID`, `PERIODE_LECTURE_MODE_S`, `DELAI_MODE_PERIME_S`, `PRIORITE_ETATS_PONT`, `EXEMPLE_ETAT_PONT_V5`, la fonction de référence `vitesse_effective` et ses cas `EXEMPLES_VITESSE_MIN` ; `atelier.lieu.pilotage` : `MODES_MARCHE` (500, 501, 801), `MODES_COURSE`, `NOMS_MODES`, `nom_mode`, `message_pas_en_marche` ; les copies de `MODES_MARCHE` et l'état `pas_en_marche` dans `g1_bridge` et `g1_jumeau`, comparées par le test ; `atelier.lieu.equipe` : `SUJETS_IMAGES`, `/camera_poitrine/etat` dans `SUJETS_EQUIPE`, `CAMERA_CONTENEUR` ;
+- les squelettes : routes `atelier/serveur/routes/arret.py`, `liaison.py`, `nuage.py` et `camera.py` enregistrées dans `main.py` (chaque route répond 501 « Pas encore fait » tant que son agent ne l'a pas écrite ; `pas_encore_fait` de `communs.py`) ; modules `atelier/web/js/coque/*.js` (dont le registre des commandes du ruban et la table des anciens hash), `js/carte3d/carte3d.js` et `js/camera/flux.js` avec leurs exports ; `css/theme.css` (les jetons du thème, contrastes vérifiés), `css/carte3d.css` et `css/camera.css` vides, reliés par `index.html` ; le nœud `camera_usb` déclaré dans `g1_equipe` (il sort avec le code 1) ;
+- `tests_e2e/tout.sh` compte 36 critères (« N / 36 ») ; un critère sans script est « absent » ; `tests_e2e/commun.sh` accepte `E2E_OVERLAY` (12.11) ; les tests qui figeaient les lignes d'`app.js` (vague 4 et scan) acceptent une table des écrans dans `js/coque/`.
+
+### 12.1 Les décisions et qui les réalise
+
+| Décisions | Ce qui change | Agent |
+|---|---|---|
+| I1 accueil, I2 espace de travail, I3 ruban à 5 onglets au plus, I4 arbre, I5 ARRÊT unique, I6 thème, I9 tests et tablette, I10 textes | `index.html`, `app.js`, `js/coque/`, `css/theme.css` et `atelier.css`, les écrans, `/api/arret`, `/api/robot/liaison` | Coquille |
+| I7 vue centrale 3D, I8 placer les points en 3D | `js/carte3d/` (l'intégration dans la vue et l'écran Salles : Coquille) | Carte 3D |
+| S1 trois bogues, S2 plus de reconnaissance, S3 monde maillé, S4 nuage de la carte 3D, S5 écran de scan, S6 `--refaire`, S7 carte d'Unitree | `atelier/scan/`, `atelier/monde/`, `atelier.lieu.scans`, routes du scan et des nuages, écran Scan | Scan |
+| R1 vitesse minimale, R2 mode du robot, R3 Nav2 | `g1_bridge`, `g1_jumeau`, `g1_pilotage`, `g1_nav`, `atelier.lieu.robot` et `pilotage` | Robot |
+| R4 caméra See3CAM | `docker/`, `g1_equipe`, `g1-visiteurs`, pont ROS 2 du serveur, `/api/camera/*`, vue Caméra | Caméra |
+
+### 12.2 L'interface (agent Coquille)
+
+**L'écran d'accueil** (I1, « Nouveau document » de SolidWorks) : deux grandes cartes illustrées, **Simulation** (« Dessiner un lieu et essayer le guide sur l'ordinateur, sans robot. ») et **Robot réel** (« Scanner le bâtiment, placer les salles et guider le vrai G1. ») ; un clic choisit, un double-clic ou Entrée ouvre ; dessous, la liste des lieux (le dernier ouvert présélectionné), « Nouveau lieu » (le nom ; la taille du monde seulement en Simulation) et le bouton **Ouvrir**. Sous la carte Robot réel : la case **« Répétition sans robot (faux G1) »** et la liste des vérifications, qui remplace les `confirm()` du lancement du robot et du scan : « Atelier lancé avec robot.sh » (domaine 0), « Câble du robot branché », « PC1 et Jetson répondent » (`GET /api/robot/liaison`, 12.4), « Télécommande en main » (à cocher) ; en répétition, seules restent celles qui ont un sens sans robot. Lien discret « Piloter le robot sans lieu » (Piloter s'ouvre sans lieu, comme aujourd'hui). Une adresse avec un hash (`#salles`…) ou `?recharger` saute l'accueil (tests, rechargement) ; le bouton ⌂ de la barre d'outils y revient.
+
+**L'espace de travail** (I2) : la page ne défile jamais.
+
+```
+┌ barre d'outils 48 px : ⌂ Atelier G1 │ Lieu ▾ › Étage ▾ │ SIMULATION / RÉEL / RÉPÉTITION │ ↶ ↷ │ Enregistrer │ liaison │ ◐ │ ⚙ │ ARRÊT ┐
+├ ruban 84 px, repliable : onglets du mode ; grosses icônes avec un libellé court ; menu ⚙ Avancé par onglet ──────────────────────┤
+├ arbre 260 px (repliable, défile seul) ┬ vue centrale (remplit tout ; position: relative) ┬ panneau de tâches 320 px (défile seul) ┤
+│ Lieu ▸ Étage ▸ Carte, Monde, Points, │ barre flottante : 3D │ Plan 2D │ Caméra ·        │ propriétés de l'élément choisi, ou    │
+│ Itinéraires, Zones, Scans, Équipe    │ Dessus Iso Face Recadrer · Calques ▾             │ formulaire de la commande, ✓ OK ✗     │
+└ barre d'état 28 px : consigne de l'outil · messages courts · x, y sous le pointeur · liaison ──────────────────────────────────────┘
+```
+
+Règles de mise en page (elles corrigent les panneaux écrasés à 24 px et la molette captée par les cartes) : `html, body {height: 100%; overflow: hidden}` ; une grille de 4 rangées (barre d'outils, ruban, centre, barre d'état), puis 3 colonnes au centre ; `min-height: 0` sur chaque enfant de grille ou de flex ; chaque colonne en `overflow-y: auto` avec `overscroll-behavior: contain` ; la vue en `position: relative`, la toile ou le plan en `inset: 0` ; jamais `100vh` codé en dur, ni de hauteur fixe en pixels pour une liste (c'est la colonne qui défile) ; `[hidden] {display: none !important}`. Sous 1100 px de large, l'arbre et le panneau deviennent des tiroirs (boutons dans la barre d'outils) ; cibles de 44 px (`--cible`) ; gestes tactiles de 12.3.
+
+**Le ruban** (I3) : 4 onglets en Simulation (Dessiner, Placer, Simuler, Équipe), 5 en Réel (Scanner, Placer, Naviguer, Piloter, Équipe ; la répétition est le Réel sans robot) : `ONGLETS_RUBAN`. Le registre des commandes est `COMMANDES` de `js/coque/ruban.js`, livré : chaque commande a un `id` stable (repère `[data-commande=<id>]`), ses `modes`, son `onglet` et son `groupe`, un `libelle` court, une `icone`, une phrase d'`aide` (infobulle), l'`ecran` qui l'exécute et le nom de la `commande` passé à cet écran ; `avance: true` la range dans le menu ⚙ de l'onglet ; `case: true` en fait une case à cocher.
+
+| Onglet | Commandes (`id`) | Écran |
+|---|---|---|
+| Dessiner (simu) | `monde.choisir`, `monde.mur`, `monde.passage`, `monde.objet` (menu des meubles), `monde.pieton`, `monde.depart` ; Avancé : `carte.refaire` | monde, carte |
+| Placer (les deux) | `salles.salle`, `salles.accueil`, `itineraires.noeud`, `itineraires.relier`, `zones.interdite`, `zones.lente` | salles, itineraires, zones |
+| Simuler (simu) | `simulation.lancer`, `simulation.arreter`, `simulation.y-aller`, cases `simulation.accompagner` et `simulation.retour` ; Avancé : `simulation.faux-visiteur`, `simulation.passants`, `simulation.reglages-guide`, `scan.simule` | simulation, scan |
+| Scanner (réel) | `scan.scan`, `scan.fin`, `scan.utiliser` | scan |
+| Naviguer (réel) | `navigation.lancer`, `navigation.reperer`, `navigation.y-aller`, `navigation.bloquer`, `navigation.debloquer`, `navigation.arreter` | simulation |
+| Piloter (réel) | `pilotage.main`, `pilotage.postures`, `pilotage.gestes`, `pilotage.voix`, `pilotage.led`, `pilotage.joysticks` ; groupe Spectacle : `pilotage.danses`, `pilotage.choregraphies` ; Avancé : `pilotage.portique`, `pilotage.volume` | pilotage |
+| Équipe (les deux) | `personnalites.ouvrir`, `dialogues.ouvrir`, `camera.ouvrir` | personnalites, dialogues, camera |
+
+Le menu ⚙ Avancé reçoit aussi ce qui est rare (I3) : identifiants, emprise, console « Ce qui tourne », 17 phrases des personnalités, syntaxe des dialogues, réglages de la caméra, gestes rares. L'agent Coquille peut ajouter des commandes Avancé et changer libellés, icônes et aides ; un `id` ne change pas sans cette section. Icônes : SVG écrits dans `js/coque/`, sans bibliothèque ; le libellé est toujours sous l'icône. Piloter n'existe qu'en Réel.
+
+**L'arbre du lieu** (I4, FeatureManager) : Lieu ▸ Étage ▸ Carte (source, date), Monde (en Simulation), Points (★ Accueil d'abord, puis les salles), Itinéraires (nœuds, couloirs), Zones, Scans (sessions), Équipe. Clic : choisit l'élément dans la vue (`carte3d.choisir`, ou le plan) et montre ses propriétés à droite ; double-clic : recentre la vue dessus ; pastille ⚠ sur les éléments cités par `GET /api/lieux/{id}/verification`. Chaque nœud porte `data-noeud="<genre>:<id>"` (`etage:rdc`, `carte:rdc`, `monde:rdc`, `salle:b204`, `noeud:c1`, `couloir:3`, `zone:interdite:0`, `scan:2026-10-27_14h22`, `equipe:camera`).
+
+**La vue centrale** (I7) : trois vues, choisies dans la barre flottante. **3D** : la carte 3D de 12.3, partagée (la coque la crée une fois par lieu et étage, y charge le nuage de l'étage en Réel, ou le monde en Simulation, puis les points, itinéraires et zones, et le robot et les piétons de `/ws/etat`). **Plan 2D** : Leaflet, gardé dans cette vague pour dessiner le monde, les itinéraires et les zones. **Caméra** : en Réel, `creerVueCamera` de 12.7, aussi en incrustation dans Piloter et Naviguer. Par défaut : 3D en Réel (Placer s'ouvre dans la vue Nuage), Plan 2D pour Dessiner, 3D pour Placer en Simulation. Vues prédéfinies Dessus, Iso, Face, Recadrer ; calques : nuage, carte 2D, monde, points, itinéraires, zones, robot, piétons.
+
+**Le thème** (I6) : `css/theme.css`, livré : les jetons de couleur sur `:root`, sombre par défaut (palette mesurée d'Unitree Explore : fond `#2e2e3d`, cartes `#201f2d`, accent `#5569d4`, actif `#6577e0`, ARRÊT `#d93036`), thème clair avec `data-theme="clair"` sur `<html>` (bouton ◐, clé `atelier.theme`) ; vue 3D toujours sombre (`--vue-fond` `#1e1e1e`) ; couleurs des repères (`--repere-accueil` ambre, `--repere-salle` accent, `--itineraire` cyan, `--zone-interdite` rouge, `--zone-lente` orange, `--nuage-bas`, `--nuage-milieu`, `--nuage-haut` : vert, jaune, rose) ; tailles de la coque. Les feuilles des agents n'écrivent aucune couleur en dur. Contrastes AA vérifiés par le test (texte 4,5:1, repères 3:1).
+
+**Les modules de la coque** (`atelier/web/js/coque/`, squelettes livrés ; l'agent Coquille en ajoute d'autres s'il veut) :
+
+| Module | Exports du contrat |
+|---|---|
+| `coque.js` | `MODES`, `CLES_MEMOIRE`, `demarrerCoque(options)`, `ouvrirEspace({mode, repetition, lieu, etage})`, `retourAccueil()`, `modeCourant()`, `ouvrirCommande(id)` |
+| `accueil.js` | `afficherAccueil(racine, {surOuvrir, surPilotageSansLieu})` → `{fermer}` |
+| `ruban.js` | `ONGLETS_RUBAN`, `COMMANDES`, `commandesDe(mode, onglet)`, `construireRuban(element, {mode, surCommande})` → `{choisirOnglet, activer, griser, detruire}` |
+| `arbre.js` | `construireArbre(element, {lieu, etage, mode, surChoix, surDoubleClic})` → `{rafraichir, choisir, detruire}` |
+| `panneau.js` | `ouvrirPanneau(element, {titre, aide, ok, annuler})` → `{corps, fermer}` |
+| `barre_etat.js` | `construireBarreEtat(element)` → `{message, coordonnees, outil}` |
+| `arret.js` | `monterArret(element, {mode})` → `{arreter, debloquer, detruire}` |
+| `confirmation.js` | `demanderConfirmation(texte, {titre, ok, annuler, danger})` → promesse de vrai ou faux |
+| `anciens_hash.js` | `ANCIENS_HASH`, `destinationDuHash(hash)` |
+
+**Le contrat des écrans** devient `ouvrir(racine, options)` → `{modifie(), fermer(), commande?(nom), selectionner?(genre, id), vue?(nom)}` :
+- `racine` : la vue Plan 2D de la vue centrale, où l'écran met sa carte Leaflet comme avant ; la coque y pose `class="ecran ecran-<id>"` et `data-ecran="<id>"` ;
+- `options.panneau` : l'élément du panneau de tâches, vidé, où l'écran met son formulaire, ses listes et ses boutons ; ✓ OK et ✗ Annuler par `ouvrirPanneau` ;
+- `options.mode` : `simu`, `reel` ou `repetition` ;
+- `options.commande` : la commande du ruban qui a ouvert l'écran (`salle`, `mur`…) ou null ; une commande suivante du même écran arrive par `instance.commande(nom)` ;
+- `options.vue` (`3d`, `plan` ou `camera`) et `options.carte3d` : la carte 3D partagée (12.3), ou null (pas de WebGL, ou pas encore créée) ;
+- `options.coque` : `{confirmer(texte, options) → promesse, message(texte, genre), pleinEcran(vrai|faux), ouvrirCommande(id), choisirVue(nom), surVue(fn) → désabonner, barreEtat}`.
+Un écran d'avant, `ouvrir(racine)` sans options, marche encore : il dessine tout dans `racine` (migration écran par écran). Les panneaux `monter(element, outils)` de la vague 4 ne changent pas. `scan.js` (agent Scan) et `camera.js` (agent Caméra) acceptent `options` et mettent leurs formulaires dans `options.panneau` quand il existe ; l'écran de scan demande `pleinEcran(true)` pendant un scan (S5).
+
+**Plus de boîte native** : chaque agent remplace, dans ses fichiers, `window.confirm` et `window.prompt` par `options.coque.confirmer` (ou `demanderConfirmation` de `js/coque/confirmation.js` ; le squelette livré passe encore par `window.confirm`). Les tests remplacent `demanderConfirmation`, plus `window.confirm`.
+
+**Les anciens hash** (`ANCIENS_HASH`, livré) : `#lieux` → l'accueil ; `#monde` → Simulation › Dessiner ; `#salles`, `#itineraires`, `#zones` → Placer (dans le mode retenu) ; `#carte` → l'écran Carte ; `#simulation` → Simuler, ou Naviguer selon `atelier.mode-simulation` (`repetition` : Réel avec la répétition ; `robot` : Réel) ; `#scan` → Scanner, ou Simuler › Avancé › Scan simulé si `atelier.scan.mode` vaut `simu` ; `#pilotage` → Réel › Piloter, même sans lieu ; `#personnalites`, `#dialogues`, `#camera` → Équipe.
+
+**Les repères stables des tests**, posés par la coque (les tests ne cherchent plus les boutons par leur texte) :
+
+| Où | Repères |
+|---|---|
+| accueil | `[data-role=accueil]`, `[data-role=mode-simu]` et `[data-role=mode-reel]` (`aria-pressed`), `[data-role=repetition]` (case), `[data-role=verifications]` avec `[data-verif=ros\|cable\|robot\|telecommande]` (`data-etat=ok\|non\|inconnu`), `[data-role=liste-lieux]` avec `[data-lieu=<id>]`, `[data-role=nouveau-lieu]`, `[data-role=ouvrir]`, `[data-role=pilotage-sans-lieu]` |
+| barre d'outils | `[data-role=espace]` (`data-mode=simu\|reel\|repetition`), `[data-role=barre-outils]`, `[data-role=lieu]`, `[data-role=etage]`, `[data-role=accueil-retour]`, `[data-role=defaire]`, `[data-role=refaire]`, `[data-role=enregistrer]`, `[data-role=theme]`, `[data-role=arret]` (`data-etat=pret\|bloque`) |
+| ruban | `[data-role=ruban]`, `[data-onglet=<id>]` (`aria-selected`), `[data-commande=<id>]` (`aria-pressed` si active ; `disabled` et `title` avec la raison si grisée), `[data-role=avance]` |
+| arbre | `[data-role=arbre]`, `[data-noeud=<genre>:<id>]`, `[data-alerte]` |
+| vue | `[data-role=vue]`, `[data-role=vue-plan]` (racine des écrans), `[data-role=vue-3d]`, `[data-role=vue-camera]`, `[data-role=barre-vue]` avec `[data-vue=3d\|plan\|camera]`, `[data-cadrage=dessus\|iso\|face\|recadrer]`, `[data-calque=<nom>]` |
+| panneau | `[data-role=panneau]`, `[data-role=panneau-titre]`, `[data-role=panneau-corps]`, `[data-role=ok]`, `[data-role=annuler]` |
+| barre d'état | `[data-role=barre-etat]`, `[data-role=etat-message]`, `[data-role=etat-coordonnees]`, `[data-role=etat-liaison]` |
+| confirmation | `[data-role=confirmation]`, `[data-role=confirmer]`, `[data-role=renoncer]` |
+| écrans | `[data-ecran=<id>]` (et `.ecran-<id>`) sur la racine de l'écran ouvert ; les `data-role` des écrans d'aujourd'hui restent quand c'est possible |
+| carte 3D, caméra, scan | 12.3 et 12.7 ; écran de scan : `[data-role=scan-compteurs]`, `[data-role=scan-progression]` (agent Scan) |
+
+Restent aussi : `window.erreursAtelier` (index.html), `<title>Atelier G1</title>` et le mot « atelier » dans la page (critère 10).
+
+**Le stockage du navigateur** (`CLES_MEMOIRE`, toujours dans un try/catch) : `atelier.mode` (`simu` | `reel`), `atelier.repetition` (`1` | `0`), `atelier.theme` (`sombre` | `clair`), `atelier.lieu`, `atelier.etage`, `atelier.onglet.<mode>`, `atelier.vue.<mode>`, `atelier.calques` (JSON), `atelier.arbre.replie`, `atelier.ruban.replie`. Les anciennes clés `atelier.mode-simulation` (`simu` | `repetition` | `robot`), `atelier.scan.mode` et `atelier.scan.repetition` restent écrites à chaque changement de mode (écrans d'avant) ; `atelier.ecran` n'est plus lue ; les clés `atelier.pilotage.*` ne changent pas.
+
+**Textes** (I10) : simples et ludiques, une seule phrase d'aide par commande ; aucun nom de sujet ROS ni note de développeur dans les titres (seulement dans les infobulles Avancé ou la documentation).
+
+### 12.3 La carte 3D (agent Carte 3D)
+
+Module `atelier/web/js/carte3d/carte3d.js` (squelette livré ; l'agent peut ajouter des fichiers dans `js/carte3d/`), three.js r160 de `vendor/` (`Raycaster`, `Plane`, `Points`, `OrbitControls` ; aucune nouvelle bibliothèque). **Repère** : celui de la carte (`map`), z vers le haut, gardé tel quel : x, y et theta sont ceux du plan 2D, de `salles.yaml`, `itineraires.yaml` et `zones.yaml`, sans conversion ; le sol est à z = 0 (le nuage d'affichage a déjà le plan du sol soustrait, 12.5) ; `fleche.rotation.z = theta` (radians, sens trigonométrique depuis l'axe x).
+
+`creerCarte3D(conteneur, options)` → la carte. Options : `etage` (obligatoire : seuls les éléments de cet étage sont montrés), `nomGlobal` (ex. `'carte3d'` : `window.carte3d` pour les tests), `hauteurCoupe` (2,2 m), `plafond` (faux : points plus hauts cachés).
+
+| Méthode | Rôle |
+|---|---|
+| `chargerNuage(url)` → promesse `{points, bornes, grille}` | lit le binaire d'un nuage d'affichage (12.4 : Float32 x y z petit-boutistes, en-têtes `X-Nuage-*`) et l'affiche ; rejet avec un message en français (404 : pas de nuage) |
+| `afficherPoints(positions, bornes)` | un nuage déjà en mémoire (`Float32Array` x y z…) |
+| `afficherMonde(monde, {urlMaillage})` | le monde de `GET …/monde` : murs, objets et piétons en volumes ; avec `carte_extrudee`, le maillage STL de `GET …/monde/maillage` |
+| `afficherCarte2D(url, bornes)` | la carte 2D (`carte.png`) posée au sol sur `bornes` `{xmin, ymin, xmax, ymax}` de `GET …/carte.yaml` |
+| `afficherSalles(salles, idPrincipal)` | les salles de `GET …/salles` : le principal en étoile ambre avec sa flèche, les autres en épingles numérotées couleur d'accent avec leur flèche ; étiquette HTML de chacune (`.carte3d-etiquette[data-salle=<id>]`, `textContent`) |
+| `afficherItineraires({noeuds, couloirs})`, `afficherZones({interdites, lentes})` | nœuds et couloirs en cyan au sol ; zones translucides, interdites en rouge, lentes en orange |
+| `afficherRobot(pose)`, `afficherPietons(liste)`, `afficherTrajet(points)` | `{x, y, theta}` ou null ; `[{id, x, y}]` ; `[[x, y, theta], …]` (trajet d'un scan) |
+| `vue(nom)`, `recadrer(bornes?)`, `centrerSur(x, y)` | `dessus`, `iso`, `face` ; tout voir ; recentrer (double-clic dans l'arbre) |
+| `calque(nom, visible?)`, `coupe(hauteur)` | `CALQUES` : nuage, carte2d, monde, points, itineraires, zones, robot, pietons, trajet ; coupe du plafond (null : plafond montré) |
+| `outil(nom, {id})` | `naviguer` (défaut), `salle`, `accueil`, `noeud` (si le temps le permet ; sinon en Plan 2D), `mesurer` |
+| `choisir(genre, id)` | met un repère en valeur (anneau blanc) |
+| `surSelection(fn)`, `surPose(fn)`, `surPointeur(fn)` | abonnements, chacun renvoie la fonction qui désabonne : `{genre, id}` au clic sur un repère ; `{outil, id, x, y, theta, fini}` pendant et à la fin d'un placement ; `{x, y}` du sol sous le pointeur (barre d'état), ou null |
+| `versEcran(x, y, z)`, `versSol(px, py)` | pixel du conteneur d'un point (z = 0 par défaut), et point du sol sous un pixel, ou null (tests, étiquettes) |
+| `redimensionner()`, `etat()`, `detruire()` | `etat()` : `{webgl, points, vue, outil, calques, camera}` |
+
+**Gestes** (I7) : clic gauche glissé = tourner ; clic droit glissé, ou Maj + gauche = déplacer ; molette = zoom vers le pointeur (`zoomToCursor`) ; clic du milieu glissé = tourner (SolidWorks) ; tactile : un doigt tourne, deux doigts déplacent et zooment. La caméra ne passe jamais sous le sol et ne bouge jamais d'elle-même, sauf au premier affichage et sur demande (Recadrer, double-clic dans l'arbre). F : recadrer ; Échap : retour à `naviguer`, geste en cours annulé. Avec un outil de placement, le bouton gauche place (le milieu tourne toujours).
+
+**Placer** (I8), outils `salle` et `accueil` : un clic sur le sol pose le point (accroché à 5 cm) ; un glissé depuis le point règle l'orientation (flèche, accrochée à 15°, Maj : libre) ; un glissé du point le déplace ; chaque étape émet `surPose` (`fini` vrai au relâchement). On vise le plan du sol z = 0 (`Raycaster` contre un `Plane`), pas les points. C'est l'écran Salles (agent Coquille) qui garde la liste, montre le formulaire à droite (nom, x, y et orientation en degrés, corrigeables ; ✓ OK / ✗ Annuler), tient Annuler / Rétablir (`historique.js`) et enregistre par la même route qu'en 2D, `PUT /api/lieux/{id}/salles?synchroniser=true` (l'accueil est la salle principale : `lieu.yaml` et `depart_robot` suivent) : les deux vues lisent et écrivent les mêmes fichiers.
+
+**Le nuage** : couleurs calculées dans le navigateur depuis z, dégradé `--nuage-bas` → `--nuage-milieu` → `--nuage-haut` de 0 à 2,2 m ; points plus hauts que `hauteurCoupe` cachés (case « Afficher le plafond ») ; taille des points réglable (vers 0,05 m, la grille du nuage) ; 250 000 points restent fluides. Couleurs des repères : les jetons de `theme.css`, lus par `getComputedStyle` (repli sur les mêmes valeurs dans le module). Rendu à la demande, pas de boucle continue au repos.
+
+**Sans WebGL** : un message dans le conteneur (`[data-role=carte3d-sans-webgl]`), `etat().webgl` faux, et toutes les méthodes restent appelables sans effet ; la coque bascule alors sur le Plan 2D. Constat du 31/10 : Firefox sans fenêtre a WebGL sur le PC du projet (carte NVIDIA) ; les tests coupent WebGL (préférence `webgl.disabled`) pour essayer le repli.
+
+**Essais sans la coque** : une page d'essai `atelier/web/essais/carte3d.html` (même importmap que `index.html`, jamais liée par l'interface), ou l'import dynamique du module dans la page ; `window.<nomGlobal>`, `versEcran` et `versSol` permettent de cliquer un point précis du sol.
+
+### 12.4 Les routes nouvelles
+
+| Route | Agent | Paramètres | Réponse |
+|---|---|---|---|
+| `POST /api/arret` | Coquille | `{mode?: simu\|reel\|repetition, raison?}` | en moins de 1 s, même si une partie ne répond pas : `{arrete, mode, verrou, duree_s, parties: {guide, teleop, pilotage, verrou: {ok: vrai\|faux\|null, detail}}, message}` (null : sans objet, rien ne tournait) ; toujours 200 |
+| `POST /api/arret/debloquer` | Coquille | — | `/pont/arret` false : `{verrou: false, ecoute, message}` ; 503 sans pont ROS 2 |
+| `GET /api/arret` | Coquille | — | `{verrou, depuis, mode, par}` : le dernier verrou posé par l'Atelier ; le même dans `/ws/etat`, champ `arret` |
+| `GET /api/robot/liaison` | Coquille | — | `{interface, cable, adresse_pc, pc1: {adresse, repond, ms}, jetson: {adresse, repond, ms}, ros: {domaine, cyclonedds, actif}, pret, message, duree_s}`, en 1,5 s au plus |
+| `GET /api/lieux/{id}/etages/{e}/nuage` | Scan | `?source=scan\|unitree` | `application/octet-stream` : le binaire `cartes/<e>.nuage.bin` (ou `<e>_unitree.nuage.bin`), avec `X-Nuage-Points`, `X-Nuage-Grille`, `X-Nuage-Bornes` (`xmin,ymin,zmin,xmax,ymax,zmax`), `X-Nuage-Source`, `X-Nuage-Date`, `X-Nuage-Session` (`entetes_http_nuage`) et `ETag` ; 404 en français sans nuage (« pas encore de nuage 3D : faites un scan, puis « Utiliser cette carte » ») |
+| `GET /api/lieux/{id}/etages/{e}/nuage/info` | Scan | `?source=…` | l'en-tête JSON (schéma `nuage`), plus `{url, octets, modifie}` |
+| `GET /api/lieux/{id}/etages/{e}/monde/maillage` | Scan | — | `mondes/<e>_carte.stl` (`model/stl`) ; 404 sans `carte_extrudee` |
+| `GET /api/scan/nuage` | Scan | `?lieu=L[&session=S][&apercu=1]` | le binaire d'une session, même format et mêmes en-têtes : `nuage_affichage.bin` quand elle est traitée ; pendant le scan, ou avec `apercu=1`, l'aperçu en direct `apercu_nuage.bin` ; 404 sinon |
+| `GET /api/scan/nuage/info` | Scan | idem | l'en-tête JSON correspondant |
+| `GET /api/camera/image` | Caméra | `?source=poitrine\|visiteurs` | la dernière image (`image/jpeg`) avec `X-Image-Numero`, `X-Image-Age-S`, `X-Image-Largeur`, `X-Image-Hauteur` ; 503 en français sans image depuis 2 s |
+| `GET /api/camera/flux` | Caméra | `?source=…[&ips=10][&images=N]` | flux MJPEG `multipart/x-mixed-replace; boundary=image-g1` : une partie par image nouvelle (`Content-Type: image/jpeg`, `Content-Length`, `X-Image-Numero`), au plus `ips` par seconde (15 au plus) ; `images=N` : fin après N images (tests) ; fin quand la page se ferme. `<img src="/api/camera/flux?source=poitrine">` l'affiche tel quel |
+| `GET /api/camera/etat` | Caméra | — | `{ros: {actif}, sources: {poitrine, visiteurs: {recue, numero, age_s, largeur, hauteur, octets, ips}}, noeud: dernier /camera_poitrine/etat ou null, visiteurs: {age_s, nombre} ou null}` |
+
+Les squelettes sont dans `atelier/serveur/routes/arret.py`, `liaison.py`, `nuage.py` et `camera.py`, déjà enregistrés dans `main.py` : l'agent remplit leurs fonctions sans toucher à `main.py`. Erreurs en français, `{detail, …}` comme en 4.4, jamais d'erreur 500. Retirées par l'agent Scan : `GET` et `PUT /api/scan/sessions/{s}/reconnaissance`, `GET /api/scan/sessions/{s}/monde`.
+
+**L'ARRÊT** (I5) lance en parallèle, chacun avec son délai : `guide` (`/guide/stop` par le pont ROS 2 du serveur, `etat.pont.stop()`) ; `teleop` (vitesse nulle sur `/cmd_vel` si la téléopération simulée a servi, `app.state.teleop`) ; `pilotage` (`POST /arret` du nœud pilotage, 0,6 s au plus, s'il tourne ou répond) ; `verrou` (`/pont/arret` true, `etat.pont.bloquer(True)`) **seulement en Réel ou en répétition** (champ `mode` de la demande, ou mode de la navigation qui tourne), jamais en simulation (le verrou est transient_local : il bloquerait la répétition suivante). Le bouton ARRÊT de la barre d'outils et la touche Échap l'appellent ; en Réel il devient « Débloquer » tant que le verrou est posé. L'ARRÊT n'arrête pas un scan (« Fin » le fait) ; en répétition, l'exploration d'un scan passe par le pont, que le verrou arrête. `POST /api/robot/arret {verrou}` (vague 3) reste.
+
+**La liaison** : le câble par `/sys/class/net/<interface>/carrier` (`ATELIER_INTERFACE_ROBOT`, eno2 par défaut, comme le scan) ; un ping (`ping -c 1 -W 1`) du PC1 (`ATELIER_PC1`, défaut 192.168.123.161) et du Jetson (`ATELIER_JETSON`, défaut 192.168.123.164), en parallèle et seulement si le câble est branché (sinon `repond` null) ; le domaine et l'interface de `CYCLONEDDS_URI` (comme `verifier_terminal_robot` de `routes/simulation.py`) ; `pret` : câble, PC1 qui répond, domaine 0. Rien d'autre n'est envoyé au robot. Tests : `ATELIER_PC1=127.0.0.1`, `ATELIER_INTERFACE_ROBOT=lo`.
+
+### 12.5 Le scan corrigé (agent Scan)
+
+**La chaîne** (`g1-scan traiter`) : `carte_3d` → `carte_2d` → `nuage`, sans reconnaissance (S2). Étapes de `session.json` : `nuage` (nouvelle, schéma et `ETATS_ETAPES` livrés) remplace `reconnaissance` et `monde`, qui restent acceptées pour les anciennes sessions ; `ETAPES`, `ETAPES_TRAITEMENT` et `PLAGES_PROGRESSION` de `atelier.lieu.scans` sont à l'agent. Les trois bogues (S1 ; rapport du scan, § 3 et § 5) :
+1. **une seule base de temps** : si les nuages ont un horodatage nul, ou si nuages et odométrie n'ont pas le même décalage avec l'heure du bag (plus de 0,5 s d'écart), chaque nuage est apparié à la pose reçue au même instant de réception ; un nuage déjà dans le repère de l'odométrie n'est jamais jeté faute de pose (la plus proche sert) ; `rapport.json` : `nuages: {recus, utilises, ignores}`, `base_de_temps` (`message` ou `reception`), et un avertissement au-delà de 5 % d'ignorés ;
+2. **le retrait des obstacles mobiles** part de la vraie origine du capteur (la pose appariée) et retire moins ; `rapport.json` : `mobiles_retires` ;
+3. **le sol en plan** : un plan robuste (RANSAC à graine fixe, repris de `reconnaissance.py` avant de la retirer) ; la tranche de la carte 2D est prise en hauteur au-dessus de ce plan ; `rapport.json` : `sol: {plan: [a, b, c], inclinaison_deg}`.
+Les x et y restent ceux du repère `map` du robot : aucune rotation autour de z, aucun déplacement d'origine (les salles déjà placées restent justes) ; on soustrait le plan, on ne tourne pas le nuage.
+
+**Le nuage d'affichage** (S4 ; module livré `atelier.lieu.nuage`, schéma `nuage`) : deux fichiers de même nom, `<nom>.bin` (Float32 x y z petit-boutistes, 12 octets par point, sans en-tête) et `<nom>.json` (l'en-tête : `version`, `format: float32_xyz`, `points`, `grille`, `repere: map`, `bornes`, `sol: {plan, inclinaison_deg}`, `source` (`scan`, `apercu` ou `unitree`), `session`, `etage`, `date`, et des champs libres en plus) ; z est la hauteur au-dessus du plan du sol ; sol et plafond compris (la page coupe le plafond), mobiles retirés. Emplacements : `scans/<s>/nuage_affichage` (fin du traitement, grille 0,05 m), `scans/<s>/apercu_nuage` (aperçu en direct, toutes les 2 s, grille 0,10 m, toutes hauteurs, 150 000 points au plus : `APERCU_NUAGE_POINTS_MAX`), `cartes/<e>.nuage` (copié à l'adoption) et `cartes/<e>_unitree.nuage` (carte d'Unitree). Écriture : `ecrire_nuage(base, points, entete_nuage(...))`, atomique et vérifiée ; lecture : `lire_nuage`, `lire_entete_nuage` ; en-têtes HTTP : `entetes_http_nuage`. `apercu.json` et `apercu.png` restent (écrans d'avant). Exemple d'en-tête, `cartes/rdc.nuage.json` (le `.bin` à côté fait 12 × 245 317 octets) :
+
+```json
+{"version": 1, "format": "float32_xyz", "points": 245317, "grille": 0.05, "repere": "map",
+ "bornes": {"xmin": -6.512, "ymin": -16.031, "zmin": -0.05, "xmax": 24.077, "ymax": 3.188, "zmax": 2.91},
+ "sol": {"plan": [0.0009, -0.0101, -1.271], "inclinaison_deg": 0.582, "methode": "ransac"},
+ "source": "scan", "session": "2026-10-27_14h22", "etage": "rdc", "date": "2026-10-31T03:10:00+01:00",
+ "mobiles_retires": 136527}
+```
+
+**L'adoption** (`g1-scan adopter`, `POST /api/scan/sessions/{s}/adopter`) : la carte de la session telle quelle (plus d'effacement de « personnes ») ; `cartes/<e>.pcd` et `cartes/<e>.nuage.bin` et `.json` ; `source_carte: scan` ; `carte_unitree` en mode robot ; puis le **monde maillé** (S3). Si l'étage avait un monde dessiné (`source_carte: monde`), ce monde est gardé dans la session (`monde_remplace.monde.yaml`) et remplacé par un monde qui ne garde que ses piétons qui sont dans l'emprise de la carte, avec `depart_robot` sur le point principal (`synchroniser_depart`), l'emprise des bornes de la carte et `carte_extrudee` ; un étage déjà scanné garde son monde (les ajouts de l'utilisateur) et reçoit seulement `carte_extrudee`. Enfin `atelier.monde.generer`. Le champ `monde` de la demande d'adoption est accepté et ignoré. Le message « replacez les salles » ne s'affiche que si le repère change (scan d'un étage qui avait un monde dessiné).
+
+**Le monde maillé** (S3, `atelier/monde/`) : `generer` d'un étage `source_carte: scan` qui a une carte écrit `mondes/<e>_carte.stl` (`chemin_maillage`), puis le `.sdf`, et met `carte_extrudee: {fichier: <e>_carte.stl, hauteur: 1.5}` dans `mondes/<e>.monde.yaml` (avec un monde minimal s'il n'y en a pas : emprise de la carte, départ sur le principal, aucun mur). Le maillage : les pixels occupés de la carte (petites taches retirées, fermeture 3 × 3), décomposés en rectangles, extrudés à `hauteur` (1,5 m par défaut, `HAUTEUR_CARTE_EXTRUDEE`, au-dessus du LiDAR simulé à 1,245 m) et fusionnés en **un seul STL binaire** ; dans le SDF, **un seul modèle statique `carte_du_scan`** (`MODELE_CARTE_EXTRUDEE`, id réservé) avec collision et visuel ; `sdf_simulation` rend absolu l'`uri` du maillage (le monde simulé est réécrit ailleurs). Essai du rapport : 1 617 boîtes fusionnées tournent à 1,0 fois le temps réel, contact vérifié ; en boîtes séparées, 0,59. La carte 2D reste celle du scan (`generer` n'y touche pas). Un monde dessiné sans `carte_extrudee` donne le même SDF qu'avant, octet pour octet. Le format exact, compatible avec les anciens mondes (le champ est facultatif et absent quand il vaut None) :
+
+```yaml
+# mondes/rdc.monde.yaml d'un étage scanné, écrit par g1-monde generer ou g1-scan adopter
+version: 1
+emprise: {min: [-6.55, -16.05], max: [24.1, 3.2]}    # les bornes de la carte
+pietons: []                                          # les ajouts de l'utilisateur restent (murs, objets, piétons)
+depart_robot: {x: 0.0, y: 0.0, theta: 0.0}           # le point principal
+carte_extrudee: {fichier: rdc_carte.stl, hauteur: 1.5}   # mondes/rdc_carte.stl ; dans Gazebo : le modèle carte_du_scan
+```
+
+**L'écran de scan** (S5 ; `js/ecrans/scan.js`, `js/nuage3d.js`, `css/scan.css`) : plein écran sombre (`options.coque.pleinEcran(true)`) comme « 3D LiDAR Mapping » du Go2 : le nuage en direct (`GET /api/scan/nuage?apercu=1`, toutes hauteurs, couleurs par la hauteur), le trajet, le robot, de gros boutons Scan et Fin, les compteurs (durée, distance, points), puis la progression du traitement et « Utiliser cette carte » (`scan.utiliser`). Plus de revue, de cases, de catégories ni de « Ouvrir dans l'éditeur du monde ». Le scan simulé reste (Simulation › Avancé › Scan simulé), avec l'exploration automatique et les flèches.
+
+**`g1-scan traiter --refaire`** (S6) : accepte une session finie, même adoptée ; non destructif : les résultats d'avant (`carte.pgm`, `carte.yaml`, `nuage.pcd`, `nuage_affichage.*`, `rapport.json`, `reconnaissance.yaml`, `monde_scan.monde.yaml`) sont déplacés dans `scans/<s>/ancien_<AAAA-MM-JJ_HHhMM>/` ; la session repasse `termine` sans `adoption` (il faut la réadopter). L'assemblage retraite `lieux/seance/scans/2026-10-27_14h22` et l'adopte pour `seance`, étage `rdc`, après sauvegarde ; la carte nettoyée à la main (785 pixels) n'est plus nécessaire si la nouvelle chaîne retire bien la traînée du suiveur.
+
+**`g1-scan carte-unitree --lieu L [--etage E] [--delai 60]`** (S7) : s'abonne à `/unitree/slam_relocation/global_map` (sensor_msgs/PointCloud2, publiée une fois après le début d'un repérage 1804, d'après une documentation non officielle ; QoS fiable, transient_local essayée aussi), attend `--delai` secondes, puis écrit `cartes/<e>_unitree.pcd` et le nuage `cartes/<e>_unitree.nuage` (source `unitree`) ; code 1 et un message qui dit quoi faire si rien n'arrive (« lancez « Repérer le robot » pendant l'attente »). Le faux service slam_operate de la répétition la publie une fois après chaque 1804 réussi (nuage tiré du monde, dans le repère d'Unitree). À essayer à la séance 2.
+
+**Ce qui part** (S2) : `atelier/scan/reconnaissance.py` et `evaluation.py` ; l'étape et son appel dans `session.py` (et `ATELIER_RECONNAISSANCE`) ; les routes `GET` et `PUT /api/scan/sessions/{s}/reconnaissance` et `GET /api/scan/sessions/{s}/monde` ; la revue de `scan.js` et ses styles ; les tests `test_reconnaissance*.py` ; le format (schéma `reconnaissance`, `regles_reconnaissance` et le type dans `validation.py`, les fonctions de `atelier/lieu/scans.py` de `nouvelle_reconnaissance` à `carte_sans_elements_retires`, leurs exports dans `atelier/lieu/__init__.py`, leurs tests dans `test_lieu_scans.py`, `test_contrats_scan.py` et `outils_scan.py`), et la documentation qui en parle. **Ce qui reste** : les champs `categorie`, `source` et `confiance` de `monde.yaml` (anciens lieux, monde du demo), `CATEGORIES_OBJETS` et la règle « une personne n'est pas sur la carte » d'un monde dessiné ; les anciens fichiers des sessions sur le disque (lus par personne).
+
+### 12.6 Le robot (agent Robot)
+
+**R1. La vitesse minimale du pont** (règle 11 du pont ; la section 10.3 sera complétée à l'assemblage) : `vitesse_effective` (`atelier.lieu.robot`, livrée, avec ses cas `EXEMPLES_VITESSE_MIN`) est l'algorithme de référence. Si la norme de (vx, vy) atteint `vitesse_min_lin`, ou |wz| atteint `vitesse_min_rot`, la consigne passe telle quelle (petites corrections comprises) ; sinon toute la consigne est petite : zones mortes, puis l'intention dominante (norme / minimum linéaire comparée à |wz| / minimum de rotation) : marche portée à la norme minimale dans la même direction (bornée pour qu'aucune composante ne dépasse son plafond), ou rotation sur place à ± `vitesse_min_rot`. Le pont, qui tourne sans atelier, en a une copie exacte, comparée sur 2 000 consignes au hasard par un test du paquet ; le joystick du pilotage appelle celle de `atelier.lieu.robot`.
+
+| Paramètre du pont (`config/pont.yaml`) | Défaut | Contrat |
+|---|---|---|
+| `vitesse_min_lin` | 0,20 m/s (mesuré le 27/10) | `VITESSES_MIN_PONT["lin"]` ; 0 désactive ; refusé au-delà de 0,3 (`VITESSE_MIN_LIN_MAX`) ou de `vx_max` |
+| `vitesse_min_rot` | 0,30 rad/s (à mesurer) | `VITESSES_MIN_PONT["rot"]` ; refusé au-delà de 0,5 (`VITESSE_MIN_ROT_MAX`) ou de `wz_max` ; `min_rotational_vel` du behavior_server au moins autant |
+| `zone_morte_lin`, `zone_morte_rot` | 0,05 m/s, 0,10 rad/s | `ZONES_MORTES_PONT` ; 0 désactive ; pas plus que le minimum |
+| `lire_mode` | true | R2 |
+| `modes_marche` | [500, 501, 801] | `MODES_MARCHE` (une liste ; y ajouter 802 accepte la course) |
+
+`vy_max` sous `vitesse_min_lin` (cas de `vitesse_max:=0.2`) : un avertissement seulement. Un réglage refusé arrête le nœud avec un message qui dit quoi corriger (« vx_max 0,1 est sous la vitesse minimale de marche 0,2 : le robot ne ferait aucun pas ; mettez vx_max ≥ 0,2, ou vitesse_min_lin:=0 pour une mesure ») ; les commandes du portique avec `vx_max:=0.1` (`docs/seance-robot.md`) sont à réécrire à l'assemblage. `/pont/etat` reçoit `demande` (la consigne après les plafonds, avant le minimum) et `minimums` (schéma livré) ; l'agent les ajoute aussi à `EXEMPLE_ETAT_PONT` (le test du paquet veut les mêmes champs que `Pont().etat()`). Pas d'une chorégraphie sous le minimum : avertissement de `regles_choregraphie` (« le vrai robot ne fera aucun pas à 0,1 m/s »), sans les monter ; `exemple_kpop` corrigé (vy 0,2 pendant 0,75 s, vx ± 0,2 pendant 0,5 s : même déplacement).
+
+**R2. Le mode du robot** (règle 12) : le pont lit 7001 (`API_SPORT_GET_FSM_ID`, `parameter` `'{}'`, réponse `{"data": N}`) une fois par seconde (`PERIODE_LECTURE_MODE_S`), seulement quand le service sport a un abonné ou a déjà répondu ; ces lectures ne comptent ni dans `envoyees`, ni dans `reponses`, ni pour `robot_muet` et `refus`. Un mode lu il y a plus de 3 s (`DELAI_MODE_PERIME_S`), ou une lecture refusée : inconnu, **ne bloque rien**. Un mode connu hors de `modes_marche` : état **`pas_en_marche`**, `mouvement_permis` faux, un arrêt part si le robot bougeait, `/cmd_vel` ignoré, message `message_pas_en_marche(fsm)` (livré ; 802 : « mode course : passez en marche normale à la télécommande » ; 3 : « le robot est assis… » ; 0 ou 1 : « le robot n'est pas démarré… ») ; retour en marche : `pret`, et le mouvement ne reprend qu'avec un `/cmd_vel` neuf. Ordre des états (`PRIORITE_ETATS_PONT`) : `arret_verrouille`, `robot_muet`, `pas_en_marche`, `refus`, `pilotage`, `attente_reperage`, `arret`, `demarrage`, `en_mouvement`, `pret`. Champ **`mode_robot`** de `/pont/etat` : `{fsm, nom, en_marche, age_s}` (plus `modes_marche` et `lectures`), ou null avec `lire_mode` faux (schéma et règles livrés : `pas_en_marche` ⇔ `en_marche` faux, sauf verrou ou robot muet). Le format des 7105 ne change pas ; les critères 17, 19 et 20 acceptent les requêtes 7001 (16 : le faux service minimal ne rend pas de `data` : mode inconnu, rien de bloqué).
+
+**Le faux G1** (`g1_jumeau`) : 501 après « Démarrer » (500 pendant 1 s, puis 501 ; 702 puis 501), `fsm_depart` 501 ; hors marche, 7105 répond **0 sans bouger**, comme le vrai en mode 3 (paramètre `hors_marche` : `ignorer` par défaut, `refuser` pour l'ancien 7301) ; un seuil de marche comme le vrai (paramètres du nœud `seuil_marche_m_s` 0,15 et `seuil_rotation_rad_s` 0,2 ; 0 dans la logique sans ROS, pour ses tests) ; le mode 802 atteignable par `fsm_depart:=802` ou le sujet d'essai `/g1_jumeau/mode` (std_msgs/Int32) ; 7001 rend toujours `{"data": fsm}`. **Le pilotage** (`g1_pilotage`, `atelier/lieu/pilotage.py`) : `in MODES_MARCHE` partout où il y avait `== FSM_MARCHE` (les danses ne sont plus refusées en 501) ; le joystick est refusé (409, `message_pas_en_marche`) quand le mode est connu et n'est ni la marche ni la course ; joystick et pas de chorégraphie passent par `vitesse_effective`. Les libellés des modes sont `NOMS_MODES` : l'agent Coquille corrige `MODES_FSM` de `pilotage.js` (501 « marche », 802 « course ») et l'affichage de `pas_en_marche`.
+
+**R3. Nav2** (`ws/src/g1_nav`) : `nav2_g1_reel.yaml` sans marche arrière (`FollowPath.vx_min: 0.0`, `velocity_smoother.min_velocity: [0.0, -0.2, -0.6]`) ; `nav2_g1_simu.yaml` inchangé. `vitesse_max:=V` (`G1_VITESSE_MAX`, `--vitesse-max`) baisse aussi les vitesses maximales de Nav2 (`FollowPath.vx_max`, `vy_max`, `wz_max` du controller_server et `max_velocity` du velocity_smoother), dans la même proportion que les plafonds du pont ; il est **refusé sous 0,2 m/s** (`VITESSE_MAX_MIN`, message qui contient `MESSAGE_VITESSE_MAX_BASSE`, « le robot ne marche pas sous 0,2 m/s ») par `navigation.launch.py` (`plafonds_pont`), `g1-guide navigation`, `atelier.lieu.pilotage.limites_marche` et, côté conteneur, `docker/jetson.py` et `demarrer.sh` (agent Caméra). La tolérance d'orientation finale du guide devient un paramètre ROS du nœud guide (`tolerance_orientation_rad`) : la valeur d'aujourd'hui en simulation (0,09 rad) ; avec le pont, `navigation.launch.py` donne celle que l'agent choisit pour ne pas osciller avec 0,3 rad/s de rotation minimale (réglable, à mesurer à la séance 2 avec la latence) ; avec le pont, le ralenti du guide (`POURCENTAGE_MIN`) ne descend pas sous `100 × vitesse_min_lin / vitesse_max_nav2`. Le critère 22 (simulation, sans pont) garde ses 10°.
+
+### 12.7 La caméra de poitrine (agent Caméra)
+
+**Le conteneur** (`docker/`) : si la See3CAM est branchée sur le Jetson (`/dev/v4l/by-id/*See3CAM*-video-index0`, ou le `peripherique` by-id de `camera.yaml`), `g1-jetson demarrer` ajoute `--device <chemin résolu, /dev/videoN>:/dev/g1_camera` et `--group-add <groupe du périphérique>` (après `--memory`), et `-e G1_CAMERA=/dev/g1_camera` (`CAMERA_CONTENEUR`) ; sinon il démarre sans, avec un message ; jamais d'échec à cause de la caméra ; `G1_CAMERA=0` : pas de caméra. Avertissement si le lien USB n'est pas à 5000 (USB 3). `demarrer.sh` lance `camera_usb` quand `G1_CAMERA` existe (sauf `G1_LANCEMENT=commande`) et l'arrête avec le reste ; `presence.py` publie `camera` ; `g1-jetson verifier` la montre. L'image reçoit une couche de plus, après la 2c : `python3-pil` et `v4l-utils` (environ 5 Mo ; pas d'OpenCV, 580 Mo). `G1_VITESSE_MAX` sous 0,2 est refusé (`lire_vitesse_max`, `demarrer.sh`).
+
+**Le nœud `camera_usb`** (paquet `g1_equipe`, nœud `camera_poitrine`, squelette déclaré) : capture par `v4l2-ctl` (YUYV, 1280 × 720 à 30 images par seconde par défaut ; tube agrandi à 1 Mo), exposition réglée au démarrage (`auto` par défaut : la See3CAM démarre en manuel, image noire dans une pièce sombre), JPEG par Pillow sans conversion de couleurs ; publication à 10 Hz sur **`/camera_poitrine/image/compressed`** (sensor_msgs/CompressedImage, `format: jpeg`, `frame_id: camera_poitrine`, QoS des capteurs : au mieux, profondeur 2), 640 pixels de large, qualité 70 ; état JSON à 1 Hz sur **`/camera_poitrine/etat`** (schéma `etat_camera`, livré). Paramètres : `source` (`v4l2`, `mire` ou `fichier`), `peripherique` (défaut : `camera.yaml`, sinon `/dev/g1_camera`), `lieu`, `largeur`, `hauteur`, `ips`, `frequence_hz`, `largeur_publiee`, `qualite_jpeg`, `exposition` (`auto` ou `manuelle`), `exposition_100us`, `gain`, `fichier` (YUYV brut, pour les tests) ; défauts lus dans `camera.yaml` quand il existe (champs facultatifs `exposition` et `publication`, livrés). Caméra absente ou débranchée : nouvel essai toutes les 2 s, `ouverte` faux et `erreur` en français, jamais de plantage ; à la sortie, `v4l2-ctl` est arrêté.
+
+**`g1-visiteurs`** (`outils/visiteurs.py`, `bin/g1-visiteurs`, alias `gl-visiteurs` ; `.venv-projet` avec ROS chargé) : `g1-visiteurs [--lieu L] [--source robot|N|/dev/…|video.mp4] [--image] [--fenetre] [--modele yolo11n-pose.pt] [--frequence 10] [--confiance 0.5]` ; YOLO pose et ByteTrack (la classe personne), sur le GPU s'il y en a un ; `--source robot` (défaut) lit `/camera_poitrine/image/compressed`, sinon une caméra locale ou une vidéo. Il publie **`/visiteurs/detectes`** (schéma `personnes`, `source: camera`, à `detection.frequence_hz` au plus) avec, en plus des champs de la vague 4, **`boite`** `[x_min, y_min, x_max, y_max]` en pixels et **`image`** `{largeur, hauteur, numero, sujet}` (livrés) ; avec `--image`, `/visiteurs/image/compressed` (cadres dessinés, 2 à 5 Hz). La géométrie (focale, angle, distance par la taille de la personne ou du buste, position dans base_link, `regarde_robot`) est faite de fonctions pures dans `atelier/equipe/camera.py`, testées sans YOLO ; `detection.taille_personne_m` et `correction_distance` (facultatifs, livrés) servent à l'étalonnage. L'avertissement « une `vitesse_max` de personnalité sous 0,2 m/s n'a pas d'effet sur le vrai robot » (`equipe.py`) est facultatif.
+
+**Dans l'Atelier** : le pont ROS 2 du serveur (`pont_ros.py`) s'abonne aux sujets de `SUJETS_IMAGES` (QoS des capteurs) et à `/camera_poitrine/etat`, et garde la dernière image de chacun (octets, numéro, heure de réception) ; routes `/api/camera/*` (12.4) ; `js/camera/flux.js` : `creerVueCamera(conteneur, {source, cadres, petit})` → `{demarrer, arreter, etat, detruire}` : le flux MJPEG dans `<img data-role=camera-flux>`, les cadres `boite` du champ `visiteurs` de `/ws/etat` dans `<canvas data-role=camera-cadres>` (mis à l'échelle de `image`), l'état dans `[data-role=camera-etat]` (« Pas d'image : … ») ; le flux s'arrête quand la vue est cachée ou l'onglet du navigateur invisible. La coque s'en sert pour la vue Caméra et l'incrustation dans Piloter et Naviguer ; l'écran `camera.js` montre en plus les réglages et les vues de dessus et de côté. Par le Wi-Fi sans DDS, le flux passera plus tard par le nœud pilotage (`GET /camera?source=poitrine`) : pas dans cette vague. `SUJETS_IMAGES` (livré) : `/camera_poitrine/image/compressed` et `/visiteurs/image/compressed` (sensor_msgs/CompressedImage), à part de `SUJETS_EQUIPE`, qui reste tout en std_msgs/String et reçoit `/camera_poitrine/etat`.
+
+### 12.8 Les agents de la vague 5 et leurs fichiers
+
+Aucun fichier n'a deux propriétaires. Un agent n'écrit que dans ses fichiers ; s'il a besoin d'un changement ailleurs, il ne le fait pas : il le note dans `ecarts_contrats` de son rapport (l'assemblage tranche) et fait sans, avec un bouchon. Un fichier qui n'est dans aucune ligne appartient à l'assemblage. Tous les agents travaillent dans le même arbre (pas de copie de travail par agent) : aucun commit sauf celui des contrats et ceux de l'assemblage, et jamais `git checkout`, `reset`, `stash` ni `clean`. Un nouveau fichier de test ou d'outil porte le préfixe de son agent.
+
+| Agent | Domaine, partition, port | Possède (seul à y écrire) |
+|---|---|---|
+| Contrats, puis Assemblage | 100, `v5_contrats`, 8110 ; assemblage : 106, `v5_assemblage`, 8116 | `docs/plan-atelier-multi-agents.md`, `docs/journal-atelier.md`, `docs/seance-robot.md`, `README.md`, `.gitignore`, `setup.py`, `pytest.ini` ; `atelier/lieu/schemas/` (sauf `atelier/lieu/schemas/reconnaissance.schema.json`) ; `atelier/lieu/modeles.py`, `atelier/lieu/fichiers.py`, `atelier/lieu/verification.py`, `atelier/lieu/nuage.py` ; `atelier/serveur/main.py`, `atelier/serveur/communs.py`, `atelier/serveur/routes/__init__.py` ; `atelier/tests/test_contrats.py`, `atelier/tests/test_contrats_robot.py`, `atelier/tests/test_contrats_vague4.py`, `atelier/tests/test_contrats_vague5.py`, `atelier/tests/test_lieu_validation.py` ; `tests_e2e/tout.sh`, `tests_e2e/LISEZMOI.md`, `tests_e2e/commun.sh` ; `lieux/demo/` ; `lieux/seance/`, `lieux/bomboclat/`, `lieux/demo_scan/` (assemblage seulement, après sauvegarde) |
+| Coquille (interface) | 101, `v5_coquille`, 8111 | `atelier/web/index.html`, `atelier/web/js/app.js`, `atelier/web/js/coque/`, `atelier/web/css/theme.css`, `atelier/web/css/atelier.css` ; les écrans `atelier/web/js/ecrans/{lieux,monde,carte,salles,itineraires,zones,simulation,pilotage,personnalites,dialogues}.js` ; `atelier/web/js/panneaux/`, `atelier/web/js/pilotage/`, `atelier/web/js/equipe/` ; les modules communs `atelier/web/js/{api,contexte,direct,formulaire,geometrie,historique,messages,plan,vue3d,teleop}.js` ; `atelier/web/css/{principal,passants,guide,pilotage,equipe}.css` ; `atelier/web/LISEZMOI.md` ; `atelier/serveur/etat.py`, `atelier/serveur/routes/{arret,liaison,simulation,robot,guide,lieux,plan,principal,passants}.py` ; tests `atelier/tests/test_coque*.py`, `atelier/tests/test_arret*.py`, `atelier/tests/test_liaison*.py`, `atelier/tests/{test_serveur_web,test_serveur_api,test_serveur_navigateur,test_robot_navigateur,test_principal_navigateur,test_guide_navigateur,test_passants_navigateur,test_pilotage_navigateur,test_pilotage_vue_navigateur,test_equipe_navigateur,test_guide_api,test_passants_serveur}.py` ; `tests_e2e/critere_09_interface.sh`, `tests_e2e/critere_31_*`, `tests_e2e/critere_36_*`, `tests_e2e/outils_coque_e2e.py` |
+| Carte 3D | 102, `v5_carte3d`, 8112 | `atelier/web/js/carte3d/`, `atelier/web/css/carte3d.css`, `atelier/web/essais/carte3d.html` ; tests `atelier/tests/test_carte3d*.py` ; `tests_e2e/critere_32_*`, `tests_e2e/outils_carte3d_e2e.py` |
+| Scan | 103, `v5_scan`, 8113 | `atelier/scan/`, `atelier/monde/` ; `atelier/lieu/scans.py`, `atelier/lieu/__init__.py`, `atelier/lieu/validation.py` (pour retirer le format de la reconnaissance seulement), `atelier/lieu/schemas/reconnaissance.schema.json` (à retirer) ; `atelier/serveur/routes/{scan,monde,nuage}.py` ; `atelier/web/js/ecrans/scan.js`, `atelier/web/js/nuage3d.js`, `atelier/web/css/scan.css` ; `bin/g1-scan`, `bin/gl-scan` ; tests `atelier/tests/test_scan_*.py`, `atelier/tests/test_serveur_scan*.py`, `atelier/tests/test_reconnaissance*.py`, `atelier/tests/test_monde_*.py`, `atelier/tests/test_nuage*.py`, `atelier/tests/{test_lieu_scans,test_contrats_scan,test_robot_faux_slam}.py`, `atelier/tests/outils_scan.py` ; `tests_e2e/critere_07_scan_simule.sh`, `tests_e2e/critere_11_*` à `critere_15_*`, `tests_e2e/critere_33_*`, `tests_e2e/outils_scan_e2e.py` |
+| Robot | 104, `v5_robot`, 8114 | `ws/src/g1_bridge/`, `ws/src/g1_jumeau/`, `ws/src/g1_pilotage/`, `ws/src/g1_nav/` ; `atelier/lieu/robot.py`, `atelier/lieu/pilotage.py` ; `atelier/serveur/routes/pilotage.py` ; `choregraphies/` ; `bin/g1-guide`, `bin/g1-pilotage` ; tests `atelier/tests/test_pilotage_serveur.py`, `atelier/tests/test_pilotage_video.py`, `atelier/tests/test_pont*.py` ; `tests_e2e/critere_17_pont.sh`, `tests_e2e/critere_19_niveau2.sh`, `tests_e2e/critere_19_outils.py`, `tests_e2e/critere_20_securite.sh`, `tests_e2e/critere_20_outils.py`, `tests_e2e/critere_28_pilotage.sh`, `tests_e2e/critere_29_danses.sh`, `tests_e2e/critere_34_*`, `tests_e2e/outils_pont_e2e.py`, `tests_e2e/outils_pilotage_e2e.py`, `tests_e2e/outils_robot_e2e.py` |
+| Caméra | 105, `v5_camera`, 8115 | `docker/`, `bin/g1-jetson`, `bin/gl-jetson`, `ws/src/g1_equipe/`, `outils/visiteurs.py`, `bin/g1-visiteurs`, `bin/gl-visiteurs`, `atelier/equipe/`, `atelier/lieu/equipe.py`, `atelier/serveur/pont_ros.py`, `atelier/serveur/routes/{camera,equipe}.py`, `atelier/web/js/camera/`, `atelier/web/js/ecrans/camera.js`, `atelier/web/css/camera.css`, `atelier/web/essais/camera.html` ; `docs/integration-equipe.md`, `docs/jetson.md` ; tests `atelier/tests/test_camera*.py`, `atelier/tests/test_visiteurs*.py`, `atelier/tests/{test_equipe_dialogue,test_equipe_fichiers,test_equipe_serveur,test_serveur_pont_ros}.py` ; `tests_e2e/critere_16_conteneur.sh`, `tests_e2e/critere_16_outils.py`, `tests_e2e/critere_30_equipe.sh`, `tests_e2e/outils_equipe_e2e.py`, `tests_e2e/critere_35_*`, `tests_e2e/outils_camera_e2e.py` |
+
+Fichiers que personne ne touche dans cette vague (tous s'en servent ; un besoin va dans `ecarts_contrats`) : `atelier/lieu/{conversions,geometrie,principal,passants,comportement,commande}.py`, `atelier/serveur/processus.py`, `atelier/serveur/pietons.py`, `ws/src/g1_sim/`, `atelier/web/vendor/`, les autres commandes de `bin/` et de `setup/`, les autres critères et outils de `tests_e2e/`, les autres tests de `atelier/tests/` (dont `test_robot_serveur*.py`, `test_robot_reperage_ros.py`, `test_robot_communs.py`). Les agents ne touchent ni au journal ni au README : leur rapport sert à l'assemblage.
+
+### 12.9 Dépendances entre agents : contrats et bouchons
+
+| Qui a besoin | De quoi | Chez qui | Contrat | En attendant |
+|---|---|---|---|---|
+| Coquille | la carte 3D dans la vue centrale | Carte 3D | `creerCarte3D` (12.3 ; squelette livré, méthodes sans effet) | le squelette : vue 3D vide, le Plan 2D marche |
+| Carte 3D | sa place dans la coque, Placer › Salle en 3D | Coquille | contrat des écrans (`options.carte3d`) ; `salles.js` écoute `surPose` | page d'essai `essais/carte3d.html` ; critère 32 « en attente » (77) tant que la coque ou le placement en 3D manquent |
+| Coquille, Carte 3D | le nuage d'un étage | Scan | `GET …/nuage` et ses en-têtes (12.4), `atelier.lieu.nuage` | un nuage de test écrit par `ecrire_nuage` dans une copie du demo, et `window.fetch` remplacé dans la page (la route répond 501) |
+| Coquille | la vue Caméra | Caméra | `creerVueCamera` (12.7 ; squelette livré) | le squelette : la vue dit qu'il n'y a pas d'image |
+| Coquille | l'état `pas_en_marche` et `mode_robot` | Robot | schéma `etat_pont`, `NOMS_MODES`, `message_pas_en_marche` (livrés) | `EXEMPLE_ETAT_PONT_V5` publié par un faux `/pont/etat` |
+| Coquille (critère 36) | l'arrêt du pilotage | Robot | `POST /api/pilotage/arret` (vague 4, inchangé) | le nœud d'aujourd'hui |
+| Scan | l'écran plein écran et les commandes Scanner | Coquille | `options.coque.pleinEcran`, ids `scan.*` | `ouvrir(racine)` seul : l'écran prend toute la racine |
+| Caméra | `VITESSE_MAX_MIN` dans le conteneur | Robot | valeur livrée dans `atelier.lieu.robot` (0,2) | — |
+| Caméra | la vue Caméra dans la coque | Coquille | la vue centrale appelle `creerVueCamera` | page d'essai `essais/camera.html` ; la partie navigateur du critère 35 « en attente » sans la coque |
+| Scan (critère 33), Robot (critère 34) | — | eux-mêmes | `g1_sim` ne change pas (le SDF du monde maillé a des `uri` absolues) | — |
+
+### 12.10 Critères de recette 31 à 36
+
+Tous sans robot et sans fenêtre, sur des copies du demo ; `tests_e2e/tout.sh` lance les trente-six et affiche « N / 36 ». Un critère dont une pièce d'un autre agent manque répond « en attente » (77) en disant laquelle.
+
+31. **Accueil, espace de travail et défilement** (`critere_31_coque.sh`, agent Coquille). Firefox sans fenêtre :
+    - `/` sans hash : l'accueil, les deux cartes, le demo dans la liste (présélectionné si `atelier.lieu` vaut demo), Ouvrir ; Simulation + demo + Ouvrir : `[data-role=espace][data-mode=simu]`, ruban de 4 onglets (`dessiner`, `placer`, `simuler`, `equipe`), aucune commande `pilotage.*` ; retour à l'accueil, Robot réel avec « Répétition sans robot » : `[data-mode=repetition]`, 5 onglets (`scanner`, `placer`, `naviguer`, `piloter`, `equipe`), les vérifications du mode Réel avec leur `data-etat`, sans aucune boîte native ;
+    - à 1366 × 768 et à 1920 × 1080, dans les deux modes, pour chaque onglet du ruban et chaque commande qui n'est pas Avancé : la page ne défile pas (`scrollHeight` et `scrollWidth` de la page au plus la taille de la fenêtre, à 1 pixel près) ; barre d'outils, ruban, arbre, vue, panneau et barre d'état entièrement dans la fenêtre ; chaque élément cliquable visible (`button`, `input`, `select`, `a[href]`) de la barre d'outils, du ruban, de l'arbre et du panneau peut être amené à l'écran par `scrollIntoView` et y est alors entier et non recouvert (`elementFromPoint` en son centre le rend, ou un de ses enfants) ; ARRÊT visible et cliquable partout ;
+    - les anciens hash (`/?recharger=1#salles`, `#simulation`, `#scan`, `#pilotage`, `#camera`) mènent à l'écran attendu (`[data-ecran=<id>]`) sans l'accueil ;
+    - le thème clair (`[data-role=theme]`) change `data-theme` et `atelier.theme` ; la vue 3D reste sombre ;
+    - `window.erreursAtelier` reste vide.
+32. **Placer l'accueil et une salle dans la carte 3D** (`critere_32_carte3d.sh`, agent Carte 3D). Firefox sans fenêtre (WebGL) ; copie du demo avec un nuage d'étage de test (`cartes/rdc.nuage.bin`, écrit par `ecrire_nuage` depuis le monde du demo : murs et objets échantillonnés tous les 5 cm) :
+    - Réel (répétition) › Placer : la vue 3D montre le nuage (`window.carte3d.etat()` : `webgl` vrai, `points` = celui de l'en-tête) ;
+    - commande `salles.accueil`, appui sur le sol en (3,0 ; 9,5) (`versEcran`), glissé vers (4,0 ; 9,5), ✓ OK : dans `salles.yaml`, le point principal est à 0,05 m et 2° près de (3,0 ; 9,5 ; 0), et `accueil` de `lieu.yaml` et `depart_robot` aussi ;
+    - commande `salles.salle`, nouvelle salle « Essai 3D » posée en (12,0 ; 4,0), tournée vers −90°, ✓ OK : `salles.yaml` la contient à 0,05 m et 2° près, avec son nœud dans `itineraires.yaml` ;
+    - en Plan 2D, les marqueurs de l'accueil et de la salle sont à ces coordonnées (lat = y, lng = x, à 0,05 m près) ; une salle déplacée en 2D est retrouvée en 3D (`versEcran` de sa nouvelle pose à 3 pixels près de son épingle) ;
+    - Dessus, Iso, Face et Recadrer changent la caméra ; la molette zoome vers le pointeur (le point du sol sous le pointeur reste à 2 pixels près) ; Annuler puis Rétablir d'un placement ;
+    - WebGL coupé (préférence `webgl.disabled`) : `[data-role=carte3d-sans-webgl]`, et le Plan 2D reste utilisable ; aucune erreur dans la page.
+33. **Scan corrigé, sans reconnaissance, et monde maillé** (`critere_33_scan_corrige.sh`, agent Scan) :
+    - scan simulé du demo (`g1-scan demarrer --mode simu --explorer`, tour complet) : `termine`, étapes `carte_3d`, `carte_2d`, `nuage` ; ni `reconnaissance.yaml` ni `monde_scan.monde.yaml` ; `rapport.json` : `nuages.ignores` au plus 1 % de `nuages.recus`, pas de `reconnaissance` ; `nuage_affichage` conforme (`lire_nuage`), au moins 50 000 points, grille 0,05, sol à 0,02 m près de z = 0 ;
+    - carte propre : comparée à la carte du monde du demo, précision au moins 0,98 (part des pixels occupés du scan à 0,10 m au plus d'un pixel occupé du monde) et recouvrement au moins 0,90 ;
+    - le « damier » : la même session copiée par l'outil du test avec le sol incliné de 0,6° et abaissé de 1,27 m (comme le repère du vrai G1), les nuages à horodatage nul et l'odométrie décalée de −138 s (comme le bag du 27/10), puis `g1-scan traiter --refaire` : mêmes seuils (précision 0,98, recouvrement 0,90), `nuages.ignores` au plus 1 %, `sol.inclinaison_deg` entre 0,5 et 0,7 ; les résultats d'avant sont dans `ancien_<horodatage>/` ;
+    - adoption (`POST …/adopter`) : `cartes/rdc.nuage.bin` et `.json` (source `scan`), `mondes/rdc_carte.stl` et `carte_extrudee` (hauteur 1,5) dans le monde, murs et objets dessinés retirés (gardés dans `monde_remplace.monde.yaml`), piétons gardés ; `g1-lieu valider` sans erreur ; `GET …/nuage`, `…/nuage/info` et `…/monde/maillage` les servent ;
+    - Gazebo sans fenêtre sur ce monde maillé : au moins 0,9 fois le temps réel (temps de `/clock` sur 20 s de temps mural) ; `/points` voit le maillage ; le robot proxy envoyé 3 s vers un mur à 1 m s'arrête contre lui (jamais au-delà) ;
+    - `g1-scan carte-unitree` pendant un repérage en répétition : `cartes/rdc_unitree.pcd` et le nuage `source: unitree` ; aucun processus restant.
+34. **Pont : vitesse minimale et mode du robot** (`critere_34_pont_modes.sh`, agent Robot). Gazebo `--jumeau` (faux G1 avec son seuil de marche), pont avec ses défauts :
+    - `/cmd_vel` vx 0,1 pendant 3 s : les 7105 portent (0,2 ; 0 ; 0) (norme au moins 0,2, même direction) ; la vérité avance de 0,6 ± 0,2 m ; `/pont/etat` : `demande` 0,1, `consigne` 0,2, `minimums` ; wz 0,15 seul : 7105 à (0 ; 0 ; 0,3) et le robot tourne ; vx 0,03 : aucun 7105 non nul, robot immobile (moins de 2 cm) ;
+    - faux G1 assis (3) : `pas_en_marche` en moins de 2 s, `mode_robot.fsm` 3, message avec « assis » ; `/cmd_vel` vx 0,3 pendant 3 s : aucun 7105 non nul, robot immobile ; « Démarrer » (500 puis 501) : `pret` en moins de 3 s sans mouvement, puis un `/cmd_vel` neuf : `en_mouvement`, le robot avance ; mode 802 : `pas_en_marche`, message avec « course » ;
+    - 7001 à 1 Hz (de 0,7 à 1,3 par seconde), au format `'{}'` ; chaque 7105 au format de 10.3 ; `/pont/etat` conforme (schéma et règles) tout du long ;
+    - refus : `vitesse_max:=0.15` (lancement, `g1-guide navigation --vitesse-max 0.15`) avec « le robot ne marche pas sous 0,2 m/s » ; `vx_max:=0.1` sans `vitesse_min_lin:=0` refusé par le pont ; `nav2_g1_reel.yaml` : `vx_min` 0,0 ; avec `vitesse_max:=0.25`, les vitesses maximales de Nav2 lancé valent 0,25 (paramètres lus sur les nœuds) ; aucun processus restant.
+35. **Caméra : de la fausse source aux visiteurs** (`critere_35_camera.sh`, agent Caméra) :
+    - `camera_usb` avec `source:=fichier` (vidéo YUYV fabriquée par le test depuis `bus.jpg` d'ultralytics, 1280 × 720) : `/camera_poitrine/image/compressed` à 8 Hz au moins, JPEG lisibles de 640 pixels de large ; `/camera_poitrine/etat` conforme (`etat_camera`), `ouverte` vrai ;
+    - l'Atelier dans le même domaine : `GET /api/camera/image?source=poitrine` rend un JPEG de moins de 1 s ; `GET /api/camera/flux?source=poitrine&images=5` rend 5 images en moins de 2 s ; `GET /api/camera/etat` cohérent ;
+    - `g1-visiteurs --source robot` : `/visiteurs/detectes` conforme au schéma `personnes` (`source: camera`), au moins 3 personnes sur l'image du bus, chacune avec une `boite` dans l'`image` (640 × 360), en moins de 60 s après le lancement (chargement du modèle) ; le champ `visiteurs` de `/ws/etat` les montre ;
+    - la vue Caméra dans Firefox sans fenêtre : `[data-role=camera-flux]` reçoit des images (`naturalWidth` 640) et `[data-role=camera-cadres]` dessine au moins 3 cadres ;
+    - conteneur, à blanc (`g1-jetson demarrer --local --dry-run`) : avec une fausse caméra by-id, `--device …:/dev/g1_camera`, `--group-add` et `G1_CAMERA` ; sans caméra, ni `--device` ni échec ; `G1_VITESSE_MAX=0.15` refusé ;
+    - sans le modèle YOLO (`modeles/yolo/yolo11n-pose.pt`) : « en attente » (77) ; aucun processus restant.
+36. **ARRÊT global** (`critere_36_arret.sh`, agent Coquille) :
+    - répétition depuis l'Atelier (`POST /api/simulation/demarrer {mode: repetition}`, repérage), « Y aller » vers b204 ; quand le robot roule (plus de 0,15 m/s, vérité `/g1_jumeau/odom`) : `POST /api/arret {mode: repetition}` répond en moins de 1 s (200, `parties.guide.ok` et `parties.verrou.ok` vrais) ; le robot est arrêté (moins de 2 cm/s) moins de 1 s après la demande ; `/guide/etat` quitte `en_route` ; `/pont/etat` passe à `arret_verrouille` en moins de 1 s ;
+    - verrou posé : un nouveau « Y aller » laisse le robot immobile (moins de 5 cm) pendant 5 s ; `GET /api/arret` dit `verrou: true` ; `POST /api/arret/debloquer`, puis « Y aller » : le robot repart (0,3 m au moins) ;
+    - simulation, téléopération à 0,3 m/s : `POST /api/arret {mode: simu}` arrête le robot (vérité `/odom`) en moins de 1 s, sans verrou (`verrou` faux, rien publié sur `/pont/arret`) ;
+    - répétition, nœud pilotage, main prise, joystick à vx 0,3 par `/ws/pilotage` : `POST /api/arret` → StopMove reçu par le faux G1 en moins de 1 s, robot arrêté ; nœud pilotage arrêté : `POST /api/arret` répond quand même en moins de 1 s, `parties.pilotage.ok` faux avec un message, le reste arrêté ;
+    - dans Firefox, le clic sur `[data-role=arret]` et la touche Échap envoient `POST /api/arret` ; en Réel, le bouton passe à « Débloquer » (`data-etat=bloque`) ;
+    - jamais d'erreur 500 ; aucun processus restant.
+
+Critères existants à adapter, chacun par l'agent qui possède son script (12.8) : 7 et 11 à 15 (Scan : 12 devient `critere_12_carte_du_scan.sh`, la carte et le nuage de la session du 11 sans reconnaissance ; 13 : adoption, monde maillé, simulation et une salle atteinte ; 15 : l'écran de scan dans Firefox) ; 9 (Coquille : le parcours réécrit sur la coque) ; 16 et 30 (Caméra) ; 17, 19, 20, 28 et 29 (Robot : lectures 7001 admises, mode 501, `orienter` des outils au-dessus du seuil de rotation). Les critères 1 à 30 doivent toujours passer ; chaque agent relance ceux qu'il peut casser : Coquille 9, 10, 29, 30 (parties navigateur) ; Carte 3D 9 ; Scan 2, 3, 7, 11 à 15 ; Robot 4, 5, 16 à 22, 26 à 29 ; Caméra 16, 30.
+
+### 12.11 Règles communes de la vague 5
+
+Celles des sections 9.9, 10.10 et 11.10, plus :
+- dans chaque terminal : `export ROS_DOMAIN_ID=<domaine> ROS_LOCALHOST_ONLY=1 IGN_PARTITION=v5_<agent>` (12.8) ; l'Atelier sur son port seulement (jamais 8000, celui de l'utilisateur) ; les critères : `E2E_DOMAINE=<domaine> E2E_PARTITION=v5_<agent> tests_e2e/tout.sh N` (`commun.sh` met `ROS_LOCALHOST_ONLY=0` : Nav2 lance trop de participants pour lo) ;
+- compilation : `cd ~/robot-g1/ws && colcon --log-base log_v5_<agent> build --symlink-install --packages-select <paquets> --build-base build_v5_<agent> --install-base install_v5_<agent>`, puis `source ~/robot-g1/ws/install_v5_<agent>/local_setup.bash` par-dessus `setup/env.sh` ; jamais `ws/build` ni `ws/install` (l'assemblage seulement) ; les critères prennent les paquets de l'agent avec `E2E_OVERLAY=~/robot-g1/ws/install_v5_<agent>`. `ws/install` est en `--symlink-install` : un fichier Python modifié dans `ws/src` est vu tout de suite par tous (un nouvel exécutable demande une compilation) ;
+- tests : le Python du projet (`~/robot-g1/.venv-projet/bin/python -m pytest`), avec `PYTHONDONTWRITEBYTECODE=1` et `-p no:cacheprovider` ; les `test_logique.py` des paquets ROS un par un (même nom dans plusieurs paquets) ; chaque agent lance les tests de son périmètre, ceux qui en dépendent, et `atelier/tests/test_contrats_vague5.py` ; `atelier/tests/test_robot_reperage_ros.py` lance ses programmes avec `ROS_LOCALHOST_ONLY=0` : le lancer aussi avec `ROS_LOCALHOST_ONLY=0` (dans son domaine), sinon ses quatre tests échouent (constaté le 31/10) et laissent des faux services et des relais ; après un test qui échoue, chercher les restes avec `pgrep -af '[p]ytest-of'` (les crochets évitent que `pgrep` ou `pkill` se trouvent eux-mêmes) ; `ws/src/g1_nav/test/test_noeud_guide.py::test_lieu_introuvable` échoue avec `ROS_LOCALHOST_ONLY=1` (CycloneDDS écrit un avertissement sur la sortie d'erreur avant le message du guide) : l'agent Robot le rend indépendant de ce réglage ;
+- JavaScript ES2017 lisible par esprima (ni `?.`, ni `??`, ni champs de classe, ni `catch` sans paramètre), sans compilation ; aucune donnée des fichiers insérée en HTML (`textContent`, `value`) ; aucune adresse Internet ; textes et noms en français ; chaque fonction nouvelle a ses tests ;
+- `lieux/demo` est la référence des tests (on travaille sur des copies : `ATELIER_LIEUX`) ; `lieux/seance`, `lieux/bomboclat` et `lieux/demo_scan` sont à l'utilisateur ;
+- **jamais rien sur eno2, jamais de ssh ni de ping vers 192.168.123.x** (les tests de la liaison visent `ATELIER_PC1=127.0.0.1` et `ATELIER_INTERFACE_ROBOT=lo`) ; le robot n'est pas branché : faux G1, faux SLAM, répétition, simulation ;
+- fichiers temporaires, captures et journaux dans le dossier de travail de l'agent, hors du dépôt ;
+- à la fin : tous les processus et conteneurs lancés sont arrêtés (`pgrep`, `docker ps -a`) ; le rapport de l'agent dit honnêtement ce qui marche, ce qui a échoué et ce qui n'a pas pu être essayé, avec les commandes exactes ; l'assemblage écrit le journal et le README.
+
+### 12.12 Ce qui reste à vérifier sur le robot (séance 2)
+
+En plus des listes de 10.9 et 11.11 :
+1. **pont** : le seuil réel de marche (0,12, 0,15 et 0,18 m/s ; de côté ; en diagonale (0,1 ; 0,1) pour l'hypothèse de la norme) et de rotation (0,1 à 0,4 rad/s), avec les minimums à 0 ; la latence et la distance d'arrêt à 0,2 m/s ; l'angle réel d'un Spin de 90° ; puis le pont avec ses défauts (0,1 demandé : marche à 0,2) ;
+2. **modes** : 7001 dans chaque posture (couple nul, amorti, assis, accroupi, debout, marche, course, et après « Démarrer » : 500 puis 501 ?) ; 7002 ; la réponse de 7105 hors marche ; une danse depuis 501 ;
+3. **caméra** : la See3CAM sur un port USB 3 du Jetson, `g1-jetson verifier`, 10 images par seconde sur le PC (`ros2 topic hz`, taille réelle), l'exposition automatique en lumière, le champ de vision (le mode 640 × 480 montre-t-il tout le champ ?), la position sur le robot, les distances à 1, 2, 3 et 4 m (`correction_distance`), la salutation ;
+4. **carte d'Unitree** : `g1-scan carte-unitree` pendant « Repérer le robot » ;
+5. **scan** : un nouveau scan plus lent (moins de 0,5 m/s, virages lents, personne entre le robot et les murs), comparé à celui d'Unitree Explore ; la carte du 27/10 retraitée colle-t-elle au bâtiment ;
+6. **Nav2** : pas de marche arrière, `vitesse_max` transmise à Nav2, rotation finale du guide sans oscillation.

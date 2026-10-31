@@ -13,8 +13,8 @@ Vérifie que :
   - D : commandes permises et interdites, danses, limites des bras, chorégraphie d'exemple ;
   - E : les trois fichiers de l'équipe ;
   - les squelettes partagés (onglets, routes, paquets, nœuds) existent, la section 11 du plan est
-    là, les critères 21 à 30 sont dans la section 7 et tout.sh en compte 30 ; aucun fichier de la
-    table 11.7 n'a deux propriétaires.
+    là, les critères 21 à 30 sont dans la section 7 et tout.sh les lance (30 jusqu'à la vague 4, 36
+    depuis la vague 5) ; aucun fichier de la table 11.7 n'a deux propriétaires.
 """
 import copy
 import json
@@ -182,7 +182,8 @@ def test_etat_pont_pilotage():
     assert L.valider_message("etat_pont", d) == [] and erreurs_js("etat_pont", d) == []
     assert any("mouvement_permis" in m for m in L.valider_message("etat_pont", dict(d, mouvement_permis=True)))
     assert tuple(schema("etat_pont")["properties"]["etat"]["enum"]) == L.ETATS_PONT
-    assert L.ETATS_PONT[-1] == "pilotage"
+    # « pilotage » ajouté par la vague 4 ; la vague 5 ajoute « pas_en_marche » après lui (section 12.6)
+    assert L.ETATS_PONT.index("pilotage") == len(L.ETATS_PONT) - 2 and L.ETATS_PONT[-1] == "pas_en_marche"
 
 
 def test_les_enumerations_des_schemas_suivent_les_modules():
@@ -626,20 +627,23 @@ def test_sujets_de_l_equipe_ont_un_schema():
 # ---------------------------------------------------------------- squelettes partagés
 
 def test_onglets_et_styles_de_la_vague_4():
+    """Les écrans et panneaux de la vague 4 existent et sont chargés. Vague 5 (section 12.2 du plan) : la
+    coque les charge où elle veut (app.js ou js/coque/) ; les lignes exactes d'app.js ne sont plus exigées."""
     web = RACINE / "atelier" / "web"
-    app = (web / "js" / "app.js").read_text(encoding="utf-8")
+    coque = "\n".join(p.read_text(encoding="utf-8")
+                      for p in [web / "js" / "app.js", *sorted((web / "js" / "coque").glob("*.js"))])
+    tous = "\n".join(p.read_text(encoding="utf-8") for p in sorted((web / "js").rglob("*.js")))
     index = (web / "index.html").read_text(encoding="utf-8")
-    for ecran, texte in (("pilotage", "Pilotage"), ("personnalites", "Personnalités"), ("dialogues", "Dialogues"),
-                         ("camera", "Caméra")):
+    for ecran in ("pilotage", "personnalites", "dialogues", "camera"):
         assert (web / "js" / "ecrans" / f"{ecran}.js").is_file()
-        assert f"import * as {ecran} from './ecrans/{ecran}.js';" in app
-        assert f"{{ id: '{ecran}', texte: '{texte}', module: {ecran}" in app
+        motif = rf"""(from\s+|import\(\s*)['"]\.{{1,2}}/ecrans/{ecran}\.js['"]"""
+        assert re.search(motif, coque), f"écran {ecran} non chargé par app.js ni par js/coque/"
     for css in ("principal", "passants", "guide", "pilotage", "equipe"):
-        assert (web / "css" / f"{css}.css").is_file() and f'href="css/{css}.css"' in index
-    simulation = (web / "js" / "ecrans" / "simulation.js").read_text(encoding="utf-8")
+        if (web / "css" / f"{css}.css").is_file():
+            assert f'href="css/{css}.css"' in index, css
     for panneau in ("guide", "passants"):
         assert (web / "js" / "panneaux" / f"{panneau}.js").is_file()
-        assert f"from '../panneaux/{panneau}.js'" in simulation
+        assert f"/panneaux/{panneau}.js'" in tous, f"panneau {panneau} non chargé"
 
 
 def test_routes_enregistrees_et_ws_etat():
@@ -709,8 +713,9 @@ def test_plan_section_11():
     for n in range(21, 31):
         assert re.search(rf"^{n}\. \*\*", plan, re.M), f"critère {n} absent de la section 7"
     tout = TOUT.read_text(encoding="utf-8")
-    assert re.search(r"^TOUS=\((\d+ ){29}30\)$", tout, re.M)
-    assert "N / 30" in tout
+    # les 30 premiers critères restent (la vague 5 en ajoute six : test_contrats_vague5.py)
+    assert re.search(r"^TOUS=\(1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30"
+                     r"( \d+)*\)$", tout, re.M)
     for n in range(21, 31):
         assert re.search(rf"\[{n}\]=\d+", tout), f"délai du critère {n}"
 

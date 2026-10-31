@@ -9,6 +9,7 @@ pas) et des avertissements (à regarder : fichier manquant, carte pas encore fab
 import math
 from collections import deque
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import List, Optional
 
 import atelier
@@ -239,6 +240,21 @@ def _verifier_zones(lieu, r):
                 r.avertir(f"{nom} : le départ du robot (depart_robot de mondes/{z.etage}.monde.yaml) est dedans")
 
 
+def _verifier_carte_extrudee(lieu, id_etage, monde, fichier, r):
+    """Vague 5 (section 12.5 du plan) : le maillage de la carte extrudée existe et n'est pas plus ancien
+    que la carte de l'étage."""
+    if monde.carte_extrudee is None or lieu.dossier is None:
+        return
+    stl = Path(lieu.dossier) / "mondes" / monde.carte_extrudee.fichier
+    refaire = f"refaites-le : g1-monde generer --lieu {lieu.id} --etage {id_etage}"
+    if not stl.is_file():
+        r.avertir(f"{fichier}, carte_extrudee : le maillage mondes/{stl.name} est absent ; {refaire}")
+        return
+    carte = chemin_carte(lieu.dossier, id_etage)
+    if carte.is_file() and carte.stat().st_mtime > stl.stat().st_mtime + 1:
+        r.avertir(f"{fichier}, carte_extrudee : mondes/{stl.name} est plus ancien que cartes/{id_etage}.yaml ; {refaire}")
+
+
 def _verifier_mondes(lieu, r):
     etages = {e.id: e for e in lieu.etages}
     noeuds = lieu.itineraires.noeuds
@@ -253,6 +269,7 @@ def _verifier_mondes(lieu, r):
             continue
         for id_element in monde.ids():
             _avertir_id(r, id_element, f"{fichier}, « {id_element} »")
+        _verifier_carte_extrudee(lieu, id_etage, monde, fichier, r)
         obstacles = _obstacles(monde)
         depart = (monde.depart_robot.x, monde.depart_robot.y)
         d, nom = _plus_proche(obstacles, depart, depart)

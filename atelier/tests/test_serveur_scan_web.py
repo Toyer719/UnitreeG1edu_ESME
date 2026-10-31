@@ -44,9 +44,10 @@ def test_feuille_de_style_et_onglet():
     index = _texte("index.html")
     assert index.index("css/atelier.css") < index.index("css/scan.css")
     assert (WEB / "css/scan.css").is_file()
-    app = _texte("js/app.js")
-    ligne = next(x for x in app.splitlines() if "id: 'scan'" in x)
-    assert "sansLieu" not in ligne, "l'onglet Scan a besoin d'un lieu et d'un étage"
+    # vague 5 (section 12.2 du plan) : la table des écrans peut être dans app.js ou dans js/coque/
+    textes = [_texte("js/app.js")] + [p.read_text(encoding="utf-8") for p in sorted((WEB / "js" / "coque").glob("*.js"))]
+    lignes = [x for t in textes for x in t.splitlines() if "id: 'scan'" in x]
+    assert all("sansLieu" not in ligne for ligne in lignes), "l'écran Scan a besoin d'un lieu et d'un étage"
 
 
 def test_teleop_dans_les_limites_du_contrat():

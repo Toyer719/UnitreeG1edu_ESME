@@ -65,7 +65,7 @@ MESSAGES = {
                                         "salles.yaml, salle n°1 : il manque id"),
     "champ mal orthographié": ("monde", lambda d: d.update(mur=d.pop("murs")),
                                "monde.yaml : champ inconnu « mur » (vouliez-vous écrire « murs » ?) ; champs permis : "
-                               "version, emprise, murs, objets, pietons, depart_robot"),
+                               "version, emprise, murs, objets, pietons, depart_robot, carte_extrudee"),
     "point à 3 valeurs": ("monde", lambda d: d["murs"][0].update(de=[0, 0, 0]),
                           "monde.yaml, mur « ext_sud » : de doit avoir exactement 2 valeurs [x, y], pas 3"),
     "épaisseur nulle": ("monde", lambda d: d["murs"][1].update(epaisseur=0),

@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/camera_poitrine/etat",
+  "description": "État du nœud camera_usb (paquet g1_equipe, vague 5, section 12.7 du plan), publié en JSON (std_msgs/String) sur /camera_poitrine/etat à 1 Hz. Les images partent sur /camera_poitrine/image/compressed (sensor_msgs/CompressedImage, JPEG). Des champs en plus sont permis.",
+  "type": "object",
+  "required": ["version", "source", "ouverte", "largeur", "hauteur", "images", "publiees", "erreur"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Version du format. Toujours 1.", "const": 1},
+    "source": {"description": "v4l2 : une vraie caméra (See3CAM) ; mire : image de test fabriquée ; fichier : images lues dans un fichier (tests).", "type": "string", "enum": ["v4l2", "mire", "fichier"]},
+    "peripherique": {"description": "Périphérique ou fichier lu (ex. /dev/g1_camera), ou null.", "type": ["string", "null"]},
+    "ouverte": {"description": "Vrai quand des images arrivent de la source.", "type": "boolean"},
+    "largeur": {"description": "Largeur des images publiées, en pixels (0 tant qu'aucune).", "type": "integer", "minimum": 0, "maximum": 8192},
+    "hauteur": {"description": "Hauteur des images publiées, en pixels (0 tant qu'aucune).", "type": "integer", "minimum": 0, "maximum": 8192},
+    "frequence_hz": {"description": "Facultatif : fréquence de publication demandée.", "type": "number", "exclusiveMinimum": 0, "maximum": 60},
+    "ips_mesuree": {"description": "Images lues par seconde, mesurées ; null si inconnu.", "type": ["number", "null"], "minimum": 0},
+    "images": {"description": "Images lues depuis le lancement.", "type": "integer", "minimum": 0},
+    "publiees": {"description": "Images publiées depuis le lancement.", "type": "integer", "minimum": 0},
+    "taille_moyenne_ko": {"description": "Facultatif : taille moyenne d'un JPEG publié, en kilooctets.", "type": ["number", "null"], "minimum": 0},
+    "exposition": {"description": "Facultatif : auto ou manuelle (réglée au démarrage), ou null.", "type": ["string", "null"], "enum": ["auto", "manuelle", null]},
+    "erreur": {"description": "null si tout va bien ; sinon une phrase en français qui dit quoi faire (caméra absente, débranchée...).", "type": ["string", "null"], "maxLength": 2000}
+  }
+}

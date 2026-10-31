@@ -76,6 +76,43 @@ POSTURES_PORTIQUE = (0, 1)
 FSM_MARCHE = 801                            # mode marche lu après « démarrer » (départ et fin d'une danse)
 FSM_GESTES = (500, 501, 801)                # gestes d'Unitree permis dans ces modes (sinon 7404)
 
+# Vague 5 (section 12.6 du plan). Modes lus par 7001 sur le vrai G1 le 27/10 : 0 (pas démarré),
+# 3 (assis), 501 (marche normale, choisie à la télécommande), 802 (course). Le robot ne fait un pas
+# que dans un mode de marche. Copies exactes dans g1_bridge (logique.py) et g1_jumeau (robot.py),
+# comparées par atelier/tests/test_contrats_vague5.py.
+MODES_MARCHE = (500, 501, 801)
+MODES_COURSE = (802,)                       # la navigation le refuse (paramètre modes_marche du pont)
+NOMS_MODES = {0: "pas démarré", 1: "amorti", 2: "accroupi", 3: "assis", 4: "debout, verrouillé",
+              500: "démarrage", 501: "marche", 702: "se relève", 706: "accroupi ↔ debout", 801: "marche",
+              802: "course"}
+
+
+def nom_mode(fsm):
+    """Nom en français d'un mode du robot (7001) : « marche », « assis »… ; « danse n » pour 550000 + n ;
+    « inconnu » pour None."""
+    if fsm is None:
+        return "inconnu"
+    if DANSE_PREFIXE < fsm < DANSE_PREFIXE + 1000:
+        return f"danse {fsm - DANSE_PREFIXE}"
+    return NOMS_MODES.get(fsm, f"mode {fsm} inconnu")
+
+
+def message_pas_en_marche(fsm):
+    """Phrase en français quand le robot n'est pas en mode marche (état pas_en_marche du pont, refus du
+    joystick) : ce qui se passe, puis quoi faire. fsm : le mode lu par 7001."""
+    if fsm in MODES_COURSE:
+        return (f"Le robot est en mode course ({fsm}) : passez en marche normale à la télécommande. "
+                "La navigation ne marche pas en mode course.")
+    suite = " : il ignore les ordres de marche. "
+    if fsm in (0, 1):
+        return (f"Le robot n'est pas démarré (mode {fsm}, {nom_mode(fsm)})" + suite
+                + "Démarrez-le avec la télécommande (ou « Démarrer » dans Piloter).")
+    if fsm == 3:
+        return ("Le robot est assis (mode 3)" + suite
+                + "Mettez-le debout puis en marche avec la télécommande (ou « Démarrer » dans Piloter).")
+    return (f"Le robot n'est pas en mode marche (mode {fsm}, {nom_mode(fsm)})" + suite
+            + "Mettez-le en marche avec la télécommande (ou « Démarrer » dans Piloter).")
+
 # Danses du robot : 7101 {"data": DANSE_PREFIXE + n}
 DANSE_PREFIXE = 550000
 DANSE_LISTE = {"fsm_id": 550, "api_id": 1}  # paramètre de 7100 qui rend la liste

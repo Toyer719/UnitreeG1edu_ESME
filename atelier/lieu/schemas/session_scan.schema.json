@@ -57,14 +57,14 @@
       "$ref": "#/definitions/instant"
     },
     "etat": {
-      "description": "en_cours : le robot scanne (étapes preparation, enregistrement) ; arret_en_cours : « Fin » demandée, 1802 et fermeture de l'enregistrement (étape arret) ; traitement : carte_3d, carte_2d, reconnaissance, monde ; termine : tout est fait (étape fini) ; echec : arrêt sur une erreur, à l'étape indiquée (message dit quoi faire).",
+      "description": "en_cours : le robot scanne (étapes preparation, enregistrement) ; arret_en_cours : « Fin » demandée, 1802 et fermeture de l'enregistrement (étape arret) ; traitement : carte_3d, carte_2d, nuage (vague 5, section 12.5 du plan ; reconnaissance et monde : anciennes sessions, plus produites) ; termine : tout est fait (étape fini) ; echec : arrêt sur une erreur, à l'étape indiquée (message dit quoi faire).",
       "type": "string",
       "enum": ["en_cours", "arret_en_cours", "traitement", "termine", "echec"]
     },
     "etape": {
-      "description": "Étape en cours (ou celle de l'échec). Progression de chaque étape : preparation 0, enregistrement 0, arret 5, carte_3d 10 à 50, carte_2d 50 à 65, reconnaissance 65 à 90, monde 90 à 99, fini 100 (atelier.lieu.progression_etape).",
+      "description": "Étape en cours (ou celle de l'échec). Progression : atelier.lieu.progression_etape (PLAGES_PROGRESSION). Vague 5 (section 12.5 du plan) : nuage (le nuage d'affichage de la carte 3D) remplace reconnaissance et monde, qui restent acceptés pour les anciennes sessions.",
       "type": "string",
-      "enum": ["preparation", "enregistrement", "arret", "carte_3d", "carte_2d", "reconnaissance", "monde", "fini"]
+      "enum": ["preparation", "enregistrement", "arret", "carte_3d", "carte_2d", "nuage", "reconnaissance", "monde", "fini"]
     },
     "progression": {
       "description": "Avancement de 0 à 100, nombre entier (barre de progression de l'interface).",

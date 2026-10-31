@@ -93,6 +93,12 @@ def chemin_pcd(lieu, etage):
     return dossier_lieu(lieu) / "cartes" / f"{etage}.pcd"
 
 
+def chemin_maillage(lieu, etage):
+    """mondes/<etage>_carte.stl : la carte d'un étage scanné extrudée en un seul maillage (vague 5,
+    section 12.5 du plan ; champ carte_extrudee du monde)."""
+    return dossier_lieu(lieu) / "mondes" / f"{etage}_carte.stl"
+
+
 def _nom_affiche(chemin):
     """Nom court d'un fichier dans les messages : salles.yaml, mondes/rdc.monde.yaml, cartes/rdc.yaml."""
     chemin = Path(chemin)

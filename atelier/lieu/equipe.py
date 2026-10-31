@@ -52,7 +52,21 @@ SUJETS_EQUIPE = {
     "/guide/evenement": ("std_msgs/String", "evenement_guide", "guide (relayé vers /robot/dire)"),
     # assemblage de la vague 4 : gestes des bras demandés par le chatbot, faits par le nœud pilotage
     "/robot/geste": ("std_msgs/String", "robot_geste", "chatbot (action geste, geste_salut de la personnalité)"),
+    # vague 5 (section 12.7 du plan) : état du nœud de la caméra de poitrine (See3CAM)
+    "/camera_poitrine/etat": ("std_msgs/String", "etat_camera", "nœud camera_usb (g1_equipe), 1 Hz"),
 }
+
+# Vague 5 (section 12.7 du plan) : sujets d'images (sensor_msgs/CompressedImage, JPEG), à part de
+# SUJETS_EQUIPE qui ne contient que des std_msgs/String : sujet → (type, qui publie)
+SUJETS_IMAGES = {
+    "/camera_poitrine/image/compressed": ("sensor_msgs/CompressedImage",
+                                          "nœud camera_usb (g1_equipe) : la See3CAM, 10 Hz, JPEG de 640 pixels de large"),
+    "/visiteurs/image/compressed": ("sensor_msgs/CompressedImage",
+                                    "g1-visiteurs --image (PC) : la même image avec les cadres dessinés, 2 à 5 Hz"),
+}
+SUJET_IMAGE_POITRINE = "/camera_poitrine/image/compressed"
+SUJET_ETAT_CAMERA = "/camera_poitrine/etat"
+CAMERA_CONTENEUR = "/dev/g1_camera"         # la See3CAM dans le conteneur du Jetson (docker run --device)
 
 EXEMPLE_ROBOT_DIRE = {"version": 1, "texte": "Je vous emmène à la Salle B204. Suivez-moi !", "source": "dialogue",
                       "priorite": "normale"}

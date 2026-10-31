@@ -28,6 +28,8 @@ setup(
             'dialogue = g1_equipe.dialogue:main',
             'fausse_camera = g1_equipe.fausse_camera:main',
             'voix_journal = g1_equipe.voix_journal:main',
+            # vague 5 (section 12.7 du plan) : caméra de poitrine See3CAM
+            'camera_usb = g1_equipe.camera_usb:main',
         ],
     },
 )

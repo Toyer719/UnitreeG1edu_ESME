@@ -38,11 +38,30 @@
     "depart_robot": {
       "description": "Pose où le robot apparaît au lancement de la simulation (en général celle de l'accueil).",
       "$ref": "#/definitions/pose"
+    },
+    "carte_extrudee": {
+      "description": "Facultatif (vague 5, section 12.5 du plan) : la carte 2D de l'étage extrudée en un seul maillage STL, pour simuler un étage scanné. Écrit par g1-monde generer (étage source_carte: scan qui a une carte), jamais à la main. Dans Gazebo : un seul modèle statique nommé carte_du_scan (collision et visuel). Absent : le monde n'a que ses murs et objets dessinés (comme avant la vague 5).",
+      "type": "object",
+      "required": ["fichier", "hauteur"],
+      "additionalProperties": false,
+      "properties": {
+        "fichier": {
+          "description": "Nom du fichier STL binaire, dans le dossier mondes/ du lieu, sans dossier : <etage>_carte.stl.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,39}\\.stl$"
+        },
+        "hauteur": {
+          "description": "Hauteur des blocs, en mètres (1,5 par défaut : au-dessus du LiDAR du robot simulé, à 1,245 m).",
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 5
+        }
+      }
     }
   },
   "definitions": {
     "id": {
-      "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, commence par une lettre ou un chiffre. Éviter yes, no, on, off (lus comme des booléens par YAML), ainsi que sol et g1_proxy (déjà pris dans le monde Gazebo).",
+      "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, commence par une lettre ou un chiffre. Éviter yes, no, on, off (lus comme des booléens par YAML), ainsi que sol, g1_proxy et carte_du_scan (déjà pris dans le monde Gazebo).",
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
     },

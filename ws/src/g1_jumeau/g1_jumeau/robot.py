@@ -29,6 +29,9 @@ import sys
 FSM_MARCHE = 801
 POSTURES = (0, 1, 3, 500, 702, 706)
 FSM_GESTES = (500, 501, 801)
+# Modes où le vrai robot marche (vague 5, section 12.6 du plan) : copie exacte de
+# atelier.lieu.pilotage.MODES_MARCHE, comparée par atelier/tests/test_contrats_vague5.py
+MODES_MARCHE = (500, 501, 801)
 DANSE_PREFIXE = 550000
 GESTES = {99: 'release '
               'arm', 11: 'two-hand kiss', 12: 'left kiss', 13: 'right kiss', 15: 'hands up',

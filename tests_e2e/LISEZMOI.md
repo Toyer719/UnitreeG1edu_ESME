@@ -1,14 +1,15 @@
 # Tests de bout en bout de l'Atelier G1
 
-Scripts sans fenêtre qui reprennent les critères de recette (sections 7, 9.10, 10 et 11 du plan),
+Scripts sans fenêtre qui reprennent les critères de recette (sections 7, 9.10, 10, 11 et 12 du plan),
 et `tout.sh` qui les lance tous et affiche un bilan (agents Intégrateur et Testeur).
 
 ```bash
-~/robot-g1/tests_e2e/tout.sh            # les 30 critères, puis « N / 30 »
+~/robot-g1/tests_e2e/tout.sh            # les 36 critères, puis « N / 36 »
 ~/robot-g1/tests_e2e/tout.sh 7 8        # seulement les critères 7 et 8
 ~/robot-g1/tests_e2e/tout.sh 11 12 13   # le scan intégré (le 11 garde sa session pour le 12 et le 13)
 ~/robot-g1/tests_e2e/tout.sh 16 17 18 19 20   # le vrai robot en répétition (vague 3, section 10 du plan)
 ~/robot-g1/tests_e2e/tout.sh 21 22 23 24 25 26 27 28 29 30   # la vague 4 (section 11 du plan)
+~/robot-g1/tests_e2e/tout.sh 31 32 33 34 35 36   # la vague 5 (section 12.10 du plan)
 ~/robot-g1/tests_e2e/critere_08_service_robot.sh    # un critère seul, sortie à l'écran
 ```
 
@@ -44,6 +45,12 @@ et `tout.sh` qui les lance tous et affiche un bilan (agents Intégrateur et Test
 | `critere_28_pilotage.sh` | Gazebo `--jumeau`, nœud pilotage (port libre, jeton) et Atelier : postures, confirmation double du portique, joystick avec homme mort (WebSocket coupé : arrêt en moins de 0,6 s), plafonds, gestes et refus 7401 et 7404 en français, voix, volume, LED, verrou avec le guide, interdits jamais envoyés au faux G1 | 1 min |
 | `critere_29_danses.sh` | même montage : liste 7100 (401, 402, 403 interdites), 604 envoyée comme 550604 avec la zone libre, ARRÊT pendant une danse ; `exemple_kpop` sur le faux G1 (arm_sdk à 50 Hz, rampes, limites, taille et jambes jamais pilotées, pas dans les limites, LED et paroles à leur temps, ARRÊT au milieu) ; chorégraphie hors limites refusée ; aperçu 3D dans Firefox sans fenêtre | 2 min |
 | `critere_30_equipe.sh` | les trois fichiers de l'équipe (exemples valides, fautes refusées en français, écrits puis relus par l'API), onglets dans Firefox sans fenêtre, personnalité publiée ; bout en bout : « je cherche la salle b204 » sur `/visiteur/texte` → `/robot/dire` et `/guide/aller` → b204 ; « bonjour » → réponse sans guidage ; phrase inconnue → repli | 1 min 30 |
+| `critere_31_coque.sh` | accueil puis espace de travail en Simulation et en Réel (répétition) dans Firefox sans fenêtre ; à 1366 × 768 et 1920 × 1080, la page ne défile pas, rien n'est coupé, tout élément cliquable peut être amené à l'écran ; anciens hash ; thème clair | à écrire (agent Coquille) |
+| `critere_32_carte3d.sh` | carte 3D (WebGL) d'un nuage de test : l'accueil et une salle posés et orientés en 3D, `salles.yaml` à jour, mêmes coordonnées dans le Plan 2D ; vues, zoom vers le pointeur, Annuler ; repli sans WebGL | à écrire (agent Carte 3D) |
+| `critere_33_scan_corrige.sh` | scan simulé sans reconnaissance : étapes `carte_3d`, `carte_2d`, `nuage`, carte propre (précision 0,98, recouvrement 0,90), même avec un sol incliné et des horodatages nuls (`--refaire`) ; adoption : nuage de l'étage et monde maillé, Gazebo à 0,9 fois le temps réel au moins ; `g1-scan carte-unitree` | à écrire (agent Scan) |
+| `critere_34_pont_modes.sh` | pont et faux G1 : vitesse minimale (0,1 demandé → 0,2 envoyé), zones mortes, faux G1 assis → `pas_en_marche` et aucun pas, retour à `pret` en 501, course refusée, 7001 à 1 Hz ; `vitesse_max` sous 0,2 refusée, transmise à Nav2 | à écrire (agent Robot) |
+| `critere_35_camera.sh` | fausse source d'images → `camera_usb` → `/camera_poitrine/image/compressed` → flux MJPEG de l'Atelier → `g1-visiteurs` (YOLO) → `/visiteurs/detectes` avec les cadres ; vue Caméra dans Firefox ; caméra dans le conteneur, à blanc | à écrire (agent Caméra) |
+| `critere_36_arret.sh` | ARRÊT global : guide en route (répétition), téléopération (simulation) et joystick du pilotage arrêtés en moins de 1 s ; verrou posé en répétition puis « Débloquer » ; nœud pilotage injoignable ; bouton et touche Échap | à écrire (agent Coquille) |
 
 Critères 16 à 20 (vague 3, le vrai robot en répétition, section 10 du plan) : en répétition, la vérité terrain
 est `/g1_jumeau/odom` (et non `/odom`, l'odométrie du relais). Options :
@@ -63,6 +70,11 @@ Critères 21 à 30 (vague 4, section 11 du plan) : chacun est écrit par l'agent
 autre agent manque, il répond « en attente » (77) en disant laquelle. Nouveaux outils, un par agent :
 `critere_21_outils.py`, `outils_passants_e2e.py`, `outils_guide_e2e.py`, `outils_pilotage_e2e.py`,
 `outils_equipe_e2e.py`.
+
+Critères 31 à 36 (vague 5, section 12.10 du plan) : chacun est écrit par l'agent nommé, sur des copies du demo ;
+tant que la pièce d'un autre agent manque, il répond « en attente » (77). Un agent essaie ses paquets ROS compilés à
+part avec `E2E_OVERLAY=~/robot-g1/ws/install_v5_<agent>` (chargé après `ws/install`, donc prioritaire), dans son
+domaine : `E2E_DOMAINE=<domaine> E2E_PARTITION=v5_<agent> tests_e2e/tout.sh N` (section 12.11).
 
 Codes de sortie : 0 réussi, 1 échoué, 77 pas encore possible (une commande, une route ou un module manque).
 

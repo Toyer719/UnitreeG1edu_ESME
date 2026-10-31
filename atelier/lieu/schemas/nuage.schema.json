@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "En-tête d'un nuage d'affichage : cartes/<etage>.nuage.json, scans/<session>/nuage_affichage.json, scans/<session>/apercu_nuage.json",
+  "description": "Vague 5 (section 12.5 du plan). Nuage de points pour la carte 3D de l'Atelier, en deux fichiers de même nom : <nom>.bin (les points) et <nom>.json (cet en-tête). Le binaire : « points » fois trois nombres Float32 petit-boutistes x, y, z, soit 12 octets par point, sans en-tête ni bourrage. x et y : repère map de l'étage, en mètres, exactement ceux de cartes/<etage>.yaml, salles.yaml, itineraires.yaml et zones.yaml (aucune conversion). z : hauteur au-dessus du sol, en mètres (le plan du sol, « sol », est déjà soustrait : le sol est à z = 0 partout). Les couleurs ne sont pas dans le fichier : le navigateur les calcule depuis z. Lecture et écriture : atelier.lieu.nuage. Des champs en plus sont permis.",
+  "type": "object",
+  "required": ["version", "format", "points", "grille", "repere", "bornes", "sol", "source", "date"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Version du format. Toujours 1.", "const": 1},
+    "format": {"description": "Toujours float32_xyz : 3 Float32 petit-boutistes par point (x, y, z).", "const": "float32_xyz"},
+    "points": {"description": "Nombre de points du binaire (sa taille vaut 12 × points octets).", "type": "integer", "minimum": 0, "maximum": 5000000},
+    "grille": {"description": "Côté des voxels qui ont réduit le nuage, en mètres (0,05 par défaut ; 0,10 pour l'aperçu en direct).", "type": "number", "exclusiveMinimum": 0, "maximum": 1},
+    "repere": {"description": "Toujours map : le repère de la carte de l'étage (x vers l'est de la carte, y vers le nord, z vers le haut).", "const": "map"},
+    "bornes": {
+      "description": "Boîte qui contient tous les points, en mètres (z : hauteur au-dessus du sol). Pour un nuage vide : tout à 0.",
+      "type": "object",
+      "required": ["xmin", "ymin", "zmin", "xmax", "ymax", "zmax"],
+      "additionalProperties": false,
+      "properties": {
+        "xmin": {"type": "number"}, "ymin": {"type": "number"}, "zmin": {"type": "number"},
+        "xmax": {"type": "number"}, "ymax": {"type": "number"}, "zmax": {"type": "number"}
+      }
+    },
+    "sol": {
+      "description": "Le sol estimé dans le repère du nuage brut : le plan z = a·x + b·y + c (plan : [a, b, c]), soustrait de chaque point. inclinaison_deg : sa pente (0,58° pour le scan du 27/10).",
+      "type": "object",
+      "required": ["plan"],
+      "additionalProperties": true,
+      "properties": {
+        "plan": {"type": "array", "minItems": 3, "maxItems": 3, "items": {"type": "number"}},
+        "inclinaison_deg": {"type": "number", "minimum": 0, "maximum": 90},
+        "methode": {"description": "Facultatif : comment il a été trouvé (ex. ransac).", "type": "string", "maxLength": 200}
+      }
+    },
+    "source": {
+      "description": "scan : nuage traité d'une session de scan (g1-scan traiter) ; apercu : aperçu en direct pendant un scan ; unitree : carte d'Unitree enregistrée par g1-scan carte-unitree.",
+      "type": "string",
+      "enum": ["scan", "apercu", "unitree"]
+    },
+    "session": {
+      "description": "Facultatif : la session de scan d'où vient le nuage (AAAA-MM-JJ_HHhMM), ou null.",
+      "type": ["string", "null"],
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}h[0-9]{2}(-[0-9]{1,3})?$"
+    },
+    "etage": {
+      "description": "Facultatif : l'étage du lieu.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+    },
+    "date": {
+      "description": "Date et heure de fabrication, ISO 8601 à la seconde avec le décalage horaire : 2026-10-31T01:20:00+01:00.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"
+    },
+    "mobiles_retires": {"description": "Facultatif : voxels retirés comme obstacles mobiles (passants).", "type": "integer", "minimum": 0}
+  }
+}

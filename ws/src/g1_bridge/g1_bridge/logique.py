@@ -68,8 +68,13 @@ TOLERANCE_ENVOI_S = 0.008
 # 'pilotage' (vague 4, section 11.5 du plan) : le pilotage de l'Atelier a la main
 # (/mouvement/maitre), /cmd_vel est ignoré (règle 10)
 MAITRES = ('guide', 'pilotage')
+# 'pas_en_marche' (vague 5, section 12.6 du plan) : le mode lu par 7001 n'est pas un mode de marche
+# (règle 12, à écrire par l'agent Robot)
 ETATS = ('demarrage', 'attente_reperage', 'pret', 'en_mouvement', 'arret', 'arret_verrouille',
-         'robot_muet', 'refus', 'pilotage')
+         'robot_muet', 'refus', 'pilotage', 'pas_en_marche')
+# Modes du robot (7001) où il marche : copie exacte de atelier.lieu.pilotage.MODES_MARCHE (le pont
+# tourne sans atelier ; atelier/tests/test_contrats_vague5.py compare les deux)
+MODES_MARCHE = (500, 501, 801)
 
 # Messages des refus connus du service sport (codes d'unitree_ros2 et du SDK)
 MESSAGES_REFUS = {

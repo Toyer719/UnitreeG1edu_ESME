@@ -149,6 +149,21 @@ Vague 4 (section 11 du plan) : modules de contrat, un par agent (importer le mod
     Champs ajoutés : Salle.etiquettes, Pieton (reaction, distance_reaction_m, corps, rayon_m, pauses,
     depart_s, repeter, pilote), Lieu.guide ; valider_message connaît les messages de la vague 4.
 
+Vague 5 (section 12 du plan) : interface, carte 3D, scan corrigé, robot et caméra
+------------------------------------------------------------------------------------
+    nuage.py       nuages d'affichage de la carte 3D (cartes/<etage>.nuage.bin + .json, Float32 x y z,
+                   z = hauteur au-dessus du sol) : chemin_nuage, chemin_nuage_session, fichiers_nuage,
+                   entete_nuage, ecrire_nuage, lire_entete_nuage, lire_nuage, valider_entete_nuage,
+                   entetes_http_nuage ; schéma nuage
+    modeles.py     Monde.carte_extrudee (CarteExtrudee : fichier STL dans mondes/, hauteur) ;
+                   chemin_maillage(lieu, etage) = mondes/<etage>_carte.stl ; id réservé carte_du_scan
+    robot.py       état pas_en_marche, champs mode_robot, demande et minimums de /pont/etat ;
+                   VITESSES_MIN_PONT, ZONES_MORTES_PONT, VITESSE_MAX_MIN, vitesse_effective(vx, vy, wz),
+                   EXEMPLES_VITESSE_MIN, EXEMPLE_ETAT_PONT_V5, PRIORITE_ETATS_PONT
+    pilotage.py    MODES_MARCHE (500, 501, 801), MODES_COURSE, NOMS_MODES, nom_mode, message_pas_en_marche
+    equipe.py      SUJETS_IMAGES (/camera_poitrine/image/compressed…), /camera_poitrine/etat (schéma
+                   etat_camera) ; champs facultatifs boite et image de /visiteurs/detectes (schéma personnes)
+
 Sessions de scan intégré (scans.py, section 9 du plan) : LIEU/scans/<session>/
 --------------------------------------------------------------------------------
 Identifiant de session : AAAA-MM-JJ_HHhMM (suffixe -2, -3... si la minute est prise). Fichiers :
@@ -186,14 +201,15 @@ from .conversions import (bornes_carte, cap_vers_quaternion, carte_vers_unitree,
                           quaternion_vers_cap, unitree_vers_carte)
 from .fichiers import (ErreurLieu, charger_carte, charger_fiche, charger_fichier, charger_info_carte,
                        charger_itineraires, charger_lieu, charger_monde, charger_salles, charger_zones,
-                       chemin_carte, chemin_interdit, chemin_lent, chemin_monde, chemin_pcd, chemin_sdf,
+                       chemin_carte, chemin_interdit, chemin_lent, chemin_maillage, chemin_monde, chemin_pcd,
+                       chemin_sdf,
                        copier_lieu, creer_lieu, dossier_lieu, ecrire_atomique, ecrire_pgm, ecrire_yaml,
                        enregistrer_carte, enregistrer_fiche, enregistrer_fichier, enregistrer_info_carte,
                        enregistrer_itineraires, enregistrer_lieu, enregistrer_monde, enregistrer_salles,
                        enregistrer_zones, lire_pgm, lister_lieux, taille_pgm)
 from .geometrie import PASSAGE_MAX, PASSAGE_MIN, est_passage, murs_alignes, trou_entre
-from .modeles import (CATEGORIES_HORS_CARTE, CATEGORIES_OBJETS, MODELES_MOBILIER, SOURCES_ELEMENT, Couloir,
-                      Emprise, Etage, InfoCarte, Itineraires, Lieu, Monde, Mur, Noeud, Objet, Pieton, Pose,
+from .modeles import (CATEGORIES_HORS_CARTE, CATEGORIES_OBJETS, MODELES_MOBILIER, SOURCES_ELEMENT, CarteExtrudee,
+                      Couloir, Emprise, Etage, InfoCarte, Itineraires, Lieu, Monde, Mur, Noeud, Objet, Pieton, Pose,
                       PoseEtage, Salle, Zone, Zones)
 from .scans import (APERCU_POINTS_MAX, APERCU_TRAJECTOIRE_MAX, ETAPES, ETAPES_TRAITEMENT, ETATS, ETATS_ACTIFS,
                     FICHIERS_SESSION, MODES, PERIODE_APERCU, PERIODE_SESSION, PLAGES_PROGRESSION,
@@ -223,6 +239,14 @@ from .passants import distance_bord, cause_contact
 from .pilotage import confirmation_requise, refus_commande, verifier_choregraphie
 from .equipe import FICHIERS_EQUIPE, charger_equipe, enregistrer_equipe, valider_equipe
 from . import comportement, equipe, passants, pilotage, principal
+# vague 5 (section 12 du plan)
+from .modeles import HAUTEUR_CARTE_EXTRUDEE, MODELE_CARTE_EXTRUDEE
+from .nuage import (chemin_nuage, chemin_nuage_session, ecrire_nuage, entete_nuage, entetes_http_nuage,
+                    fichiers_nuage, lire_entete_nuage, lire_nuage, valider_entete_nuage)
+from .pilotage import MODES_COURSE, MODES_MARCHE, NOMS_MODES, message_pas_en_marche, nom_mode
+from .robot import (EXEMPLE_ETAT_PONT_V5, EXEMPLES_VITESSE_MIN, PRIORITE_ETATS_PONT, VITESSE_MAX_MIN,
+                    VITESSES_MIN_PONT, ZONES_MORTES_PONT, vitesse_effective)
+from . import nuage
 
 __all__ = ["bornes_carte", "cap_vers_quaternion", "centres_pixels", "dans_image",
            "carte_vers_unitree", "composer_poses", "inverser_pose", "unitree_vers_carte",
@@ -267,4 +291,11 @@ __all__ = ["bornes_carte", "cap_vers_quaternion", "centres_pixels", "dans_image"
            "pose_principale", "principal_explicite", "CODES_EVENEMENT", "DELAIS_GUIDE", "ETATS_GUIDE",
            "lire_demande_aller", "reglages_guide", "distance_bord", "cause_contact", "confirmation_requise",
            "refus_commande", "verifier_choregraphie", "FICHIERS_EQUIPE", "charger_equipe", "enregistrer_equipe",
-           "valider_equipe", "comportement", "equipe", "passants", "pilotage", "principal"]
+           "valider_equipe", "comportement", "equipe", "passants", "pilotage", "principal",
+           # vague 5 (section 12 du plan)
+           "CarteExtrudee", "chemin_maillage", "HAUTEUR_CARTE_EXTRUDEE", "MODELE_CARTE_EXTRUDEE",
+           "chemin_nuage", "chemin_nuage_session", "ecrire_nuage", "entete_nuage", "entetes_http_nuage",
+           "fichiers_nuage", "lire_entete_nuage", "lire_nuage", "valider_entete_nuage", "nuage",
+           "MODES_COURSE", "MODES_MARCHE", "NOMS_MODES", "message_pas_en_marche", "nom_mode",
+           "EXEMPLE_ETAT_PONT_V5", "EXEMPLES_VITESSE_MIN", "PRIORITE_ETATS_PONT", "VITESSE_MAX_MIN",
+           "VITESSES_MIN_PONT", "ZONES_MORTES_PONT", "vitesse_effective"]

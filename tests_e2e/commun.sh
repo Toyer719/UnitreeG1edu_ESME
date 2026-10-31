@@ -21,6 +21,15 @@ for _paquet in g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe; do
     source "$RACINE/ws/install_$_paquet/local_setup.bash"
   fi
 done
+# Vague 5 (section 12.11 du plan) : paquets d'un agent compilés à part, chargés après ws/install et donc
+# prioritaires (ex. E2E_OVERLAY=~/robot-g1/ws/install_v5_robot ; plusieurs dossiers séparés par des espaces)
+for _overlay in $E2E_OVERLAY; do
+  if [ -f "$_overlay/local_setup.bash" ]; then
+    source "$_overlay/local_setup.bash"
+  else
+    echo "E2E_OVERLAY : $_overlay/local_setup.bash introuvable (compilez d'abord avec colcon)" >&2
+  fi
+done
 export PATH="$RACINE/bin:$PATH"
 export PYTHONPATH="$RACINE:$RACINE/ws/src/g1_nav${PYTHONPATH:+:$PYTHONPATH}"
 # Domaine et partition propres aux tests (modifiables : E2E_DOMAINE=30 E2E_PARTITION=... tout.sh)

@@ -386,9 +386,10 @@ Les formats exacts sont dans `atelier/lieu/schemas/` et dans la section 4 du pla
 cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q    # bibliothèques, scan, serveur, interface : 4 min environ
 cd ~/robot-g1 && .venv-projet/bin/python -m pytest docker/tests -q    # conteneur du Jetson : 30 s
 cd ~/robot-g1/ws && colcon test --executor sequential --packages-select g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe && colcon test-result --all   # paquets ROS 2
-~/robot-g1/tests_e2e/tout.sh            # les 30 critères de recette, sans fenêtre : « N / 30 » (3 h environ)
+~/robot-g1/tests_e2e/tout.sh            # les 36 critères de recette, sans fenêtre : « N / 36 » (3 h environ)
 ~/robot-g1/tests_e2e/tout.sh 1 2 3 4    # seulement certains (11 à 15 : le scan ; 16 à 20 : le vrai robot en répétition ;
-                                        # 21 à 30 : point principal, passants, guide, pilotage, équipe)
+                                        # 21 à 30 : point principal, passants, guide, pilotage, équipe ;
+                                        # 31 à 36 : vague 5, en cours : coque, carte 3D, scan corrigé, pont, caméra, ARRÊT)
 ```
 
 Tous les tests tournent sans robot et sans écran, sur des copies de `lieux/demo` dans des
