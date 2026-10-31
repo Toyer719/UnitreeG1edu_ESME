@@ -12,10 +12,14 @@
 #        commande    la commande donnée après le nom de l'image (mise au point)
 #      et, avec G1_PILOTAGE=1 (navigation ou veille ; vague 4, section 11.5 du plan), le nœud
 #      pilotage : ros2 run g1_pilotage pilote --port $G1_PILOTAGE_PORT (API HTTP et WebSocket de
-#      l'onglet Pilotage, jeton G1_PILOTAGE_JETON)
+#      l'onglet Pilotage, jeton G1_PILOTAGE_JETON) ;
+#      et, avec G1_CAMERA (vague 5, section 12.7 : la See3CAM passée par g1-jetson demarrer, en
+#      /dev/g1_camera), le nœud camera_usb de g1_equipe : /camera_poitrine/image/compressed (JPEG,
+#      10 Hz) et /camera_poitrine/etat ; caméra absente : le conteneur démarre sans
 # docker stop (SIGTERM, relayé par --init) devient SIGINT pour ros2 launch, avec 15 s pour
 # s'arrêter proprement : le pont envoie un arrêt au robot en quittant. Le nœud pilotage s'arrête
-# d'abord (SIGINT, 5 s) : bras rendus au contrôleur d'Unitree en 1 s, StopMove, main au guide.
+# d'abord (SIGINT, 5 s) : bras rendus au contrôleur d'Unitree en 1 s, StopMove, main au guide. Puis la
+# caméra (SIGINT, 3 s : v4l2-ctl arrêté).
 # Codes de sortie : 0 arrêt demandé ; 1 réglage faux ou réseau du robot introuvable ;
 # sinon celui de ce qui a été lancé.
 # Pas de set -u : les scripts de ROS 2 ne le supportent pas.
@@ -37,6 +41,11 @@ export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export G1_PILOTAGE="${G1_PILOTAGE:-0}"
 export G1_PILOTAGE_PORT="${G1_PILOTAGE_PORT:-8010}"
 DELAI_ARRET_PILOTAGE_S=5
+DELAI_ARRET_CAMERA_S=3
+# Vitesse des premiers essais (atelier.lieu.robot : VITESSE_MAX_MIN, MESSAGE_VITESSE_MAX_BASSE) : le robot ne
+# fait aucun pas sous 0,2 m/s (mesuré le 27/10) ; le pont plafonne à 0,4 m/s
+VITESSE_MAX_MIN=0.2
+VITESSE_MAX_PLAFOND=0.4
 
 case "$G1_LANCEMENT" in
   navigation|veille|commande) ;;
@@ -63,9 +72,17 @@ if [ "$G1_LANCEMENT" = navigation ]; then
     true|false) ;;
     *) refuser "G1_SIMU=$G1_SIMU : true (répétition avec Gazebo sur l'hôte) ou false (robot)" ;;
   esac
-  # Premiers essais : vitesse maximale réduite (m/s), les plafonds du pont baissent d'autant
-  if [ -n "$G1_VITESSE_MAX" ] && ! [[ "$G1_VITESSE_MAX" =~ ^0?\.[0-9]+$ ]]; then
+fi
+# Premiers essais : vitesse maximale réduite (m/s), les plafonds du pont (et du joystick) baissent d'autant
+if [ -n "$G1_VITESSE_MAX" ]; then
+  if ! [[ "$G1_VITESSE_MAX" =~ ^0?\.[0-9]+$ ]]; then
     refuser "G1_VITESSE_MAX=$G1_VITESSE_MAX : une vitesse en m/s, plus petite que 1 (ex. 0.2)"
+  fi
+  if awk -v v="$G1_VITESSE_MAX" -v m="$VITESSE_MAX_MIN" 'BEGIN { exit !(v + 0 < m + 0) }'; then
+    refuser "G1_VITESSE_MAX=$G1_VITESSE_MAX : le robot ne marche pas sous 0,2 m/s (mettez 0.2 au moins)"
+  fi
+  if awk -v v="$G1_VITESSE_MAX" -v m="$VITESSE_MAX_PLAFOND" 'BEGIN { exit !(v + 0 > m + 0) }'; then
+    refuser "G1_VITESSE_MAX=$G1_VITESSE_MAX : au plus $VITESSE_MAX_PLAFOND m/s (plafond du pont)"
   fi
 fi
 case "$G1_PILOTAGE" in
@@ -110,11 +127,19 @@ fi
 
 # --- 3. La ligne de démarrage -------------------------------------------------------------
 VERSION=$(sed -n 's/^\(date\|commit\)=//p' "$G1/VERSION" 2>/dev/null | paste -sd ' ')
+# Caméra de poitrine (vague 5) : G1_CAMERA est le périphérique dans le conteneur (/dev/g1_camera)
+if [ -z "$G1_CAMERA" ] || [ "$G1_CAMERA" = 0 ] || [ "$G1_LANCEMENT" = commande ]; then
+  TEXTE_CAMERA="non"
+elif [ -e "$G1_CAMERA" ]; then
+  TEXTE_CAMERA="$G1_CAMERA"
+else
+  TEXTE_CAMERA="absente ($G1_CAMERA introuvable)"
+fi
 dire "domaine $ROS_DOMAIN_ID, interfaces $TEXTE_INTERFACES," \
      "lieu ${G1_LIEU:-aucun}${G1_ETAGE:+ (étage $G1_ETAGE)}, lancement $G1_LANCEMENT" \
      "(localisation $G1_LOCALISATION, simu $G1_SIMU${G1_VITESSE_MAX:+, vitesse max $G1_VITESSE_MAX m/s})," \
      "pilotage $([ "$G1_PILOTAGE" = 1 ] && [ "$G1_LANCEMENT" != commande ] && echo "port $G1_PILOTAGE_PORT${G1_PILOTAGE_JETON:+ avec jeton}" || echo non)," \
-     "version ${VERSION:-inconnue}, $(uname -m)"
+     "caméra $TEXTE_CAMERA, version ${VERSION:-inconnue}, $(uname -m)"
 
 # Contrôle des tâches : sans lui, bash fait ignorer SIGINT aux programmes lancés en arrière-plan,
 # et ros2 launch ne recevrait jamais la demande d'arrêt.
@@ -144,7 +169,11 @@ arreter() {
     dire "arrêt du nœud pilotage (bras rendus, StopMove, main au guide)"
     arreter_processus "$PID_PILOTAGE" INT "$DELAI_ARRET_PILOTAGE_S" || kill -KILL "$PID_PILOTAGE" 2>/dev/null
   fi
-  dire "arrêt demandé : SIGINT à $NOM_PRINCIPAL ($DELAI_ARRET_S s au plus)"
+  if [ -n "$PID_CAMERA" ]; then
+    dire "arrêt du nœud de la caméra"
+    arreter_processus "$PID_CAMERA" INT "$DELAI_ARRET_CAMERA_S" || kill -KILL "$PID_CAMERA" 2>/dev/null
+  fi
+  dire "arrêt demandé : SIGINT $A_PRINCIPAL ($DELAI_ARRET_S s au plus)"
   if ! arreter_processus "$PID_PRINCIPAL" INT "$DELAI_ARRET_S"; then
     dire "$NOM_PRINCIPAL ne s'est pas arrêté en $DELAI_ARRET_S s : SIGTERM, puis SIGKILL"
     arreter_processus "$PID_PRINCIPAL" TERM 2 || kill -KILL "$PID_PRINCIPAL" 2>/dev/null
@@ -167,10 +196,25 @@ if [ "$G1_PILOTAGE" = 1 ] && [ "$G1_LANCEMENT" != commande ]; then
   PID_PILOTAGE=$!
 fi
 
+# --- 4 ter. La caméra de poitrine (vague 5, section 12.7) ----------------------------------
+PID_CAMERA=""
+if [ -n "$G1_CAMERA" ] && [ "$G1_CAMERA" != 0 ] && [ "$G1_LANCEMENT" != commande ]; then
+  if [ -e "$G1_CAMERA" ]; then
+    CAMERA_ARGS=(-p "peripherique:=$G1_CAMERA")
+    [ -n "$G1_LIEU" ] && [ -f "/lieux/$G1_LIEU/lieu.yaml" ] && CAMERA_ARGS+=(-p "lieu:=/lieux/$G1_LIEU")
+    # l'exécutable lui-même (pas « ros2 run ») : SIGINT lui arrive directement, il arrête v4l2-ctl
+    "$(ros2 pkg prefix g1_equipe)/lib/g1_equipe/camera_usb" --ros-args "${CAMERA_ARGS[@]}" &
+    PID_CAMERA=$!
+  else
+    dire "caméra $G1_CAMERA introuvable dans le conteneur : démarrage sans caméra (branchez la See3CAM, puis relancez le conteneur)"
+  fi
+fi
+
 # --- 5. Ce que demande G1_LANCEMENT -------------------------------------------------------
 case "$G1_LANCEMENT" in
   navigation)
     NOM_PRINCIPAL="ros2 launch"
+    A_PRINCIPAL="à ros2 launch"
     VITESSE=()
     [ -n "$G1_VITESSE_MAX" ] && VITESSE=("vitesse_max:=$G1_VITESSE_MAX")
     ros2 launch g1_nav navigation.launch.py "lieu:=/lieux/$G1_LIEU" "etage:=$G1_ETAGE" \
@@ -179,10 +223,12 @@ case "$G1_LANCEMENT" in
     ;;
   veille)
     NOM_PRINCIPAL="le nœud de présence"
+    A_PRINCIPAL="au nœud de présence"
     PID_PRINCIPAL=$PID_PRESENCE
     ;;
   commande)
     NOM_PRINCIPAL="$1"
+    A_PRINCIPAL="à $1"
     "$@" &
     PID_PRINCIPAL=$!
     ;;
@@ -193,5 +239,6 @@ CODE=$?
 trap '' TERM INT
 dire "$NOM_PRINCIPAL s'est arrêté seul (code $CODE)"
 [ -n "$PID_PILOTAGE" ] && { arreter_processus "$PID_PILOTAGE" INT "$DELAI_ARRET_PILOTAGE_S" || kill -KILL "$PID_PILOTAGE" 2>/dev/null; }
+[ -n "$PID_CAMERA" ] && { arreter_processus "$PID_CAMERA" INT "$DELAI_ARRET_CAMERA_S" || kill -KILL "$PID_CAMERA" 2>/dev/null; }
 [ "$PID_PRESENCE" != "$PID_PRINCIPAL" ] && { arreter_processus "$PID_PRESENCE" INT 3 || kill -KILL "$PID_PRESENCE" 2>/dev/null; }
 exit "$CODE"

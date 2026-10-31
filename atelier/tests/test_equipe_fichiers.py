@@ -177,6 +177,16 @@ def test_phrases_et_personnalites_douteuses(lieu):
     texte = "\n".join(r["avertissements"])
     assert r["ok"] and "{salle} ne sera pas remplacé" in texte and "geste 13" in texte
     assert "volume 0" in texte and "avancera à peine" in texte
+    # vague 5 : sous 0,2 m/s, le vrai robot ne marche pas (avertissement, pas une erreur)
+    assert "n'a pas d'effet sur le vrai robot" in texte
+    p["personnalites"][1]["vitesse_max"] = 0.2
+    texte = "\n".join(E.verifier_equipe(lieu, {"personnalites": p})["avertissements"])
+    assert "n'a pas d'effet" not in texte
+
+
+def test_vitesse_minimale_du_contrat():
+    from atelier.lieu import robot
+    assert E.VITESSE_PAS_MIN == robot.VITESSE_MAX_MIN
 
 
 def test_salles_qui_partagent_un_nom(lieu):

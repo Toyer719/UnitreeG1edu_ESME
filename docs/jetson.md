@@ -1,8 +1,9 @@
 # Installer la navigation sur le Jetson du G1
 
 Ce guide sert le jour où le robot est là. Il installe sur le Jetson du G1 le **conteneur
-`g1-jetson`** : ROS 2 Humble, Nav2, le guide, le relais de position (`odom_vers_tf`) et le pont
-vers la marche (`pont_g1`). Le PC garde l'Atelier.
+`g1-jetson`** : ROS 2 Humble, Nav2, le guide, le relais de position (`odom_vers_tf`), le pont
+vers la marche (`pont_g1`), et depuis la vague 5 la **caméra de poitrine** See3CAM (nœud
+`camera_usb`, section « La caméra de poitrine » plus bas). Le PC garde l'Atelier.
 
 Tout se fait depuis le PC avec une seule commande, `g1-jetson`. Chaque sous-commande accepte
 `--help`, et `--dry-run` pour voir ce qui serait lancé sans rien lancer.
@@ -16,6 +17,7 @@ PC (Atelier, au câble eno2, 192.168.123.99)          Jetson du G1 (192.168.123.
   g1-jetson demarrer     ─────── ssh ──────────────►  conteneur g1-jetson (réseau de l'hôte, domaine 0)
                                                         Nav2, guide, odom_vers_tf, pont_g1
   Atelier, mode Robot    ◄────── DDS (câble) ───────►  /guide/*, /pont/*, /reperage/*
+  g1-visiteurs (YOLO)    ◄────── DDS (câble) ────────  /camera_poitrine/image/compressed (See3CAM, camera_usb)
 ```
 
 ## Avant la séance (sans robot, au bureau)
@@ -92,6 +94,7 @@ Chaque ligne dit `OK`, `PROBLÈME` ou `info` :
 | horloge du Jetson | plus d'une seconde d'écart avec le PC : à noter (point 4 de la séance, plan 10.9) |
 | Internet depuis le Jetson | information : oui permet le plan B (construire sur le Jetson) |
 | image g1-jetson:arm64 | absente avant `envoyer`, c'est normal |
+| caméra See3CAM | `OK` : branchée, en USB 3 (5000 Mbit/s) ; `PROBLÈME` : en USB 2 (480), changez de port (un port bleu) ; `info` : pas branchée, le conteneur démarrera sans elle |
 
 Une fois l'image envoyée (étape 4), `verifier` lance aussi un conteneur jetable qui doit voir les
 sujets du robot `/state_estimator/odom_pelvis` et `/lf/sportmodestate` depuis ROS 2 Humble. C'est
@@ -144,16 +147,18 @@ ros2 topic echo --once /pont/etat          # attente_reperage tant que le robot 
 ros2 topic echo --once /reperage/etat      # non_repere
 ```
 
-Ensuite, dans l'Atelier (`g1-atelier`), onglet Simulation, mode « Robot » : « Repérer le robot »,
-puis « Y aller ». En mode « Robot », l'Atelier lance lui-même `g1-jetson demarrer --lieu L
---etage E`, et `g1-jetson arreter` à l'arrêt : la ligne de commande ci-dessus sert aux essais et
-au dépannage.
+Ensuite, dans l'Atelier (`g1-atelier`), accueil **Robot réel**, puis **Naviguer** : « Lancer »,
+« Repérer », puis « Y aller ». En Robot réel, l'Atelier lance lui-même `g1-jetson demarrer --lieu L
+--etage E` (Naviguer › Lancer), et `g1-jetson arreter` à l'arrêt (Naviguer › Arrêter) : la ligne de
+commande ci-dessus sert aux essais et au dépannage.
 
 Options de `demarrer` :
 - `--vitesse-max 0.2` (ou la variable `G1_VITESSE_MAX=0.2`, que l'Atelier transmet aussi) : pour
   les premiers essais, les plafonds du pont baissent dans la même proportion (0,2 m/s en avant,
   0,125 m/s de côté, 0,3 rad/s en rotation, au lieu de 0,4 / 0,25 / 0,6). La ligne de démarrage
-  l'affiche (« vitesse max 0.2 m/s ») ;
+  l'affiche (« vitesse max 0.2 m/s »). **0,2 au moins** : le robot ne fait aucun pas sous
+  0,2 m/s (mesuré le 27/10) ; `g1-jetson` et le conteneur refusent moins (« le robot ne marche
+  pas sous 0,2 m/s ») ;
 - `--localisation amcl` : le secours (notre carte et le LiDAR) à la place de la relocalisation
   d'Unitree ;
 - `--wifi wlan0 --pair 192.168.1.50` : l'Atelier par le Wi-Fi (multicast coupé sur le Wi-Fi,
@@ -171,11 +176,11 @@ L'arrêt prend 5 secondes environ, et 20 secondes au plus. Le conteneur ne redé
 seul : après un redémarrage du robot, relancez `g1-jetson demarrer`. On ne relance pas une
 navigation sans un humain.
 
-### 6 bis. Le pilotage par le Wi-Fi (onglet Pilotage, vague 4)
+### 6 bis. Le pilotage par le Wi-Fi (Réel › Piloter, vague 4)
 
 Avec le robot, `g1-jetson demarrer` lance aussi le **nœud pilotage** dans le conteneur
 (`G1_PILOTAGE=1` par défaut ; `G1_PILOTAGE=0 g1-jetson demarrer …` s'en passe). C'est lui qui
-reçoit les ordres de l'onglet Pilotage de l'Atelier : postures, joystick, gestes, voix, LED,
+reçoit les ordres de Réel › Piloter de l'Atelier : postures, joystick, gestes, voix, LED,
 danses du robot et chorégraphies. Il écoute le port 8010 (`G1_PILOTAGE_PORT`) sur toutes les
 interfaces du Jetson, et exige un **jeton** : la première fois, `g1-jetson demarrer` le crée dans
 `~/robot-g1/opt/jetson/jeton_pilotage` (sur le PC, jamais dans Git), et l'Atelier le relit dans ce
@@ -203,6 +208,52 @@ dans l'Atelier, ou depuis un terminal :
 
 Les journaux de ROS 2 restent sur le Jetson, dans `~/robot-g1/journaux/jetson/ros/log/`. Le
 journal de Docker est limité à 5 fichiers de 20 Mo.
+
+### 6 ter. La caméra de poitrine (vague 5)
+
+La See3CAM_11CUG se branche sur un port **USB 3 (bleu)** du Jetson, **avant** `g1-jetson demarrer` :
+le conteneur ne reçoit la caméra qu'à son démarrage.
+
+1. **Vérifier** : `g1-jetson verifier` montre la ligne « caméra See3CAM » : `OK` avec le chemin
+   (`/dev/v4l/by-id/usb-e-con_Systems_See3CAM_11CUG_<série>-video-index0 → /dev/videoN`) et
+   « USB 5000 Mbit/s ». En USB 2 (480), c'est un `PROBLÈME` : 1280 × 720 à 30 images par seconde
+   ne passe pas, changez de port.
+2. **Démarrer** : `g1-jetson demarrer --lieu L --etage E` (ou `--veille`) trouve la caméra et
+   l'annonce (« caméra : /dev/v4l/by-id/… → /dev/videoN (dans le conteneur : /dev/g1_camera) ») ;
+   la commande `docker run` reçoit `--device /dev/videoN:/dev/g1_camera --group-add <groupe video>`
+   et `-e G1_CAMERA=/dev/g1_camera`, et la ligne de démarrage du conteneur dit « caméra
+   /dev/g1_camera ». Le conteneur lance alors le nœud `camera_usb` : exposition automatique,
+   capture 1280 × 720 à 30 images par seconde, JPEG de 640 × 360 publiés 10 fois par seconde.
+   **Sans caméra, le conteneur démarre quand même**, sans elle (« pas de caméra See3CAM sur le
+   Jetson : conteneur lancé sans caméra »).
+3. **Voir depuis le PC** (terminal où `robot.sh` est chargé) :
+
+   ```bash
+   ros2 topic hz /camera_poitrine/image/compressed      # environ 10
+   ros2 topic bw /camera_poitrine/image/compressed      # la taille réelle (30 à 60 Ko par image ?)
+   ros2 topic echo --once /camera_poitrine/etat         # ouverte: true, erreur: null, usb_mbps: 5000
+   g1-jetson etat                                       # « caméra /dev/g1_camera »
+   ```
+
+   puis dans l'Atelier, la vue **Caméra** (mode Réel) ou l'onglet Équipe › **Caméra** : l'image
+   en direct. Pour les visiteurs et leurs cadres : `g1-visiteurs --lieu L --image` sur le PC
+   (`docs/integration-equipe.md`, section 5).
+
+Réglages :
+- **quelle caméra** : le `peripherique` de `camera.yaml` du lieu, s'il est un nom stable
+  `/dev/v4l/by-id/…` (onglet Caméra, la liste propose ceux des caméras branchées), sinon la
+  première See3CAM ; `G1_CAMERA=/dev/v4l/by-id/… g1-jetson demarrer …` en impose une ;
+  `G1_CAMERA=0` démarre sans caméra ;
+- **image** : `camera.yaml` (onglet Caméra, « Réglages avancés ») : exposition (automatique
+  conseillée), images publiées (10 par seconde, 640 pixels de large, qualité 70) ;
+- **image noire** : la See3CAM démarre en exposition manuelle (15,6 ms) ; `camera_usb` la passe en
+  automatique au démarrage. Si l'image reste noire : lumière de la pièce, cache de l'objectif, puis
+  `g1-jetson shell` et `v4l2-ctl -d /dev/g1_camera -C auto_exposure,exposure_time_absolute,gain` ;
+- **caméra débranchée pendant que le conteneur tourne** : `camera_usb` réessaie toutes les 2 s,
+  mais le conteneur n'a que le périphérique d'origine : rebranchez-la, puis `g1-jetson arreter` et
+  `g1-jetson demarrer` ;
+- **occupée** : un seul programme à la fois peut lire la caméra (« occupée par un autre programme »
+  dans `/camera_poitrine/etat`).
 
 ## Points incertains, à vérifier le jour du robot
 
@@ -232,6 +283,14 @@ journal de Docker est limité à 5 fichiers de 20 Mo.
 9. **Le pilotage par le Wi-Fi** (vague 4) : le port 8010 du Jetson est-il joignable depuis le PC
    par le Wi-Fi (pare-feu, isolement des clients du point d'accès) ? Latence du joystick par le
    Wi-Fi, et arrêt seul 0,5 s après une coupure (Wi-Fi coupé exprès, page fermée).
+10. **La caméra de poitrine** (vague 5) : le groupe du périphérique sur le Jetson (`video`, 44 ?),
+    le débit USB 3, 10 images par seconde reçues sur le PC par le câble, l'exposition automatique
+    en pleine lumière (sur le PC, la nuit, l'image restait noire), la charge du Jetson (la
+    conversion en JPEG prend de 2 à 4 ms par image sur le PC (3,8 ms mesurées le 31/10 après-midi),
+    sans doute 2 à 3 fois plus sur l'Orin ; à 10 images publiées par seconde, quelques pour cent d'un
+    cœur). Essayé sur le PC : la même commande `docker run` (image amd64 d'essai avec la couche
+    caméra), la See3CAM lue par l'utilisateur 1000 grâce à `--group-add`, 10 images par seconde
+    reçues hors du conteneur, arrêt propre en 0,6 s.
 
 ## Plan B : si l'image ne passe pas
 
@@ -263,15 +322,17 @@ journal de Docker est limité à 5 fichiers de 20 Mo.
 | Base | `ros:humble-ros-base-jammy` (Ubuntu 22.04), désignée par l'empreinte de l'architecture |
 | Paquets apt | CycloneDDS, les composants de Nav2 (sans RViz : ni `nav2_rviz_plugins`, ni `nav2_waypoint_follower`), `pointcloud_to_laserscan`, numpy, PyYAML, iproute2 |
 | Paquets apt (vague 4) | `python3-tornado` (API HTTP et WebSocket du nœud pilotage) |
-| Compilés dans `/opt/g1/install` | `unitree_api`, `unitree_hg` (rt/arm_sdk, /lowstate), `g1_nav`, `g1_bridge`, `g1_pilotage`, `g1_equipe` (nœuds de l'équipe : `dialogue`, `fausse_camera`, `voix_journal`, non lancés d'office) |
+| Paquets apt (vague 5) | `python3-pil` et `v4l-utils` (caméra de poitrine : JPEG et capture YUYV ; couche de 9 Mo, pas d'OpenCV) |
+| Compilés dans `/opt/g1/install` | `unitree_api`, `unitree_hg` (rt/arm_sdk, /lowstate), `g1_nav`, `g1_bridge`, `g1_pilotage`, `g1_equipe` (nœuds de l'équipe : `dialogue`, `fausse_camera`, `voix_journal`, non lancés d'office ; `camera_usb`, lancé quand la caméra est passée) |
 | Python dans `/opt/g1/python` | `atelier/__init__.py`, `atelier/lieu/`, `atelier/scan/slam_client.py`, `atelier/equipe/` (chatbot d'exemple et relais) |
 | Version | `/opt/g1/VERSION` : date, commit, empreinte ; dans `/g1_jetson/etat` (1 Hz) |
-| Lancement | réseau de l'hôte, `--init`, aucun redémarrage automatique, utilisateur `unitree`, lieux en lecture seule, pas de `--privileged` |
+| Lancement | réseau de l'hôte, `--init`, aucun redémarrage automatique, utilisateur `unitree`, lieux en lecture seule, pas de `--privileged` ; la caméra seule par `--device` et `--group-add` |
 
 Variables du conteneur (section 10.2 du plan) : `ROS_DOMAIN_ID` (0), `G1_INTERFACES`
 (`auto`, `defaut` ou des noms), `G1_WIFI`, `G1_PAIRS`, `G1_LANCEMENT` (`navigation`, `veille`
 ou `commande`), `G1_LIEU`, `G1_ETAGE`, `G1_LOCALISATION` (`unitree` ou `amcl`), `G1_SIMU`,
-`G1_VITESSE_MAX` (premiers essais, m/s), `G1_CYCLONEDDS_URI`. Détails techniques :
+`G1_VITESSE_MAX` (premiers essais, m/s, de 0,2 à 0,4), `G1_CYCLONEDDS_URI`, `G1_CAMERA`
+(`/dev/g1_camera` quand la caméra est passée ; vague 5). Détails techniques :
 `docker/LISEZMOI.md`. Le déroulé complet de la première séance avec le robot (pont, repérage,
 conteneur, premier trajet) : `docs/seance-robot.md`.
 

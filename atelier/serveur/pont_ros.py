@@ -16,6 +16,11 @@
   (11)     personnes vues, pilotage, équipe) : dernier(sujet), historique(sujet) ; et les
            publications de PUBLICATIONS_JSON : publier_json(sujet, donnees). Les routes des agents de
            la vague 4 s'en servent sans modifier ce fichier.
+  vague 5  les images de la caméra de poitrine (SUJETS_IMAGES : /camera_poitrine/image/compressed
+  (12.7)   et /visiteurs/image/compressed, sensor_msgs/CompressedImage, QoS des capteurs) : la
+           dernière de chacune est gardée dans images[sujet] (atelier.equipe.images.DernieresImages),
+           lue par les routes /api/camera/* ; l'état du nœud camera_usb (/camera_poitrine/etat) est
+           un sujet JSON de plus.
 
 Le nœud a son propre contexte rclpy : il n'installe pas de gestionnaire de Ctrl+C (c'est
 uvicorn qui s'en occupe) et ne gêne pas un autre nœud du même processus. Il respecte
@@ -27,7 +32,9 @@ import json
 import threading
 import time
 
+from atelier.equipe.images import DernieresImages
 from atelier.lieu import quaternion_vers_cap
+from atelier.lieu.equipe import SUJET_ETAT_CAMERA, SUJETS_IMAGES
 
 PERIMEE_S = 2.0      # s : au-delà, la position du robot est signalée comme ancienne
 REPERAGE_PERIME_S = 2.0   # s : au-delà, /reperage/etat et /pont/etat sont tenus pour muets
@@ -45,6 +52,7 @@ SUJETS_JSON = {
     "/visiteurs/detectes": (0, "ecoute"),      # caméra de l'équipe (11.6)
     "/personnalite/active": (0, "verrou"),     # personnalité active (11.6)
     "/robot/dire": (20, "ecoute"),             # phrases à dire (11.6)
+    SUJET_ETAT_CAMERA: (0, "ecoute"),          # état du nœud camera_usb (12.7)
 }
 # Publications possibles par les routes : sujet → (forme, QoS). « texte » : le texte brut ;
 # « json » : un dict, envoyé en JSON
@@ -83,6 +91,9 @@ class PontRos:
         self._Bool = None
         self._json = {}              # sujet → [(dict, instant de réception)], le plus récent à la fin
         self._pubs_json = {}         # sujet → publieur
+        # vague 5 : dernière image JPEG de chaque sujet d'images (caméra de poitrine, visiteurs)
+        self.images = {sujet: DernieresImages() for sujet in SUJETS_IMAGES}
+        self.erreur_images = None
 
     # ------------------------------------------------------------ démarrage et arrêt
 
@@ -151,6 +162,16 @@ class PontRos:
                                       verrou if qos == "verrou" else ecoute)
         for sujet, (_, qos) in PUBLICATIONS_JSON.items():
             self._pubs_json[sujet] = noeud.create_publisher(String, sujet, verrou if qos == "verrou" else 10)
+        # vague 5 : images de la caméra (JPEG), QoS des capteurs (au mieux, profondeur 2)
+        try:
+            from sensor_msgs.msg import CompressedImage
+        except ImportError as e:
+            self.erreur_images = f"sensor_msgs introuvable ({e}) : les images de la caméra ne s'affichent pas"
+        else:
+            capteurs = QoSProfile(depth=2, reliability=ReliabilityPolicy.BEST_EFFORT,
+                                  durability=DurabilityPolicy.VOLATILE, history=HistoryPolicy.KEEP_LAST)
+            for sujet in SUJETS_IMAGES:
+                noeud.create_subscription(CompressedImage, sujet, self._recepteur_image(sujet), capteurs)
         self._client_nav2 = noeud.create_client(GetState, "/bt_navigator/get_state")
         self._DemandeEtat = GetState.Request
         noeud.create_timer(1.0, self._sonder_nav2)
@@ -228,6 +249,15 @@ class PontRos:
                 liste = self._json.setdefault(sujet, [])
                 liste.append((donnees, time.monotonic()))
                 del liste[:-garder]
+        return recevoir
+
+    def _recepteur_image(self, sujet):
+        images = self.images[sujet]
+
+        def recevoir(msg):
+            donnees = msg.data
+            octets = donnees.tobytes() if hasattr(donnees, "tobytes") else bytes(donnees)
+            images.ajouter(octets, temps=msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9)
         return recevoir
 
     def _recevoir_horloge(self, msg):
@@ -341,6 +371,17 @@ class PontRos:
         publieur = self._pubs_json[sujet]
         publieur.publish(self._Chaine(data=texte))
         return publieur.get_subscription_count()
+
+    # ------------------------------------------------------------ vague 5 : images (section 12.7)
+
+    def derniere_image(self, sujet):
+        """Dernière image (atelier.equipe.images.ImageRecue) d'un sujet de SUJETS_IMAGES, ou None."""
+        images = self.images.get(sujet)
+        return images.derniere() if images is not None else None
+
+    def etat_images(self):
+        """{sujet: {recue, numero, age_s, largeur, hauteur, octets, ips}} des sujets d'images."""
+        return {sujet: images.etat() for sujet, images in self.images.items()}
 
     def abonnes_aller(self):
         """Nombre de nœuds abonnés à /guide/aller (0 : le guide n'est pas lancé)."""

@@ -23,7 +23,14 @@ Commande g1-jetson : le conteneur ROS 2 Humble du Jetson du G1 (section 10.2 du 
   g1-jetson journal [--local] [-f]  docker logs
   g1-jetson shell [--local]         un terminal dans le conteneur, environnement ROS 2 chargé
   g1-jetson verifier                robot : Docker, architecture, place, mémoire, interface
-                                    192.168.123.x, puis un conteneur qui doit voir les sujets du robot
+                                    192.168.123.x, caméra See3CAM (USB 3 ?), puis un conteneur qui
+                                    doit voir les sujets du robot
+
+Caméra de poitrine (vague 5, section 12.7 du plan) : si une See3CAM est branchée (le « peripherique »
+/dev/v4l/by-id/… de camera.yaml du lieu, sinon /dev/v4l/by-id/*See3CAM*-video-index0), demarrer
+ajoute --device <chemin résolu>:/dev/g1_camera, --group-add <groupe du périphérique> et
+-e G1_CAMERA=/dev/g1_camera ; sinon le conteneur démarre sans, avec un message. G1_CAMERA=0 : pas de
+caméra ; G1_CAMERA=/dev/… : celle-là. Jamais d'échec à cause de la caméra.
 
 --dry-run (toutes les commandes) : affiche ce qui serait lancé, sans rien lancer ni rien envoyer.
 Le Jetson est joint par ssh : unitree@192.168.123.164, ou la variable G1_JETSON. Avec
@@ -98,6 +105,17 @@ LIEUX_JETSON = 'robot-g1/lieux'
 JOURNAUX_JETSON = 'robot-g1/journaux/jetson'
 ARCHIVES_JETSON = 'robot-g1/opt/jetson'
 SUJETS_ROBOT = ['/state_estimator/odom_pelvis', '/lf/sportmodestate']
+# Caméra de poitrine (vague 5, section 12.7 du plan) : passée au conteneur seulement si elle est là
+CAMERA_CONTENEUR = '/dev/g1_camera'   # atelier.lieu.equipe.CAMERA_CONTENEUR (comparé par les tests)
+MOTIF_CAMERA = '*See3CAM*-video-index0'
+DOSSIER_BY_ID = '/dev/v4l/by-id'      # G1_CAMERA_BY_ID le remplace (tests)
+DOSSIER_SYS_VIDEO = '/sys/class/video4linux'   # G1_CAMERA_SYS le remplace (tests)
+USB3_MBPS = 5000
+# Vitesse maximale des premiers essais (atelier.lieu.robot.VITESSE_MAX_MIN et MESSAGE_VITESSE_MAX_BASSE,
+# copiés ici : g1-jetson tourne avec le Python du système, sans l'Atelier ; comparés par les tests)
+VITESSE_MAX_MIN = 0.2
+VITESSE_MAX_PLAFOND = 0.4
+MESSAGE_VITESSE_MAX_BASSE = 'le robot ne marche pas sous 0,2 m/s'
 PLACE_MIN_GO = 4.0              # archive (0,45 Go) + image décompressée (1,5 Go) + journaux, avec de la marge
 MEMOIRE_MIN_GO = 4.0            # --memory 4g
 MOTIF_ID = re.compile(r'^[a-z0-9][a-z0-9_-]{0,39}$')
@@ -445,6 +463,9 @@ SCRIPT_VERIFICATION_IMAGE = (
     'echo "paquet_$p=$(ros2 pkg prefix $p 2>/dev/null || echo absent)"; done && '
     'python3 -c "import atelier.lieu, atelier.scan.slam_client; print(\'python=ok\')" && '
     'python3 -c "import tornado, atelier.lieu.pilotage; print(\'pilotage=ok\')" && '
+    'echo "camera=$(python3 -c \'import PIL, numpy\' 2>/dev/null && command -v v4l2-ctl >/dev/null '
+    '&& echo ok || echo absent)" && '
+    'echo "camera_usb=$(ros2 pkg executables g1_equipe 2>/dev/null | grep -c camera_usb)" && '
     'echo "version=$(tr \'\\n\' \' \' < /opt/g1/VERSION)"')
 
 
@@ -474,6 +495,12 @@ def verifier_image(executeur, arch, image=None):
             problemes.append('paquet unitree_hg absent (pilotage des bras)')
         if resultats.get('pilotage') != 'ok':
             problemes.append('import tornado, atelier.lieu.pilotage impossible (nœud pilotage)')
+    if 'camera' in resultats:
+        # vague 5 : caméra de poitrine (couche 2d : Pillow et v4l2-ctl ; exécutable camera_usb)
+        if resultats['camera'] != 'ok':
+            problemes.append('Pillow ou v4l2-ctl absent (caméra de poitrine, couche 2d du Dockerfile)')
+        if resultats.get('camera_usb', '0') in ('', '0'):
+            problemes.append('exécutable camera_usb absent du paquet g1_equipe (caméra de poitrine)')
     if r.returncode != 0 or problemes:
         detail = '; '.join(problemes) or (r.stderr or '').strip()[-300:]
         raise Erreur(f'l\'image {image} ne passe pas ses vérifications : {detail}')
@@ -726,13 +753,15 @@ def nom_conteneur(local):
     return (os.environ.get('G1_JETSON_NOM') or NOM_LOCAL) if local else NOM_ROBOT
 
 
-def arguments_run(nom, image, utilisateur, lieux, journaux, environnement, runtime=None):
+def arguments_run(nom, image, utilisateur, lieux, journaux, environnement, runtime=None, peripheriques=()):
     """docker run du contrat (section 10.2) : réseau de l'hôte, pas de redémarrage, lieux en lecture seule.
 
     runtime : G1_JETSON_RUNTIME (ex. runc), si le runtime par défaut du Jetson (nvidia ?) gêne.
+    peripheriques : options de la caméra (options_camera, vague 5), après --memory.
     """
     cmd = ['docker', 'run', '-d', '--name', nom, '--network', 'host', '--init', '--restart', 'no',
            '--stop-timeout', str(ARRET_S), '--user', utilisateur, '--cpus', CPUS, '--memory', MEMOIRE]
+    cmd += list(peripheriques)
     if runtime:
         if not re.fullmatch(r'[a-z][a-z0-9_.-]{0,30}', runtime):
             raise Erreur(f'G1_JETSON_RUNTIME={runtime} : un nom de runtime Docker (ex. runc)')
@@ -824,15 +853,133 @@ def creer_jeton_pilotage(executeur):
 
 
 def lire_vitesse_max(texte):
-    """--vitesse-max ou G1_VITESSE_MAX : vitesse en m/s, plus grande que 0 et au plus 0,4."""
+    """--vitesse-max ou G1_VITESSE_MAX : vitesse en m/s, de 0,2 (le robot ne fait aucun pas en dessous,
+    mesuré le 27/10) à 0,4 (plafond du pont)."""
     try:
         vitesse = float(texte.replace(',', '.'))
     except ValueError:
         vitesse = float('nan')
-    if not 0.0 < vitesse <= 0.4:
-        raise Erreur(f'vitesse maximale « {texte} » : il faut une vitesse en m/s, plus grande que 0 et au '
-                     'plus 0.4 (plafond du pont), par exemple 0.2')
+    if 0.0 < vitesse < VITESSE_MAX_MIN:
+        raise Erreur(f'vitesse maximale « {texte} » : {MESSAGE_VITESSE_MAX_BASSE} (mesuré le 27/10) ; '
+                     f'mettez au moins {VITESSE_MAX_MIN:g}')
+    if not VITESSE_MAX_MIN <= vitesse <= VITESSE_MAX_PLAFOND:
+        raise Erreur(f'vitesse maximale « {texte} » : il faut une vitesse en m/s, de {VITESSE_MAX_MIN:g} '
+                     f'(le robot ne marche pas en dessous) à {VITESSE_MAX_PLAFOND:g} (plafond du pont), '
+                     'par exemple 0.2')
     return f'{vitesse:g}'
+
+
+# --- Caméra de poitrine (vague 5, section 12.7 du plan) --------------------------------------
+
+def _debit_usb(nom_video):
+    """Débit du lien USB (Mbit/s) de /dev/videoN, lu dans /sys (ou G1_CAMERA_SYS), ou None."""
+    dossier = Path(os.environ.get('G1_CAMERA_SYS') or DOSSIER_SYS_VIDEO)
+    try:
+        return int(float((dossier / nom_video / 'device' / '..' / 'speed').read_text().strip()))
+    except (OSError, ValueError):
+        return None
+
+
+def camera_locale(chemin):
+    """{by_id, chemin (résolu, /dev/videoN), gid, usb_mbps} d'un périphérique de ce PC, ou None."""
+    try:
+        resolu = os.path.realpath(chemin)
+        gid = os.stat(resolu).st_gid
+    except OSError:
+        return None
+    return {'by_id': str(chemin), 'chemin': resolu, 'gid': gid, 'usb_mbps': _debit_usb(Path(resolu).name)}
+
+
+def cameras_locales():
+    """Les See3CAM branchées sur ce PC (dossier by-id : /dev/v4l/by-id, ou G1_CAMERA_BY_ID)."""
+    dossier = Path(os.environ.get('G1_CAMERA_BY_ID') or DOSSIER_BY_ID)
+    try:
+        liens = sorted(dossier.glob(MOTIF_CAMERA))
+    except OSError:
+        return []
+    return [c for c in (camera_locale(lien) for lien in liens if lien.exists()) if c]
+
+
+def script_camera(voulue=None):
+    """Script shell du Jetson : une ligne camera=<by-id>|<résolu>|<gid>|<débit USB> par See3CAM
+    (ou pour le chemin « voulue »)."""
+    motif = shlex.quote(voulue) if voulue else f'{DOSSIER_BY_ID}/{MOTIF_CAMERA}'
+    return (f'for d in {motif}; do [ -e "$d" ] || continue; v=$(readlink -f "$d"); n=${{v##*/}}; '
+            'echo "camera=$d|$v|$(stat -L -c %g "$d")|$(cat /sys/class/video4linux/$n/device/../speed '
+            '2>/dev/null)"; done; true')
+
+
+def lire_cameras(texte):
+    """Caméras de la sortie de script_camera : [{by_id, chemin, gid, usb_mbps}]."""
+    cameras = []
+    for ligne in str(texte).splitlines():
+        if not ligne.startswith('camera='):
+            continue
+        morceaux = ligne[len('camera='):].split('|')
+        if len(morceaux) != 4 or not morceaux[1].startswith('/dev/') or not morceaux[2].isdigit():
+            continue
+        try:
+            debit = int(float(morceaux[3])) if morceaux[3].strip() else None
+        except ValueError:
+            debit = None
+        cameras.append({'by_id': morceaux[0], 'chemin': morceaux[1], 'gid': int(morceaux[2]), 'usb_mbps': debit})
+    return cameras
+
+
+def camera_du_lieu(dossier):
+    """Le « peripherique » de camera.yaml du lieu s'il est un nom stable (/dev/v4l/by-id/…), sinon None.
+    (Un /dev/videoN du PC ne dit rien du Jetson.)"""
+    if dossier is None:
+        return None
+    try:
+        texte = (Path(dossier) / 'camera.yaml').read_text(encoding='utf-8')
+    except OSError:
+        return None
+    m = re.search(r'^\s*peripherique:\s*["\']?(/dev/v4l/by-id/[^\s"\'#]+)', texte, re.M)
+    return m.group(1) if m else None
+
+
+def options_camera(camera):
+    """(options de docker run, variables du conteneur) pour une caméra trouvée."""
+    return (['--device', f'{camera["chemin"]}:{CAMERA_CONTENEUR}', '--group-add', str(camera['gid'])],
+            [('G1_CAMERA', CAMERA_CONTENEUR)])
+
+
+def texte_usb(camera):
+    """Avertissement si la caméra n'est pas sur un port USB 3, sinon ''."""
+    debit = camera.get('usb_mbps')
+    if debit is not None and debit < USB3_MBPS:
+        return (f'attention : la caméra est branchée en USB 2 ({debit} Mbit/s) : 1280 × 720 à 30 images par '
+                'seconde ne passe pas ; branchez-la sur un port USB 3 (bleu)')
+    return ''
+
+
+def choisir_camera(cible, dossier_lieu=None):
+    """La caméra à passer au conteneur : (caméra ou None, message). G1_CAMERA=0 : aucune ;
+    G1_CAMERA=/dev/… : celle-là ; sinon le nom stable de camera.yaml, puis la première See3CAM.
+    Ne lève jamais d'erreur : sans caméra, le conteneur démarre sans."""
+    demande = (os.environ.get('G1_CAMERA') or '').strip()
+    if demande == '0':
+        return None, 'caméra : non (G1_CAMERA=0)'
+    if demande and not demande.startswith('/dev/'):
+        return None, f'caméra : G1_CAMERA={demande} ignoré (0, ou un chemin /dev/…) : conteneur sans caméra'
+    voulue = demande or camera_du_lieu(dossier_lieu)
+    if cible.local:
+        cameras = [c for c in [camera_locale(voulue)] if c] if voulue else cameras_locales()
+    elif cible.executeur.a_blanc:
+        cible.executeur.montrer(texte_commande(commande_ssh(script_camera(voulue))))
+        return None, ('caméra : à blanc, la caméra du Jetson n\'est pas cherchée ; branchée, elle ajouterait '
+                      f'--device <…>:{CAMERA_CONTENEUR} --group-add <groupe> -e G1_CAMERA={CAMERA_CONTENEUR}')
+    else:
+        r = cible.executeur.lancer(commande_ssh(script_camera(voulue)), delai=30)
+        cameras = lire_cameras(r.stdout) if r.returncode == 0 else []
+    if not cameras:
+        quoi = voulue or f'{DOSSIER_BY_ID}/{MOTIF_CAMERA}'
+        return None, f'caméra : pas de caméra See3CAM sur {cible.nom_hote} ({quoi}) : conteneur lancé sans caméra'
+    camera = cameras[0]
+    message = f'caméra : {camera["by_id"]} → {camera["chemin"]} (dans le conteneur : {CAMERA_CONTENEUR})'
+    usb = texte_usb(camera)
+    return camera, message + (f'\n{usb}' if usb else '')
 
 
 def etat_docker(cible, nom):
@@ -867,6 +1014,14 @@ def demarrer(args, executeur):
     if not args.veille:
         dossier, ident = resoudre_lieu(args.lieu, args.etage)
     env = environnement_conteneur(args, local, ident)
+    verifier_ssh(cible)
+    # Caméra de poitrine (vague 5) : passée seulement si elle est branchée ; jamais d'échec à cause d'elle
+    camera, message_camera = choisir_camera(cible, dossier if ident is not None else None)
+    peripheriques = []
+    if camera is not None:
+        peripheriques, env_camera = options_camera(camera)
+        env += env_camera
+    dire(message_camera)
     if local:
         if ident is not None:
             lieux = f'{dossier.parent}:/lieux:ro'
@@ -881,9 +1036,9 @@ def demarrer(args, executeur):
         lieux = Brut(f'"$HOME/{LIEUX_JETSON}:/lieux:ro"')
         journaux = Brut(f'"$HOME/{JOURNAUX_JETSON}:/journaux"')
         utilisateur = Brut('"$(id -u):$(id -g)"')
-    run = arguments_run(nom, image, utilisateur, lieux, journaux, env, os.environ.get('G1_JETSON_RUNTIME'))
+    run = arguments_run(nom, image, utilisateur, lieux, journaux, env, os.environ.get('G1_JETSON_RUNTIME'),
+                        peripheriques)
 
-    verifier_ssh(cible)
     if not executeur.a_blanc:
         existant = etat_docker(cible, nom)
         if existant and existant['status'] in ('running', 'restarting', 'paused'):
@@ -1057,7 +1212,8 @@ def etat(args, executeur):
          f'interfaces {bilan["interfaces"]}')
     if dernier:
         dire(f'  /g1_jetson/etat ({source}) : version {dernier.get("version")}, '
-             f'{dernier.get("arch")}, depuis {dernier.get("depuis_s")} s')
+             f'{dernier.get("arch")}, depuis {dernier.get("depuis_s")} s, '
+             f'caméra {dernier.get("camera") or "non"}')
     elif en_marche:
         dire('  /g1_jetson/etat : rien reçu (le nœud de présence démarre, ou DDS ne passe pas)')
     return 0 if en_marche else 1
@@ -1105,6 +1261,8 @@ echo "heure=$(date +%s.%N)"
 echo "image=$(docker image inspect -f '{{index .Config.Labels "fr.robot-g1.empreinte"}}' g1-jetson:arm64 2>/dev/null)"
 echo "conteneur=$(docker inspect -f '{{.State.Status}}' g1-jetson 2>/dev/null)"
 echo "internet=$(timeout 5 bash -c 'exec 3<>/dev/tcp/registry-1.docker.io/443' 2>/dev/null && echo oui || echo non)"
+for d in /dev/v4l/by-id/*See3CAM*-video-index0; do [ -e "$d" ] || continue; v=$(readlink -f "$d"); n=${v##*/}
+  echo "camera=$d|$v|$(stat -L -c %g "$d")|$(cat /sys/class/video4linux/$n/device/../speed 2>/dev/null)"; done
 echo "---ip"
 ip -o -4 addr
 '''
@@ -1113,7 +1271,8 @@ ip -o -4 addr
 def lire_verification(texte):
     """(champs, sortie de ip) depuis la sortie de SCRIPT_VERIFIER."""
     avant, _, ip = texte.partition('---ip')
-    champs = dict(x.split('=', 1) for x in avant.splitlines() if '=' in x)
+    champs = dict(x.split('=', 1) for x in avant.splitlines() if '=' in x and not x.startswith('camera='))
+    champs['cameras'] = lire_cameras(avant)
     return champs, ip
 
 
@@ -1176,6 +1335,19 @@ def bilan_verification(champs, ip, heure_pc):
                    f'image g1-jetson:arm64 : {"empreinte " + image if image else "absente (g1-jetson envoyer)"}'))
     if champs.get('conteneur'):
         lignes.append(('info', f'conteneur g1-jetson : {champs["conteneur"]}'))
+    # vague 5 : la caméra de poitrine (facultative : son absence n'est pas un problème)
+    cameras = champs.get('cameras') or []
+    if not cameras:
+        lignes.append(('info', 'caméra See3CAM : non branchée (le conteneur démarrera sans caméra)'))
+    for camera in cameras:
+        debit = camera.get('usb_mbps')
+        if debit is not None and debit < USB3_MBPS:
+            lignes.append(('probleme', f'caméra See3CAM {camera["chemin"]} en USB 2 ({debit} Mbit/s) : '
+                                       'branchez-la sur un port USB 3 (bleu)'))
+        else:
+            vitesse = f'USB {debit} Mbit/s' if debit else 'débit USB inconnu'
+            lignes.append(('ok', f'caméra See3CAM : {camera["by_id"]} → {camera["chemin"]} ({vitesse}, groupe '
+                                 f'{camera["gid"]})'))
     return lignes
 
 

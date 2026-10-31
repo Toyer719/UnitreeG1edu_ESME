@@ -9,9 +9,9 @@ Ce document est pour vous si vous faites une de ces parties du robot d'accueil G
 
 Il dit ce que votre partie reçoit et envoie, comment l'essayer sans robot, et les règles de sécurité à respecter. Il suppose que vous débutez en ROS 2 : les notions utiles sont rappelées au fur et à mesure.
 
-Tout ce qui est décrit ici est déjà en place et testé sans robot (critère 30 de `tests_e2e/tout.sh`). Le chatbot fourni est un **exemple** : vous pouvez le garder, le modifier ou le remplacer par le vôtre. Seuls comptent les **fichiers du lieu** et les **sujets ROS 2** décrits plus bas : tant que votre programme les respecte, il se branche sur le reste sans rien changer ailleurs.
+Tout ce qui est décrit ici est déjà en place et testé sans robot (critères 30 et 35 de `tests_e2e/tout.sh`). Le chatbot fourni est un **exemple** : vous pouvez le garder, le modifier ou le remplacer par le vôtre. Depuis la vague 5, la **caméra** est faite aussi : le nœud `camera_usb` lit la See3CAM sur le robot, et `g1-visiteurs` trouve les visiteurs sur le PC (section 5). Seuls comptent les **fichiers du lieu** et les **sujets ROS 2** décrits plus bas : tant que votre programme les respecte, il se branche sur le reste sans rien changer ailleurs.
 
-Références : section 11.6 du plan (`docs/plan-atelier-multi-agents.md`), formats exacts dans `atelier/lieu/schemas/`.
+Références : sections 11.6 et 12.7 du plan (`docs/plan-atelier-multi-agents.md`), formats exacts dans `atelier/lieu/schemas/`.
 
 ---
 
@@ -25,13 +25,15 @@ Références : section 11.6 du plan (`docs/plan-atelier-multi-agents.md`), forma
                          (partie voix)       ▲                                                     │
                                              └──── [relais] ◄── /guide/evenement ◄─────────────────┤
                                                                                                    ▼
- Visiteur ── est vu ──► [caméra See3CAM] ── /visiteurs/detectes ──► chatbot (salutation), Atelier   le robot
-                                                                                                   marche
+ Visiteur ── est vu ──► [See3CAM : camera_usb, sur le robot] ── /camera_poitrine/image/compressed ──┐   le robot
+                                                                                                    │   marche
+           Atelier (image en direct) ◄──┬── [g1-visiteurs, sur le PC : YOLO] ◄───────────────────────┘
+           chatbot (salutation)     ◄───┴── /visiteurs/detectes
  [onglet Personnalités] ou [chatbot] ── /personnalite/active ──► voix, relais, chatbot
 ```
 
 - Le **guide** (déjà écrit) emmène le robot vers une salle, en évitant les obstacles et les gens. C'est **lui seul** qui fait marcher le robot, avec la navigation Nav2 et le pont vers la marche d'Unitree.
-- Le **nœud pilotage** (onglet Pilotage de l'Atelier) commande les postures, les gestes des bras, la LED et les danses. C'est **lui seul** qui fait bouger les bras.
+- Le **nœud pilotage** (Réel › Piloter dans l'Atelier) commande les postures, les gestes des bras, la LED et les danses. C'est **lui seul** qui fait bouger les bras.
 - Votre partie **demande** des choses (une salle où aller, une phrase à dire) ; elle ne commande jamais un moteur.
 
 ---
@@ -54,7 +56,7 @@ Le paquet de l'équipe, `g1_equipe`, se compile une fois (et après chaque nouve
 ```bash
 cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_equipe
 source ~/robot-g1/ws/install/local_setup.bash
-ros2 pkg executables g1_equipe          # dialogue, fausse_camera, voix_journal
+ros2 pkg executables g1_equipe          # camera_usb, dialogue, fausse_camera, voix_journal
 ```
 
 ### Trois notions de ROS 2
@@ -92,7 +94,7 @@ et ouvrez-la dans l'Atelier (`g1-atelier`, puis le lieu « essai_equipe » en ha
 
 ## 3. Les trois fichiers de l'équipe
 
-Ils sont **facultatifs** : un lieu s'en passe. Ils se modifient dans l'Atelier, onglets **Personnalités**, **Dialogues** et **Caméra** (bouton « Partir de l'exemple » si le fichier n'existe pas encore). L'Atelier vérifie tout avant d'enregistrer, et dit en français ce qui ne va pas. On peut aussi les écrire à la main ; ils sont lus et vérifiés par `atelier.lieu.equipe` :
+Ils sont **facultatifs** : un lieu s'en passe. Ils se modifient dans l'Atelier, ruban **Équipe** : **Personnalités**, **Dialogues** et **Caméra** (bouton « Partir de l'exemple » si le fichier n'existe pas encore). L'Atelier vérifie tout avant d'enregistrer, et dit en français ce qui ne va pas. On peut aussi les écrire à la main ; ils sont lus et vérifiés par `atelier.lieu.equipe` :
 
 ```python
 from atelier.lieu import equipe
@@ -132,7 +134,7 @@ personnalites:
 | `geste_salut` | le nœud `dialogue` le demande sur `/robot/geste` quand il salue ; le nœud pilotage le fait seulement robot au repos (guide sans mission, pas piloté à la main, aucune danse), un toutes les 10 s au plus, puis relâche les bras | branché (à l'assemblage de la vague 4) |
 | `vitesse_max` | le guide, qui seul règle la vitesse de marche : la plus petite des limites (personnalité, visiteur qui traîne) part sur `/speed_limit` | branché (à l'assemblage de la vague 4) |
 
-Codes des phrases (textes par défaut dans `atelier/lieu/comportement.py`, `CODES_EVENEMENT`) : `depart`, `seul`, `ralentir`, `attente_visiteur`, `visiteur_retrouve`, `visiteur_perdu`, `passant_gene`, `passage_libre`, `detour`, `arrivee`, `retour`, `retour_arrive`, `perdu`, `retrouve`, `echec`, `arret`, `pilotage`. À l'arrivée, si la salle a sa propre phrase (`phrase_arrivee` dans l'onglet Salles), c'est elle qui est dite : elle est plus précise.
+Codes des phrases (textes par défaut dans `atelier/lieu/comportement.py`, `CODES_EVENEMENT`) : `depart`, `seul`, `ralentir`, `attente_visiteur`, `visiteur_retrouve`, `visiteur_perdu`, `passant_gene`, `passage_libre`, `detour`, `arrivee`, `retour`, `retour_arrive`, `perdu`, `retrouve`, `echec`, `arret`, `pilotage`. À l'arrivée, si la salle a sa propre phrase (`phrase_arrivee`, Placer › Salle), c'est elle qui est dite : elle est plus précise.
 
 Dans l'onglet **Personnalités**, « Rendre active » écrit `active` dans le fichier et **annonce** la personnalité sur `/personnalite/active`.
 
@@ -164,7 +166,7 @@ regles:
   - id: coucou                      # action geste (assemblage de la vague 4)
     motifs: ["fais coucou", "dis au revoir"]
     action: geste
-    geste: 25                       # geste des bras d'Unitree (onglet Pilotage, liste des gestes)
+    geste: 25                       # geste des bras d'Unitree (Réel › Piloter, liste des gestes)
     reponse: "Au revoir !"
 ```
 
@@ -173,7 +175,7 @@ L'action `geste` répond, puis demande le geste sur `/robot/geste` (schéma `rob
 Comment le chatbot d'exemple lit une phrase (`atelier/equipe/dialogue.py`) :
 
 - majuscules, accents et ponctuation ne comptent pas : « Où est l'Accueil ? » se lit « ou est l accueil » ;
-- `{salle}` vaut une salle du lieu : son identifiant, son nom ou un de ses autres noms (onglet Salles), avec ou sans « la », « le », « au », « l' », « jusqu'à la »… devant ; une règle à `{salle}` ne marche que si une salle est trouvée ;
+- `{salle}` vaut une salle du lieu : son identifiant, son nom ou un de ses autres noms (Placer › Salle), avec ou sans « la », « le », « au », « l' », « jusqu'à la »… devant ; une règle à `{salle}` ne marche que si une salle est trouvée ;
 - `{*}` vaut n'importe quels mots (ou aucun) ;
 - d'abord, la première règle dont un motif couvre **toute** la phrase ; sinon, la première dont un motif se trouve **dans** la phrase (« bonjour, je cherche le CDI merci » contient « je cherche {salle} ») ; sinon, le repli ;
 - prudence : un motif fait seulement de `{salle}` ou de `{*}` n'est essayé que sur toute la phrase, et une phrase avec « ne », « pas » ou « jamais » ne fait partir le robot que si un motif la couvre en entier (« je ne cherche pas la B204 » ne le fait pas partir).
@@ -186,29 +188,37 @@ Dans la réponse d'une règle `guider`, `{nom_salle}` devient le nom de la salle
 version: 1
 camera:
   modele: See3CAM_11CUG
-  peripherique: /dev/video0          # trouvé par « v4l2-ctl --list-devices »
+  peripherique: /dev/v4l/by-id/usb-e-con_Systems_See3CAM_11CUG_1A15C950-video-index0   # nom stable (ou /dev/videoN)
   largeur: 1280
   hauteur: 720
   ips: 30                            # images par seconde
   champ_horizontal_deg: 90.0         # dépend de l'objectif : fiche de l'objectif, ou mesure
-  position: {x: 0.08, y: 0.0, z: 1.10, roulis: 0.0, tangage: -0.2, lacet: 0.0}
+  position: {x: 0.08, y: 0.0, z: 1.10, roulis: 0.0, tangage: -0.21, lacet: 0.0}
+  # facultatifs (vague 5) : réglages du nœud camera_usb
+  exposition: {mode: auto}           # auto (conseillé) ; manuelle : temps_100us (156 = 15,6 ms) et gain
+  publication: {frequence_hz: 10, largeur: 640, qualite_jpeg: 70}
 detection:
   actif: true
   modele: yolo11n-pose.pt            # fichier dans ~/robot-g1/modeles/
   confiance_min: 0.5
   distance_max_m: 4.0
   frequence_hz: 10
+  # facultatifs (vague 5) : étalonnage des distances de g1-visiteurs
+  taille_personne_m: 1.70
+  correction_distance: 1.0
 ```
 
 La **position** est celle de la caméra dans le repère du robot, `base_link` : x vers l'avant, y vers sa gauche, z vers le haut, en mètres, depuis le sol entre les pieds ; les angles en radians (l'onglet les montre en degrés). **Tangage positif = la caméra regarde vers le bas** (convention de ROS) : une caméra inclinée de 12° vers le haut a un tangage de −0,21 rad. Tout cela se mesure sur le robot, debout, au mètre ruban.
 
-L'onglet **Caméra** a un « Préréglage See3CAM_11CUG » (1280 × 720 à 30 images par seconde, à confirmer avec `v4l2-ctl -d /dev/videoN --list-formats-ext`), une vue de dessus et une vue de côté de ce que voit la caméra, et dessine en direct les visiteurs publiés sur `/visiteurs/detectes` (en vert) et les personnes vues par le LiDAR (en gris).
+Le **périphérique** : sur le robot, le conteneur reçoit toujours la See3CAM sous le nom `/dev/g1_camera` ; le nom stable `/dev/v4l/by-id/…` (avec son numéro de série) sert à `g1-jetson demarrer` pour la retrouver sur le Jetson, quel que soit l'ordre des branchements. Un `/dev/videoN` ne sert que sur le PC.
+
+L'onglet **Caméra** montre l'**image en direct** de la caméra, avec un cadre autour de chaque visiteur (vert : il regarde le robot ; orange : non), une vue de dessus et une vue de côté de ce que voit la caméra, où se dessinent en direct les visiteurs vus par la caméra (en vert) et les personnes vues par le LiDAR (en gris). On y trouve le « Préréglage See3CAM_11CUG » (1280 × 720 à 30 images par seconde, vérifié sur la caméra du PC avec `v4l2-ctl -d /dev/videoN --list-formats-ext` : YUYV en 1280 × 720 à 30, 1280 × 960 à 20, 640 × 480 à 60 ou 30), et, dans « Réglages avancés », l'exposition, les images publiées et l'étalonnage des distances.
 
 ---
 
 ## 4. Les sujets ROS 2 entre les parties
 
-Tous sont des `std_msgs/String`. Sauf `/visiteur/texte` (texte brut), ils contiennent du JSON, au format du schéma indiqué.
+Tous sont des `std_msgs/String`, sauf les images de la caméra (`sensor_msgs/CompressedImage`, en fin de tableau). Sauf `/visiteur/texte` (texte brut), ils contiennent du JSON, au format du schéma indiqué.
 
 | Sujet | Schéma | Qui publie → qui écoute | Ce que c'est |
 |---|---|---|---|
@@ -222,6 +232,9 @@ Tous sont des `std_msgs/String`. Sauf `/visiteur/texte` (texte brut), ils contie
 | `/personnalite/active` | `personnalite_active` | onglet Personnalités, chatbot → voix, relais, guide (`vitesse_max`), nœud pilotage (`led`) | la personnalité active (QoS spéciale, ci-dessous) |
 | `/robot/geste` | `robot_geste` | chatbot (règle `geste`, `geste_salut` en saluant) → nœud pilotage | un geste des bras, fait seulement robot au repos |
 | `/mouvement/maitre` | `maitre_mouvement` | nœud pilotage → guide, chatbot | qui commande les mouvements : `guide` ou `pilotage` |
+| `/camera_poitrine/etat` | `etat_camera` | nœud `camera_usb` → Atelier | l'état de la caméra, 1 fois par seconde : ouverte, images lues et publiées, erreur en français |
+| `/camera_poitrine/image/compressed` | `sensor_msgs/CompressedImage` (JPEG) | nœud `camera_usb` → `g1-visiteurs`, Atelier | l'image de la See3CAM, 10 fois par seconde, 640 × 360, qualité 70 ; QoS des capteurs (au mieux) |
+| `/visiteurs/image/compressed` | `sensor_msgs/CompressedImage` (JPEG) | `g1-visiteurs --image` → Atelier | la même image avec les cadres et les distances dessinés, 3 fois par seconde |
 
 ### Les messages, un par un
 
@@ -243,15 +256,16 @@ Seul `texte` est obligatoire. `source` : `guide`, `dialogue`, `personnalite`, `c
 
 `cible` : l'identifiant d'une salle (ou d'un nœud des itinéraires), ou `principal` (le point principal, l'accueil). `accompagner` : le robot surveille que le visiteur suit. `retour` (facultatif) : `false` empêche le retour automatique à l'accueil après la visite.
 
-`/visiteurs/detectes` (publié par la caméra) :
+`/visiteurs/detectes` (publié par `g1-visiteurs`, ou par votre propre détecteur) :
 
 ```json
 {"version": 1, "source": "camera", "temps": 812.4,
+ "image": {"largeur": 640, "hauteur": 360, "numero": 1234, "sujet": "/camera_poitrine/image/compressed"},
  "personnes": [{"id": 3, "x": 1.5, "y": 0.2, "distance_m": 1.51, "angle_rad": 0.13, "confiance": 0.86,
-                "regarde_robot": true}]}
+                "regarde_robot": true, "boite": [250.0, 40.0, 330.0, 350.0]}]}
 ```
 
-Positions dans `base_link` (x vers l'avant, y vers la gauche), en mètres ; `angle_rad` depuis l'avant du robot ; `id` : le même tant que la personne est suivie (le suivi ByteTrack de YOLO le donne). `temps` : l'heure ROS de l'image, en secondes. `regarde_robot` (facultatif) : la personne fait face au robot. `atelier.equipe.camera.message_visiteurs(temps, personnes)` fabrique ce message, distances et angles compris.
+Positions dans `base_link` (x vers l'avant, y vers la gauche), en mètres ; `angle_rad` depuis l'avant du robot ; `id` : le même tant que la personne est suivie (le suivi ByteTrack de YOLO le donne). `temps` : l'heure ROS de l'image, en secondes. `regarde_robot` (facultatif) : la personne fait face au robot. Vague 5, facultatifs : `boite`, le cadre de la personne dans l'image analysée, en pixels `[x_min, y_min, x_max, y_max]` (origine en haut à gauche), et `image`, la taille de cette image : l'Atelier s'en sert pour dessiner les cadres sur l'image en direct. `atelier.equipe.camera.message_visiteurs(temps, personnes, image)` fabrique ce message, distances et angles compris.
 
 `/personnalite/active` (publié par l'onglet ou le chatbot) : la personnalité entière, telle que dans `personnalites.yaml`, plus `version`, `lieu` et `temps`. Ce sujet a une **QoS fiable et transient_local** : le dernier message est gardé, et un nœud qui démarre plus tard le reçoit quand même. Il faut la même QoS pour s'y abonner (sinon on ne reçoit rien). Si plusieurs messages arrivent, **gardez le plus récent** (champ `temps`).
 
@@ -305,12 +319,37 @@ Lancez-le avec `python3 ma_partie.py` (le Python du système, celui de ROS 2), a
 
 ### La caméra See3CAM_11CUG
 
-1. Branchez-la en USB 3 (port bleu), puis `v4l2-ctl --list-devices` : notez le numéro `/dev/videoN` de la ligne « See3CAM ». `v4l2-ctl -d /dev/videoN --list-formats-ext` donne ses modes d'image.
-2. Onglet **Caméra** : « Préréglage See3CAM_11CUG », le périphérique, puis la position mesurée sur le robot. Enregistrez.
-3. Votre nœud lit `camera.yaml` (`atelier.lieu.equipe.charger_equipe(lieu, "camera")`), ouvre la caméra (OpenCV), détecte les personnes (YOLO : `g1-personnes --source N` montre déjà la détection et le suivi sur une caméra), estime la distance de chacune (la See3CAM ne la mesure pas : par la taille de la personne dans l'image, étalonnée avec des repères au sol à 1, 2, 3 et 4 m), place chaque personne dans `base_link` avec la position de la caméra, garde celles qui dépassent `confiance_min` et sont à moins de `distance_max_m`, puis publie `/visiteurs/detectes` à `frequence_hz`.
-4. Vérifiez dans l'onglet Caméra : les points verts doivent tomber au bon endroit autour du robot.
+Elle est faite (vague 5, section 12.7 du plan) ; vous pouvez la régler, l'étalonner, ou remplacer `g1-visiteurs` par votre propre détecteur, tant qu'il publie `/visiteurs/detectes` au même format.
 
-En attendant votre nœud, la **fausse caméra** publie le même message :
+**Sur le robot**, la See3CAM est branchée sur un port **USB 3 (bleu)** du Jetson. `g1-jetson demarrer` la trouve (`/dev/v4l/by-id/…See3CAM…-video-index0`, ou le `peripherique` by-id de `camera.yaml`), la passe au conteneur sous le nom `/dev/g1_camera`, et le conteneur lance le nœud **`camera_usb`** (paquet `g1_equipe`) : capture YUYV en 1280 × 720 à 30 images par seconde avec `v4l2-ctl`, exposition automatique réglée au démarrage, JPEG de 640 × 360 publiés 10 fois par seconde sur `/camera_poitrine/image/compressed`, état sur `/camera_poitrine/etat`. Sans caméra branchée, le conteneur démarre quand même, sans elle (pas à pas : `docs/jetson.md`, « La caméra de poitrine »).
+
+**Sur le PC**, **`g1-visiteurs`** lit cette image (par le câble), trouve les personnes avec YOLO pose et le suivi ByteTrack (sur la carte graphique), estime la distance de chacune (la See3CAM ne la mesure pas : par la taille de la personne dans l'image, ou celle du buste ou des épaules), la place dans `base_link` avec la position de `camera.yaml`, garde celles qui dépassent `confiance_min` et sont à moins de `distance_max_m`, puis publie `/visiteurs/detectes` à `frequence_hz` :
+
+```bash
+g1-visiteurs --lieu essai_equipe --image        # l'image du robot ; --image : l'image avec les cadres, pour l'Atelier
+g1-visiteurs --lieu essai_equipe --fenetre      # la même chose, avec une fenêtre (touche q pour quitter)
+```
+
+**Essayer sur le PC, sans robot**, avec la See3CAM branchée sur le PC (ou une webcam) :
+
+```bash
+ros2 run g1_equipe camera_usb                                    # la See3CAM du PC (trouvée seule), comme sur le robot
+ros2 run g1_equipe camera_usb --ros-args -p source:=mire         # sans caméra : une image de test
+ros2 run g1_equipe camera_usb --ros-args -p source:=fichier -p fichier:=photo.jpg   # une photo, répétée
+g1-visiteurs --lieu essai_equipe --image                         # dans un autre terminal (même ROS_DOMAIN_ID)
+g1-visiteurs --source 2                                          # ou directement une caméra du PC (/dev/video2)
+g1-visiteurs --source photo.jpg --une-fois --sans-ros            # les personnes d'une photo, en JSON
+```
+
+Puis dans l'Atelier, onglet **Caméra** (ou la vue **Caméra** en mode Réel) : l'image en direct et un cadre autour de chaque visiteur ; les points verts des vues de dessus et de côté doivent tomber au bon endroit autour du robot.
+
+**Vérifier** : `ros2 topic hz /camera_poitrine/image/compressed` (environ 10), `ros2 topic echo --once /camera_poitrine/etat` (`ouverte: true`, `erreur: null`, `usb_mbps: 5000`), `ros2 topic echo --once /visiteurs/detectes`. L'Atelier montre aussi l'état (`GET /api/camera/etat`) et dit en clair ce qui manque quand il n'y a pas d'image.
+
+**Régler** (onglet Caméra) : la position sur le robot (au mètre ruban, robot debout), le champ horizontal (une règle à 1 m, d'un bord à l'autre de l'image), puis l'**étalonnage des distances** : des repères au sol à 1, 2, 3 et 4 m, une personne debout sur chacun, et dans « Réglages avancés » la `correction_distance` = distance vraie ÷ distance affichée (en moyenne). La taille supposée d'une personne (`taille_personne_m`, 1,70 m) se règle au même endroit.
+
+**Image noire** : la See3CAM démarre en exposition **manuelle** (15,6 ms) ; `camera_usb` la met en automatique (sauf `exposition: {mode: manuelle}`), mais un autre programme ne le fait pas : avant `g1-personnes --source 2`, tapez `v4l2-ctl -d /dev/video2 -c auto_exposure=0`.
+
+En attendant la vraie caméra (par exemple en simulation), la **fausse caméra** publie le même message de visiteurs :
 
 ```bash
 ros2 run g1_equipe fausse_camera --ros-args -p lieu:=essai_equipe              # une personne fixe à 1,5 m devant
@@ -391,7 +430,9 @@ E2E_DOMAINE=42 ~/robot-g1/tests_e2e/tout.sh 30
 
 ```bash
 cd ~/robot-g1 && .venv-projet/bin/python -m pytest -q atelier/tests/test_equipe_*.py      # 30 s environ
-cd ~/robot-g1/ws && colcon test --packages-select g1_equipe && colcon test-result --all    # nœuds ROS 2, 30 s
+cd ~/robot-g1 && .venv-projet/bin/python -m pytest -q atelier/tests/test_camera_*.py atelier/tests/test_visiteurs.py   # caméra, 1 min
+cd ~/robot-g1/ws && colcon test --packages-select g1_equipe && colcon test-result --all    # nœuds ROS 2, 1 min
+E2E_DOMAINE=42 ~/robot-g1/tests_e2e/tout.sh 35        # la caméra de bout en bout : fausse vidéo → Atelier → g1-visiteurs → Firefox
 ```
 
 ---
@@ -420,18 +461,22 @@ Le robot pèse 35 kg et marche au milieu des gens. Ces règles ne se discutent p
 | `atelier/lieu/schemas/{robot_dire,personnalite_active,personnes,demande_guide,evenement_guide}.schema.json` | les formats des messages |
 | `atelier/lieu/exemples/` | les exemples des trois fichiers |
 | `atelier/lieu/equipe.py` | lire, écrire, vérifier les fichiers ; fabriquer les messages (`message_robot_dire`, `message_personnalite_active`) |
-| `atelier/equipe/dialogue.py`, `relais.py`, `camera.py` | le chatbot d'exemple, le relais et la salutation, la géométrie de la caméra (sans ROS) |
-| `ws/src/g1_equipe/` | les nœuds `dialogue`, `fausse_camera` et `voix_journal`, et leurs tests |
-| `atelier/serveur/routes/equipe.py` | l'API de l'Atelier pour l'équipe (`/api/lieux/{id}/personnalites`, `…/dialogues`, `…/camera`, `/api/equipe/*`) |
-| `atelier/web/js/ecrans/{personnalites,dialogues,camera}.js`, `js/equipe/commun.js` | les trois onglets |
-| `atelier/tests/test_equipe_*.py`, `tests_e2e/critere_30_equipe.sh` | les tests |
+| `atelier/equipe/dialogue.py`, `relais.py`, `camera.py` | le chatbot d'exemple, le relais et la salutation, la géométrie de la caméra (sans ROS) : des pixels aux mètres (`distance_personne`, `position_dans_base_link`, `regarde_robot`) |
+| `atelier/equipe/images.py` | les dernières images reçues par l'Atelier, le flux MJPEG |
+| `ws/src/g1_equipe/` | les nœuds `dialogue`, `fausse_camera`, `voix_journal` et `camera_usb` (`image_jpeg.py` : YUYV → JPEG, mire ; `peripherique.py`), et leurs tests |
+| `outils/visiteurs.py`, `bin/g1-visiteurs` | YOLO pose et ByteTrack sur l'image de la caméra → `/visiteurs/detectes` |
+| `atelier/serveur/routes/equipe.py`, `routes/camera.py` | l'API de l'Atelier pour l'équipe (`/api/lieux/{id}/personnalites`, `…/dialogues`, `…/camera`, `/api/equipe/*`) et la caméra (`/api/camera/image`, `…/flux`, `…/etat`) |
+| `atelier/web/js/ecrans/{personnalites,dialogues,camera}.js`, `js/equipe/commun.js`, `js/camera/flux.js` | les trois onglets, et la vue de l'image en direct (page d'essai : `atelier/web/essais/camera.html`) |
+| `atelier/tests/test_equipe_*.py`, `test_camera_*.py`, `test_visiteurs.py`, `tests_e2e/critere_30_equipe.sh`, `critere_35_camera.sh` | les tests |
 
 ---
 
 ## 9. Ce qu'il reste à faire ou à vérifier
 
-**À faire par l'équipe** : le nœud de la See3CAM (détection, distance, suivi) ; la reconnaissance vocale branchée sur `/visiteur/texte` ; la voix branchée sur `/robot/dire` (avec les réglages de la personnalité et la priorité haute) ; les règles du chatbot pour votre bâtiment.
+**À faire par l'équipe** : la reconnaissance vocale branchée sur `/visiteur/texte` ; la voix branchée sur `/robot/dire` (avec les réglages de la personnalité et la priorité haute) ; les règles du chatbot pour votre bâtiment ; l'étalonnage de la caméra sur le robot (position, champ, distances).
+
+**Fait à la vague 5** : la caméra de poitrine (nœud `camera_usb` dans le conteneur du Jetson, `g1-visiteurs` sur le PC, image en direct et cadres dans l'Atelier).
 
 **Branché à l'assemblage de la vague 4** : `vitesse_max` d'une personnalité appliquée par le guide ; `led` et `geste_salut` appliqués par le nœud pilotage ; le champ `voix.nom` (choix de la voix) ; l'action `geste` des dialogues (`/robot/geste`) ; `g1-lieu valider` vérifie aussi les trois fichiers de l'équipe ; `atelier/equipe/` et `g1_equipe` sont dans l'image du Jetson (`ros2 run g1_equipe dialogue …` dans `g1-jetson shell`, non lancé d'office).
 
-**À vérifier sur le robot** : la See3CAM sur le Jetson (numéro du périphérique, modes d'image, débit USB 3), sa position réelle dans `base_link` et son champ de vision ; la distance estimée contre le mètre ruban ; où tournent le chatbot et la voix (Jetson ou PC) et la latence de bout en bout (parole → réponse → départ) ; le haut-parleur et le micro du robot dans un hall bruyant.
+**À vérifier sur le robot** : la See3CAM sur un port USB 3 du Jetson (`g1-jetson verifier`), 10 images par seconde sur le PC (`ros2 topic hz`), l'exposition automatique en pleine lumière (l'essai sur le PC, la nuit, donnait une image noire), le champ de vision (le mode 640 × 480 montre-t-il tout le champ ?), sa position réelle dans `base_link` ; la distance estimée contre le mètre ruban (`correction_distance`) ; la salutation à 1,5 m ; où tournent le chatbot et la voix (Jetson ou PC) et la latence de bout en bout (parole → réponse → départ) ; le haut-parleur et le micro du robot dans un hall bruyant.

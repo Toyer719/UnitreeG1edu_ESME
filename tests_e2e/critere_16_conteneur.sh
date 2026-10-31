@@ -23,9 +23,14 @@
 # agent peut faire tourner le sien en même temps.
 # Domaine : E2E_DOMAINE (36 par défaut, 61 pour l'agent Jetson). Durée : 15 s si l'image est à
 # jour (2 min avec E2E_ARM64=1), plus la construction si elle manque (2 à 5 min, avec Internet).
+# Vague 5 : l'image a la couche de la caméra de poitrine (Pillow, v4l2-ctl, camera_usb). Le PC du
+# projet a une See3CAM branchée : ce critère la laisse de côté (G1_CAMERA=0, ligne « caméra non »),
+# pour rester le même avec ou sans elle ; la caméra dans le conteneur est essayée par le critère 35
+# (à blanc) et par docker/tests (G1_TEST_CAMERA=/dev/v4l/by-id/…, la vraie).
 source "$(dirname "$0")/commun.sh"
 OUTILS16="$E2E/critere_16_outils.py"
 export G1_JETSON_NOM="g1-jetson-e2e-$ROS_DOMAIN_ID"
+export G1_CAMERA=0
 
 command -v docker > /dev/null || en_attente "Docker n'est pas installé"
 docker info > /dev/null 2>&1 || en_attente "Docker inutilisable sans sudo (groupe docker ?)"
@@ -59,6 +64,8 @@ verifier_image() {
     echo "rmw=$RMW_IMPLEMENTATION"
     for p in g1_nav g1_bridge unitree_api; do echo "prefix_$p=$(ros2 pkg prefix $p 2>&1)"; done
     python3 -c "import atelier.lieu, atelier.scan.slam_client; print(\"python=ok\")" 2>&1
+    python3 -c "import PIL, numpy" 2>/dev/null && command -v v4l2-ctl > /dev/null && echo "camera=ok"
+    ros2 pkg executables g1_equipe 2>/dev/null | grep -q camera_usb && echo "camera_usb=ok"
     ros2 launch g1_nav navigation.launch.py --show-args 2>/dev/null | grep -q "localisation" && echo "launch=ok"' 2>&1)
   echo "$sortie" > "$TRAVAIL/journaux/image_$arch.log"
   grep -qx "arch=$attendue" <<< "$sortie" || echoue "image $arch : architecture $(grep '^arch=' <<< "$sortie") au lieu de $attendue"
@@ -68,9 +75,11 @@ verifier_image() {
       || echoue "image $arch : ros2 pkg prefix $p ne donne pas /opt/g1/install/$p ($(grep "^prefix_$p=" <<< "$sortie"))"
   done
   grep -qx "python=ok" <<< "$sortie" || echoue "image $arch : import atelier.lieu, atelier.scan.slam_client impossible"
+  grep -qx "camera=ok" <<< "$sortie" || echoue "image $arch : Pillow ou v4l2-ctl absent (couche 2d de la caméra)"
+  grep -qx "camera_usb=ok" <<< "$sortie" || echoue "image $arch : exécutable camera_usb absent de g1_equipe"
   grep -qx "launch=ok" <<< "$sortie" \
     || en_attente "navigation.launch.py de l'image ne connaît pas encore localisation:= (agent Repérage) : reconstruire ensuite"
-  dire "image $arch : $attendue, rmw_cyclonedds_cpp, g1_nav, g1_bridge et unitree_api dans /opt/g1/install, imports Python réussis"
+  dire "image $arch : $attendue, rmw_cyclonedds_cpp, g1_nav, g1_bridge et unitree_api dans /opt/g1/install, imports Python réussis, caméra (Pillow, v4l2-ctl, camera_usb)"
 }
 
 # --- 1. L'image amd64 ----------------------------------------------------------------------
@@ -90,6 +99,8 @@ g1-jetson demarrer --local --lieu essai --etage rdc > "$TRAVAIL/journaux/demarre
 duree_ms=$(( $(date +%s%3N) - debut ))
 (( duree_ms < 60000 )) || echoue "g1-jetson demarrer a mis $(( duree_ms / 1000 )) s (60 s au plus)"
 dire "   rendu la main en $(( duree_ms / 1000 )),$(( duree_ms % 1000 / 100 )) s : $(grep 'g1-jetson : domaine' "$TRAVAIL/journaux/demarrer.log")"
+grep -q "caméra non" "$TRAVAIL/journaux/demarrer.log" \
+  || echoue "G1_CAMERA=0 : la ligne de démarrage ne dit pas « caméra non » ($(grep 'g1-jetson : domaine' "$TRAVAIL/journaux/demarrer.log"))"
 
 # --- 3. Ce que voit l'hôte -----------------------------------------------------------------
 dire "3. l'hôte (domaine $ROS_DOMAIN_ID, hors du conteneur) doit voir les nœuds et les états (90 s au plus)"

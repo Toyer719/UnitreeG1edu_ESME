@@ -138,9 +138,10 @@ PREREGLAGES_CAMERA = {
         "modele": "See3CAM_11CUG",
         "largeur": 1280, "hauteur": 720, "ips": 30,
         "note": "Caméra couleur USB 3 de 1,3 mégapixel (e-con Systems), objectif M12 interchangeable. "
-                "Mode 1280 × 720 à 30 images par seconde proposé : vérifiez les modes avec "
-                "« v4l2-ctl -d /dev/videoN --list-formats-ext ». Le champ de vision dépend de l'objectif : "
-                "lisez sa fiche, ou mesurez-le (une règle à 1 m, d'un bord à l'autre de l'image).",
+                "Mode 1280 × 720 à 30 images par seconde (YUYV), vérifié sur la See3CAM du PC le 31/10 "
+                "(elle fait aussi 1280 × 960 à 20 et 640 × 480 à 60 ou 30 : « v4l2-ctl -d /dev/videoN "
+                "--list-formats-ext »). Branchez-la en USB 3 (port bleu). Le champ de vision dépend de "
+                "l'objectif : lisez sa fiche, ou mesurez-le (une règle à 1 m, d'un bord à l'autre de l'image).",
     },
 }
 MODES_IMAGE_11CUG = ((1280, 960), (1280, 720), (640, 480))   # modes UVC habituels, à confirmer sur la caméra
@@ -149,6 +150,9 @@ MODES_IMAGE_11CUG = ((1280, 960), (1280, 720), (640, 480))   # modes UVC habitue
 HAUTEUR_CAMERA_M = (0.5, 1.6)      # G1 debout : la poitrine est vers 1 m, la tête vers 1,3 m
 TANGAGE_MAX_RAD = 0.6              # au-delà, la caméra regarde surtout le sol ou le plafond
 ROULIS_MAX_RAD = 0.35              # caméra penchée sur le côté
+# Vague 5 : le vrai robot ne fait aucun pas sous 0,2 m/s (mesuré le 27/10 ; atelier.lieu.robot.VITESSE_MAX_MIN,
+# comparé par les tests) : une vitesse_max de personnalité plus basse n'y a pas d'effet
+VITESSE_PAS_MIN = 0.2
 
 
 # ---------------------------------------------------------------- agent Équipe : textes
@@ -292,6 +296,11 @@ def _verifier_personnalites(p, av):
             av.append(f"{ou} : volume 0, le robot sera muet dans ce mode")
         if perso.get("vitesse_max") is not None and perso["vitesse_max"] < 0.1:
             av.append(f"{ou} : vitesse_max de {perso['vitesse_max']:g} m/s, le robot avancera à peine")
+        if perso.get("vitesse_max") is not None and perso["vitesse_max"] < VITESSE_PAS_MIN:
+            # vague 5 : le vrai robot ne fait aucun pas sous 0,2 m/s ; le pont monte les petites consignes
+            av.append(f"{ou} : une vitesse_max de {perso['vitesse_max']:g} m/s n'a pas d'effet sur le vrai robot : "
+                      f"il ne marche pas sous {VITESSE_PAS_MIN:g} m/s (le pont monte les petites vitesses à "
+                      f"{VITESSE_PAS_MIN:g}) ; elle ne joue qu'en simulation")
 
 
 def _verifier_dialogues(d, personnalites, salles, err, av):
@@ -306,7 +315,7 @@ def _verifier_dialogues(d, personnalites, salles, err, av):
         if r["action"] == "personnalite":
             if ids_perso is None:
                 av.append(f"{ou} : elle passe à la personnalité « {r['personnalite']} », mais le lieu n'a pas de "
-                          "personnalites.yaml (onglet Personnalités)")
+                          "personnalites.yaml (Équipe › Personnalités)")
             elif r["personnalite"] not in ids_perso:
                 err.append(f"{ou} : la personnalité « {r['personnalite']} » n'existe pas dans personnalites.yaml "
                            f"(personnalités : {', '.join(ids_perso)})")
@@ -340,7 +349,7 @@ def _verifier_dialogues(d, personnalites, salles, err, av):
     if reperes(d["repli"]):
         av.append(f"{fichier} : le repli contient {reperes(d['repli'])[0]}, qui ne sera pas remplacé")
     if guider and not salles:
-        av.append(f"{fichier} : des règles guident vers {{salle}}, mais le lieu n'a aucune salle (onglet Salles)")
+        av.append(f"{fichier} : des règles guident vers {{salle}}, mais le lieu n'a aucune salle (Placer › Salle)")
     # une même forme (id, nom ou alias) pour deux salles : le chatbot prend la première
     proprietaires = {}
     for s in salles:
@@ -373,7 +382,7 @@ def _verifier_camera(c, av):
         av.append(f"{fichier} : la détection à {det['frequence_hz']:g} Hz ne peut pas aller plus vite que la "
                   f"caméra ({cam['ips']} images par seconde)")
     if "champ_horizontal_deg" not in cam:
-        av.append(f"{fichier} : sans champ_horizontal_deg, l'onglet Caméra ne peut pas dessiner ce que voit la "
+        av.append(f"{fichier} : sans champ_horizontal_deg, l'écran Caméra ne peut pas dessiner ce que voit la "
                   "caméra (fiche de l'objectif, ou mesure)")
     if "11cug" in normaliser(cam.get("modele", "")).replace(" ", "") and \
             (cam["largeur"], cam["hauteur"]) not in MODES_IMAGE_11CUG:
@@ -421,4 +430,6 @@ __all__ = ["ACTIONS_DIALOGUE", "DOSSIER_EXEMPLES", "ENTETES_EQUIPE", "EXEMPLE_PE
            "REPERE_JOKER", "REPERE_SALLE", "SOURCES_DIRE", "formes_salles", "jetons_motif", "maintenant_iso",
            "message_personnalite_active", "message_robot_dire", "message_robot_geste", "normaliser",
            "personnalite_active", "reperes",
-           "verifier_equipe"]
+           "verifier_equipe",
+           # vague 5 (section 12.7 du plan) : caméra de poitrine
+           "CAMERA_CONTENEUR", "SUJET_ETAT_CAMERA", "SUJET_IMAGE_POITRINE", "SUJETS_IMAGES", "VITESSE_PAS_MIN"]

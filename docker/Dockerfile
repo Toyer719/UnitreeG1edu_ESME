@@ -78,6 +78,13 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends python3-tornado \
  && rm -rf /var/lib/apt/lists/*
 
+# 2d. Caméra de poitrine (vague 5, section 12.7 du plan) : v4l2-ctl (capture YUYV de la See3CAM) et
+#     Pillow (JPEG), couche de 9 Mo (mesurée sur amd64) ; numpy est déjà dans la couche 1. Pas d'OpenCV
+#     (580 Mo).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3-pil v4l-utils \
+ && rm -rf /var/lib/apt/lists/*
+
 # 3. Scripts du conteneur
 COPY docker/demarrer.sh docker/env.sh docker/reseau.py docker/presence.py docker/cyclonedds.xml.modele /opt/g1/
 RUN chmod 755 /opt/g1/demarrer.sh /opt/g1/reseau.py /opt/g1/presence.py \
@@ -89,10 +96,11 @@ RUN chmod 755 /opt/g1/demarrer.sh /opt/g1/reseau.py /opt/g1/presence.py \
 #    atelier.dossier_journaux() vise /opt/g1/python/journaux : c'est le dossier monté.
 COPY python /opt/g1/python
 RUN ln -s /journaux /opt/g1/python/journaux \
- && python3 -c "import sys; sys.path.insert(0, '/opt/g1/python'); import atelier.lieu, atelier.scan.slam_client, atelier.equipe.dialogue, atelier.equipe.relais"
+ && python3 -c "import sys; sys.path.insert(0, '/opt/g1/python'); import atelier.lieu, atelier.scan.slam_client, atelier.equipe.dialogue, atelier.equipe.relais, atelier.equipe.camera, atelier.equipe.images"
 
 # 5. Paquets du projet, copiés de ws/src au moment de la construction : g1_nav, g1_bridge, g1_pilotage,
-#    g1_equipe (nœuds dialogue, fausse_camera et voix_journal de l'équipe, non lancés d'office)
+#    g1_equipe (nœuds dialogue, fausse_camera et voix_journal de l'équipe, non lancés d'office ;
+#    vague 5 : camera_usb, lancé par demarrer.sh quand G1_CAMERA est donné)
 COPY ws /opt/g1/src/ws
 RUN source /opt/ros/humble/setup.bash \
  && source /opt/g1/install/local_setup.bash \

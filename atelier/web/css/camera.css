@@ -1,3 +1,92 @@
-/* Styles de la vue Caméra (vague 5, section 12.7 du plan) : agent Caméra. Feuille livrée vide par
-   l'agent Contrats, chargée après theme.css et atelier.css (index.html). Couleurs : les jetons de
-   theme.css. */
+/* Styles de la vue Caméra (vague 5, section 12.7 du plan) : agent Caméra. Chargée après theme.css et
+   atelier.css (index.html). Couleurs : les jetons de theme.css seulement (la vue est toujours sombre,
+   comme la vue 3D : --vue-*). */
+
+/* ------------------------------------------------------------ vue en direct (js/camera/flux.js) */
+.camera-vue {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--vue-fond);
+  color: var(--vue-texte);
+  overflow: hidden;
+}
+.camera-cadre { position: relative; flex: 1 1 auto; min-height: 0; }
+.camera-flux {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.camera-flux:not([src]) { visibility: hidden; }          /* pas d'icône d'image cassée */
+.camera-cadres { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.camera-etat {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  margin: 0;
+  padding: 4px 10px;
+  border-radius: var(--rayon-petit);
+  background: var(--vue-barre);
+  color: var(--vue-texte);
+  font-size: 0.85rem;
+  line-height: 1.35;
+  pointer-events: none;
+}
+.camera-etat[hidden] { display: none; }
+/* pas d'image : le message au milieu de la vue */
+.camera-vue[data-etat="sans-image"] .camera-etat,
+.camera-vue[data-etat="arrete"] .camera-etat,
+.camera-vue[data-etat="attente"] .camera-etat {
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  max-width: 40em;
+  margin: 0 auto;
+  text-align: center;
+  color: var(--vue-texte-doux);
+}
+.camera-vue[data-etat="sans-image"] .camera-flux { visibility: hidden; }
+
+/* incrustation dans Piloter et Naviguer : petite, sans texte quand tout va bien */
+.camera-vue-petite .camera-etat { left: 4px; right: 4px; bottom: 4px; font-size: 0.75rem; padding: 2px 6px; }
+
+/* ------------------------------------------------------------ écran Caméra (js/ecrans/camera.js) */
+/* dans la coque, la page défile (.ecran-page) ; ouvert seul (sans la coque), c'est sa colonne */
+.ecran-camera .ecran-seul-vue { overflow-y: auto; overscroll-behavior: contain; padding: 12px 16px; }
+.cam-page { padding-bottom: 12px; }
+.cam-direct { display: flex; flex-direction: column; gap: 8px; }
+.cam-direct-tete { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.cam-direct-tete .panneau-titre { margin: 0; }
+.cam-sources { display: flex; gap: 6px; flex-wrap: wrap; }
+.cam-source.actif { background: var(--accent); color: var(--sur-accent); border-color: var(--accent); }
+.cam-direct-vue {
+  position: relative;
+  width: 100%;
+  max-width: 960px;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--rayon-petit);
+  overflow: hidden;
+  background: var(--vue-fond);
+}
+.cam-liste { min-width: 0; }
+
+/* vues de dessus et de côté (SVG) : couleurs du thème (equipe.css garde les anciennes en repli) */
+.cam-svg { background: var(--surface-2); border-color: var(--bord); }
+.cam-grille { stroke: var(--bord); }
+.cam-sol { stroke: var(--texte-doux); }
+.cam-champ { fill: var(--accent); stroke: var(--accent-actif); }
+.cam-axe { stroke: var(--accent-actif); }
+.cam-robot { fill: var(--repere-robot); stroke: var(--repere-robot); }
+.cam-robot-cap { stroke: var(--repere-robot); }
+.cam-camera { fill: var(--accent-actif); stroke: var(--surface); }
+.cam-visiteur { fill: var(--succes); stroke: var(--surface); }
+.cam-lidar { fill: var(--texte-doux); stroke: var(--surface); }
+.cam-texte { fill: var(--texte-doux); }
+.cam-texte-petit { fill: var(--texte); }

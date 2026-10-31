@@ -124,7 +124,7 @@ def test_essayer_refus(client):
     _erreur(client.post("/api/lieux/demo/dialogues/essayer", json={"texte": "x" * 501}), 400)
     e = _erreur(client.post("/api/lieux/demo/dialogues/essayer", json={"texte": "bonjour", "dialogues": {"version": 1}}),
                 422)
-    assert "onglet" in e["detail"] and e["erreurs"]
+    assert "Dialogues" in e["detail"] and e["erreurs"]
     assert "texte" in _erreur(client.post("/api/lieux/demo/dialogues/essayer", json={}), 422)["detail"]
 
 
@@ -175,11 +175,25 @@ def test_cameras_de_l_ordinateur(client, tmp_path, monkeypatch):
         if nom:
             (sys_video / f"video{n}" / "name").write_text(nom + "\n")
     (sys_video / "v4l-subdev0").mkdir()
+    # vague 5 : débit du lien USB (device/../speed) et nom stable (/dev/v4l/by-id)
+    usb = tmp_path / "usb" / "2-1"
+    (usb / "2-1:1.0").mkdir(parents=True)
+    (usb / "speed").write_text("5000\n")
+    (sys_video / "video10" / "device").symlink_to(usb / "2-1:1.0")
+    by_id = tmp_path / "by-id"
+    by_id.mkdir()
+    (by_id / "usb-e-con_Systems_See3CAM_11CUG_1A15C950-video-index0").symlink_to(tmp_path / "dev" / "video10")
+    (by_id / "usb-Sonix_Webcam-video-index0").symlink_to(tmp_path / "dev" / "video2")
     monkeypatch.setattr(equipe, "DOSSIER_VIDEO", sys_video)
+    monkeypatch.setattr(equipe, "DOSSIER_BY_ID", by_id)
     assert client.get("/api/equipe/cameras").json() == [
-        {"peripherique": "/dev/video2", "nom": "Webcam"}, {"peripherique": "/dev/video3", "nom": ""},
-        {"peripherique": "/dev/video10", "nom": "See3CAM_11CUG"}]
+        {"peripherique": "/dev/video2", "nom": "Webcam", "by_id": str(by_id / "usb-Sonix_Webcam-video-index0"),
+         "usb_mbps": None},
+        {"peripherique": "/dev/video3", "nom": "", "by_id": None, "usb_mbps": None},
+        {"peripherique": "/dev/video10", "nom": "See3CAM_11CUG",
+         "by_id": str(by_id / "usb-e-con_Systems_See3CAM_11CUG_1A15C950-video-index0"), "usb_mbps": 5000}]
     monkeypatch.setattr(equipe, "DOSSIER_VIDEO", tmp_path / "rien")
+    monkeypatch.setattr(equipe, "DOSSIER_BY_ID", tmp_path / "rien")
     assert client.get("/api/equipe/cameras").json() == []
 
 

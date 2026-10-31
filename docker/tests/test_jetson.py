@@ -43,9 +43,13 @@ def faux(tmp_path):
     (lieux / 'essai' / 'scans' / 'session').mkdir(parents=True)
     journal = tmp_path / 'appels.txt'
     env = {k: v for k, v in os.environ.items()
-           if k not in ('G1_SIMU', 'G1_INTERFACES', 'G1_CYCLONEDDS_URI', 'G1_JETSON', 'G1_JETSON_NOM')}
+           if k not in ('G1_SIMU', 'G1_INTERFACES', 'G1_CYCLONEDDS_URI', 'G1_JETSON', 'G1_JETSON_NOM',
+                        'G1_CAMERA', 'G1_CAMERA_SYS', 'G1_VITESSE_MAX')}
+    # vague 5 : jamais la vraie caméra du PC dans ces tests (dossier by-id vide par défaut)
+    (tmp_path / 'by-id-vide').mkdir()
     env.update(PATH=f'{bin_}:/usr/bin:/bin', JOURNAL_APPELS=str(journal), ATELIER_LIEUX=str(lieux),
-               ROS_DOMAIN_ID='61', G1_SLAM_FAUX='1', G1_PILOTAGE_JETON_FICHIER=str(tmp_path / 'jeton_pilotage'))
+               ROS_DOMAIN_ID='61', G1_SLAM_FAUX='1', G1_PILOTAGE_JETON_FICHIER=str(tmp_path / 'jeton_pilotage'),
+               G1_CAMERA_BY_ID=str(tmp_path / 'by-id-vide'))
     for cle in ('G1_PILOTAGE', 'G1_PILOTAGE_PORT', 'G1_PILOTAGE_JETON'):
         env.pop(cle, None)
 
@@ -102,6 +106,17 @@ def test_docker_run_du_contrat(monkeypatch):
     avec_runc = jetson.arguments_run('g1-jetson', 'g1-jetson:arm64', '1000:1000', 'l:/lieux:ro', 'j:/journaux',
                                      env, runtime='runc')
     assert avec_runc[avec_runc.index('--runtime') + 1] == 'runc'
+    # vague 5 : la caméra, juste après --memory (le début de la commande ne change pas)
+    options, env_camera = jetson.options_camera({'by_id': '/dev/v4l/by-id/x', 'chemin': '/dev/video2', 'gid': 44,
+                                                 'usb_mbps': 5000})
+    assert options == ['--device', '/dev/video2:/dev/g1_camera', '--group-add', '44']
+    assert env_camera == [('G1_CAMERA', '/dev/g1_camera')]
+    texte = jetson.texte_commande(jetson.arguments_run('g1-jetson', 'g1-jetson:arm64', jetson.Brut('"$(id -u):$(id -g)"'),
+                                                       'l:/lieux:ro', 'j:/journaux', env + env_camera, None, options))
+    assert texte.startswith('docker run -d --name g1-jetson --network host --init --restart no --stop-timeout 20 '
+                            '--user "$(id -u):$(id -g)" --cpus 4 --memory 4g --device /dev/video2:/dev/g1_camera '
+                            '--group-add 44 --log-opt')
+    assert '-e G1_CAMERA=/dev/g1_camera -v l:/lieux:ro' in texte
     with pytest.raises(jetson.Erreur, match='G1_JETSON_RUNTIME'):
         jetson.arguments_run('n', 'i', 'u', 'l', 'j', env, runtime='runc; rm -rf /')
 
@@ -151,12 +166,28 @@ def test_vitesse_reduite(monkeypatch):
     assert dict(jetson.environnement_conteneur(Args, local=False, ident='essai'))['G1_VITESSE_MAX'] == '0.2'
     Args.vitesse_max = None
     assert 'G1_VITESSE_MAX' not in dict(jetson.environnement_conteneur(Args, local=False, ident='essai'))
-    monkeypatch.setenv('G1_VITESSE_MAX', '0.15')
-    assert dict(jetson.environnement_conteneur(Args, local=True, ident='essai'))['G1_VITESSE_MAX'] == '0.15'
+    monkeypatch.setenv('G1_VITESSE_MAX', '0.25')
+    assert dict(jetson.environnement_conteneur(Args, local=True, ident='essai'))['G1_VITESSE_MAX'] == '0.25'
     for faux in ('0', '0.5', '-0.1', 'vite', 'nan'):
         Args.vitesse_max = faux
         with pytest.raises(jetson.Erreur, match='vitesse maximale'):
             jetson.environnement_conteneur(Args, local=False, ident='essai')
+    # vague 5 : le robot ne fait aucun pas sous 0,2 m/s (mesuré le 27/10)
+    for lente in ('0.15', '0,1', '0.19'):
+        Args.vitesse_max = lente
+        with pytest.raises(jetson.Erreur, match='le robot ne marche pas sous 0,2 m/s'):
+            jetson.environnement_conteneur(Args, local=False, ident='essai')
+    assert jetson.lire_vitesse_max('0.2') == '0.2' and jetson.lire_vitesse_max('0,4') == '0.4'
+
+
+def test_copies_du_contrat():
+    """Les valeurs copiées dans g1-jetson (Python du système, sans l'Atelier) sont celles du contrat."""
+    from atelier.lieu import equipe, robot
+    assert jetson.VITESSE_MAX_MIN == robot.VITESSE_MAX_MIN
+    assert jetson.MESSAGE_VITESSE_MAX_BASSE == robot.MESSAGE_VITESSE_MAX_BASSE
+    assert jetson.CAMERA_CONTENEUR == equipe.CAMERA_CONTENEUR
+    demarrer = (DOSSIER / 'demarrer.sh').read_text(encoding='utf-8')
+    assert robot.MESSAGE_VITESSE_MAX_BASSE in demarrer and f'VITESSE_MAX_MIN={robot.VITESSE_MAX_MIN:g}' in demarrer
 
 
 def test_envoi_et_lieu():
@@ -260,9 +291,15 @@ def test_etat_de_presence():
                                   1012.34, arch='aarch64')
     assert etat == {'version': 'd c', 'image': 'g1-jetson:arm64', 'arch': 'aarch64', 'domaine': 0,
                     'interfaces': ['eth0', 'wlan0'], 'lancement': 'navigation', 'lieu': 'demo',
-                    'etage': 'rdc', 'depuis_s': 12.3}
+                    'etage': 'rdc', 'depuis_s': 12.3, 'camera': None}
     veille = presence.etat_presence({'G1_LANCEMENT': 'veille', 'G1_LIEU': 'demo'}, {}, 5.0)
     assert veille['lieu'] is None and veille['interfaces'] == [] and veille['version'] == 'inconnue'
+    # vague 5 : la caméra du conteneur, si elle y est
+    assert presence.camera_presente({'G1_CAMERA': '/dev/g1_camera'}, existe=lambda c: True) == '/dev/g1_camera'
+    assert presence.camera_presente({'G1_CAMERA': '/dev/g1_camera'}, existe=lambda c: False) is None
+    assert presence.camera_presente({'G1_CAMERA': '0'}, existe=lambda c: True) is None
+    assert presence.camera_presente({'G1_CAMERA': '/dev/g1_camera', 'G1_LANCEMENT': 'commande'},
+                                    existe=lambda c: True) is None
 
 
 # --- La ligne de commande, avec de faux programmes -----------------------------------------
@@ -435,6 +472,115 @@ def test_construire_arm64_sans_emulation(faux, monkeypatch):
         jetson.construire(Args, jetson.Executeur(a_blanc=True))
 
 
+# --- Caméra de poitrine (vague 5, section 12.7 du plan) -------------------------------------
+
+def fausse_camera(dossier, debit='5000', nom='usb-e-con_Systems_See3CAM_11CUG_1A15C950-video-index0'):
+    """Une See3CAM factice : lien by-id → dev/video7 (fichier), débit USB dans un faux /sys."""
+    (dossier / 'dev').mkdir(exist_ok=True)
+    (dossier / 'dev' / 'video7').write_text('')
+    (dossier / 'by-id').mkdir(exist_ok=True)
+    (dossier / 'by-id' / nom).symlink_to(dossier / 'dev' / 'video7')
+    (dossier / 'usb' / '2-1' / '2-1:1.0').mkdir(parents=True, exist_ok=True)
+    (dossier / 'usb' / '2-1' / 'speed').write_text(debit + '\n')
+    (dossier / 'sys' / 'video7').mkdir(parents=True, exist_ok=True)
+    if not (dossier / 'sys' / 'video7' / 'device').exists():
+        (dossier / 'sys' / 'video7' / 'device').symlink_to(dossier / 'usb' / '2-1' / '2-1:1.0')
+    return {'G1_CAMERA_BY_ID': str(dossier / 'by-id'), 'G1_CAMERA_SYS': str(dossier / 'sys')}
+
+
+def test_cameras_du_pc(tmp_path, monkeypatch):
+    for cle, valeur in fausse_camera(tmp_path).items():
+        monkeypatch.setenv(cle, valeur)
+    (tmp_path / 'by-id' / 'usb-Sonix_Webcam-video-index0').symlink_to(tmp_path / 'dev' / 'video7')
+    (tmp_path / 'by-id' / 'usb-e-con_Systems_See3CAM_11CUG_1A15C950-video-index1').symlink_to(tmp_path / 'dev' / 'video7')
+    cameras = jetson.cameras_locales()
+    assert len(cameras) == 1
+    c = cameras[0]
+    assert c['by_id'].endswith('See3CAM_11CUG_1A15C950-video-index0') and c['chemin'] == str(tmp_path / 'dev' / 'video7')
+    assert c['gid'] == os.stat(tmp_path / 'dev' / 'video7').st_gid and c['usb_mbps'] == 5000
+    assert jetson.texte_usb(c) == ''
+    assert 'USB 2 (480 Mbit/s)' in jetson.texte_usb(dict(c, usb_mbps=480))
+    assert jetson.camera_locale(str(tmp_path / 'absente')) is None
+
+
+def test_camera_du_jetson_par_ssh():
+    """Le script du Jetson et la lecture de sa sortie."""
+    script = jetson.script_camera()
+    assert '/dev/v4l/by-id/*See3CAM*-video-index0' in script and 'stat -L -c %g' in script
+    assert "'/dev/v4l/by-id/x y'" in jetson.script_camera('/dev/v4l/by-id/x y')
+    sortie = ('camera=/dev/v4l/by-id/usb-See3CAM-video-index0|/dev/video0|44|5000\n'
+              'camera=/dev/v4l/by-id/autre-See3CAM-video-index0|/dev/video4|44|\n'
+              'camera=faux|pas-un-dev|x|1\nautre ligne\n')
+    assert jetson.lire_cameras(sortie) == [
+        {'by_id': '/dev/v4l/by-id/usb-See3CAM-video-index0', 'chemin': '/dev/video0', 'gid': 44, 'usb_mbps': 5000},
+        {'by_id': '/dev/v4l/by-id/autre-See3CAM-video-index0', 'chemin': '/dev/video4', 'gid': 44, 'usb_mbps': None}]
+
+
+def test_camera_du_lieu(tmp_path):
+    (tmp_path / 'camera.yaml').write_text('version: 1\ncamera:\n  modele: See3CAM_11CUG\n'
+                                          '  peripherique: /dev/v4l/by-id/usb-e-con_Systems_See3CAM_11CUG_X-video-index0\n')
+    assert jetson.camera_du_lieu(tmp_path) == '/dev/v4l/by-id/usb-e-con_Systems_See3CAM_11CUG_X-video-index0'
+    (tmp_path / 'camera.yaml').write_text('version: 1\ncamera:\n  peripherique: /dev/video0\n')
+    assert jetson.camera_du_lieu(tmp_path) is None              # un /dev/videoN du PC ne dit rien du Jetson
+    assert jetson.camera_du_lieu(tmp_path / 'rien') is None and jetson.camera_du_lieu(None) is None
+
+
+def test_choisir_la_camera(tmp_path, monkeypatch):
+    for cle in ('G1_CAMERA', 'G1_CAMERA_BY_ID', 'G1_CAMERA_SYS'):
+        monkeypatch.delenv(cle, raising=False)
+    locale = jetson.Cible(local=True, executeur=jetson.Executeur())
+    for cle, valeur in fausse_camera(tmp_path).items():
+        monkeypatch.setenv(cle, valeur)
+    camera, message = jetson.choisir_camera(locale)
+    assert camera['chemin'] == str(tmp_path / 'dev' / 'video7') and '→' in message
+    monkeypatch.setenv('G1_CAMERA', '0')
+    assert jetson.choisir_camera(locale) == (None, 'caméra : non (G1_CAMERA=0)')
+    monkeypatch.setenv('G1_CAMERA', '/dev/null')               # un chemin imposé (il doit être dans /dev)
+    camera, _ = jetson.choisir_camera(locale)
+    assert camera['by_id'] == '/dev/null' and camera['chemin'] == '/dev/null'
+    for faux in ('oui', str(tmp_path / 'dev' / 'video7')):
+        monkeypatch.setenv('G1_CAMERA', faux)
+        camera, message = jetson.choisir_camera(locale)
+        assert camera is None and 'ignoré' in message
+    monkeypatch.delenv('G1_CAMERA')
+    monkeypatch.setenv('G1_CAMERA_BY_ID', str(tmp_path / 'rien'))
+    camera, message = jetson.choisir_camera(locale)
+    assert camera is None and 'conteneur lancé sans caméra' in message
+    # débit USB 2 : la caméra passe quand même, avec un avertissement
+    autre = tmp_path / 'usb2'
+    autre.mkdir()
+    for cle, valeur in fausse_camera(autre, debit='480').items():
+        monkeypatch.setenv(cle, valeur)
+    camera, message = jetson.choisir_camera(locale)
+    assert camera['usb_mbps'] == 480 and 'port USB 3' in message
+    # robot, à blanc : on ne cherche pas, on montre la commande
+    executeur = jetson.Executeur(a_blanc=True)
+    robot = jetson.Cible(local=False, executeur=executeur)
+    camera, message = jetson.choisir_camera(robot)
+    assert camera is None and 'à blanc' in message and 'See3CAM' in executeur.affichees[-1]
+
+
+def test_demarrer_a_blanc_avec_et_sans_camera(faux, tmp_path):
+    camera = fausse_camera(tmp_path / 'cam') if (tmp_path / 'cam').mkdir() is None else None
+    r = faux.lancer('demarrer', '--local', '--lieu', 'essai', '--etage', 'rdc', '--dry-run', **camera)
+    assert r.returncode == 0, r.stderr
+    ligne = [x for x in r.stdout.splitlines() if 'docker run -d' in x][0]
+    gid = os.stat(tmp_path / 'cam' / 'dev' / 'video7').st_gid
+    assert f'--memory 4g --device {tmp_path / "cam" / "dev" / "video7"}:/dev/g1_camera --group-add {gid} ' in ligne
+    assert '-e G1_CAMERA=/dev/g1_camera' in ligne and 'caméra : ' in r.stdout
+    r = faux.lancer('demarrer', '--local', '--lieu', 'essai', '--etage', 'rdc', '--dry-run')
+    ligne = [x for x in r.stdout.splitlines() if 'docker run -d' in x][0]
+    assert r.returncode == 0 and '--device' not in ligne and 'G1_CAMERA' not in ligne
+    assert 'conteneur lancé sans caméra' in r.stdout
+    r = faux.lancer('demarrer', '--local', '--lieu', 'essai', '--etage', 'rdc', '--dry-run', G1_CAMERA='0', **camera)
+    assert '--device' not in [x for x in r.stdout.splitlines() if 'docker run -d' in x][0]
+    r = faux.lancer('demarrer', '--local', '--lieu', 'essai', '--etage', 'rdc', '--dry-run', G1_VITESSE_MAX='0.15')
+    assert r.returncode == 1 and 'le robot ne marche pas sous 0,2 m/s' in r.stderr
+    r = faux.lancer('demarrer', '--lieu', 'essai', '--etage', 'rdc', '--dry-run')       # robot, à blanc
+    assert r.returncode == 0 and 'la caméra du Jetson n\'est pas cherchée' in r.stdout
+    assert faux.appels_robot() == []
+
+
 # --- g1-jetson verifier : lecture du bilan du Jetson ---------------------------------------
 
 SORTIE_JETSON = """arch=aarch64
@@ -468,6 +614,18 @@ def test_bilan_de_verification():
     textes = ' | '.join(t for _, t in lignes)
     assert 'eth0 (192.168.123.164)' in textes and 'Docker 24.0.7' in textes
     assert 'image g1-jetson:arm64 : absente' in textes and '+0.20 s' in textes
+    assert ('info', 'caméra See3CAM : non branchée (le conteneur démarrera sans caméra)') in lignes
+    # vague 5 : la See3CAM en USB 3 (OK), en USB 2 (PROBLÈME)
+    avec = SORTIE_JETSON.replace('---ip', 'camera=/dev/v4l/by-id/usb-See3CAM-video-index0|/dev/video0|44|5000\n---ip')
+    champs, ip = jetson.lire_verification(avec)
+    assert champs['cameras'][0]['chemin'] == '/dev/video0' and 'camera' not in champs
+    lignes = jetson.bilan_verification(champs, ip, 1000.0)
+    assert [t for n, t in lignes if n == 'probleme'] == []
+    assert any(n == 'ok' and 'See3CAM' in t and '5000' in t for n, t in lignes)
+    champs, ip = jetson.lire_verification(avec.replace('|5000', '|480'))
+    problemes = [t for n, t in jetson.bilan_verification(champs, ip, 1000.0) if n == 'probleme']
+    assert len(problemes) == 1 and 'USB 2' in problemes[0] and 'USB 3' in problemes[0]
+    assert 'See3CAM*-video-index0' in jetson.SCRIPT_VERIFIER
     # Jetson plein, sans réseau du robot, Docker réservé à root, mauvaise architecture
     mauvais = (SORTIE_JETSON.replace('arch=aarch64', 'arch=x86_64').replace('docker_ok=oui', 'docker_ok=non')
                .replace('place_ko=52428800', 'place_ko=1048576').replace('192.168.123.164', '10.0.0.2'))

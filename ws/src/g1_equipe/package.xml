@@ -3,14 +3,20 @@
 <package format="3">
   <name>g1_equipe</name>
   <version>0.1.0</version>
-  <description>Emplacements de l'équipe : chatbot à règles d'exemple (dialogues.yaml), relais des événements du guide vers /robot/dire, personnalité active, fausse caméra et voix du journal (Atelier G1, section 11.6 du plan)</description>
+  <description>Emplacements de l'équipe : chatbot à règles d'exemple (dialogues.yaml), relais des événements du guide vers /robot/dire, personnalité active, fausse caméra et voix du journal (Atelier G1, section 11.6 du plan) ; caméra de poitrine See3CAM (nœud camera_usb, vague 5, section 12.7)</description>
   <maintainer email="joonhk913@gmail.com">joonho</maintainer>
   <license>TODO: License declaration</license>
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>
   <depend>nav_msgs</depend>
+  <!-- vague 5 (section 12.7 du plan) : caméra de poitrine (camera_usb) -->
+  <depend>sensor_msgs</depend>
+  <depend>rcl_interfaces</depend>
   <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-pil</exec_depend>
+  <exec_depend>v4l-utils</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

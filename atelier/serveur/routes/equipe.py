@@ -24,7 +24,9 @@ Informations et sujets ROS 2 :
   GET  /api/equipe/etat                        dernière personnalité annoncée, dernières phrases de
                                                /robot/dire, derniers visiteurs (caméra) et personnes
                                                (LiDAR) reçus par le pont ROS 2 du serveur
-  GET  /api/equipe/cameras                     caméras vidéo branchées sur cet ordinateur (/dev/video*)
+  GET  /api/equipe/cameras                     caméras vidéo branchées sur cet ordinateur (/dev/video*) ;
+                                               vague 5 : leur nom stable (/dev/v4l/by-id/…) et le débit
+                                               de leur lien USB (5000 : USB 3)
   POST /api/equipe/visiteur                    {texte} : publie la phrase sur /visiteur/texte, comme la
                                                reconnaissance vocale ; le nœud dialogue la traite (et peut
                                                faire partir le robot : l'onglet demande confirmation)
@@ -32,6 +34,7 @@ Informations et sujets ROS 2 :
 Aucune de ces routes ne fait bouger le robot elle-même : seule une phrase envoyée au nœud dialogue
 peut finir en /guide/aller, et c'est alors le guide qui décide et conduit.
 """
+import os
 import re
 from pathlib import Path
 from typing import Any, Optional
@@ -52,6 +55,7 @@ routeur = APIRouter(tags=["équipe"])
 NOMS = {"personnalites": "les personnalités", "dialogues": "les dialogues", "camera": "la caméra"}
 ONGLETS = {"personnalites": "Personnalités", "dialogues": "Dialogues", "camera": "Caméra"}
 DOSSIER_VIDEO = Path("/sys/class/video4linux")      # remplaçable par les tests
+DOSSIER_BY_ID = Path("/dev/v4l/by-id")              # noms stables des caméras (vague 5), idem
 PHRASES_GARDEES = 20
 
 
@@ -78,7 +82,7 @@ def _lire(dossier, quoi):
         return E.charger_equipe(dossier, quoi)
     except ErreurLieu as e:
         raise ErreurAtelier(422, f"Le fichier {E.FICHIERS_EQUIPE[quoi]} est invalide : corrigez les points "
-                                 "ci-dessous (ou réécrivez-le depuis l'onglet " + ONGLETS[quoi] + ").",
+                                 "ci-dessous (ou réécrivez-le depuis Équipe › " + ONGLETS[quoi] + ").",
                             e.erreurs) from None
 
 
@@ -98,7 +102,7 @@ def _lire_fichier(quoi):
         donnees = _lire(dossier, quoi)
         if donnees is None:
             raise ErreurAtelier(404, f"Le lieu « {id_lieu} » n'a pas encore de fichier {E.FICHIERS_EQUIPE[quoi]} "
-                                     f"(facultatif) : dans l'onglet {ONGLETS[quoi]}, partez de l'exemple puis "
+                                     f"(facultatif) : dans Équipe › {ONGLETS[quoi]}, partez de l'exemple puis "
                                      "enregistrez.")
         return donnees
     lire.__name__ = f"lire_{quoi}"
@@ -163,7 +167,7 @@ def essayer(id_lieu: str, essai: Essai):
     else:
         erreurs = E.valider_equipe("dialogues", dialogues)
         if erreurs:
-            raise ErreurAtelier(422, "Les règles de l'onglet ont des erreurs : corrigez-les avant d'essayer.", erreurs)
+            raise ErreurAtelier(422, "Les règles de l'écran Dialogues ont des erreurs : corrigez-les avant d'essayer.", erreurs)
     try:
         salles = charger_salles(dossier)
     except ErreurLieu as e:
@@ -238,10 +242,34 @@ def etat_equipe(request: Request):
             "personnes": pont.dernier("/personnes/lidar") if actif else None}
 
 
+def _noms_stables():
+    """{videoN: chemin /dev/v4l/by-id/…} des caméras qui ont un nom stable (numéro de série)."""
+    noms = {}
+    try:
+        liens = sorted(DOSSIER_BY_ID.iterdir()) if DOSSIER_BY_ID.is_dir() else []
+    except OSError:
+        liens = []
+    for lien in liens:
+        cible = Path(os.path.realpath(lien)).name
+        if re.fullmatch(r"video\d+", cible):
+            noms.setdefault(cible, str(lien))
+    return noms
+
+
+def _debit_usb(dossier):
+    """Débit du lien USB (Mbit/s : 480 en USB 2, 5000 en USB 3) d'une caméra de /sys, ou None."""
+    try:
+        return int(float((dossier / "device" / ".." / "speed").read_text(encoding="utf-8").strip()))
+    except (OSError, ValueError):
+        return None
+
+
 @routeur.get("/api/equipe/cameras")
 def cameras():
-    """Caméras vidéo de cet ordinateur : [{peripherique, nom}] (lecture de /sys, rien n'est ouvert)."""
+    """Caméras vidéo de cet ordinateur : [{peripherique, nom, by_id, usb_mbps}] (lecture de /sys et
+    /dev/v4l/by-id, rien n'est ouvert). by_id : le nom stable (vague 5), ou null."""
     trouvees = []
+    stables = _noms_stables()
     if DOSSIER_VIDEO.is_dir():
         for d in DOSSIER_VIDEO.iterdir():
             m = re.fullmatch(r"video(\d+)", d.name)
@@ -251,7 +279,8 @@ def cameras():
                 nom = (d / "name").read_text(encoding="utf-8", errors="replace").strip()
             except OSError:
                 nom = ""
-            trouvees.append((int(m.group(1)), {"peripherique": f"/dev/{d.name}", "nom": nom}))
+            trouvees.append((int(m.group(1)), {"peripherique": f"/dev/{d.name}", "nom": nom,
+                                               "by_id": stables.get(d.name), "usb_mbps": _debit_usb(d)}))
     return [c for _, c in sorted(trouvees, key=lambda x: x[0])]
 
 

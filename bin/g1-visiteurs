@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Les visiteurs vus par la caméra de poitrine (See3CAM) : YOLO pose et ByteTrack sur le PC, publiés
+# sur /visiteurs/detectes (section 12.7 du plan) :
+#   g1-visiteurs [--lieu L] [--source robot|N|/dev/…|video.mp4|image.jpg] [--image] [--fenetre]
+#                [--modele yolo11n-pose.pt] [--frequence 10] [--confiance 0.5] [--une-fois]
+#   robot (défaut) : l'image du robot, /camera_poitrine/image/compressed ; --image : publie aussi
+#   l'image avec les cadres (/visiteurs/image/compressed), que l'Atelier montre.
+# Python du projet (.venv-projet) avec ROS 2 chargé. Pas de set -u : les scripts de ROS 2 ne le supportent pas.
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+source "$HOME/robot-g1/setup/env.sh"
+PY="$RACINE/.venv-projet/bin/python"
+[ -x "$PY" ] || PY="$HOME/robot-g1/.venv-projet/bin/python"
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PY" "$RACINE/outils/visiteurs.py" "$@"

@@ -3,7 +3,8 @@
 
   presence.py
       nœud g1_jetson : publie /g1_jetson/etat (std_msgs/String, JSON) à 1 Hz :
-      {version, image, arch, domaine, interfaces, lancement, lieu, etage, depuis_s}
+      {version, image, arch, domaine, interfaces, lancement, lieu, etage, depuis_s, camera}
+      (camera, vague 5 : le périphérique de la caméra de poitrine dans le conteneur, ou null)
       et recopie le dernier état dans /tmp/g1_jetson_etat.json.
   presence.py --lire [--delai 5]
       attend un /g1_jetson/etat et l'affiche (JSON) ; code 1 si rien n'arrive
@@ -70,7 +71,17 @@ def etat_presence(environ, champs_version, maintenant, arch=None):
         'lieu': (environ.get('G1_LIEU') or None) if navigation else None,
         'etage': (environ.get('G1_ETAGE') or None) if navigation else None,
         'depuis_s': round(depuis, 1),
+        'camera': camera_presente(environ),
     }
+
+
+def camera_presente(environ, existe=os.path.exists):
+    """Vague 5 : le périphérique de la caméra (G1_CAMERA, /dev/g1_camera) s'il est dans le conteneur,
+    sinon None (pas de caméra, G1_CAMERA=0, ou caméra débranchée avant le démarrage)."""
+    chemin = (environ.get('G1_CAMERA') or '').strip()
+    if not chemin or chemin == '0' or environ.get('G1_LANCEMENT') == 'commande':
+        return None
+    return chemin if existe(chemin) else None
 
 
 def _noeud(nom):

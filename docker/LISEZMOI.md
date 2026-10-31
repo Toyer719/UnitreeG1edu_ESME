@@ -1,9 +1,10 @@
 # docker/ : le conteneur g1-jetson
 
 Conteneur ROS 2 Humble du Jetson du G1 (section 10.2 du plan) : Nav2, guide, relais
-`odom_vers_tf` et pont `pont_g1` ; vague 4 (section 11.5) : le nœud `pilotage` de l'onglet
-Pilotage (`G1_PILOTAGE=1`, défaut avec le robot). Guide pas à pas pour le jour du robot :
-`docs/jetson.md`.
+`odom_vers_tf` et pont `pont_g1` ; vague 4 (section 11.5) : le nœud `pilotage` de Réel › Piloter
+(`G1_PILOTAGE=1`, défaut avec le robot) ; vague 5 (section 12.7) : la caméra de
+poitrine See3CAM (nœud `camera_usb`, seulement si elle est branchée). Guide pas à pas pour le
+jour du robot : `docs/jetson.md`.
 
 | Fichier | Rôle |
 |---|---|
@@ -17,7 +18,9 @@ Pilotage (`G1_PILOTAGE=1`, défaut avec le robot). Guide pas à pas pour le jour
 | `tests/` | `test_reseau.py` (fausses sorties de `ip -o -4 addr`), `test_jetson.py` (commandes produites, refus, à blanc, faux docker/ssh), `test_image.py` (l'image amd64 en `--network none`, sautés sans elle) |
 
 ```bash
-.venv-projet/bin/python -m pytest docker/tests -q     # 52 tests, 25 s (l'image amd64 doit exister)
+.venv-projet/bin/python -m pytest docker/tests -q     # 71 tests, 30 s (l'image amd64 doit exister)
+G1_TEST_CAMERA=/dev/v4l/by-id/usb-e-con_Systems_See3CAM_11CUG_1A15C950-video-index0 \
+  .venv-projet/bin/python -m pytest docker/tests/test_image.py -k camera    # la vraie See3CAM dans le conteneur
 tests_e2e/tout.sh 16                                  # critère 16 : 15 s si l'image est à jour
 E2E_NIVEAU2=1 tests_e2e/tout.sh 16                    # plus le niveau 2 en répétition, navigation dans le conteneur (+70 s)
 E2E_ARM64=1 tests_e2e/tout.sh 16                      # plus l'image arm64, navigation comprise, par émulation (+80 s)
@@ -107,3 +110,41 @@ arm64 de Docker 29 se charge (même empreinte), l'image tourne, et la commande `
 exacte du robot démarre la navigation avec `G1_INTERFACES=auto`, sur une interface factice en
 192.168.123.164 et l'utilisateur 1000. `docker stop` l'arrête en 4,4 s, et le pont envoie son
 arrêt.
+
+## La caméra de poitrine (vague 5)
+
+- **Image** : couche **2d**, après la 2c (le cache des couches 1 et 2 est gardé) : `python3-pil` et
+  `v4l-utils` (couche de 9 Mo, mesurée sur l'image amd64 ; numpy est déjà là ; pas d'OpenCV, 580 Mo). `construire` vérifie dans
+  l'image `import PIL, numpy`, `v4l2-ctl` et l'exécutable `camera_usb` de `g1_equipe`.
+- **Lancement** (`jetson.py`) : `choisir_camera` cherche la See3CAM (le `peripherique`
+  `/dev/v4l/by-id/…` de `camera.yaml` du lieu, sinon `/dev/v4l/by-id/*See3CAM*-video-index0`) :
+  par `ssh` sur le Jetson (`script_camera`), en Python avec `--local`. Trouvée : `--device <chemin
+  résolu, /dev/videoN>:/dev/g1_camera --group-add <groupe du périphérique>` juste après
+  `--memory 4g`, et `-e G1_CAMERA=/dev/g1_camera`. On passe le chemin résolu : le nom by-id ne
+  sert qu'à la retrouver. Absente : rien de tout cela, un message, et jamais d'échec. Lien USB
+  sous 5000 Mbit/s : un avertissement. `G1_CAMERA=0` : pas de caméra ; `G1_CAMERA=/dev/…` : celle-là.
+  À blanc sur le robot, la caméra n'est pas cherchée (la commande de recherche est montrée).
+  Les tests remplacent `/dev/v4l/by-id` et `/sys/class/video4linux` par `G1_CAMERA_BY_ID` et
+  `G1_CAMERA_SYS`.
+- **Dans le conteneur** (`demarrer.sh`) : avec `G1_CAMERA` (sauf `G1_LANCEMENT=commande`), lance
+  l'exécutable `camera_usb` (`-p peripherique:=/dev/g1_camera`, et `-p lieu:=/lieux/<id>` en
+  navigation : `camera.yaml`) ; à l'arrêt, il s'arrête après le pilotage (SIGINT, 3 s : v4l2-ctl
+  arrêté). La ligne de démarrage dit « caméra /dev/g1_camera », « caméra non » ou « caméra absente
+  (… introuvable) ». `presence.py` publie `camera` dans `/g1_jetson/etat`.
+- **Vitesse des premiers essais** : `G1_VITESSE_MAX` et `--vitesse-max` refusés sous 0,2 m/s (« le
+  robot ne marche pas sous 0,2 m/s », mesuré le 27/10 ; `VITESSE_MAX_MIN` et
+  `MESSAGE_VITESSE_MAX_BASSE` de `atelier.lieu.robot`, copiés dans `jetson.py` et `demarrer.sh`,
+  comparés par `test_jetson.py`) et au-dessus de 0,4 (plafond du pont), en navigation comme en veille.
+- **`verifier`** : une ligne par See3CAM du Jetson (`OK` en USB 3, `PROBLÈME` en USB 2, `info` sans caméra).
+- **Essayé le 31/10 sur le PC** (sans reconstruire l'image complète) : une image d'essai faite de
+  `g1-jetson:amd64` plus la couche 2d et les fichiers à jour (23 s de construction, +2,7 Mo) ; la
+  commande `docker run` exacte de `g1-jetson demarrer --local --veille` avec la vraie See3CAM du PC :
+  l'utilisateur 1000 lit `/dev/g1_camera` grâce à `--group-add 44`, `camera_usb` publie 10 images
+  par seconde vues hors du conteneur, débit USB lu dans le conteneur (5000), `docker stop` en 0,6 s,
+  code 0, plus de `v4l2-ctl`. Refait l'après-midi du 31/10 avec la webcam du portable (la See3CAM
+  était débranchée) : `g1-jetson:amd64` reconstruite par le critère 16 (1,1 min grâce au cache),
+  `g1-jetson demarrer --local --veille` avec `G1_CAMERA=/dev/v4l/by-id/…webcam…-video-index0` :
+  `--device /dev/video0:/dev/g1_camera --group-add 44` après `--memory 4g`, l'avertissement USB 2,
+  « caméra /dev/g1_camera » au démarrage, 10 images par seconde de 640 × 360 lues sur l'hôte et
+  servies par l'Atelier, `g1-jetson etat` la montre, arrêt propre ; et `docker/tests` avec
+  `G1_TEST_CAMERA=… G1_TEST_CAMERA_IPS=8` (la webcam fait 10 images par seconde en 1280 × 720).
