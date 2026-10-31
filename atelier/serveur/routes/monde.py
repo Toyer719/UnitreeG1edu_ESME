@@ -2,7 +2,9 @@
 
   GET  /api/lieux/{id}/etages/{e}/monde            mondes/<e>.monde.yaml, en JSON
   PUT  /api/lieux/{id}/etages/{e}/monde            l'enregistre (validé par atelier.lieu)
-  POST /api/lieux/{id}/etages/{e}/monde/generer    g1-monde generer : .sdf, carte, masque
+  POST /api/lieux/{id}/etages/{e}/monde/generer    g1-monde generer : .sdf, carte, masque ; étage scanné
+                                                   (vague 5) : la carte extrudée, mondes/<e>_carte.stl
+  (le maillage lui-même : GET …/monde/maillage, dans routes/nuage.py)
   GET  /api/lieux/{id}/etages/{e}/carte.png        la carte .pgm convertie en PNG
   GET  /api/lieux/{id}/etages/{e}/carte.yaml       le .yaml de la carte, en JSON, avec la taille
                                                    de l'image et ses bornes en mètres (Leaflet)
@@ -13,9 +15,9 @@ from fastapi import APIRouter, Body
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import Response
 
-from atelier.lieu import (ErreurLieu, Monde, bornes_carte, charger_carte, charger_info_carte, charger_monde,
-                          chemin_carte, chemin_interdit, chemin_monde, chemin_sdf, enregistrer_monde,
-                          valider_donnees)
+from atelier.lieu import (ErreurLieu, Monde, bornes_carte, charger_carte, charger_fiche, charger_info_carte,
+                          charger_monde, chemin_carte, chemin_interdit, chemin_maillage, chemin_monde, chemin_sdf,
+                          enregistrer_monde, valider_donnees)
 
 from ..communs import (ErreurAtelier, dossier_du_lieu, erreur_validation, etage_du_lieu, png_gris,
                        rapport_du_lieu)
@@ -37,7 +39,7 @@ def lire_monde(id_lieu: str, etage: str):
     etage_du_lieu(dossier, etage)
     if not chemin_monde(dossier, etage).is_file():
         raise ErreurAtelier(404, f"L'étage « {etage} » n'a pas encore de monde inventé : dessinez-le "
-                                 "dans l'onglet Monde, puis enregistrez.")
+                                 "(Simulation › Dessiner), puis enregistrez.")
     try:
         return charger_monde(dossier, etage).vers_dict()
     except ErreurLieu as e:
@@ -61,17 +63,31 @@ def ecrire_monde(id_lieu: str, etage: str, donnees: Any = Body(...)):
 
 
 def _fichiers_generes(dossier, etage):
-    return {"sdf": chemin_sdf(dossier, etage).is_file(), "carte": chemin_carte(dossier, etage).is_file(),
-            "interdit": chemin_interdit(dossier, etage).is_file()}
+    """Fichiers écrits par generer. Un étage scanné (vague 5) a en plus « maillage » (mondes/<e>_carte.stl) ;
+    pour un monde dessiné, la réponse reste celle d'avant (sdf, carte, interdit)."""
+    fichiers = {"sdf": chemin_sdf(dossier, etage).is_file(), "carte": chemin_carte(dossier, etage).is_file(),
+                "interdit": chemin_interdit(dossier, etage).is_file()}
+    if _etage_scanne(dossier, etage):
+        fichiers["maillage"] = chemin_maillage(dossier, etage).is_file()
+    return fichiers
+
+
+def _etage_scanne(dossier, etage):
+    """Vrai si l'étage utilise la carte d'un scan et l'a déjà (generer en tire alors le monde, vague 5)."""
+    try:
+        e = charger_fiche(dossier).etage(etage)
+    except ErreurLieu:
+        return False
+    return e is not None and e.source_carte == "scan" and chemin_carte(dossier, etage).is_file()
 
 
 @routeur.post("/monde/generer")
 async def generer(id_lieu: str, etage: str):
     dossier = dossier_du_lieu(id_lieu)
     etage_du_lieu(dossier, etage)
-    if not chemin_monde(dossier, etage).is_file():
-        raise ErreurAtelier(409, "Il n'y a pas encore de monde pour cet étage : dessinez-le dans l'onglet "
-                                 "Monde et enregistrez-le, puis fabriquez la carte.")
+    if not chemin_monde(dossier, etage).is_file() and not _etage_scanne(dossier, etage):
+        raise ErreurAtelier(409, "Il n'y a pas encore de monde pour cet étage : dessinez-le (Simulation › "
+                                 "Dessiner), puis enregistrez : la carte se fait seule.")
     try:
         resultat = await run_in_threadpool(
             lancer_et_attendre, "g1-monde", ["generer", "--lieu", dossier, "--etage", etage], DELAI_GENERATION)
@@ -89,8 +105,8 @@ async def generer(id_lieu: str, etage: str):
 
 
 def _pas_de_carte(etage):
-    return ErreurAtelier(404, f"L'étage « {etage} » n'a pas encore de carte : dans l'onglet Carte, "
-                              "cliquez sur « Fabriquer la carte ».")
+    return ErreurAtelier(404, f"L'étage « {etage} » n'a pas encore de carte : dessinez le monde (Simulation › "
+                              "Dessiner) puis enregistrez, ou scannez l'étage (Réel › Scanner).")
 
 
 @routeur.get("/carte.png")

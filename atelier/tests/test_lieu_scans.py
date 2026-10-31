@@ -1,5 +1,5 @@
-"""Tests des sessions de scan intégré (atelier.lieu.scans, section 9 du plan) : session.json,
-reconnaissance.yaml, monde tiré du scan, état du scan et exemples pour les autres agents.
+"""Tests des sessions de scan intégré (atelier.lieu.scans, sections 9 et 12.5 du plan) : session.json,
+état du scan, fichiers présents, rangement des résultats d'avant (--refaire) et exemples pour les tests.
 
   ~/robot-g1/.venv-projet/bin/python -m pytest ~/robot-g1/atelier/tests/test_lieu_scans.py -v
 
@@ -130,7 +130,7 @@ def test_maj_session(demo):
     s = L.maj_session(demo, s["id"], etat="traitement", etape="carte_3d", fin=L.scans.instant())
     assert s["progression"] == 10                            # début de l'étape carte_3d
     s = L.maj_session(demo, s["id"], etape="carte_2d", progression=L.progression_etape("carte_2d", 0.5))
-    assert s["progression"] == 58
+    assert s["progression"] == 78                            # carte_2d : de 70 à 85 (vague 5)
 
 
 def _incrementer(dossier, session):
@@ -159,9 +159,10 @@ def test_verrou_entre_processus(demo):
 
 
 def test_progression_etape():
-    assert [L.progression_etape(e) for e in L.ETAPES] == [0, 0, 5, 10, 50, 65, 90, 100]
-    assert L.progression_etape("carte_3d", 1.0) == 50 and L.progression_etape("reconnaissance", 0.5) == 78
-    assert L.progression_etape("monde", 2.0) == 99
+    assert [L.progression_etape(e) for e in L.ETAPES] == [0, 0, 5, 10, 70, 85, 100]
+    assert L.progression_etape("carte_3d", 1.0) == 70 and L.progression_etape("carte_2d", 0.5) == 78
+    assert L.progression_etape("nuage", 2.0) == 99
+    assert L.progression_etape("reconnaissance") == 85          # étape d'une session d'avant la vague 5
     with pytest.raises(ValueError):
         L.progression_etape("lavage")
 
@@ -221,8 +222,8 @@ def test_etat_choisit_la_session_active(demo):
     assert e["actif"] and e["sessions"] == 3 and e["session"]["id"] == active["id"]
     s = e["session"]
     assert s["vivant"] is True and s["interrompue"] is False and s["dossier"] == active["dossier"]
-    assert s["fichiers"] == {"enregistrement": False, "apercu_png": True, "apercu_json": True, "nuage": False,
-                             "carte": False, "reconnaissance": False, "monde": False, "rapport": False}
+    assert s["fichiers"] == {"enregistrement": False, "apercu_png": True, "apercu_json": True, "apercu_nuage": True,
+                             "nuage": False, "carte": False, "nuage_affichage": False, "rapport": False}
     e = L.etat_scan(demo, vieille["id"])
     assert not e["actif"] and all(v for k, v in e["session"]["fichiers"].items() if k != "enregistrement")
     json.dumps(e)
@@ -251,163 +252,27 @@ def test_sessions_illisibles(demo):
     assert len(toutes) == 2
 
 
-# ---------------------------------------------------------------- reconnaissance.yaml et monde tiré du scan
+# ---------------------------------------------------------------- g1-scan traiter --refaire : rien n'est effacé
 
-def _reconnaissance():
-    r = L.nouvelle_reconnaissance("rdc", (0, 0, 10, 6), (1.0, 1.0, 0.0), session="2026-10-25_17h42", sol=0.02)
-    r["murs"] = [
-        {"id": "mur_1", "categorie": "mur", "de": [0.0, 3.0], "a": [4.0, 3.0], "epaisseur": 0.15, "hauteur": 2.5,
-         "confiance": 0.9, "a_garder": True},
-        {"id": "mur_2", "categorie": "mur", "de": [5.0, 3.0], "a": [10.0, 3.0], "epaisseur": 0.2, "hauteur": 2.4,
-         "confiance": 0.8, "a_garder": True},
-        {"id": "mur_3", "categorie": "mur", "de": [0.0, 0.0], "a": [10.0, 0.0], "epaisseur": 0.15, "hauteur": 2.5,
-         "confiance": 0.3, "a_garder": False},
-    ]
-    r["passages"] = [{"id": "passage_1", "categorie": "passage", "de": [4.0, 3.0], "a": [5.0, 3.0],
-                      "murs": ["mur_1", "mur_2"], "confiance": 0.7, "a_garder": True}]
-    r["objets"] = [
-        {"id": "table_1", "categorie": "table", "forme": "boite", "centre": [2.0, 1.5], "taille": [1.2, 0.8, 0.75],
-         "cap": 0.0, "confiance": 0.65, "a_garder": True},
-        {"id": "poteau_1", "categorie": "poteau", "forme": "cylindre", "centre": [7.0, 1.5], "rayon": 0.2,
-         "hauteur": 2.5, "confiance": 0.95, "a_garder": True},
-        {"id": "personne_1", "categorie": "personne", "forme": "cylindre", "centre": [8.5, 4.5], "rayon": 0.25,
-         "hauteur": 1.7, "confiance": 0.6, "a_garder": L.a_garder_par_defaut("personne")},
-        {"id": "objet_4", "categorie": "inconnu", "forme": "boite", "centre": [3.0, 4.5], "taille": [0.3, 0.3, 0.5],
-         "cap": 0.3, "confiance": 0.2, "a_garder": False},
-    ]
-    return r
-
-
-def test_reconnaissance_aller_retour(tmp_path):
-    r = _reconnaissance()
-    assert L.valider_reconnaissance(r) == []
-    chemin = L.ecrire_reconnaissance(tmp_path, r)
-    assert chemin == tmp_path / "reconnaissance.yaml"
-    assert L.lire_reconnaissance(tmp_path) == r and L.lire_reconnaissance(chemin) == r
-    assert chemin.read_text(encoding="utf-8").startswith("# Murs, passages et objets reconnus")
-
-
-def test_reconnaissance_invalide_pas_ecrite(tmp_path):
-    r = _reconnaissance()
-    r["objets"][0]["confiance"] = 2
-    with pytest.raises(ErreurLieu, match="confiance vaut 2 : il faut au plus 1"):
-        L.ecrire_reconnaissance(tmp_path, r)
-    assert not (tmp_path / "reconnaissance.yaml").exists()
-    with pytest.raises(ErreurLieu, match="la reconnaissance n'a pas encore été faite"):
-        L.lire_reconnaissance(tmp_path)
-
-
-def test_a_garder_par_defaut():
-    assert not L.a_garder_par_defaut("personne")
-    assert all(L.a_garder_par_defaut(c) for c in L.CATEGORIES_OBJETS if c != "personne")
-
-
-def test_monde_depuis_reconnaissance():
-    r = _reconnaissance()
-    monde = L.monde_depuis_reconnaissance(r)
-    assert L.valider_donnees("monde", monde.vers_dict()) == []
-    assert [m.id for m in monde.murs] == ["mur_1", "mur_2"]            # mur_3 retiré
-    assert all(m.source == "scan" for m in monde.murs) and monde.murs[1].confiance == 0.8
-    assert [o.id for o in monde.objets] == ["table_1", "poteau_1"]     # personne et inconnu retirés
-    table, poteau = monde.objets
-    assert (table.type, table.categorie, table.taille, table.source) == ("boite", "table", (1.2, 0.8, 0.75), "scan")
-    assert (poteau.type, poteau.rayon, poteau.categorie_effective) == ("cylindre", 0.2, "poteau")
-    assert monde.pietons == [] and (monde.emprise.xmax, monde.depart_robot.x) == (10, 1.0)
-
-
-def test_passage_non_garde_bouche():
-    r = _reconnaissance()
-    r["passages"][0]["a_garder"] = False
-    monde = L.monde_depuis_reconnaissance(r)
-    bouche = monde.element("passage_1")
-    assert (bouche.de, bouche.a, bouche.epaisseur, bouche.hauteur) == ((4.0, 3.0), (5.0, 3.0), 0.2, 2.5)
-    from atelier.monde.carte import fabriquer_carte
-    info, carte = fabriquer_carte(monde)
-    colonne, ligne = L.monde_vers_pixel(4.5, 3.0, info)
-    assert carte[ligne, colonne] == 0                                   # le trou est bouché sur la carte
-    r["passages"][0]["a_garder"] = True
-    info, carte = fabriquer_carte(L.monde_depuis_reconnaissance(r))
-    assert carte[ligne, colonne] == 254
-
-
-def test_personne_gardee_dans_le_monde_mais_pas_sur_la_carte():
-    from atelier.monde.carte import fabriquer_carte
-    r = _reconnaissance()
-    _, sans = fabriquer_carte(L.monde_depuis_reconnaissance(r))
-    r["objets"][2]["a_garder"] = True
-    monde = L.monde_depuis_reconnaissance(r)
-    assert monde.element("personne_1").categorie == "personne"
-    _, avec = fabriquer_carte(monde)
-    assert (sans == avec).all()
-
-
-def test_monde_scan_aller_retour_du_demo():
-    """Vérité terrain du demo → monde : les mêmes murs, et chaque objet au même endroit."""
-    monde = L.charger_monde(DEMO, "rdc")
-    retour = L.monde_depuis_reconnaissance(L.reconnaissance_depuis_monde(monde, "rdc"))
-    assert [(m.id, m.de, m.a) for m in retour.murs] == [(m.id, m.de, m.a) for m in monde.murs]
-    gardes = [o for o in monde.objets if o.sur_la_carte]
-    assert [(o.id, o.centre, o.categorie) for o in retour.objets] == [(o.id, o.centre, o.categorie) for o in gardes]
-    from atelier.monde.carte import fabriquer_carte
-    _, carte_monde = fabriquer_carte(monde)
-    _, carte_retour = fabriquer_carte(retour)
-    assert (carte_monde == carte_retour).mean() > 0.999                # mêmes obstacles sur la carte
-
-
-def test_ecrire_monde_scan(tmp_path):
-    monde = L.ecrire_monde_scan(tmp_path, _reconnaissance())
-    texte = (tmp_path / "monde_scan.monde.yaml").read_text(encoding="utf-8")
-    assert texte.startswith("# Monde tiré du scan")
-    assert L.Monde.depuis_dict(L.charger_fichier(tmp_path / "monde_scan.monde.yaml", "monde")) == monde
-
-
-def test_changer_a_garder(demo):
+def test_ranger_resultats(demo):
     s = creer_session_exemple(demo, "termine")
-    r = L.changer_a_garder(demo, s["id"], {"passage_1": False, "table_est": False, "personne_b204": True})
-    assert r["resume"]["passages_gardes"] == 4
-    ids_monde = {m["id"] for m in r["monde"]["murs"]} | {o["id"] for o in r["monde"]["objets"]}
-    assert "passage_1" in ids_monde and "table_est" not in ids_monde and "personne_b204" in ids_monde
-    relu = L.lire_reconnaissance(L.dossier_session(demo, s["id"]))
-    assert next(o for o in relu["objets"] if o["id"] == "table_est")["a_garder"] is False
-    monde = L.charger_fichier(L.chemin_session(demo, s["id"], "monde"), "monde")
-    assert {o["id"] for o in monde["objets"]} == {o["id"] for o in r["monde"]["objets"]}
-
-
-def test_changer_a_garder_refuse(demo):
-    s = creer_session_exemple(demo, "termine")
-    avant = L.chemin_session(demo, s["id"], "reconnaissance").read_text(encoding="utf-8")
-    with pytest.raises(ErreurLieu, match="id inconnu.*armoire_9"):
-        L.changer_a_garder(demo, s["id"], {"table_est": False, "armoire_9": True})
-    with pytest.raises(ErreurLieu, match="true ou false"):
-        L.changer_a_garder(demo, s["id"], {"table_est": "non"})
-    assert L.chemin_session(demo, s["id"], "reconnaissance").read_text(encoding="utf-8") == avant
-    en_cours = creer_session_exemple(demo, "traitement")
-    with pytest.raises(ErreurLieu, match="attendez la fin du traitement"):
-        L.changer_a_garder(demo, en_cours["id"], {"table_est": False})
-
-
-def test_carte_sans_elements_retires():
-    from atelier.monde.carte import fabriquer_carte
-    r = _reconnaissance()
-    r["objets"][2]["a_garder"] = True
-    r["objets"][3]["a_garder"] = True
-    # Carte « du scan » où tout est vu : murs et objets, personne comprise
-    monde = L.monde_depuis_reconnaissance(dict(r, objets=[dict(o, categorie="inconnu") for o in r["objets"]]))
-    info, carte = fabriquer_carte(monde)
-
-    def occupe(x, y):
-        colonne, ligne = L.monde_vers_pixel(x, y, info)
-        return resultat[ligne, colonne] == 0
-    resultat = L.carte_sans_elements_retires(info, carte, r)
-    assert not occupe(8.5, 4.5)                                           # personne effacée, même gardée
-    assert occupe(2.0, 1.5) and occupe(7.0, 1.5) and occupe(3.0, 4.5)     # objets gardés
-    r["objets"][0]["a_garder"] = False
-    resultat = L.carte_sans_elements_retires(info, carte, r)
-    assert not occupe(2.0, 1.5) and occupe(2.0, 3.0)                      # table effacée, mur intact
-    r["murs"][0]["a_garder"] = False
-    resultat = L.carte_sans_elements_retires(info, carte, r)
-    assert occupe(2.0, 3.0)                                               # un mur ne change jamais la carte
-    assert (carte == fabriquer_carte(monde)[1]).all()                      # la carte donnée n'est pas modifiée
+    d = L.dossier_session(demo, s["id"])
+    (d / "reconnaissance.yaml").write_text("ancienne reconnaissance\n")      # session d'avant la vague 5
+    avant = {nom: (d / nom).read_bytes() for nom in L.scans.RESULTATS_TRAITEMENT if (d / nom).is_file()}
+    assert {"nuage.pcd", "carte.yaml", "carte.pgm", "nuage_affichage.bin", "nuage_affichage.json", "rapport.json",
+            "reconnaissance.yaml"} == set(avant)
+    quand = datetime(2026, 10, 31, 3, 10)
+    ancien = L.ranger_resultats(demo, s["id"], quand)
+    assert ancien == d / "ancien_2026-10-31_03h10"
+    assert {f.name: f.read_bytes() for f in ancien.iterdir()} == avant          # déplacés, à l'identique
+    assert not any((d / nom).exists() for nom in avant)
+    assert (d / "session.json").is_file() and (d / "apercu.json").is_file()     # le reste ne bouge pas
+    assert L.ranger_resultats(demo, s["id"], quand) is None                     # plus rien à ranger
+    (d / "carte.yaml").write_text("x")
+    assert L.ranger_resultats(demo, s["id"], quand).name == "ancien_2026-10-31_03h10-2"   # même minute
+    assert [x.name for x in L.anciens_resultats(demo, s["id"])] == ["ancien_2026-10-31_03h10",
+                                                                     "ancien_2026-10-31_03h10-2"]
+    assert L.fichiers_presents(demo, s["id"])["carte"] is False
 
 
 # ---------------------------------------------------------------- sessions d'exemple (pour les autres agents)
@@ -421,11 +286,15 @@ def test_sessions_d_exemple_conformes(demo, etat):
     apercu = json.loads((d / "apercu.json").read_text(encoding="utf-8"))
     assert len(apercu["points"]) <= L.APERCU_POINTS_MAX and apercu["trajectoire"]
     assert (d / "apercu.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    points, entete = L.lire_nuage(L.chemin_nuage_session(d, apercu=True))
+    assert entete["source"] == "apercu" and len(points) == entete["points"] > 100
     if etat in ("traitement", "termine"):
         info, image = L.charger_carte(d / "carte.yaml")
         assert info.image == "carte.pgm" and image.shape == (402, 602)
     if etat == "termine":
-        assert L.valider_reconnaissance(L.lire_reconnaissance(d)) == []
-        L.charger_fichier(d / "monde_scan.monde.yaml", "monde")
+        points, entete = L.lire_nuage(L.chemin_nuage_session(d))
+        assert entete["source"] == "scan" and entete["session"] == s["id"] and entete["grille"] == 0.05
         rapport = json.loads((d / "rapport.json").read_text(encoding="utf-8"))
         assert [e["etape"] for e in rapport["etapes"]] == list(L.ETAPES_TRAITEMENT)
+        assert rapport["nuages"]["ignores"] == 0 and "reconnaissance" not in rapport
+        assert not (d / "reconnaissance.yaml").exists() and not (d / "monde_scan.monde.yaml").exists()

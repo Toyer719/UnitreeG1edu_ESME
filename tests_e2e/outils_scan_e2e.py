@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Outils des critères de recette du scan intégré (critere_11 à critere_15, section 9 du plan).
+"""Outils des critères de recette du scan intégré (critères 7, 11 à 15 et 33, sections 9 et 12 du plan).
 
 Lancés par les scripts avec le Python du projet. Sans ROS : l'API du serveur, les fichiers des
 sessions (par atelier.lieu) et les processus (/proc) suffisent.
@@ -24,16 +24,31 @@ API du serveur
   arreter-api --api URL --lieu L --session S
   attendre-fin (--api URL | --fichiers) --lieu L --session S [--delai 1200] [--accepter-echec]
   attendre-etape --lieu L --session S [--etape enregistrement] [--nuages-min 1] [--delai 120]
-Session, reconnaissance et évaluation
-  verifier-session --session DOSSIER [--reference YAML --min 0.9]
-  evaluer --session DOSSIER --reference LIEU [--etage rdc] [--strict]
-  fabriquer-nuage --reference LIEU --sortie DOSSIER [--etage rdc] [--pas 0.25]
-                                   nuage « vu » par le LiDAR du robot proxy le long des couloirs (lancer de
-                                   rayons sur les formes du monde Gazebo), et sa carte 2D
-  reconnaitre --session DOSSIER [--reference LIEU]
+Session (vague 5 : sans reconnaissance) et adoption
+  verifier-session --session DOSSIER [--reference YAML] [--precision 0.98] [--min 0.9] [--ignores-max 0.01]
+                   [--points-min 50000] [--inclinaison MIN MAX]
+                                   fichiers de la session, rapport (nuages ignorés, sol), nuage d'affichage
+                                   (sol à z = 0), carte : précision (pixels du scan à 0,10 m d'un obstacle du
+                                   monde) et recouvrement (à 0,05 m)
+  servir-session --api URL --lieu L --session S
+                                   le serveur sert carte.png, le rapport et le nuage 3D de la session
+  damier --session DOSSIER [--vers ID] [--inclinaison-deg 0.6] [--abaissement 1.27] [--decalage-odom -138]
+                                   copie de la session « comme le vrai G1 » (même dossier scans/, id suivant
+                                   par défaut ; affiche « session: ID ») : nuages dans map à horodatage nul,
+                                   odométrie décalée, sol penché et sous l'origine (scan du 27/10)
   faux-slam --lieu L --session S   le faux service a reçu 1801, puis 1802 avec carte_unitree
   bag --dossier DIR SUJET...       ces sujets sont dans l'enregistrement, avec des messages
-  verifier-adoption --lieu L --session S [--monde]
+  verifier-adoption --lieu L --session S [--reference LIEU] [--api URL]
+                                   carte telle quelle, nuage de l'étage, carte extrudée (1,5 m), monde dessiné
+                                   gardé dans la session et remplacé (piétons gardés) ; avec --api : GET …/nuage,
+                                   …/nuage/info et …/monde/maillage les servent
+Gazebo et carte d'Unitree (critère 33)
+  temps-reel [--duree 20] [--min 0.9]   temps de /clock sur ce temps mural
+  contre-un-mur --lieu L [--vx 0.5] [--duree 3]    le robot proxy (/cmd_vel, /odom), poussé vers +x, s'arrête
+                                                   contre le premier mur de la carte extrudée, jamais au-delà
+  voit-le-maillage --lieu L [--part 0.8]           les points de /points (0,3 à 1,45 m) tombent sur la carte extrudée
+  depart --lieu L --x X --y Y [--theta T]          départ du robot simulé (depart_robot du monde de rdc)
+  carte-unitree-repetition --api URL --lieu L      répétition par l'Atelier, g1-scan carte-unitree, « Repérer »
 Partage d'une session entre critères (le 11 la garde, le 12 et le 13 la reprennent)
   partager --session DOSSIER --vers DIR
   partagee --depuis DIR [--age-max 12]   affiche le dossier de la session gardée, code 1 sans session
@@ -635,346 +650,190 @@ def _lire_yaml(chemin):
         return yaml.safe_load(f)
 
 
-def verifier_session(args):
-    """Fichiers d'une session finie, validité de la reconnaissance et du monde, recouvrement."""
-    from atelier import lieu as L
+def comparer_cartes(scan, reference):
+    """{precision, recouvrement, couverture, occupes} d'une carte face à la référence : précision = part des
+    pixels occupés du scan à 0,10 m au plus (2 pixels) d'un obstacle de la référence ; recouvrement : à 0,05 m."""
     from atelier.scan import carte2d
+    c1 = carte2d.comparer_fichiers(scan, reference, tolerance_px=1)
+    c2 = carte2d.comparer_fichiers(scan, reference, tolerance_px=2)
+    return {"precision": c2["recouvrement"], "recouvrement": c1["recouvrement"], "couverture": c1["couverture"],
+            "occupes": c1["occupes_scan"]}
+
+
+def verifier_session(args):
+    """Session finie, vague 5 : carte 3D, carte 2D, nuage d'affichage, rapport ; pas de reconnaissance ; nuages
+    ignorés, sol, nuage d'affichage et carte comparée à la référence."""
+    import numpy as np
+    from atelier import lieu as L
     d = Path(args.session)
     ok = True
-    for quoi in ("nuage", "carte", "carte_image", "reconnaissance", "monde", "rapport"):
-        if not (d / L.FICHIERS_SESSION[quoi]).is_file():
-            dire(f"  manque {L.FICHIERS_SESSION[quoi]}")
+    for nom in ("nuage.pcd", "carte.yaml", "carte.pgm", "nuage_affichage.bin", "nuage_affichage.json", "rapport.json"):
+        if not (d / nom).is_file():
+            dire(f"  manque {nom}")
+            ok = False
+    for nom in ("reconnaissance.yaml", "monde_scan.monde.yaml"):
+        if (d / nom).is_file():
+            dire(f"  {nom} : la reconnaissance est retirée (vague 5), ce fichier ne devrait plus être écrit")
             ok = False
     session = json.loads((d / "session.json").read_text())
     dire(f"session {session['id']} : {session['etat']} — {session.get('message')}")
     dire(f"  statistiques : {session['statistiques']}")
     if session["etat"] != "termine":
         ok = False
-    if (d / L.FICHIERS_SESSION["monde"]).is_file():
-        erreurs = L.valider_donnees("monde", _lire_yaml(d / L.FICHIERS_SESSION["monde"]), "monde_scan.monde.yaml")
-        if erreurs:
-            dire("  monde_scan.monde.yaml invalide :\n    " + "\n    ".join(erreurs[:10]))
+    if (d / "rapport.json").is_file():
+        rapport = json.loads((d / "rapport.json").read_text())
+        etapes = [e["etape"] for e in rapport.get("etapes", [])]
+        nuages, sol = rapport.get("nuages") or {}, rapport.get("sol") or {}
+        dire(f"  rapport : étapes {etapes} ; nuages {nuages} ; base de temps {rapport.get('base_de_temps')} ; "
+             f"passants retirés {rapport.get('mobiles_retires')} ; sol {sol} ; avertissements "
+             f"{rapport.get('avertissements')}")
+        if etapes != ["carte_3d", "carte_2d", "nuage"] or "reconnaissance" in rapport:
+            dire("  rapport : les étapes devraient être carte_3d, carte_2d et nuage, sans reconnaissance")
             ok = False
-        else:
-            m = _lire_yaml(d / L.FICHIERS_SESSION["monde"])
-            dire(f"  monde_scan.monde.yaml valide : {len(m.get('murs') or [])} murs, {len(m.get('objets') or [])} objets")
-    if (d / L.FICHIERS_SESSION["reconnaissance"]).is_file():
-        reco = _lire_yaml(d / L.FICHIERS_SESSION["reconnaissance"])
-        erreurs = L.valider_reconnaissance(reco)
-        if erreurs:
-            dire("  reconnaissance.yaml invalide :\n    " + "\n    ".join(erreurs[:10]))
+        if not nuages or nuages.get("ignores", 1) > args.ignores_max * max(1, nuages.get("recus", 0)):
+            dire(f"  trop de nuages ignorés : {nuages} (au plus {100 * args.ignores_max:g} %)")
             ok = False
-        else:
-            dire(f"  reconnaissance : {json.dumps(L.resume_reconnaissance(reco), ensure_ascii=False)}")
-    if (d / L.FICHIERS_SESSION["rapport"]).is_file():
-        rapport = json.loads((d / L.FICHIERS_SESSION["rapport"]).read_text())
-        dire(f"  rapport : traitement en {rapport.get('duree_traitement_s')} s ; comparaison "
-             f"{rapport.get('comparaison')} ; avertissements {rapport.get('avertissements')}")
-    if args.reference and (d / L.FICHIERS_SESSION["carte"]).is_file():
-        c = carte2d.comparer_fichiers(d / L.FICHIERS_SESSION["carte"], args.reference)
+        if args.inclinaison and not args.inclinaison[0] <= sol.get("inclinaison_deg", -1) <= args.inclinaison[1]:
+            dire(f"  pente du sol {sol.get('inclinaison_deg')}° hors de {args.inclinaison[0]}–{args.inclinaison[1]}°")
+            ok = False
+    try:
+        points, entete = L.lire_nuage(L.chemin_nuage_session(d))
+        h = points[:, 2].astype(float)
+        sol_vu = h[np.abs(h) < 0.1]
+        niveau = float(np.median(sol_vu)) if len(sol_vu) else float("nan")
+        dire(f"  nuage d'affichage : {entete['points']} points, grille {entete['grille']}, sol vu à {niveau:+.3f} m")
+        if entete["points"] < args.points_min or entete["grille"] != 0.05 or not abs(niveau) <= 0.02:
+            dire(f"  nuage d'affichage : au moins {args.points_min} points, grille 0,05 et sol à 0,02 m de z = 0 attendus")
+            ok = False
+    except L.ErreurLieu as e:
+        dire(f"  nuage d'affichage illisible : {e.erreurs}")
+        ok = False
+    if args.reference and (d / "carte.yaml").is_file():
+        c = comparer_cartes(d / "carte.yaml", args.reference)
+        dire(f"Précision de la carte (à 0,10 m) : {100 * c['precision']:.1f} % (au moins {100 * args.precision:.0f} %)")
         dire(f"Recouvrement avec la carte générée : {100 * c['recouvrement']:.1f} % (au moins "
-             f"{100 * args.min:.0f} %) ; couverture {100 * c['couverture']:.1f} % ; "
-             f"{c['occupes_scan']} pixels occupés dans le scan")
-        if c["recouvrement"] < args.min:
+             f"{100 * args.min:.0f} %) ; couverture {100 * c['couverture']:.1f} % ; {c['occupes']} pixels occupés")
+        if c["precision"] < args.precision or c["recouvrement"] < args.min:
             ok = False
     return 0 if ok else 1
 
 
-# ---------------------------------------------------------------- évaluation de la reconnaissance
-
-def _aplatir(d, prefixe=""):
-    for cle, v in (d.items() if isinstance(d, dict) else []):
-        nom = f"{prefixe}.{cle}" if prefixe else str(cle)
-        if isinstance(v, dict):
-            yield from _aplatir(v, nom)
-        elif isinstance(v, (int, float)) and not isinstance(v, bool):
-            yield nom, float(v)
-
-
-def _sans_accents(texte):
-    import unicodedata
-    return "".join(c for c in unicodedata.normalize("NFD", texte) if unicodedata.category(c) != "Mn").lower()
-
-
-def _mesure(plat, *variantes, exclure=("objectif", "seuil", "cible", "min", "max", "nombre", "vus", "total")):
-    """Valeur de la première clé aplatie qui contient tous les mots d'une variante (la plus courte)."""
-    for mots in variantes:
-        cles = [c for c in plat
-                if all(m in _sans_accents(c) for m in mots)
-                and not any(e in _sans_accents(c).split(".")[-1] for e in exclure)]
-        if cles:
-            cle = min(cles, key=len)
-            return cle, plat[cle]
-    return None, None
-
-
-def evaluer(args):
-    """Évalue la reconnaissance d'une session avec atelier.scan.evaluation (objectifs de 9.8).
-
-    Bloquants (critère 12) : murs ≥ 0,90, passages ≥ 0,80, objets de la bonne catégorie ≥ 0,70,
-    aucune personne gardée. Avec --strict, aussi les autres objectifs de 9.8."""
+def servir_session(args):
+    """Le serveur sert la carte (carte.png), le rapport et le nuage 3D (GET /api/scan/nuage, Float32) d'une
+    session finie, conformes aux fichiers de la session."""
     from atelier import lieu as L
-    from atelier.scan import evaluation
-    d = Path(args.session)
-    reco = L.lire_reconnaissance(d)
-    monde = L.charger_monde(args.reference, args.etage)
-    info, image = L.charger_carte(d / L.FICHIERS_SESSION["carte"])
-    debut = time.monotonic()
-    resultat = evaluation.evaluer(reco, monde, info, image)
-    dire(f"évaluation en {time.monotonic() - debut:.1f} s")
-    if args.json:
-        Path(args.json).write_text(json.dumps(resultat, ensure_ascii=False, indent=2, default=str))
-    plat = dict(_aplatir(resultat))
-    if not plat:
-        dire(f"résultat de evaluer() illisible : {_court(resultat, 1500)}")
-        return 1
-    objectifs = resultat.get("objectifs") if isinstance(resultat.get("objectifs"), dict) else {}
-
-    def valeur(cle_objectif, *variantes, **options):
-        """D'abord les objectifs du bilan (contrat 9.8), sinon une clé du résultat qui contient ces mots."""
-        o = objectifs.get(cle_objectif)
-        if isinstance(o, dict) and isinstance(o.get("valeur"), (int, float)) and not isinstance(o["valeur"], bool):
-            return f"objectifs.{cle_objectif}", float(o["valeur"])
-        return _mesure(plat, *variantes, **options)
-
-    # nom affiché : ((clé, valeur), sens, objectif, bloquant pour le critère 12)
-    mesures = {
-        "murs, rappel": (valeur("murs_rappel", ("mur", "rappel")), ">=", 0.90, True),
-        "passages, rappel": (valeur("passages_rappel", ("passage", "rappel")), ">=", 0.80, True),
-        "objets, catégorie": (valeur("objets_categorie", ("objet", "categorie")), ">=", 0.70, True),
-        "murs, précision": (valeur("murs_precision", ("mur", "precision")), ">=", 0.90, False),
-        "passages, précision": (valeur("passages_precision", ("passage", "precision")), ">=", 0.80, False),
-        "objets, détection": (valeur("objets_detection", ("objet", "detection")), ">=", 0.80, False),
-        "faux objets": (valeur("faux_objets_max", ("faux_objets",)), "<=", 3, False),
-    }
-    ok = ok_plan = True
-    dire(f"{'mesure':22s} {'valeur':>8s}  objectif   (clé du résultat)")
-    for nom, ((cle, valeur), sens, objectif, bloquant) in mesures.items():
-        if cle is None:
-            dire(f"{nom:22s} {'?':>8s}  {sens} {objectif:<6g}   introuvable dans le résultat")
-            if bloquant or args.strict:
-                ok = False
-            ok_plan = False
-            continue
-        atteint = valeur >= objectif if sens == ">=" else valeur <= objectif
-        marque = "oui" if atteint else ("NON" if bloquant or args.strict else "non (objectif du plan, non bloquant)")
-        dire(f"{nom:22s} {valeur:8.3f}  {sens} {objectif:<6g}   {marque}  ({cle})")
-        if not atteint:
-            ok_plan = False
-            if bloquant or args.strict:
-                ok = False
-    # Personnes : jamais cochées d'office, et la personne debout du demo reconnue
-    personnes = [o for o in reco.get("objets") or [] if o.get("categorie") == "personne"]
-    gardees = [o["id"] for o in personnes if o.get("a_garder")]
-    dire(f"personnes reconnues : {len(personnes)} ; gardées : {', '.join(gardees) or 'aucune'}")
-    if gardees:
-        dire("  une personne est gardée : elle doit être décochée d'office (a_garder: false)")
-        ok = False
-    vraie = next((o for o in monde.objets if o.categorie_effective == "personne"), None)
-    if vraie is not None:
-        proche = [o for o in personnes if math.hypot(o["centre"][0] - vraie.centre[0],
-                                                       o["centre"][1] - vraie.centre[1]) <= 0.5]
-        dire(f"  {vraie.id} reconnue comme personne : {'oui' if proche else 'non'}"
-             + ("" if proche else " (objectif du plan" + (")" if args.strict else ", non bloquant)")))
-        if not proche:
-            ok_plan = False
-            if args.strict:
-                ok = False
-    if isinstance(resultat.get("personnes"), dict):
-        dire(f"  évaluation des personnes : {_court(resultat['personnes'], 400)}")
-    # Le détail : catégories trouvées, objets vrais et ce qu'ils sont devenus
-    resume = L.resume_reconnaissance(reco)
-    dire(f"reconnaissance : {json.dumps(resume, ensure_ascii=False)}")
-    objets = resultat.get("objets") if isinstance(resultat.get("objets"), dict) else {}
-    for d in objets.get("details") or []:
-        if isinstance(d, dict):
-            dire("  objet vrai : " + ", ".join(f"{k}={v}" for k, v in d.items()))
-    for cle in ("faux",):
-        if objets.get(cle):
-            dire(f"  faux objets : {objets[cle]}")
-    passages = resultat.get("passages") if isinstance(resultat.get("passages"), dict) else {}
-    if passages.get("faux"):
-        dire(f"  passages en trop : {passages['faux']}")
-    retenues = {m[0][0] for m in mesures.values()}
-    autres = {k: v for k, v in plat.items() if k not in retenues and not k.startswith(("tolerances", "objectifs"))
-              and "details" not in k and "par_mur" not in k}
-    if autres:
-        dire("autres valeurs de l'évaluation : " + ", ".join(f"{k}={v:g}" for k, v in sorted(autres.items())[:40]))
-    dire(f"objectifs bloquants : {'atteints' if ok else 'NON atteints'} ; tous les objectifs de 9.8 : "
-         f"{'atteints' if ok_plan else 'pas tous'}")
+    d = L.dossier_session(L.dossier_lieu(args.lieu), args.session)
+    _, entete = L.lire_nuage(L.chemin_nuage_session(d))
+    q = f"lieu={args.lieu}&session={args.session}"
+    code_c, png, _ = appel_api("GET", f"{args.api}/api/scan/sessions/{args.session}/carte.png?lieu={args.lieu}")
+    code_r, rapport, _ = appel_api("GET", f"{args.api}/api/scan/sessions/{args.session}/rapport?lieu={args.lieu}")
+    code_i, info, _ = appel_api("GET", f"{args.api}/api/scan/nuage/info?{q}")
+    code_n, nuage, _ = appel_api("GET", f"{args.api}/api/scan/nuage?{q}")
+    dire(f"carte.png {code_c}, rapport {code_r}, nuage/info {code_i}, nuage {code_n}")
+    ok = (code_c, code_r, code_i, code_n) == (200, 200, 200, 200)
+    ok = ok and isinstance(png, bytes) and png[:8] == b"\x89PNG\r\n\x1a\n"
+    ok = ok and isinstance(rapport, dict) and [e["etape"] for e in rapport.get("etapes", [])] == ["carte_3d", "carte_2d", "nuage"]
+    ok = ok and isinstance(info, dict) and info.get("points") == entete["points"] and info.get("apercu") is False
+    ok = ok and isinstance(nuage, bytes) and len(nuage) == 12 * entete["points"]
+    if ok:
+        dire(f"servis : carte.png ({len(png)} octets), rapport (étapes carte_3d, carte_2d, nuage), nuage de "
+             f"{entete['points']} points ({len(nuage)} octets, source {info.get('source')})")
+    else:
+        dire(f"réponses non conformes : rapport {_court(rapport, 200)} ; info {_court(info, 200)}")
     return 0 if ok else 1
 
 
-# ---------------------------------------------------------------- nuage fabriqué (lancer de rayons)
+# ---------------------------------------------------------------- le « damier » : une session comme le vrai G1
 
-HAUTEUR_LIDAR = 1.245             # m, LiDAR du robot proxy (ws/src/g1_sim/models/g1_proxy/model.sdf)
-LIDAR_H = (360, -3.14159265, 3.12413936)
-LIDAR_V = (16, -0.12217305, 0.90757121)
-PORTEE = (0.1, 40.0)
-
-
-def formes_du_monde(monde):
-    """Boîtes (cx, cy, cz, demi_x, demi_y, demi_z, cap) et cylindres (cx, cy, rayon, z0, z1) du monde
-    Gazebo que fabrique atelier.monde.sdf (mêmes meubles), sans le sol ni les piétons."""
-    import xml.etree.ElementTree as ET
-    from atelier.monde.sdf import texte_sdf
-    m = copy.deepcopy(monde)
-    m.pietons = []
-    racine = ET.fromstring(texte_sdf(m, nom="essai"))
-    boites, cylindres = [], []
-    for modele in racine.find("world").findall("model"):
-        if modele.get("name") == "sol":
-            continue
-        mx, my, mz, _, _, cap = (float(v) for v in modele.find("pose").text.split())
-        c, s = math.cos(cap), math.sin(cap)
-        for forme in modele.iter("collision"):
-            p = forme.find("pose")
-            lx, ly, lz = (float(v) for v in p.text.split()[:3]) if p is not None else (0.0, 0.0, 0.0)
-            x, y, z = mx + c * lx - s * ly, my + s * lx + c * ly, mz + lz
-            g = forme.find("geometry")
-            if g.find("box") is not None:
-                sx, sy, sz = (float(v) for v in g.find("box/size").text.split())
-                boites.append((x, y, z, sx / 2, sy / 2, sz / 2, cap))
-            elif g.find("cylinder") is not None:
-                r, h = float(g.find("cylinder/radius").text), float(g.find("cylinder/length").text)
-                cylindres.append((x, y, r, z - h / 2, z + h / 2))
-    return boites, cylindres
-
-
-def lancer_rayons(origine, directions, boites, cylindres):
-    """Distance du premier obstacle (sol z = 0, boîtes, cylindres verticaux) le long de chaque rayon."""
+def damier(args):
+    """Copie une session finie (simulation) « comme le scan du 27/10 » : nuages placés dans le repère map, à
+    horodatage nul ; odométrie (position du LiDAR) dans map, horodatages décalés ; sol penché et sous l'origine
+    (on ajoute le plan au z : x et y ne bougent pas) ; pas de /tf_static. La copie est une session terminée,
+    à retraiter (g1-scan traiter --refaire)."""
     import numpy as np
-    n = len(directions)
-    ox, oy, oz = origine
-    dx, dy, dz = directions[:, 0], directions[:, 1], directions[:, 2]
-    with np.errstate(divide="ignore", invalid="ignore"):
-        t = np.where(dz < -1e-9, -oz / dz, np.inf)
-        for cx, cy, cz, hx, hy, hz, cap in boites:
-            c, s = math.cos(-cap), math.sin(-cap)
-            px, py = ox - cx, oy - cy
-            lo = (c * px - s * py, s * px + c * py, oz - cz)
-            ld = (c * dx - s * dy, s * dx + c * dy, dz)
-            tmin, tmax = np.full(n, -np.inf), np.full(n, np.inf)
-            for o, d, h in zip(lo, ld, (hx, hy, hz)):
-                parallele = np.abs(d) < 1e-12
-                if parallele.all():
-                    if abs(o) > h:
-                        tmin[:] = np.inf
-                    continue
-                t1, t2 = (-h - o) / d, (h - o) / d
-                t1 = np.where(parallele, np.where(abs(o) > h, np.inf, -np.inf), t1)
-                t2 = np.where(parallele, np.where(abs(o) > h, -np.inf, np.inf), t2)
-                tmin = np.maximum(tmin, np.minimum(t1, t2))
-                tmax = np.minimum(tmax, np.maximum(t1, t2))
-            touche = (tmax >= tmin) & (tmin > 0)
-            t = np.where(touche & (tmin < t), tmin, t)
-        for cx, cy, r, z0, z1 in cylindres:
-            px, py = ox - cx, oy - cy
-            a = dx * dx + dy * dy
-            b = 2 * (px * dx + py * dy)
-            cc = px * px + py * py - r * r
-            disc = b * b - 4 * a * cc
-            tc = np.where((disc >= 0) & (a > 1e-12), (-b - np.sqrt(np.maximum(disc, 0))) / (2 * a), np.inf)
-            zc = oz + tc * dz
-            tc = np.where((tc > 0) & (zc >= z0) & (zc <= z1), tc, np.inf)
-            for zp in (z0, z1):
-                tp = (zp - oz) / dz
-                xp, yp = px + tp * dx, py + tp * dy
-                tp = np.where(np.isfinite(tp) & (tp > 0) & (xp * xp + yp * yp <= r * r), tp, np.inf)
-                tc = np.minimum(tc, tp)
-            t = np.minimum(t, tc)
-    return t
-
-
-def positions_couloirs(lieu, etage, pas):
-    """Poses (x, y) tous les « pas » mètres le long de chaque couloir de l'étage."""
+    import rosbag2_py
+    from rclpy.serialization import deserialize_message, serialize_message
+    from rosidl_runtime_py.utilities import get_message
     from atelier import lieu as L
-    itin = L.charger_itineraires(lieu)
-    poses = []
-    for c in itin.couloirs:
-        a, b = itin.noeuds[c.a], itin.noeuds[c.b]
-        if a.etage != etage or b.etage != etage:
+    from atelier.scan import carte3d
+    from atelier.scan.faux_slam import _nuage_xyz
+    import datetime
+    source = Path(args.session)
+    if args.vers:
+        cible = source.parent / L.verifier_id_session(args.vers)
+        if cible.exists():
+            shutil.rmtree(cible)
+    else:                                                   # la première minute libre après la session
+        quand = datetime.datetime.strptime(source.name, "%Y-%m-%d_%Hh%M")
+        cible = source
+        while cible.exists():
+            quand += datetime.timedelta(minutes=1)
+            cible = source.parent / quand.strftime("%Y-%m-%d_%Hh%M")
+    shutil.copytree(source, cible, ignore=shutil.ignore_patterns("enregistrement", ".session.lock", ".processus.json",
+                                                                   "ancien_*"))
+    s = json.loads((cible / "session.json").read_text())
+    s.update(id=cible.name, nom=f"{s['nom'][:60]} (comme le G1)", adoption=None, processus=None)
+    L.ecrire_session(cible.parent.parent, s)
+    pente = math.tan(math.radians(args.inclinaison_deg))
+    plan = (0.0, -pente, -args.abaissement)                 # comme le 27/10 : le sol monte vers y négatif
+
+    def incliner(p):
+        p = np.asarray(p, dtype=float).reshape(-1, 3).copy()
+        p[:, 2] += plan[0] * p[:, 0] + plan[1] * p[:, 1] + plan[2]
+        return p
+    enr = source / "enregistrement"
+    sujets = s["sujets"]
+    trajectoire = carte3d.lire_trajectoire(enr, sujets["odom"], "message")
+    liens = carte3d.lire_tf_statique(enr)
+    lecteur, types = carte3d._ouvrir(enr, [])
+    ecrivain = rosbag2_py.SequentialWriter()
+    ecrivain.open(rosbag2_py.StorageOptions(uri=str(cible / "enregistrement"), storage_id="sqlite3"),
+                  rosbag2_py.ConverterOptions("cdr", "cdr"))
+    for nom, genre in types.items():
+        if nom != "/tf_static":
+            ecrivain.create_topic(rosbag2_py.TopicMetadata(name=nom, type=genre, serialization_format="cdr"))
+    classes = {nom: get_message(genre) for nom, genre in types.items()}
+    capteur = None
+    n_nuages = n_odom = 0
+    while lecteur.has_next():
+        nom, donnees, instant = lecteur.read_next()
+        if nom == "/tf_static":
             continue
-        longueur = math.hypot(b.x - a.x, b.y - a.y)
-        k = max(1, int(round(longueur / pas)))
-        poses += [(a.x + (b.x - a.x) * i / k, a.y + (b.y - a.y) * i / k) for i in range(k + 1)]
-    return poses
-
-
-def fabriquer_nuage(args):
-    """Nuage qu'aurait vu le LiDAR du robot proxy (360 × 16 rayons, de -7° à +52°, à 1,245 m) en
-    parcourant les couloirs du monde de référence, réduit à 5 cm comme carte3d ; puis sa carte 2D
-    (atelier.scan.carte2d), sur l'emprise du monde. Pas de piétons : ils seraient retirés du nuage."""
-    import numpy as np
-    from atelier import lieu as L
-    from atelier.scan import carte2d, carte3d
-    debut = time.monotonic()
-    monde = L.charger_monde(args.reference, args.etage)
-    boites, cylindres = formes_du_monde(monde)
-    poses = positions_couloirs(args.reference, args.etage, args.pas)
-    hasard = np.random.default_rng(args.graine)
-    n_h, h_min, h_max = LIDAR_H
-    n_v, v_min, v_max = LIDAR_V
-    azimuts = np.linspace(h_min, h_max, n_h)
-    elevations = np.linspace(v_min, v_max, n_v)
-    morceaux = []
-    for x, y in poses:
-        az, el = np.meshgrid(azimuts + hasard.uniform(0, 2 * math.pi), elevations)
-        az, el = az.ravel(), el.ravel()
-        directions = np.column_stack([np.cos(el) * np.cos(az), np.cos(el) * np.sin(az), np.sin(el)])
-        origine = (x, y, HAUTEUR_LIDAR)
-        t = lancer_rayons(origine, directions, boites, cylindres)
-        garde = (t >= PORTEE[0]) & (t <= PORTEE[1])
-        morceaux.append(np.asarray(origine) + directions[garde] * t[garde, None])
-    points = np.vstack(morceaux)
-    points = points + hasard.normal(0.0, 0.005, points.shape)     # bruit de mesure de 5 mm
-    points[:, 2] = np.maximum(points[:, 2], 0.0)
-    reduits = carte3d.reduire(points, 0.05)
-    sortie = Path(args.sortie)
-    sortie.mkdir(parents=True, exist_ok=True)
-    carte3d.ecrire_pcd(sortie / L.FICHIERS_SESSION["nuage"], reduits)
-    e = monde.emprise
-    info, image, sol = carte2d.fabriquer_carte(reduits, emprise=(e.xmin, e.ymin, e.xmax, e.ymax),
-                                               image=L.FICHIERS_SESSION["carte_image"])
-    L.enregistrer_carte(sortie / L.FICHIERS_SESSION["carte"], info, image)
-    depart = monde.depart_robot
-    (sortie / "fabrique.json").write_text(json.dumps({
-        "reference": str(L.dossier_lieu(args.reference)), "etage": args.etage, "poses": len(poses),
-        "depart_robot": [depart.x, depart.y, depart.theta], "sol": sol}, ensure_ascii=False))
-    dire(f"nuage fabriqué en {time.monotonic() - debut:.0f} s : {len(poses)} poses le long des couloirs, "
-         f"{len(points)} points, {len(reduits)} après réduction à 5 cm ; {len(boites)} boîtes et "
-         f"{len(cylindres)} cylindres ; carte {info.largeur} × {info.hauteur}, {(image == 0).sum()} pixels occupés, "
-         f"sol à {sol:.3f} m")
-    return 0
-
-
-def reconnaitre(args):
-    """atelier.scan.reconnaissance.reconnaitre sur nuage.pcd et carte.yaml du dossier."""
-    from atelier import lieu as L
-    from atelier.scan.reconnaissance import reconnaitre as reco
-    d = Path(args.session)
-    parametres = {"etage": args.etage}
-    infos = d / "fabrique.json"
-    if infos.is_file():
-        parametres["depart_robot"] = tuple(json.loads(infos.read_text())["depart_robot"])
-    elif args.reference:
-        p = L.charger_monde(args.reference, args.etage).depart_robot
-        parametres["depart_robot"] = (p.x, p.y, p.theta)
-    debut = time.monotonic()
-    r = reco(d / L.FICHIERS_SESSION["nuage"], d / L.FICHIERS_SESSION["carte"], d, parametres)
-    dire(f"reconnaissance en {time.monotonic() - debut:.1f} s (durée annoncée {r.get('duree_s')}) : "
-         f"{json.dumps(r.get('resume'), ensure_ascii=False)}")
-    for a in r.get("avertissements") or []:
-        dire(f"  avertissement : {a}")
-    ok = True
-    for quoi in ("reconnaissance", "monde"):
-        if not (d / L.FICHIERS_SESSION[quoi]).is_file():
-            dire(f"  {L.FICHIERS_SESSION[quoi]} n'a pas été écrit")
-            ok = False
-    if time.monotonic() - debut > 60:
-        dire("  plus de 60 s : le contrat (9.6) demande moins de 60 s sur un scan du demo")
-        ok = False
-    return 0 if ok else 1
+        if nom == sujets["odom"]:
+            msg = deserialize_message(donnees, classes[nom])
+            p, q = msg.pose.pose.position, msg.pose.pose.orientation
+            pose = carte3d.transformation((p.x, p.y, p.z), (q.x, q.y, q.z, q.w))
+            if capteur is None:
+                capteur, _ = carte3d.position_capteur(liens, "lidar", msg.child_frame_id, None)
+            lidar = incliner((pose @ capteur)[:3, 3])[0]
+            msg.pose.pose.position.x, msg.pose.pose.position.y, msg.pose.pose.position.z = (float(v) for v in lidar)
+            msg.header.frame_id = "map"
+            t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9 + args.decalage_odom
+            msg.header.stamp.sec, msg.header.stamp.nanosec = int(math.floor(t)), int((t % 1) * 1e9) % 1000000000
+            donnees = serialize_message(msg)
+            n_odom += 1
+        elif nom == sujets["nuage"]:
+            msg = deserialize_message(donnees, classes[nom])
+            t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+            pose = trajectoire.pose(t)
+            if pose is None:
+                continue
+            repere = msg.header.frame_id.lstrip("/")
+            c, _ = carte3d.position_capteur(liens, repere, trajectoire.repere_robot, None)
+            m = pose @ c
+            points = carte3d.points_du_nuage(msg)
+            monde = incliner(points @ m[:3, :3].T + m[:3, 3])
+            sortie = _nuage_xyz(monde, "map", msg.header.stamp)
+            sortie.header.stamp.sec = sortie.header.stamp.nanosec = 0          # horodatage nul, comme le G1
+            donnees = serialize_message(sortie)
+            n_nuages += 1
+        ecrivain.write(nom, donnees, instant)
+    del ecrivain
+    dire(f"session {cible.name} « comme le G1 » : {n_nuages} nuages dans map à horodatage nul, {n_odom} odométries "
+         f"(position du LiDAR) décalées de {args.decalage_odom:+g} s, sol penché de {args.inclinaison_deg:g}° et "
+         f"{args.abaissement:g} m sous l'origine, sans /tf_static")
+    dire(f"session: {cible.name}")
+    return 0 if n_nuages and n_odom else 1
 
 
 # ---------------------------------------------------------------- répétition du mode robot
@@ -1051,10 +910,9 @@ def bag(args):
 # ---------------------------------------------------------------- adoption
 
 def verifier_adoption(args):
-    """Après « Adopter la carte (et le monde) » : la carte de l'étage est celle de la session (les
-    personnes et les objets retirés effacés), masque à sa taille, source_carte: scan, ancien monde
-    gardé dans la session et monde remplacé (avec --monde)."""
-    import numpy as np
+    """Après « Utiliser cette carte » (vague 5) : la carte de l'étage est celle de la session, telle quelle ; le
+    masque est à sa taille ; le nuage de l'étage (source scan) ; la carte extrudée (hauteur 1,5) dans le monde,
+    murs et objets dessinés retirés (gardés dans monde_remplace.monde.yaml), piétons gardés."""
     from atelier import lieu as L
     lieu = L.dossier_lieu(args.lieu)
     d = L.dossier_session(lieu, args.session)
@@ -1065,57 +923,283 @@ def verifier_adoption(args):
         ok = False
     info, image = L.charger_carte(L.chemin_carte(lieu, args.etage))
     info_s, image_s = L.charger_carte(d / L.FICHIERS_SESSION["carte"])
-    if image.shape != image_s.shape or tuple(info.origin[:2]) != tuple(info_s.origin[:2]):
-        dire(f"la carte de l'étage ({image.shape}, origine {info.origin}) n'a pas la taille et l'origine de la "
-             f"carte de la session ({image_s.shape}, {info_s.origin})")
+    if image.shape != image_s.shape or tuple(info.origin[:2]) != tuple(info_s.origin[:2]) or (image != image_s).any():
+        dire("la carte de l'étage n'est pas celle de la session, telle quelle")
         ok = False
     else:
-        attendue = L.carte_sans_elements_retires(info_s, image_s, L.lire_reconnaissance(d))
-        ecarts = int((attendue != image).sum())
-        dire(f"carte de l'étage = carte de la session sans les éléments retirés : {ecarts} pixels d'écart")
-        if ecarts:
+        dire(f"carte de l'étage = carte de la session, telle quelle ({int((image == 0).sum())} pixels occupés)")
+    info_m = L.charger_info_carte(L.chemin_interdit(lieu, args.etage))
+    if (info_m.largeur, info_m.hauteur) != (info.largeur, info.hauteur):
+        dire(f"masque {info_m.largeur} × {info_m.hauteur}, carte {info.largeur} × {info.hauteur} : tailles différentes")
+        ok = False
+    try:
+        points, entete = L.lire_nuage(L.chemin_nuage(lieu, args.etage))
+        dire(f"nuage de l'étage : {entete['points']} points, source {entete['source']}, session {entete.get('session')}")
+        if entete["source"] != "scan" or entete.get("session") != args.session:
             ok = False
-    masque = L.chemin_interdit(lieu, args.etage)
-    if not masque.is_file():
-        dire("pas de masque des zones interdites après l'adoption")
+    except L.ErreurLieu as e:
+        dire(f"nuage de l'étage illisible : {e.erreurs}")
+        ok = False
+    monde = L.charger_monde(lieu, args.etage)
+    stl = L.chemin_maillage(lieu, args.etage)
+    if monde.carte_extrudee is None or monde.carte_extrudee.hauteur != 1.5 or not stl.is_file():
+        dire(f"carte extrudée absente ou fausse : {monde.carte_extrudee}, {stl.name} présent : {stl.is_file()}")
         ok = False
     else:
-        info_m = L.charger_info_carte(masque)
-        if (info_m.largeur, info_m.hauteur) != (info.largeur, info.hauteur):
-            dire(f"masque {info_m.largeur} × {info_m.hauteur}, carte {info.largeur} × {info.hauteur} : tailles différentes")
+        dire(f"carte extrudée : {stl.name} ({stl.stat().st_size} octets), hauteur {monde.carte_extrudee.hauteur} m")
+    garde = d / L.FICHIERS_SESSION["monde_remplace"]
+    if args.reference:
+        dessine = L.charger_monde(args.reference, args.etage)
+        if monde.murs or monde.objets:
+            dire(f"le monde garde {len(monde.murs)} murs et {len(monde.objets)} objets dessinés")
             ok = False
-    if (d / L.FICHIERS_SESSION["nuage"]).is_file() and not L.chemin_pcd(lieu, args.etage).is_file():
-        dire(f"nuage de la session non copié en cartes/{args.etage}.pcd")
+        if not garde.is_file():
+            dire("l'ancien monde n'est pas gardé dans la session (monde_remplace.monde.yaml)")
+            ok = False
+        if sorted(p.id for p in monde.pietons) != sorted(p.id for p in dessine.pietons):
+            dire(f"piétons : {[p.id for p in monde.pietons]} au lieu de {[p.id for p in dessine.pietons]}")
+            ok = False
+        else:
+            dire(f"monde : carte extrudée, {len(monde.pietons)} piétons gardés ; monde dessiné dans {garde.name}")
+    if "carte_du_scan" not in L.chemin_sdf(lieu, args.etage).read_text():
+        dire("le monde Gazebo n'a pas le modèle carte_du_scan")
         ok = False
     session = L.lire_session(lieu, args.session)
     if not session.get("adoption"):
         dire("session.json : « adoption » n'est pas renseignée")
         ok = False
-    if args.monde:
-        if not (d / L.FICHIERS_SESSION["monde_remplace"]).is_file():
-            dire("l'ancien monde n'est pas gardé dans la session (monde_remplace.monde.yaml)")
-            ok = False
-        # Comparés après lecture par atelier.lieu : la mise en forme du YAML peut changer à la copie
-        actuel = L.Monde.depuis_dict(_lire_yaml(L.chemin_monde(lieu, args.etage))).vers_dict()
-        scan = L.Monde.depuis_dict(_lire_yaml(d / L.FICHIERS_SESSION["monde"])).vers_dict()
-        if actuel != scan:
-            dire("mondes/<etage>.monde.yaml n'est pas le monde de la session")
-            ok = False
-        else:
-            dire(f"monde de l'étage = monde du scan : {len(scan.get('murs') or [])} murs, "
-                 f"{len(scan.get('objets') or [])} objets")
-    # Personne debout du lieu de référence : aucun pixel occupé dans son empreinte (objectif 9.8)
-    if args.reference:
-        for o in L.charger_monde(args.reference, args.etage).objets:
-            if o.categorie_effective != "personne":
-                continue
-            X, Y = L.centres_pixels(info)
-            dedans = np.hypot(X - o.centre[0], Y - o.centre[1]) <= (o.rayon or 0.25) + 0.05
-            n = int((image[dedans] == 0).sum())
-            dire(f"{o.id} : {n} pixels occupés dans son empreinte sur la carte adoptée"
-                 + ("" if n == 0 else " (objectif 9.8 non atteint, non bloquant ici)"))
+    if args.api:
+        ok = _servis_par_l_api(args.api, args.lieu, args.etage, stl) and ok
     dire("adoption conforme" if ok else "adoption NON conforme")
     return 0 if ok else 1
+
+
+def _servis_par_l_api(api, lieu, etage, stl):
+    """GET …/nuage, …/nuage/info et …/monde/maillage servent le nuage et le STL de l'étage."""
+    base = f"{api}/api/lieux/{lieu}/etages/{etage}"
+    code_i, info, _ = appel_api("GET", base + "/nuage/info")
+    code_n, nuage, _ = appel_api("GET", base + "/nuage")
+    code_m, maillage, _ = appel_api("GET", base + "/monde/maillage")
+    if (code_i, code_n, code_m) != (200, 200, 200) or not isinstance(info, dict):
+        dire(f"API : …/nuage/info {code_i}, …/nuage {code_n}, …/monde/maillage {code_m} ({_court(info, 200)})")
+        return False
+    triangles = int.from_bytes(maillage[80:84], "little") if isinstance(maillage, bytes) else -1
+    ok = (isinstance(nuage, bytes) and len(nuage) == 12 * info["points"] and info["source"] == "scan"
+          and len(maillage) == 84 + 50 * triangles and len(maillage) == stl.stat().st_size)
+    dire(f"API : nuage de {info['points']} points ({len(nuage)} octets, source {info['source']}) ; maillage de "
+         f"{triangles} triangles ({len(maillage)} octets)" + ("" if ok else " : NON conformes"))
+    return ok
+
+
+# ---------------------------------------------------------------- Gazebo : le monde maillé (critère 33)
+
+def _noeud_ros(nom):
+    import rclpy
+    rclpy.init()
+    return rclpy, rclpy.create_node(nom)
+
+
+def temps_reel(args):
+    """Facteur temps réel : temps de /clock écoulé pendant args.duree secondes de temps mural."""
+    from rosgraph_msgs.msg import Clock
+    rclpy, n = _noeud_ros("e2e_temps_reel")
+    horloge = []
+    n.create_subscription(Clock, "/clock", lambda m: horloge.append(m.clock.sec + m.clock.nanosec * 1e-9), 10)
+    try:
+        fin = time.monotonic() + 60
+        while not horloge and time.monotonic() < fin:
+            rclpy.spin_once(n, timeout_sec=0.1)
+        if not horloge:
+            dire("pas de /clock en 60 s : la simulation tourne-t-elle ?")
+            return 1
+        debut_mur, debut_sim = time.monotonic(), horloge[-1]
+        while time.monotonic() - debut_mur < args.duree:
+            rclpy.spin_once(n, timeout_sec=0.05)
+        facteur = (horloge[-1] - debut_sim) / (time.monotonic() - debut_mur)
+    finally:
+        n.destroy_node()
+        rclpy.try_shutdown()
+    dire(f"Facteur temps réel : {facteur:.3f} (au moins {args.min:g}) sur {args.duree:g} s de temps mural")
+    return 0 if facteur >= args.min else 1
+
+
+DEMI_LONGUEUR_ROBOT, DEMI_LARGEUR_ROBOT = 0.104, 0.2385      # robot proxy de g1_sim : 0,208 × 0,477 m
+
+
+def boites_de_la_carte(lieu, etage):
+    """(boîtes (n, 4) xmin, ymin, xmax, ymax en m, info, pixels extrudés) de la carte de l'étage, comme le STL
+    (atelier.monde.extrusion : taches retirées, petits trous bouchés, rectangles)."""
+    import numpy as np
+    from atelier import lieu as L
+    from atelier.monde import extrusion as X
+    info, image = L.charger_carte(L.chemin_carte(lieu, etage))
+    propre = X.nettoyer(np.asarray(image) == 0, X.AIRE_MIN, X.FERMETURE)
+    return X.boites_metres(X.rectangles(propre), info), info, propre
+
+
+def mur_devant(boites, x, y, demi_largeur=DEMI_LARGEUR_ROBOT):
+    """x de la première face de boîte devant (x, y) vers +x, dans la bande de la largeur du robot, ou None."""
+    devant = (boites[:, 1] < y + demi_largeur) & (boites[:, 3] > y - demi_largeur) & (boites[:, 0] > x)
+    return float(boites[devant, 0].min()) if devant.any() else None
+
+
+def _attendre(rclpy, n, condition, delai):
+    fin = time.monotonic() + delai
+    while not condition() and time.monotonic() < fin:
+        rclpy.spin_once(n, timeout_sec=0.1)
+    return condition()
+
+
+def contre_un_mur(args):
+    """Le robot proxy, poussé à vx pendant args.duree s vers +x, s'arrête contre le premier mur de la carte
+    extrudée devant lui (face cherchée dans les boîtes du STL) : son avant (x + 0,104 m) ne la dépasse jamais
+    (à args.marge près), et il est allé jusqu'à elle."""
+    from geometry_msgs.msg import Twist
+    from nav_msgs.msg import Odometry
+    boites, _, _ = boites_de_la_carte(args.lieu, args.etage)
+    rclpy, n = _noeud_ros("e2e_contre_un_mur")
+    odom = []
+    n.create_subscription(Odometry, "/odom", lambda m: odom.append((m.pose.pose.position.x, m.pose.pose.position.y)), 10)
+    pub = n.create_publisher(Twist, "/cmd_vel", 10)
+    try:
+        if not _attendre(rclpy, n, lambda: odom, 60):
+            dire("pas de /odom en 60 s")
+            return 1
+        depart = odom[-1]
+        face = mur_devant(boites, depart[0], depart[1])
+        if face is None:
+            dire(f"aucun mur de la carte extrudée devant ({depart[0]:.2f} ; {depart[1]:.2f}) vers +x")
+            return 1
+        dire(f"départ ({depart[0]:.3f} ; {depart[1]:.3f}) ; face du mur de la carte extrudée à x = {face:.3f}, "
+             f"à {face - depart[0]:.2f} m du centre du robot")
+        avant_max = depart[0] + DEMI_LONGUEUR_ROBOT
+        debut = time.monotonic()
+        while time.monotonic() - debut < args.duree:
+            m = Twist()
+            m.linear.x = args.vx
+            pub.publish(m)
+            rclpy.spin_once(n, timeout_sec=0.05)
+            avant_max = max(avant_max, odom[-1][0] + DEMI_LONGUEUR_ROBOT)
+        for _ in range(10):
+            pub.publish(Twist())
+            rclpy.spin_once(n, timeout_sec=0.05)
+        attente = time.monotonic() + 1.0
+        while time.monotonic() < attente:
+            rclpy.spin_once(n, timeout_sec=0.05)
+            avant_max = max(avant_max, odom[-1][0] + DEMI_LONGUEUR_ROBOT)
+        fin = odom[-1]
+    finally:
+        n.destroy_node()
+        rclpy.try_shutdown()
+    libre = depart[0] + args.vx * args.duree + DEMI_LONGUEUR_ROBOT
+    dire(f"sans mur, l'avant irait à x = {libre:.2f} ; avant du robot au plus à x = {avant_max:.3f} (face à "
+         f"{face:.3f}) ; arrêté en ({fin[0]:.3f} ; {fin[1]:.3f})")
+    ok = (avant_max <= face + args.marge and fin[0] + DEMI_LONGUEUR_ROBOT >= face - 0.10
+          and libre > face + 0.2 and 0.5 <= face - depart[0] <= 1.5)
+    dire("le robot s'arrête contre le mur, jamais au-delà" if ok
+         else "le robot traverse le mur, s'arrête loin de lui, ou le mur n'est pas à 1 m environ")
+    return 0 if ok else 1
+
+
+def voit_le_maillage(args):
+    """/points voit la carte extrudée : les points du LiDAR, replacés par /odom (LiDAR à 1,245 m sur le robot),
+    entre 0,3 et 1,45 m de haut, presque tous à 0,10 m au plus d'un pixel extrudé de la carte."""
+    import numpy as np
+    from nav_msgs.msg import Odometry
+    from sensor_msgs.msg import PointCloud2
+    from atelier.lieu import dans_image, monde_vers_pixel
+    from atelier.scan import carte3d
+    _, info, propre = boites_de_la_carte(args.lieu, args.etage)
+    proche = propre.copy()                                  # pixels extrudés, dilatés de 2 pixels (0,10 m)
+    for di in range(-2, 3):
+        for dj in range(-2, 3):
+            proche |= np.roll(np.roll(propre, di, axis=0), dj, axis=1)
+    rclpy, n = _noeud_ros("e2e_voit_le_maillage")
+    odom, nuages = [], []
+    n.create_subscription(Odometry, "/odom", lambda m: odom.append(m), 10)
+    n.create_subscription(PointCloud2, "/points", lambda m: nuages.append(m) if odom else None, 10)
+    try:
+        if not _attendre(rclpy, n, lambda: len(nuages) >= 5, 60):
+            dire(f"/points ou /odom absents en 60 s ({len(nuages)} nuages)")
+            return 1
+        pose = odom[-1].pose.pose
+        nuage = nuages[-1]
+    finally:
+        n.destroy_node()
+        rclpy.try_shutdown()
+    p, q = pose.position, pose.orientation
+    m = carte3d.transformation((p.x, p.y, p.z), (q.x, q.y, q.z, q.w))
+    m[:3, 3] += m[:3, :3] @ np.asarray(carte3d.CAPTEUR_DEFAUT)
+    points = carte3d.points_du_nuage(nuage)
+    monde = points @ m[:3, :3].T + m[:3, 3]
+    hauts = monde[(monde[:, 2] > 0.3) & (monde[:, 2] < 1.45)]
+    c, ligne = monde_vers_pixel(hauts[:, 0], hauts[:, 1], info)
+    dedans = dans_image(c, ligne, info)
+    sur = np.zeros(len(hauts), dtype=bool)
+    sur[dedans] = proche[ligne[dedans], c[dedans]]
+    part = float(sur.mean()) if len(hauts) else 0.0
+    dire(f"/points ({nuage.header.frame_id}) : {len(points)} points, dont {len(hauts)} entre 0,3 et 1,45 m ; "
+         f"{int(sur.sum())} sur la carte extrudée ({100 * part:.0f} %, au moins {100 * args.part:.0f} %)")
+    return 0 if sur.sum() >= args.points_min and part >= args.part else 1
+
+
+def depart(args):
+    """Place le départ du robot simulé (depart_robot du monde de rdc) pour l'essai du mur."""
+    from atelier import lieu as L
+    monde = L.charger_monde(args.lieu, "rdc")
+    monde.depart_robot = L.Pose(args.x, args.y, args.theta)
+    L.enregistrer_monde(args.lieu, "rdc", monde)
+    dire(f"départ du robot simulé en ({args.x:g} ; {args.y:g} ; {args.theta:g})")
+    return 0
+
+
+# ---------------------------------------------------------------- carte d'Unitree (critère 33)
+
+def carte_unitree_repetition(args):
+    """Répétition lancée par l'Atelier ; g1-scan carte-unitree attend ; « Repérer le robot » (1804 au faux service,
+    qui publie la carte globale) ; la commande l'enregistre : cartes/rdc_unitree.pcd et le nuage source unitree."""
+    import subprocess
+    from atelier import lieu as L
+    code, r, _ = appel_api("POST", args.api + "/api/simulation/demarrer",
+                           {"lieu": args.lieu, "etage": "rdc", "mode": "repetition"}, delai=120)
+    if code != 200:
+        dire(f"POST /api/simulation/demarrer (repetition) : {code} {_court(r)}")
+        return 1
+    try:
+        fin = time.monotonic() + 180
+        pret = False
+        while time.monotonic() < fin and not pret:
+            _, e, _ = appel_api("GET", args.api + "/api/robot/etat")
+            pret = (isinstance(e, dict) and e.get("mode") == "repetition" and isinstance(e.get("reperage"), dict)
+                    and not e["reperage"].get("perime"))
+            if not pret:
+                time.sleep(1.0)
+        if not pret:
+            dire("l'Atelier ne voit pas le repérage de la répétition en 180 s (GET /api/robot/etat)")
+            return 1
+        dire("répétition lancée par l'Atelier ; l'Atelier voit /reperage/etat")
+        commande = [str(RACINE / "bin" / "g1-scan"), "carte-unitree", "--lieu", args.lieu, "--etage", "rdc",
+                    "--delai", "90"]
+        attente = subprocess.Popen(commande, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        time.sleep(3.0)
+        code, r, duree = appel_api("POST", args.api + "/api/robot/reperer", {"lieu": args.lieu, "etage": "rdc"}, delai=60)
+        dire(f"« Repérer le robot » : {code} en {duree:.1f} s ({_court(r, 200)})")
+        try:
+            sortie, _ = attente.communicate(timeout=120)
+        except subprocess.TimeoutExpired:
+            attente.kill()
+            sortie, _ = attente.communicate()
+        print(sortie.strip())
+        if attente.returncode != 0:
+            dire(f"g1-scan carte-unitree : code {attente.returncode}")
+            return 1
+    finally:
+        appel_api("POST", args.api + "/api/simulation/arreter", {}, delai=120)
+    lieu = L.dossier_lieu(args.lieu)
+    pcd = lieu / "cartes" / "rdc_unitree.pcd"
+    points, entete = L.lire_nuage(L.chemin_nuage(lieu, "rdc", "unitree"))
+    dire(f"{pcd.name} : {pcd.stat().st_size} octets ; nuage {entete['points']} points, source {entete['source']}")
+    return 0 if pcd.is_file() and entete["source"] == "unitree" and entete["points"] > 1000 else 1
 
 
 # ---------------------------------------------------------------- partage entre critères
@@ -1206,16 +1290,25 @@ def main():
     commande("attendre-etape", attendre_etape, lieu, session, (("--etape",), {"default": "enregistrement"}),
              (("--nuages-min",), {"type": int, "default": 1}), (("--delai",), {"type": float, "default": 120.0}))
     commande("verifier-session", verifier_session, session, (("--reference",), {}),
-             (("--min",), {"type": float, "default": 0.9}))
-    commande("evaluer", evaluer, session, (("--reference",), {"required": True}), etage,
-             (("--strict",), {"action": "store_true"}), (("--json",), {}))
-    commande("fabriquer-nuage", fabriquer_nuage, (("--reference",), {"required": True}), (("--sortie",), {"required": True}),
-             etage, (("--pas",), {"type": float, "default": 0.25}), (("--graine",), {"type": int, "default": 0}))
-    commande("reconnaitre", reconnaitre, session, (("--reference",), {}), etage)
+             (("--min",), {"type": float, "default": 0.9}), (("--precision",), {"type": float, "default": 0.0}),
+             (("--ignores-max",), {"type": float, "default": 0.01}), (("--points-min",), {"type": int, "default": 50000}),
+             (("--inclinaison",), {"type": float, "nargs": 2}))
+    commande("servir-session", servir_session, api, lieu, session)
+    commande("damier", damier, session, (("--vers",), {}),
+             (("--inclinaison-deg",), {"type": float, "default": 0.6}), (("--abaissement",), {"type": float, "default": 1.27}),
+             (("--decalage-odom",), {"type": float, "default": -138.0}))
     commande("faux-slam", faux_slam, lieu, session)
     commande("bag", bag, (("--dossier",), {"required": True}), (("sujets",), {"nargs": "+"}))
-    commande("verifier-adoption", verifier_adoption, lieu, session, etage, (("--monde",), {"action": "store_true"}),
-             (("--reference",), {}))
+    commande("verifier-adoption", verifier_adoption, lieu, session, etage, (("--reference",), {}), (("--api",), {}))
+    commande("temps-reel", temps_reel, (("--duree",), {"type": float, "default": 20.0}),
+             (("--min",), {"type": float, "default": 0.9}))
+    commande("contre-un-mur", contre_un_mur, lieu, etage, (("--vx",), {"type": float, "default": 0.5}),
+             (("--duree",), {"type": float, "default": 3.0}), (("--marge",), {"type": float, "default": 0.02}))
+    commande("voit-le-maillage", voit_le_maillage, lieu, etage, (("--part",), {"type": float, "default": 0.8}),
+             (("--points-min",), {"type": int, "default": 300}))
+    commande("depart", depart, lieu, (("--x",), {"type": float, "required": True}),
+             (("--y",), {"type": float, "required": True}), (("--theta",), {"type": float, "default": 0.0}))
+    commande("carte-unitree-repetition", carte_unitree_repetition, api, lieu)
     commande("partager", partager, session, (("--vers",), {"required": True}))
     commande("partagee", partagee, (("--depuis",), {"required": True}), (("--age-max",), {"type": float, "default": 12.0}))
     args = p.parse_args()

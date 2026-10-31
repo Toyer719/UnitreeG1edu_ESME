@@ -1,4 +1,4 @@
-"""Aperçu en direct d'un scan : la carte qui se construit, vue de dessus (section 9.2 du plan).
+"""Aperçu en direct d'un scan : la carte qui se construit, vue de dessus et en 3D (sections 9.2 et 12.5).
 
 Le nœud écoute directement le nuage et l'odométrie de la session (pas le bag en cours
 d'écriture). Il accumule les points sur une grille de 5 cm (une case 3D compte le nombre de
@@ -8,7 +8,14 @@ ensemble, chacun de façon atomique :
     205 (inconnu), obstacles vus en noir, trajectoire en bleu et robot en rouge ;
   - apercu.json : points décimés de la tranche 0,1–1,5 m au-dessus du sol estimé, trajectoire,
     dernière pose du robot et statistiques (format de la section 9.2) ;
+  - apercu_nuage.bin et .json (vague 5, section 12.5) : le nuage en direct de l'écran de scan, toutes
+    hauteurs, une case de 10 cm par point (APERCU_NUAGE_POINTS_MAX points au plus), z = hauteur
+    au-dessus du plan du sol (atelier.lieu.nuage, source apercu) ;
 puis il met à jour les statistiques de session.json (atelier.lieu.maj_session).
+
+Le sol est un plan (atelier.scan.sol, RANSAC à graine fixe), recalculé toutes les PERIODE_SOL secondes
+au plus quand le nuage a grandi : sur le vrai G1 il est incliné, et un seul niveau noircissait la
+moitié de l'aperçu (le « damier »).
 
 Repère : celui de l'odométrie. Un nuage déjà dans ce repère (même frame_id que l'odométrie, ou
 odom, map, world, camera_init) est pris tel quel. Sinon, il est placé avec la pose du robot au
@@ -35,9 +42,11 @@ from pathlib import Path
 
 import numpy as np
 
-from atelier.lieu import (APERCU_POINTS_MAX, APERCU_TRAJECTOIRE_MAX, FICHIERS_SESSION, PERIODE_APERCU,
-                          ErreurLieu, dossier_session, ecrire_atomique, maj_session)
+from atelier.lieu import (APERCU_NUAGE, APERCU_POINTS_MAX, APERCU_TRAJECTOIRE_MAX, FICHIERS_SESSION, PERIODE_APERCU,
+                          ErreurLieu, dossier_session, ecrire_atomique, ecrire_nuage, entete_nuage, maj_session)
+from atelier.lieu.nuage import APERCU_NUAGE_POINTS_MAX, GRILLE_APERCU
 from atelier.lieu.scans import instant
+from atelier.scan import sol as S
 
 RESOLUTION = 0.05            # m, grille de l'accumulation et de l'image
 RESOLUTION_Z = 0.05          # m, hauteur des cases 3D (comme la grille de la carte 3D)
@@ -48,6 +57,8 @@ CASES_MIN = 2                # cases 3D d'une colonne dans la tranche pour un ob
 IMPACTS_MIN = 3              # nuages qui touchent la colonne : un point fantôme isolé n'est pas un obstacle
 AIRE_MIN = 4                 # pixels : une tache d'obstacles plus petite est du bruit (carte2d.AIRE_MIN)
 POINTS_SOL_MIN = 500         # cases 3D avant d'estimer le sol
+PERIODE_SOL = 10.0           # s : le plan du sol est recalculé au plus aussi souvent…
+CROISSANCE_SOL = 1.2         # … et seulement si le nombre de cases a grandi de 20 %
 PAS_TRAJECTOIRE = 0.05       # m : un point de trajectoire au moins tous les 0,1 m
 DEPLACEMENT_MIN = 0.02       # m : en dessous, un déplacement de l'odométrie est du bruit
 ECART_ODOM_MAX = 0.5         # s : au-delà, on prend la dernière pose connue
@@ -130,6 +141,7 @@ class Accumulateur:
         self.distance = 0.0
         self._dernier_compte = None      # dernière position comptée dans la distance
         self.debut = time.monotonic()
+        self._plan, self._cases_du_plan, self._instant_plan = None, 0, 0.0
 
     # ------------------------------------------------ entrées
     def ajouter_nuage(self, points_monde):
@@ -165,24 +177,44 @@ class Accumulateur:
         return {"duree_s": round(time.monotonic() - self.debut, 1), "points": int(self.points),
                 "distance_m": round(self.distance, 2), "nuages": int(self.nuages)}
 
-    def sol(self):
-        """Hauteur du sol : 1er centile des z des cases 3D (comme atelier.scan.carte2d), ou None."""
+    def plan_sol(self):
+        """Plan du sol [a, b, c] (z = a·x + b·y + c) des cases 3D, ou None tant qu'il y en a trop peu.
+        Recalculé au plus toutes les PERIODE_SOL secondes, quand le nuage a grandi de 20 %."""
         self._fusionner()
-        if len(self.cles) < POINTS_SOL_MIN:
+        n = len(self.cles)
+        if n < POINTS_SOL_MIN:
             return None
-        _, _, k = indices_cases(self.cles)
-        return float((np.percentile(k, 1.0) + 0.5) * self.resolution_z)
+        maintenant = time.monotonic()
+        if (self._plan is None or (n >= CROISSANCE_SOL * self._cases_du_plan
+                                   and maintenant - self._instant_plan >= PERIODE_SOL)):
+            i, j, k = indices_cases(self.cles)
+            centres = np.column_stack([(i + 0.5) * self.resolution, (j + 0.5) * self.resolution,
+                                       (k + 0.5) * self.resolution_z])
+            self._plan = S.trouver_sol(centres)["plan"]
+            self._cases_du_plan, self._instant_plan = n, maintenant
+        return self._plan
 
-    def tranche(self, sol, obstacles_seulement=False):
-        """(i, j, k) des cases 3D de la tranche 0,1–1,5 m au-dessus du sol (sol None : rien) ;
-        obstacles_seulement : seulement celles des colonnes retenues comme obstacles."""
+    def sol(self):
+        """Hauteur du sol au milieu de ce qui a été vu (pour apercu.json), ou None."""
+        plan = self.plan_sol()
+        if plan is None:
+            return None
+        i, j, _ = indices_cases(self.cles)
+        return float(S.niveau(plan, (np.median(i) + 0.5) * self.resolution, (np.median(j) + 0.5) * self.resolution))
+
+    def tranche(self, plan, obstacles_seulement=False):
+        """(i, j, k) des cases 3D de la tranche 0,1–1,5 m au-dessus du plan du sol (plan None : rien) ;
+        obstacles_seulement : seulement celles des colonnes retenues comme obstacles. plan : [a, b, c],
+        ou un niveau (nombre) pour un sol horizontal."""
         self._fusionner()
         vide = np.zeros(0, dtype=np.int64)
-        if sol is None or len(self.cles) == 0:
+        if plan is None or len(self.cles) == 0:
             return vide, vide, vide
+        if np.ndim(plan) == 0:
+            plan = S.plan_plat(plan)
         i, j, k = indices_cases(self.cles)
         # Le bas de la case doit être dans la tranche : une case qui contient le sol n'y entre pas
-        bas = k * self.resolution_z - sol
+        bas = k * self.resolution_z - S.niveau(plan, (i + 0.5) * self.resolution, (j + 0.5) * self.resolution)
         dans = (bas >= TRANCHE[0] - 1e-9) & (bas + 0.5 * self.resolution_z <= TRANCHE[1])
         i, j, k, impacts = i[dans], j[dans], k[dans], self.impacts[dans]
         if obstacles_seulement and len(i):
@@ -195,12 +227,12 @@ class Accumulateur:
             i, j, k = i[garde], j[garde], k[garde]
         return i, j, k
 
-    def obstacles(self, sol):
+    def obstacles(self, plan):
         """(i, j) des colonnes de 5 cm retenues comme obstacles : au moins CASES_MIN cases 3D dans la
         tranche, touchées en tout par au moins IMPACTS_MIN nuages, dans une tache d'au moins AIRE_MIN
         pixels. Un mur est vu par des centaines de nuages ; un point fantôme du LiDAR simulé (au bord
-        d'un mur, le long d'un rayon) par quelques-uns, et en petits morceaux."""
-        i, j, _ = self.tranche(sol, obstacles_seulement=True)
+        d'un mur, le long d'un rayon) par quelques-uns, et en petits morceaux. plan : le plan du sol."""
+        i, j, _ = self.tranche(plan, obstacles_seulement=True)
         if len(i) == 0:
             return i, j
         colonnes = np.unique(((i + _DEC) << 22) | (j + _DEC))
@@ -211,8 +243,9 @@ class Accumulateur:
         """Vue de dessus : (image BGR (hauteur, largeur, 3) uint8, infos) ; infos : resolution,
         bornes {xmin, ymin, xmax, ymax}, largeur, hauteur, sol."""
         import cv2
+        plan = self.plan_sol()
         sol = self.sol()
-        i, j = self.obstacles(sol)
+        i, j = self.obstacles(plan)
         res = self.resolution
         xs = [self.trajectoire[n][0] for n in range(len(self.trajectoire))]
         ys = [self.trajectoire[n][1] for n in range(len(self.trajectoire))]
@@ -252,12 +285,13 @@ class Accumulateur:
         infos = {"resolution": round(res, 4),
                  "bornes": {"xmin": round(xmin, 3), "ymin": round(jmin * res, 3),
                             "xmax": round((imax + 1) * res, 3), "ymax": round(ymax, 3)},
-                 "largeur": int(largeur), "hauteur": int(hauteur), "sol": None if sol is None else round(sol, 3)}
+                 "largeur": int(largeur), "hauteur": int(hauteur), "sol": None if sol is None else round(sol, 3),
+                 "plan_sol": None if plan is None else [round(float(v), 6) for v in plan]}
         return image, infos
 
     def donnees_json(self, session, infos, repere="odom", graine=0):
-        """Contenu de apercu.json (section 9.2)."""
-        i, j, k = self.tranche(infos["sol"], obstacles_seulement=True)
+        """Contenu de apercu.json (section 9.2), plus plan_sol (vague 5)."""
+        i, j, k = self.tranche(infos.get("plan_sol", infos["sol"]), obstacles_seulement=True)
         points = np.column_stack([(i + 0.5) * self.resolution, (j + 0.5) * self.resolution,
                                   (k + 0.5) * self.resolution_z]) if len(i) else np.zeros((0, 3))
         if len(points) > APERCU_POINTS_MAX:
@@ -273,12 +307,36 @@ class Accumulateur:
         return {"version": 1, "session": session, "maj": instant(), "repere": repere,
                 "resolution": infos["resolution"], "bornes": infos["bornes"],
                 "largeur": infos["largeur"], "hauteur": infos["hauteur"], "sol": infos["sol"],
+                "plan_sol": infos.get("plan_sol"),
                 "points": np.round(points, 2).tolist(),
                 "trajectoire": [[round(x, 3), round(y, 3), round(t, 3)] for x, y, t in trajectoire],
                 "robot": robot, "statistiques": self.statistiques()}
 
+    def nuage_apercu(self, grille=GRILLE_APERCU, points_max=APERCU_NUAGE_POINTS_MAX, graine=0):
+        """Nuage en direct de l'écran de scan : (points float32 (n, 3), plan du sol). Une case de « grille »
+        mètres par point (centre), toutes hauteurs, z = hauteur au-dessus du plan du sol (sans plan : au-dessus
+        du 1er centile) ; au plus points_max points, tirés au hasard à graine fixe."""
+        self._fusionner()
+        if len(self.cles) == 0:
+            return np.zeros((0, 3), dtype=np.float32), None
+        i, j, k = indices_cases(self.cles)
+        f = max(1, int(round(grille / self.resolution)))
+        fz = max(1, int(round(grille / self.resolution_z)))
+        gros = np.unique(np.column_stack([i // f, j // f, k // fz]), axis=0)
+        points = np.column_stack([(gros[:, 0] + 0.5) * f * self.resolution, (gros[:, 1] + 0.5) * f * self.resolution,
+                                  (gros[:, 2] + 0.5) * fz * self.resolution_z])
+        plan = self.plan_sol()
+        if plan is None:
+            plan = S.plan_plat(float(np.percentile(points[:, 2], 1.0)))
+        points[:, 2] = S.hauteurs(points, plan)
+        if len(points) > points_max:
+            choix = np.random.default_rng(graine).choice(len(points), points_max, replace=False)
+            points = points[np.sort(choix)]
+        return points.astype(np.float32), plan
+
     def ecrire(self, dossier, session, repere="odom"):
-        """Réécrit apercu.png puis apercu.json dans le dossier de la session. Renvoie le JSON."""
+        """Réécrit apercu.png, apercu.json puis apercu_nuage (.bin et .json) dans le dossier de la session.
+        Renvoie le JSON de apercu.json."""
         import cv2
         image, infos = self.vue()
         ok, png = cv2.imencode(".png", image)
@@ -288,46 +346,58 @@ class Accumulateur:
         dossier = Path(dossier)
         ecrire_atomique(dossier / FICHIERS_SESSION["apercu_png"], png.tobytes())
         ecrire_atomique(dossier / FICHIERS_SESSION["apercu_json"], json.dumps(donnees, ensure_ascii=False) + "\n")
+        points, plan = self.nuage_apercu()
+        sol = plan or [0.0, 0.0, 0.0]
+        entete = entete_nuage(points, GRILLE_APERCU, sol, "apercu", session=session, statistiques=self.statistiques(),
+                              robot=donnees["robot"])
+        ecrire_nuage(dossier / APERCU_NUAGE, points, entete)
         return donnees
 
 
 # ---------------------------------------------------------------- placement des nuages
 
 class Placement:
-    """Place un nuage dans le repère de l'odométrie : poses de l'odométrie (tampon), /tf_static."""
+    """Place un nuage dans le repère de l'odométrie : poses de l'odométrie (tampon), /tf_static.
+
+    Une seule base de temps (bogue n° 1 du scan du 27/10) : un nuage à horodatage nul (vrai G1) est
+    apparié à la pose reçue au même moment (instant de réception), pas à son horodatage."""
 
     def __init__(self, capteur=None):
-        self.poses = deque(maxlen=400)       # (instant, matrice 4 × 4 robot → odom)
+        self.poses = deque(maxlen=400)       # (horodatage, instant de réception, matrice 4 × 4 robot → odom)
         self.repere_odom = None
         self.repere_robot = None
         self.liens = {}                      # /tf_static : enfant → (parent, matrice)
         self.capteur_defaut = capteur or position_lidar_proxy()
         self.source_capteur = None
 
-    def ajouter_odom(self, t, position, quaternion, repere, repere_robot):
+    def ajouter_odom(self, t, position, quaternion, repere, repere_robot, reception=None):
         from atelier.scan.carte3d import transformation
-        self.poses.append((t, transformation(position, quaternion)))
+        self.poses.append((t, time.time() if reception is None else reception, transformation(position, quaternion)))
         self.repere_odom, self.repere_robot = repere.lstrip("/"), (repere_robot or "base_link").lstrip("/")
 
     def ajouter_tf(self, enfant, parent, matrice):
         self.liens[enfant.lstrip("/")] = (parent.lstrip("/"), matrice)
 
-    def pose(self, t):
-        """Pose du robot la plus proche de l'instant t (ou la dernière si t est loin de tout)."""
+    def pose(self, t, reception=None):
+        """Pose du robot la plus proche de l'instant t (horodatage), ou de l'instant de réception si t est
+        nul ; la dernière si t est loin de tout."""
         if not self.poses:
             return None
+        if t <= 0 and reception is not None:
+            meilleur = min(self.poses, key=lambda p: abs(p[1] - reception))
+            return meilleur[2]
         meilleur = min(self.poses, key=lambda p: abs(p[0] - t))
-        return meilleur[1] if abs(meilleur[0] - t) <= ECART_ODOM_MAX else self.poses[-1][1]
+        return meilleur[2] if abs(meilleur[0] - t) <= ECART_ODOM_MAX else self.poses[-1][2]
 
     def deja_dans_le_monde(self, repere):
         repere = repere.lstrip("/")
         return repere in REPERES_MONDE or (self.repere_odom is not None and repere == self.repere_odom)
 
-    def placer(self, points, repere, t):
+    def placer(self, points, repere, t, reception=None):
         """Points du nuage (N, 3) → repère de l'odométrie, ou None si la pose est inconnue."""
         if self.deja_dans_le_monde(repere):
             return points
-        pose = self.pose(t)
+        pose = self.pose(t, reception)
         if pose is None:
             return None
         from atelier.scan.carte3d import position_capteur
@@ -378,7 +448,7 @@ def principal(argv=None):
     def sur_odom(msg):
         p, q = msg.pose.pose.position, msg.pose.pose.orientation
         placement.ajouter_odom(_instant(msg.header), (p.x, p.y, p.z), (q.x, q.y, q.z, q.w),
-                               msg.header.frame_id, msg.child_frame_id)
+                               msg.header.frame_id, msg.child_frame_id, reception=time.time())
         accu.ajouter_pose(p.x, p.y, _cap(q.x, q.y, q.z, q.w))
 
     def sur_nuage(msg):
@@ -386,7 +456,7 @@ def principal(argv=None):
             points = points_du_nuage(msg)
         except ErreurCarte3d:
             return
-        monde = placement.placer(points, msg.header.frame_id, _instant(msg.header))
+        monde = placement.placer(points, msg.header.frame_id, _instant(msg.header), reception=time.time())
         if monde is None:
             sans_pose[0] += 1            # pas encore d'odométrie : compté, mais pas placé
             accu.nuages += 1

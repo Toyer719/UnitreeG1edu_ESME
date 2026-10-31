@@ -1,129 +1,167 @@
-/* Onglet Scan de l'Atelier G1 : choix du mode, gros boutons « Scan » et « Fin », aperçu en direct,
-   progression du traitement, revue des éléments reconnus. Variables de couleurs : atelier.css. */
+/* Écran de scan de l'Atelier G1 (vague 5, section 12.5 du plan) : plein écran sombre comme « 3D LiDAR
+   Mapping » d'Unitree Explore (nuage en direct, trajet, gros boutons Scan et Fin, compteurs), progression
+   de la fabrication de la carte, « Utiliser cette carte ». Couleurs : seulement les jetons de css/theme.css
+   (la vue reste sombre dans les deux thèmes : --vue-*). Cibles tactiles d'au moins --cible (44 px). */
 
-.scan-titre { margin: 0; font-size: 1.15rem; }
-/* l'onglet ne se tasse pas sous la hauteur de son contenu : la liste des scans reste en dessous */
-.scan-contenu { display: flex; flex-direction: column; gap: 12px; flex: 1 0 auto; }
-.scan-vue-choix, .scan-vue-traitement, .scan-vue-echec, .scan-vue-interrompu { flex-grow: 0; }
-/* plan et panneau à hauteur d'écran : la longue liste des éléments défile dans son panneau */
-.ecran-scan .espace-deux { flex: 0 0 auto; height: max(520px, calc(100vh - 250px)); grid-template-rows: minmax(0, 1fr); }
-.scan-message { margin: 0; color: var(--texte-doux); min-height: 1.3em; }
-.scan-liste { margin: 4px 0 10px; padding-left: 22px; }
-.scan-liste li { margin: 4px 0; }
-.scan-liste code { background: #eef1f5; padding: 1px 6px; border-radius: 4px; }
+/* ------------------------------------------------------------------ la vue */
 
-/* ------------------------------------------------------------------ 1. choix du mode */
+/* Sans la coque, la racine porte la vue (position relative) ; dans la coque, la racine est un calque de la
+   vue centrale (.vue-calque, absolu, qui remplit la vue) et reçoit la classe ecran-page (écran sans carte) :
+   on lui garde position absolue et inset 0, sans rembourrage ni défilement, sinon la vue s'effondre. */
+.scan-racine { position: relative; min-height: 0; }
+.vue-calque.scan-racine { position: absolute; inset: 0; padding: 0; overflow: hidden; }
+/* Plein écran dans la coque (pendant le scan, options.coque.pleinEcran) : la vue sombre couvre tout entre la
+   barre d'outils (ARRÊT reste visible et cliquable) et la barre d'état, quelle que soit la grille de l'espace.
+   Sous les menus (3000), les confirmations (5000) et ARRÊT (6000) de la coque. */
+.vue-calque.scan-racine .scan-ecran.scan-plein-ecran {
+  position: fixed; top: var(--h-barre-outils); right: 0; bottom: var(--h-barre-etat); left: 0; z-index: 30;
+}
+.scan-ecran {
+  position: absolute; inset: 0; overflow: hidden; background: var(--vue-fond); color: var(--vue-texte);
+  font-family: var(--police);
+}
+.scan-vue { position: absolute; inset: 0; }
+.scan-vue canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.scan-image2d { position: absolute; inset: 56px 12px 140px; width: calc(100% - 24px); height: calc(100% - 196px);
+  object-fit: contain; image-rendering: pixelated; }
+.nuage3d-absent { position: absolute; top: 40%; left: 0; right: 0; padding: 0 24px; text-align: center; color: var(--vue-texte-doux); }
 
-.scan-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; }
+/* Sans la coque (ancien app.js) : la vue et le panneau côte à côte, la vue en plein écran pendant le scan */
+.scan-sans-coque { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 340px); gap: 12px; min-height: 560px; }
+.scan-sans-coque .scan-ecran { position: relative; inset: auto; min-height: 560px; border-radius: var(--rayon); }
+.scan-sans-coque .scan-ecran.scan-plein-ecran { position: fixed; inset: 0; z-index: 40; border-radius: 0; }
+.scan-panneau-integre { min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; }
+
+/* ------------------------------------------------------------------ en haut : titre et compteurs */
+
+.scan-haut {
+  position: absolute; top: 10px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; align-items: center;
+  justify-content: space-between; gap: 8px; pointer-events: none;
+}
+.scan-titre {
+  padding: 6px 12px; border-radius: var(--rayon-pilule); background: var(--vue-barre); font-weight: 600;
+  max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.scan-compteurs { display: flex; flex-wrap: wrap; gap: 8px; }
+.scan-compteur {
+  display: flex; flex-direction: column; align-items: center; min-width: 84px; padding: 6px 12px;
+  border-radius: var(--rayon); background: var(--vue-barre);
+}
+.scan-compteur-valeur { font-size: 1.5rem; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.scan-compteur-libelle { font-size: 0.78rem; color: var(--vue-texte-doux); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* outils de la vue, à droite */
+.scan-outils-vue { position: absolute; top: 76px; right: 12px; display: flex; flex-direction: column; gap: 6px; }
+.scan-outil {
+  min-width: 88px; min-height: var(--cible); padding: 0 12px; border: 1px solid var(--vue-grille);
+  border-radius: var(--rayon-petit); background: var(--vue-barre); color: var(--vue-texte); font: inherit;
+  cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.scan-outil:hover { border-color: var(--accent-actif); }
+.scan-case input { width: 18px; height: 18px; }
+
+/* ------------------------------------------------------------------ en bas : les gros boutons */
+
+/* centrés sur toute la largeur (left et right, pas translateX(-50%) qui limite la largeur à la moitié de la
+   vue et fait passer les boutons à la ligne) ; la bande laisse passer les gestes vers la vue */
+.scan-bas {
+  position: absolute; bottom: 20px; left: 12px; right: 12px; display: flex; align-items: center;
+  gap: 16px; flex-wrap: wrap; justify-content: center; pointer-events: none;
+}
+.scan-bas > * { pointer-events: auto; }
+.scan-rond {
+  width: 104px; height: 104px; border: 0; border-radius: 50%; font: inherit; font-size: 1.6rem; font-weight: 800;
+  letter-spacing: 0.04em; cursor: pointer; box-shadow: var(--ombre-forte, var(--ombre));
+}
+.scan-rond-scan { background: var(--accent); color: var(--sur-accent); }
+.scan-rond-scan:hover:not(:disabled) { background: var(--accent-actif); }
+.scan-rond-fin { background: var(--danger); color: var(--sur-danger); }
+.scan-rond:active:not(:disabled) { transform: translateY(2px); }
+.scan-rond:disabled { opacity: 0.6; cursor: wait; }
+.scan-bouton-utiliser, .scan-bouton-nouveau {
+  min-height: 56px; padding: 0 24px; border: 0; border-radius: var(--rayon-pilule); font: inherit; font-size: 1.1rem;
+  font-weight: 700; cursor: pointer;
+}
+.scan-bouton-utiliser { background: var(--accent); color: var(--sur-accent); }
+.scan-bouton-utiliser:hover:not(:disabled) { background: var(--accent-actif); }
+.scan-bouton-nouveau { background: var(--vue-barre); color: var(--vue-texte); border: 1px solid var(--vue-grille); }
+.scan-bouton-utiliser:disabled { opacity: 0.6; cursor: wait; }
+
+.scan-message {
+  position: absolute; bottom: 136px; left: 12px; right: 12px; width: fit-content; margin: 0 auto; max-width: 720px;
+  padding: 6px 14px; border-radius: var(--rayon-pilule); background: var(--vue-barre); color: var(--vue-texte);
+  text-align: center; font-size: 0.95rem;
+}
+.scan-message:empty { display: none; }
+
+/* flèches du robot simulé, en bas à gauche */
+.scan-teleop { position: absolute; left: 16px; bottom: 16px; padding: 8px; border-radius: var(--rayon); background: var(--vue-barre); }
+.scan-teleop .teleop-grille { display: grid; grid-template-columns: repeat(3, 56px); gap: 6px; }
+.scan-teleop .teleop-bouton {
+  width: 56px; height: 56px; border: 1px solid var(--vue-grille); border-radius: var(--rayon-petit);
+  background: var(--vue-fond); color: var(--vue-texte); font-size: 1.6rem; cursor: pointer; touch-action: none;
+  user-select: none; -webkit-user-select: none;
+}
+.scan-teleop .teleop-bouton.appuye { background: var(--accent); border-color: var(--accent); color: var(--sur-accent); }
+.scan-teleop .panneau-texte, .scan-teleop .panneau-note { color: var(--vue-texte-doux); margin: 4px 0 0; font-size: 0.85rem; }
+
+/* ------------------------------------------------------------------ la fabrication de la carte */
+
+.scan-progression {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(520px, calc(100% - 32px));
+  padding: 18px 22px; border-radius: var(--rayon); background: var(--vue-barre); color: var(--vue-texte);
+}
+.scan-progression-titre { margin: 0 0 10px; font-size: 1.2rem; }
+.scan-progression-fond { height: 16px; border-radius: var(--rayon-pilule); background: var(--vue-grille); overflow: hidden; }
+.scan-progression-barre { height: 100%; width: 0; background: var(--accent-actif); transition: width 0.4s ease; }
+.scan-progression-texte { margin: 8px 0; font-variant-numeric: tabular-nums; }
+.scan-etapes { margin: 6px 0 0; padding-left: 22px; color: var(--vue-texte-doux); }
+.scan-etape { margin: 4px 0; }
+.scan-etape.fait { color: var(--succes); }
+.scan-etape.fait::after { content: " ✓"; font-weight: 700; }
+.scan-etape.en-cours { color: var(--vue-texte); font-weight: 700; }
+.scan-etape.en-cours::after { content: " …"; }
+
+/* ------------------------------------------------------------------ le panneau : réglages, résultat, historique */
+
+.scan-bloc { display: flex; flex-direction: column; gap: 8px; }
+.scan-bloc[hidden] { display: none !important; }
+.scan-bloc-titre { margin: 4px 0; font-size: 1rem; }
+.scan-modes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .scan-mode {
-  display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: left;
-  min-height: 96px; padding: 12px 14px; border: 2px solid var(--bord); border-radius: var(--rayon);
-  background: var(--surface); color: var(--texte); font: inherit; cursor: pointer;
+  min-height: var(--cible); border: 2px solid var(--bord); border-radius: var(--rayon-petit); background: var(--surface);
+  color: var(--texte); font: inherit; font-weight: 600; cursor: pointer;
 }
-.scan-mode:hover { border-color: var(--principal); }
-.scan-mode.actif { border-color: var(--principal); background: #eef4ff; box-shadow: inset 0 0 0 1px var(--principal); }
-.scan-mode-titre { font-size: 1.2rem; font-weight: 700; }
-.scan-mode-texte { color: var(--texte-doux); font-size: 0.92rem; }
-.scan-consignes { margin-bottom: 8px; }
-.scan-lancer { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
-
-.bouton-scan, .bouton-fin {
-  min-width: 220px; min-height: 96px; padding: 0 40px; border: 0; border-radius: 48px;
-  color: #fff; font: inherit; font-size: 2.1rem; font-weight: 800; letter-spacing: 0.06em; cursor: pointer;
+.scan-mode.actif { border-color: var(--accent-actif); background: var(--accent-doux); }
+.scan-mode-fixe, .scan-note { margin: 0; color: var(--texte-doux); font-size: 0.92rem; }
+.scan-alerte { margin: 0; color: var(--avertissement); font-size: 0.92rem; }
+.scan-code { font-family: ui-monospace, monospace; font-size: 0.82rem; overflow-wrap: anywhere; }
+.scan-consignes { margin: 0; padding-left: 20px; color: var(--texte-doux); font-size: 0.92rem; }
+.scan-consignes li { margin: 3px 0; }
+.scan-vignette { margin: 0; }
+.scan-vignette-image { display: block; width: 100%; max-height: 320px; object-fit: contain; image-rendering: pixelated;
+  border-radius: var(--rayon-petit); background: var(--surface-2); }
+.scan-liste-sessions { display: flex; flex-direction: column; gap: 4px; }
+.scan-session {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: var(--cible);
+  padding: 4px 8px; border-radius: var(--rayon-petit); background: var(--surface);
 }
-.bouton-scan { background: var(--principal); box-shadow: 0 4px 0 var(--principal-fonce); }
-.bouton-scan:hover:not(:disabled) { background: var(--principal-fonce); }
-.bouton-fin { min-width: 160px; min-height: 72px; font-size: 1.7rem; margin-left: auto; background: var(--danger); box-shadow: 0 4px 0 #8e1b1b; }
-.bouton-scan:active:not(:disabled), .bouton-fin:active:not(:disabled) { transform: translateY(2px); box-shadow: none; }
-.bouton-scan:disabled, .bouton-fin:disabled { opacity: 0.6; cursor: wait; }
-
-/* ------------------------------------------------------------------ 2. pendant le scan */
-
-.scan-direct { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
-.scan-compteurs { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.compteur {
-  display: flex; flex-direction: column; min-width: 120px; padding: 8px 14px;
-  border-radius: var(--rayon); background: var(--surface); box-shadow: var(--ombre);
+.scan-session-suivie { box-shadow: inset 3px 0 0 var(--accent-actif); }
+.scan-session-texte { display: flex; flex-direction: column; min-width: 0; }
+.scan-session-nom { font-weight: 600; overflow-wrap: anywhere; }
+.scan-session-detail { color: var(--texte-doux); font-size: 0.82rem; }
+.scan-bouton-lien {
+  min-height: 36px; padding: 0 12px; border: 1px solid var(--bord); border-radius: var(--rayon-petit);
+  background: transparent; color: var(--accent-texte); font: inherit; cursor: pointer;
 }
-.compteur-libelle { color: var(--texte-doux); font-size: 0.85rem; }
-.compteur-valeur { font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-.compteur-mode .compteur-valeur { font-size: 1.05rem; padding-top: 6px; }
-.nuage3d { background: #10151d; }
-/* la toile 3D hors du flux : sa taille ne peut pas relancer la mise en page (boucle de ResizeObserver) */
-.ecran-scan .vue3d { flex: 1 1 280px; min-height: 260px; }
-.ecran-scan .vue3d canvas { position: absolute; inset: 0; }
-.apercu-image { image-rendering: pixelated; }
-.trajectoire-scan { stroke: var(--robot); stroke-width: 3; stroke-opacity: 0.9; fill: none; stroke-linejoin: round; }
-.scan-vue-direct .fond-mur { fill-opacity: 0.25; }
-.scan-vue-direct .fond-objet { fill-opacity: 0.2; }
 
-.teleop-grille { display: grid; grid-template-columns: repeat(3, 64px); gap: 8px; margin: 6px 0; justify-content: start; }
-.teleop-bouton {
-  width: 64px; height: 64px; border: 1px solid var(--bord); border-radius: var(--rayon);
-  background: var(--surface); color: var(--texte); font-size: 1.8rem; line-height: 1; cursor: pointer;
-  touch-action: none; user-select: none; -webkit-user-select: none;
-}
-.teleop-bouton:hover { border-color: var(--principal); }
-.teleop-bouton.appuye { background: var(--principal); border-color: var(--principal); color: #fff; }
-.teleop-inactif .teleop-bouton { opacity: 0.5; pointer-events: none; }
-
-/* ------------------------------------------------------------------ 3. traitement */
-
-.scan-traitement { max-width: 760px; }
-.progression { height: 22px; border-radius: 11px; background: #e6e9ee; overflow: hidden; margin: 8px 0; }
-.progression-barre { height: 100%; width: 0; background: var(--principal); border-radius: 11px; transition: width 0.4s ease; }
-.progression-texte { margin: 0 0 6px; font-variant-numeric: tabular-nums; }
-.etapes-scan { margin: 10px 0; padding-left: 22px; color: var(--texte-doux); }
-.etape-scan { margin: 6px 0; }
-.etape-scan.fait { color: var(--succes); }
-.etape-scan.fait::after { content: " ✓"; font-weight: 700; }
-.etape-scan.en-cours { color: var(--texte); font-weight: 700; }
-.etape-scan.en-cours::after { content: " …"; }
-
-/* ------------------------------------------------------------------ 4. résultat */
-
-.scan-resultat { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
-.scan-resultat .chargement, .scan-contenu.chargement .plan { opacity: 0.6; }
-.reco { cursor: pointer; }
-.legende-scan { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 8px 0; font-size: 0.85rem; color: var(--texte-doux); }
-.legende-element { display: inline-flex; align-items: center; gap: 4px; }
-.pastille-categorie { display: inline-block; flex: 0 0 auto; width: 12px; height: 12px; border-radius: 3px; }
-.groupe-reco { margin: 8px 0; }
-.groupe-reco summary { cursor: pointer; font-weight: 600; padding: 4px 0; }
-.reco-ligne {
-  display: flex; align-items: center; gap: 8px; min-height: 40px; padding: 2px 6px;
-  border-radius: 6px; cursor: pointer;
-}
-.reco-ligne:hover { background: #f2f5f9; }
-.reco-ligne input { width: 22px; height: 22px; flex: 0 0 auto; }
-.reco-ligne.choisi { background: #e3edff; box-shadow: inset 3px 0 0 var(--principal); }
-.reco-ligne.retire .reco-nom { color: var(--texte-doux); text-decoration: line-through; }
-.reco-nom { flex: 1; min-width: 0; }
-.reco-id { color: var(--texte-doux); font-size: 0.85rem; }
-.reco-confiance { font-variant-numeric: tabular-nums; color: var(--texte-doux); font-size: 0.9rem; }
-.badge { padding: 1px 8px; border-radius: 99px; font-size: 0.78rem; white-space: nowrap; }
-.badge-douteux { background: #fff1d6; color: var(--avertissement); }
-.badge-personne { background: #fde4ef; color: #9d174d; }
-
-/* ------------------------------------------------------------------ échec et historique */
-
-.scan-echec { max-width: 760px; }
-.scan-echec .bouton { margin: 8px 8px 0 0; }
-.scan-historique { margin-top: 4px; overflow-x: auto; }
-.scan-sessions .session-suivie { background: #f2f7ff; }
-.etat-session { white-space: nowrap; }
-.etat-termine { color: var(--succes); }
-.etat-echec, .etat-interrompu { color: var(--danger); }
-.etat-en_cours, .etat-arret_en_cours, .etat-traitement { color: var(--principal-fonce); font-weight: 600; }
+/* ------------------------------------------------------------------ petits écrans (tablette) */
 
 @media (max-width: 900px) {
-  .ecran-scan .espace-deux { height: auto; grid-template-rows: none; }
-  .ecran-scan .panneau { max-height: 70vh; }
-}
-
-@media (max-width: 700px) {
-  .scan-modes { grid-template-columns: minmax(0, 1fr); }
-  .bouton-scan { width: 100%; }
-  .bouton-fin { margin-left: 0; width: 100%; }
-  .scan-sessions th:nth-child(2), .scan-sessions td:nth-child(2) { display: none; }
+  .scan-sans-coque { grid-template-columns: minmax(0, 1fr); }
+  .scan-compteur { min-width: 70px; padding: 4px 8px; }
+  .scan-compteur-valeur { font-size: 1.2rem; }
+  .scan-rond { width: 88px; height: 88px; font-size: 1.3rem; }
+  .scan-outils-vue { top: auto; bottom: 132px; }
+  .scan-message { bottom: 118px; }
 }

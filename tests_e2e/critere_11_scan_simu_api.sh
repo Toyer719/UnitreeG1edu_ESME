@@ -2,8 +2,9 @@
 # Critère 11, scan simulé intégré, par l'API du serveur (boutons « Scan » et « Fin » de l'onglet Scan) :
 # sur une copie du lieu demo, POST /api/scan/demarrer en mode simu avec exploration ; l'aperçu se met
 # à jour pendant le tour ; au moins 30 s plus tard, POST /api/scan/arreter (« Fin ») ; le traitement
-# automatique finit « termine » ; la carte 2D de la session recouvre la carte générée du lieu à au
-# moins 90 % ; reconnaissance.yaml et monde_scan.monde.yaml sont valides ; rien ne survit à la session.
+# automatique (carte 3D, carte 2D, nuage) finit « termine » ; la carte 2D de la session recouvre la carte
+# générée du lieu à au moins 90 % ; rapport.json et le nuage d'affichage sont conformes, sans reconnaissance
+# (vague 5, section 12.5 du plan) ; rien ne survit à la session.
 # « Fin » est envoyé quand le robot a parcouru 80 % de la longueur des couloirs (E2E_PART_TOUR), pour
 # que la session couvre presque tout l'étage. Elle est ensuite gardée pour les critères 12 et 13.
 source "$(dirname "$0")/commun.sh"
@@ -51,7 +52,7 @@ else
     3) echoue_scan "le scan s'est terminé de lui-même avant « Fin » (exploration trop courte, ou arrêt sur erreur)" ;;
     *) echoue_scan "l'aperçu ou les statistiques de la session ne se mettent pas à jour pendant le scan" ;;
   esac
-  # « Fin », puis le traitement automatique : carte 3D, carte 2D, reconnaissance, monde
+  # « Fin », puis le traitement automatique : carte 3D, carte 2D, nuage d'affichage
   "$PY" "$OUTILS_SCAN" arreter-api --api "$API" --lieu "$LIEU" --session "$SESSION" \
     || echoue_scan "POST /api/scan/arreter n'a pas fermé l'enregistrement"
 fi
@@ -59,7 +60,7 @@ fi
   || echoue_scan "la session n'a pas fini « termine » en 20 min"
 "$PY" "$OUTILS_SCAN" verifier-session --session "$L/scans/$SESSION" --reference "$TRAVAIL/reference.yaml" --min 0.90 \
   | tee "$TRAVAIL/verification.txt"
-[ "${PIPESTATUS[0]}" -eq 0 ] || echoue_scan "session incomplète, invalide, ou recouvrement de moins de 90 %"
+[ "${PIPESTATUS[0]}" -eq 0 ] || echoue_scan "session incomplète, invalide (rapport, nuage), ou recouvrement de moins de 90 %"
 "$PY" "$OUTILS_SCAN" restants --lieux "$ATELIER_LIEUX" --sauf "$SERVEUR" --attendre 30 \
   || echoue_scan "des processus lancés par la session lui survivent"
 

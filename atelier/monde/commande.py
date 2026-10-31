@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Fabriquer le monde Gazebo et la carte d'un étage, puis le simuler.
 
-  g1-monde generer --lieu L --etage E
-      mondes/E.monde.yaml → mondes/E.sdf, cartes/E.pgm et .yaml, cartes/E_interdit.pgm et .yaml
+  g1-monde generer --lieu L --etage E [--hauteur-carte 1.5]
+      mondes/E.monde.yaml → mondes/E.sdf, cartes/E.pgm et .yaml, cartes/E_interdit.pgm et .yaml ;
+      étage scanné (vague 5) : la carte du scan extrudée en un maillage, mondes/E_carte.stl, dans le monde
   g1-monde simuler --lieu L --etage E [--sans-fenetre] [--jumeau] [--pietons corps|acteurs]
       Gazebo, robot proxy et piétons : ros2 launch g1_sim simulation.launch.py (section 4.5 du plan) ;
       --jumeau : répétition du vrai robot, avec le faux G1 (jumeau:=true, section 10.4) ;
@@ -55,7 +56,7 @@ def _verifier_lieu(lieu, etage):
 def commande_generer(args):
     try:
         dossier = _verifier_lieu(args.lieu, args.etage)
-        resultat = generer(dossier, args.etage)
+        resultat = generer(dossier, args.etage, hauteur_carte=args.hauteur_carte)
     except ErreurLieu as e:
         _afficher_erreurs("Rien n'a été généré :", e)
         return 1
@@ -142,6 +143,9 @@ def main(argv=None):
     g = sous.add_parser("generer", help="fabriquer le monde Gazebo, la carte 2D et le masque des zones interdites")
     g.add_argument("--lieu", required=True, help="dossier du lieu, ou id seul (ex. demo)")
     g.add_argument("--etage", required=True, help="id de l'étage (ex. rdc)")
+    g.add_argument("--hauteur-carte", type=float, default=None, metavar="M",
+                   help="étage scanné : hauteur des obstacles de la carte extrudée, en m (défaut : celle du monde, "
+                        "sinon 1,5)")
     g.set_defaults(fonction=commande_generer)
 
     s = sous.add_parser("simuler", help="lancer Gazebo avec le robot proxy et les piétons")

@@ -9,8 +9,8 @@
 #      laissée active ;
 #   4. demandes absurdes (lieu inconnu, mode inconnu, répétition en simu, id de session qui sort du
 #      dossier scans/) : refusées avec un message, jamais de plantage ;
-#   5. le parcours de l'onglet Scan dans Firefox sans fenêtre (Scan → aperçu → flèches → Fin →
-#      progression → revue → décocher → éditeur du monde), avec un faux g1-scan.
+#   5. l'écran de scan dans Firefox sans fenêtre (vague 5 : vue 3D plein écran, Scan → nuage en direct →
+#      flèches → Fin → progression → carte 2D et nuage 3D → « Utiliser cette carte »), avec un faux g1-scan.
 # Le vrai robot n'est jamais contacté : G1_SLAM_FAUX=1 (commun.sh), G1_INTERFACE pointe vers une
 # interface qui n'existe pas, et l'étape 3 est sautée si un câble est branché sur eno2.
 source "$(dirname "$0")/commun.sh"
@@ -112,8 +112,10 @@ appel POST /api/scan/demarrer "{\"lieu\": \"$LIEU\", \"etage\": \"rdc\", \"mode\
   --codes 400,409,422,502 --message || echoue_scan "répétition en mode simu mal refusée"
 appel POST /api/scan/demarrer "{\"lieu\": \"$LIEU\", \"etage\": \"grenier\", \"mode\": \"simu\"}" --codes 400,404,409,502 --message \
   || echoue_scan "étage inconnu mal refusé"
-appel GET "/api/scan/sessions/..%2F..%2Flieu.yaml/reconnaissance?lieu=$LIEU" --codes 400,404 \
+appel GET "/api/scan/sessions/..%2F..%2Flieu.yaml/rapport?lieu=$LIEU" --codes 400,404 \
   || echoue_scan "un id de session qui sort de scans/ n'est pas refusé"
+appel GET "/api/scan/nuage?lieu=$LIEU&session=../../lieu" --codes 400,404 --message \
+  || echoue_scan "nuage d'une session hors de scans/ mal refusé"
 appel GET "/api/scan/apercu.png?lieu=$LIEU&session=2020-01-01_00h00" --codes 400,404 --message \
   || echoue_scan "aperçu d'une session inconnue mal refusé"
 "$PY" -c "
@@ -123,12 +125,12 @@ sys.exit(0 if L.session_active(sys.argv[1]) is None else 1)" "$LIEU" || echoue_s
 "$PY" "$OUTILS_SCAN" restants --lieux "$ATELIER_LIEUX" --sauf "$SERVEUR" --attendre 30 \
   || echoue_scan "des processus restent après les refus"
 
-dire "5. L'onglet Scan dans Firefox sans fenêtre (atelier/tests/test_serveur_scan_navigateur.py, faux g1-scan)"
+dire "5. L'écran de scan dans Firefox sans fenêtre (atelier/tests/test_serveur_scan_navigateur.py, faux g1-scan)"
 NAVIGATEUR=$(cd "$RACINE" && "$PY" -m pytest -q -rs -p no:cacheprovider atelier/tests/test_serveur_scan_navigateur.py 2>&1)
 CODE=$?
 echo "$NAVIGATEUR" | tail -n 6
-[ $CODE -eq 0 ] || echoue_scan "le parcours de l'onglet Scan dans le navigateur échoue"
+[ $CODE -eq 0 ] || echoue_scan "le parcours de l'écran de scan dans le navigateur échoue"
 if echo "$NAVIGATEUR" | grep -q "skipped"; then
   dire "remarque : une partie du parcours dans le navigateur est sautée (Firefox ou geckodriver absent ?)"
 fi
-reussi "refus clairs : Fin sans scan, double Scan, robot non détecté, demandes absurdes ; flèches et homme mort ; onglet Scan dans le navigateur"
+reussi "refus clairs : Fin sans scan, double Scan, robot non détecté, demandes absurdes ; flèches et homme mort ; écran de scan dans le navigateur"

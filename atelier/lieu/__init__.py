@@ -53,7 +53,8 @@ Point = tuple (x, y) en mètres ; angles en radians.
         déduite : modele → son nom, cylindre → poteau, boite → meuble) ; .sur_la_carte (faux pour
         une personne)
         Champs facultatifs (section 9 du plan), absents du fichier quand ils valent None :
-        categorie (CATEGORIES_OBJETS), source (« dessin » par défaut, ou « scan »), confiance (0 à 1).
+        categorie (CATEGORIES_OBJETS), source (« dessin » par défaut, ou « scan »), confiance (0 à 1) ;
+        acceptés pour les anciens lieux, plus produits depuis la vague 5 (reconnaissance retirée).
     Pieton(id, trajet, vitesse=1.0, aller_retour=True)
     InfoCarte(image, resolution=0.05, origin=(x, y, 0.0), negate=0, occupied_thresh=0.65,
               free_thresh=0.196, largeur=None, hauteur=None, chemin=None, autres={})
@@ -164,11 +165,12 @@ Vague 5 (section 12 du plan) : interface, carte 3D, scan corrigé, robot et cam�
     equipe.py      SUJETS_IMAGES (/camera_poitrine/image/compressed…), /camera_poitrine/etat (schéma
                    etat_camera) ; champs facultatifs boite et image de /visiteurs/detectes (schéma personnes)
 
-Sessions de scan intégré (scans.py, section 9 du plan) : LIEU/scans/<session>/
---------------------------------------------------------------------------------
+Sessions de scan intégré (scans.py, sections 9 et 12.5 du plan) : LIEU/scans/<session>/
+------------------------------------------------------------------------------------------
 Identifiant de session : AAAA-MM-JJ_HHhMM (suffixe -2, -3... si la minute est prise). Fichiers :
-FICHIERS_SESSION (session.json, apercu.png/json, nuage.pcd, carte.pgm/yaml, reconnaissance.yaml,
-monde_scan.monde.yaml, rapport.json, enregistrement/). Écritures atomiques, et verrou entre processus.
+FICHIERS_SESSION (session.json, apercu.png/json, nuage.pcd, carte.pgm/yaml, rapport.json,
+enregistrement/), plus les nuages d'affichage nuage_affichage et apercu_nuage (.bin + .json, nuage.py).
+Écritures atomiques, et verrou entre processus. Vague 5 : plus de reconnaissance (12.5).
 
     creer_session(lieu, etage, mode, nom=None, repetition=False, explorer=False) -> dict
         dossier et session.json (etat en_cours, etape preparation) ; ErreurLieu si un autre scan du
@@ -179,15 +181,10 @@ monde_scan.monde.yaml, rapport.json, enregistrement/). Écritures atomiques, et 
     infos_processus(pid=None) -> {pid, debut, hote} ; processus_vivant(session) ; session_interrompue(session)
     progression_etape(etape, fraction=0.0) -> 0..100 (PLAGES_PROGRESSION)
     etat_scan(lieu, session=None) -> dict    sortie de « g1-scan etat --json » et de GET /api/scan/etat
-    nouvelle_reconnaissance(etage, emprise, depart_robot, session=None, sol=None, parametres=None) -> dict
-    lire_reconnaissance(chemin) / ecrire_reconnaissance(chemin, donnees) ; valider_reconnaissance(donnees)
-    a_garder_par_defaut(categorie) ; resume_reconnaissance(donnees)
-    monde_depuis_reconnaissance(donnees) -> Monde ; ecrire_monde_scan(chemin, donnees) -> Monde
-    reconnaissance_depuis_monde(monde, etage, session=None) -> dict   vérité terrain d'un monde dessiné
-    passages_du_monde(monde) -> [{de, a, murs, largeur}]
-    changer_a_garder(lieu, session, {id: bool}) -> {reconnaissance, monde, resume}
-    carte_sans_elements_retires(info, image, donnees) -> image   (objets retirés et personnes effacés)
-    Constantes : MODES, ETATS, ETATS_ACTIFS, ETAPES, SUJETS_PAR_MODE, APERCU_POINTS_MAX, PERIODE_APERCU...
+    fichiers_presents(lieu, session) ; ranger_resultats(lieu, session) (g1-scan traiter --refaire) ;
+    anciens_resultats(lieu, session)
+    Constantes : MODES, ETATS, ETATS_ACTIFS, ETAPES, ETAPES_TRAITEMENT (carte_3d, carte_2d, nuage),
+    ANCIENNES_ETAPES, SUJETS_PAR_MODE, APERCU_POINTS_MAX, PERIODE_APERCU, NUAGE_AFFICHAGE, APERCU_NUAGE...
 
 Géométrie des passages (geometrie.py) : PASSAGE_MIN (0,7 m), PASSAGE_MAX (1,6 m), murs_alignes,
 trou_entre, est_passage.
@@ -211,16 +208,13 @@ from .geometrie import PASSAGE_MAX, PASSAGE_MIN, est_passage, murs_alignes, trou
 from .modeles import (CATEGORIES_HORS_CARTE, CATEGORIES_OBJETS, MODELES_MOBILIER, SOURCES_ELEMENT, CarteExtrudee,
                       Couloir, Emprise, Etage, InfoCarte, Itineraires, Lieu, Monde, Mur, Noeud, Objet, Pieton, Pose,
                       PoseEtage, Salle, Zone, Zones)
-from .scans import (APERCU_POINTS_MAX, APERCU_TRAJECTOIRE_MAX, ETAPES, ETAPES_TRAITEMENT, ETATS, ETATS_ACTIFS,
-                    FICHIERS_SESSION, MODES, PERIODE_APERCU, PERIODE_SESSION, PLAGES_PROGRESSION,
-                    SUJETS_AUTRES, SUJETS_PAR_MODE, a_garder_par_defaut, carte_sans_elements_retires,
-                    changer_a_garder, chemin_session, creer_session, derniere_session, dossier_scans,
-                    dossier_session, ecrire_monde_scan, ecrire_reconnaissance, ecrire_session, etat_scan,
-                    fichiers_presents, infos_processus, lire_reconnaissance, lire_session, lister_sessions,
-                    maj_session, monde_depuis_reconnaissance, nouvelle_reconnaissance, passages_du_monde,
-                    processus_vivant, progression_etape, reconnaissance_depuis_monde, resume_reconnaissance,
-                    session_active, session_interrompue,
-                    valider_reconnaissance, verifier_id_session, verrou_session)
+from .scans import (ANCIENNES_ETAPES, APERCU_NUAGE, APERCU_POINTS_MAX, APERCU_TRAJECTOIRE_MAX, ETAPES,
+                    ETAPES_TRAITEMENT, ETATS, ETATS_ACTIFS, FICHIERS_SESSION, MODES, NUAGE_AFFICHAGE, PERIODE_APERCU,
+                    PERIODE_SESSION, PLAGES_PROGRESSION, SUJETS_AUTRES, SUJETS_PAR_MODE, anciens_resultats,
+                    chemin_session, creer_session, derniere_session, dossier_scans, dossier_session, ecrire_session,
+                    etat_scan, fichiers_presents, infos_processus, lire_session, lister_sessions, maj_session,
+                    processus_vivant, progression_etape, ranger_resultats, session_active, session_interrompue,
+                    verifier_id_session, verrou_session)
 from .robot import (API_RELOCALISER, API_SPORT_SET_VELOCITY, CARTE_REPETITION, DELAI_CMD_VEL_S, DELAI_PERDU_S,
                     DELAI_REPERAGE_PERIME_S, DELAI_REPERAGE_S, DELAI_ROBOT_MUET_S, DERIVE_ECHELLE,
                     DERIVE_LACET_PAR_M, DUREE_ARRET_S, DUREE_CONSIGNE_S, ECART_MAX_M, ECART_MAX_RAD,
@@ -268,16 +262,13 @@ __all__ = ["bornes_carte", "cap_vers_quaternion", "centres_pixels", "dans_image"
            # catégories et sources des éléments
            "CATEGORIES_HORS_CARTE", "CATEGORIES_OBJETS", "SOURCES_ELEMENT",
            # sessions de scan intégré
-           "APERCU_POINTS_MAX", "APERCU_TRAJECTOIRE_MAX", "ETAPES", "ETAPES_TRAITEMENT", "ETATS", "ETATS_ACTIFS",
-           "FICHIERS_SESSION", "MODES", "PERIODE_APERCU", "PERIODE_SESSION", "PLAGES_PROGRESSION",
-           "SUJETS_AUTRES", "SUJETS_PAR_MODE", "a_garder_par_defaut", "carte_sans_elements_retires",
-           "changer_a_garder", "chemin_session", "creer_session", "derniere_session", "dossier_scans",
-           "dossier_session", "ecrire_monde_scan", "ecrire_reconnaissance", "ecrire_session", "etat_scan",
-           "fichiers_presents", "infos_processus", "lire_reconnaissance", "lire_session", "lister_sessions",
-           "maj_session", "monde_depuis_reconnaissance", "nouvelle_reconnaissance", "passages_du_monde",
-           "processus_vivant", "progression_etape", "reconnaissance_depuis_monde", "resume_reconnaissance",
-           "session_active", "session_interrompue",
-           "valider_reconnaissance", "verifier_id_session", "verrou_session",
+           "ANCIENNES_ETAPES", "APERCU_NUAGE", "APERCU_POINTS_MAX", "APERCU_TRAJECTOIRE_MAX", "ETAPES",
+           "ETAPES_TRAITEMENT", "ETATS", "ETATS_ACTIFS", "FICHIERS_SESSION", "MODES", "NUAGE_AFFICHAGE",
+           "PERIODE_APERCU", "PERIODE_SESSION", "PLAGES_PROGRESSION", "SUJETS_AUTRES", "SUJETS_PAR_MODE",
+           "anciens_resultats", "chemin_session", "creer_session", "derniere_session", "dossier_scans",
+           "dossier_session", "ecrire_session", "etat_scan", "fichiers_presents", "infos_processus", "lire_session",
+           "lister_sessions", "maj_session", "processus_vivant", "progression_etape", "ranger_resultats",
+           "session_active", "session_interrompue", "verifier_id_session", "verrou_session",
            # vrai robot (section 10 du plan)
            "API_RELOCALISER", "API_SPORT_SET_VELOCITY", "CARTE_REPETITION", "DELAI_CMD_VEL_S", "DELAI_PERDU_S",
            "DELAI_REPERAGE_PERIME_S", "DELAI_REPERAGE_S", "DELAI_ROBOT_MUET_S", "DERIVE_ECHELLE",

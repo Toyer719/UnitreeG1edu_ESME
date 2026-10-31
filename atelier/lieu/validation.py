@@ -26,7 +26,8 @@ from . import geometrie
 from .modeles import ETIQUETTE_PRINCIPAL
 
 DOSSIER_SCHEMAS = Path(__file__).resolve().parent / "schemas"
-TYPES_FICHIERS = ("lieu", "monde", "salles", "itineraires", "zones", "carte", "session_scan", "reconnaissance",
+# Vague 5 (section 12.5 du plan) : le format reconnaissance (scans/<session>/reconnaissance.yaml) est retiré
+TYPES_FICHIERS = ("lieu", "monde", "salles", "itineraires", "zones", "carte", "session_scan",
                   "etat_pont", "etat_reperage", "demande_reperage",
                   # vague 4 (section 11 du plan) : fichiers du lieu pour l'équipe, scènes de passants,
                   # chorégraphies, puis messages JSON (std_msgs/String) des nouveaux sujets
@@ -41,7 +42,7 @@ TYPES_FICHIERS = ("lieu", "monde", "salles", "itineraires", "zones", "carte", "s
 # repérage (section 10 du plan) et des sujets de la vague 4 ; le nom affiché est celui du sujet ROS 2.
 NOMS_FICHIERS = {"lieu": "lieu.yaml", "monde": "monde.yaml", "salles": "salles.yaml",
                  "itineraires": "itineraires.yaml", "zones": "zones.yaml", "carte": "carte.yaml",
-                 "session_scan": "session.json", "reconnaissance": "reconnaissance.yaml",
+                 "session_scan": "session.json",
                  "etat_pont": "/pont/etat", "etat_reperage": "/reperage/etat",
                  "demande_reperage": "/reperage/demander",
                  "personnalites": "personnalites.yaml", "dialogues": "dialogues.yaml", "camera": "camera.yaml",
@@ -66,8 +67,8 @@ INDICE_BOOLEEN = ("YAML lit yes, no, on, off, true et false comme oui ou non : "
 
 @lru_cache(maxsize=None)
 def charger_schema(type_fichier):
-    """Schéma JSON d'un type de fichier : lieu, monde, salles, itineraires, zones, carte,
-    session_scan (scans/<session>/session.json) ou reconnaissance (scans/<session>/reconnaissance.yaml)."""
+    """Schéma JSON d'un type de fichier (TYPES_FICHIERS) : lieu, monde, salles, itineraires, zones, carte,
+    session_scan (scans/<session>/session.json), les messages du robot et de l'équipe, nuage..."""
     if type_fichier not in TYPES_FICHIERS:
         raise ValueError(f"type de fichier inconnu : {type_fichier} (attendu : {', '.join(TYPES_FICHIERS)})")
     return json.loads((DOSSIER_SCHEMAS / f"{type_fichier}.schema.json").read_text(encoding="utf-8"))
@@ -636,62 +637,6 @@ def regles_session_scan(d, fichier="session.json"):
     return messages
 
 
-def regles_reconnaissance(d, fichier="reconnaissance.yaml"):
-    messages = []
-    elements = [(MOTS_ELEMENTS[cle], e) for cle in ("murs", "passages", "objets") for e in d[cle]]
-    ids = [e["id"] for _, e in elements]
-    for i in _doublons(ids):
-        messages.append(f"{fichier} : l'id « {i} » est utilisé {ids.count(i)} fois ; chaque mur, passage et "
-                        "objet doit avoir un id différent (il devient un nom de modèle Gazebo)")
-    for mot, e in elements:
-        if e["id"] in IDS_RESERVES:
-            messages.append(f"{fichier}, {mot} « {e['id']} » : l'id « {e['id']} » est réservé "
-                            "(déjà pris dans le monde Gazebo) ; choisissez-en un autre")
-    murs = {m["id"]: m for m in d["murs"]}
-    for m in d["murs"]:
-        if (math.isclose(m["de"][0], m["a"][0], abs_tol=1e-9)
-                and math.isclose(m["de"][1], m["a"][1], abs_tol=1e-9)):
-            messages.append(f"{fichier}, mur « {m['id']} » : ses deux bouts sont au même endroit "
-                            f"{_point_texte(m['de'])} ; un mur doit avoir une longueur")
-    for p in d["passages"]:
-        ou = f"{fichier}, passage « {p['id']} »"
-        inconnus = [i for i in p["murs"] if i not in murs]
-        if inconnus:
-            messages.append(f"{ou} : le mur « {inconnus[0]} » n'existe pas dans murs")
-            continue
-        largeur = math.dist(p["de"], p["a"])
-        if not geometrie.PASSAGE_MIN - 1e-6 <= largeur <= geometrie.PASSAGE_MAX + 1e-6:
-            messages.append(f"{ou} : largeur de {nombre(round(largeur, 3))} m ; un passage est un trou de "
-                            f"{nombre(geometrie.PASSAGE_MIN)} à {nombre(geometrie.PASSAGE_MAX)} m")
-        m1, m2 = (murs[i] for i in p["murs"])
-        if not geometrie.murs_alignes(m1["de"], m1["a"], m2["de"], m2["a"]):
-            messages.append(f"{ou} : les murs « {m1['id']} » et « {m2['id']} » ne sont pas alignés ; un passage "
-                            "est un trou entre deux murs alignés")
-            continue
-        trou = geometrie.trou_entre(m1["de"], m1["a"], m2["de"], m2["a"])
-        bouts = {tuple(p["de"]), tuple(p["a"])}
-        if trou is None or not all(min(math.dist(b, q) for b in bouts) <= 0.15 for q in trou[1:]):
-            messages.append(f"{ou} : de et a doivent être les bouts des murs « {m1['id']} » et « {m2['id']} » "
-                            "qui bordent le trou (à 0,15 m près)")
-    (xmin, ymin), (xmax, ymax) = d["emprise"]["min"], d["emprise"]["max"]
-    if xmax <= xmin or ymax <= ymin:
-        messages.append(f"{fichier}, emprise : max doit être plus grand que min, en x comme en y")
-        return messages
-    limites = f"x de {nombre(xmin)} à {nombre(xmax)}, y de {nombre(ymin)} à {nombre(ymax)}"
-
-    def hors(q):
-        return not (xmin - 1e-9 <= q[0] <= xmax + 1e-9 and ymin - 1e-9 <= q[1] <= ymax + 1e-9)
-    points = [(f"mur « {m['id']} », bout {b}", m[b]) for m in d["murs"] for b in ("de", "a")]
-    points += [(f"passage « {p['id']} », bout {b}", p[b]) for p in d["passages"] for b in ("de", "a")]
-    points += [(f"objet « {o['id']} », centre", o["centre"]) for o in d["objets"]]
-    points += [("depart_robot", (d["depart_robot"]["x"], d["depart_robot"]["y"]))]
-    for ou, q in points:
-        if hors(q):
-            messages.append(f"{fichier}, {ou} {_point_texte(q)} : sort de l'emprise ({limites}) ; "
-                            "agrandissez l'emprise")
-    return messages
-
-
 def regles_etat_pont(d, fichier="/pont/etat"):
     messages = []
     if d["etat"] == "en_mouvement" and not d["mouvement_permis"]:
@@ -862,7 +807,7 @@ def _sans_regle(d, fichier=""):
 
 REGLES = {"lieu": regles_lieu_v4, "monde": regles_monde, "salles": regles_salles,
           "itineraires": regles_itineraires, "zones": regles_zones, "carte": regles_carte,
-          "session_scan": regles_session_scan, "reconnaissance": regles_reconnaissance,
+          "session_scan": regles_session_scan,
           "etat_pont": regles_etat_pont, "etat_reperage": regles_etat_reperage,
           "demande_reperage": regles_demande_reperage,
           "personnalites": regles_personnalites, "dialogues": regles_dialogues, "camera": _sans_regle,
@@ -877,7 +822,7 @@ REGLES = {"lieu": regles_lieu_v4, "monde": regles_monde, "salles": regles_salles
 def valider_donnees(type_fichier, donnees, fichier=None):
     """Erreurs d'un fichier (déjà lu), en français : schéma, puis règles propres au fichier.
 
-    type_fichier : lieu, monde, salles, itineraires, zones, carte, session_scan, reconnaissance,
+    type_fichier : lieu, monde, salles, itineraires, zones, carte, session_scan,
     ou un message du vrai robot : etat_pont, etat_reperage, demande_reperage (section 10 du plan) ;
     vague 4 (section 11) : personnalites, dialogues, camera, scene, choregraphie, et les messages de
     TYPES_MESSAGES ; vague 5 (section 12) : nuage (en-tête d'un nuage d'affichage), etat_camera.

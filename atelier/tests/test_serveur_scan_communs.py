@@ -1,4 +1,4 @@
-"""Outils communs aux tests de l'onglet Scan (agent Interface, vague 2) : un faux g1-scan.
+"""Outils communs aux tests de l'écran de scan (vague 2, puis vague 5, section 12.5 du plan) : un faux g1-scan.
 
 Pas de test ici : des fixtures, et les fonctions qu'appelle le faux g1-scan.
   lieux_scan  copie complète de lieux/demo (carte et .sdf compris) dans $ATELIER_LIEUX temporaire
@@ -8,20 +8,17 @@ Pas de test ici : des fixtures, et les fonctions qu'appelle le faux g1-scan.
 Le faux g1-scan suit le contrat 9.5 sans ROS, sans Gazebo ni robot :
   demarrer   crée la session (atelier.lieu.creer_session) et lance, détaché et dans son propre
              groupe, le « processus de la session » : il note son pid dans session.json, réécrit
-             apercu.png et apercu.json (le robot avance sur le tour des couloirs) et les
-             statistiques toutes les FAUX_SCAN_PAS secondes, jusqu'à SIGINT ou SIGTERM (ou la fin
-             du tour avec --explorer) ; puis arrêt (enregistrement/metadata.yaml), et traitement :
-             nuage, carte (le monde de l'étage tramé par atelier.monde), reconnaissance (vérité
-             terrain du monde, confiances abaissées), monde du scan, rapport ; état termine.
-             Dernière ligne : « session: <id> ».
+             apercu.png, apercu.json et le nuage en direct apercu_nuage (le robot avance sur le tour
+             des couloirs) et les statistiques toutes les FAUX_SCAN_PAS secondes, jusqu'à SIGINT ou
+             SIGTERM (ou la fin du tour avec --explorer) ; puis arrêt (enregistrement/metadata.yaml),
+             et traitement (vague 5) : nuage, carte (le monde de l'étage tramé par atelier.monde), nuage
+             d'affichage, rapport ; état termine. Dernière ligne : « session: <id> ».
   arreter    SIGINT au groupe du processus, attend la fin de l'enregistrement (30 s au plus) ;
              session interrompue : traitement s'il y a un enregistrement, sinon echec.
-  adopter    carte de la session (objets retirés effacés) → cartes/<etage>.*, étage en
-             source_carte: scan ; avec --monde, l'ancien monde va dans la session et le monde du
-             scan le remplace ; adoption notée dans session.json.
+  adopter    la vraie adoption (atelier.scan.session.adopter : carte, nuage, carte extrudée), sans ROS.
   etat       atelier.lieu.etat_scan en JSON.
 Variables : FAUX_JOURNAL (appels), FAUX_SCAN_ECHEC=demarrer|arreter|adopter (la sous-commande
-échoue), FAUX_SCAN_ECHEC_TRAITEMENT=carte_3d|reconnaissance, FAUX_SCAN_PAS (0,2 s),
+échoue), FAUX_SCAN_ECHEC_TRAITEMENT=carte_3d|nuage, FAUX_SCAN_PAS (0,2 s),
 FAUX_SCAN_ETAPE_S (0,2 s par étape du traitement), FAUX_SCAN_TOURS (20 pas pour tout le tour).
 """
 import json
@@ -40,7 +37,7 @@ import pytest
 from atelier import lieu as L
 from atelier.lieu import copier_lieu
 
-from .outils_scan import ecrire_pcd_ascii, ecrire_png_gris
+from .outils_scan import SOL_PLAT, ecrire_pcd_ascii, ecrire_png_gris
 from .test_serveur_communs import DEMO, FauxBin, attendre, faux_bin, journaux, processus_vivant  # noqa: F401
 
 FAUX_SCAN = r'''#!{python}
@@ -91,7 +88,7 @@ def faux_g1_scan(args, script):
             _traiter(lieu, _option(args, "--session"))
             return 0
         if commande == "adopter":
-            return _adopter(lieu, _option(args, "--session"), "--monde" in args)
+            return _adopter(lieu, _option(args, "--session"))
         if commande == "etat":
             print(json.dumps(L.etat_scan(lieu, _option(args, "--session")), ensure_ascii=False))
             return 0
@@ -141,6 +138,9 @@ def _ecrire_apercu(lieu, s, info, image, vus, trajectoire, stats):
               "points": points[:L.APERCU_POINTS_MAX], "trajectoire": trajectoire[-L.APERCU_TRAJECTOIRE_MAX:],
               "robot": {"x": robot[0], "y": robot[1], "theta": robot[2]}, "statistiques": stats}
     L.ecrire_atomique(dossier / L.FICHIERS_SESSION["apercu_json"], json.dumps(apercu, ensure_ascii=False) + "\n")
+    direct = np.array([[p[0], p[1], h] for p in points for h in (p[2], p[2] + 0.5)], dtype=float).reshape(-1, 3)
+    L.ecrire_nuage(L.chemin_nuage_session(dossier, apercu=True), direct,
+                   L.entete_nuage(direct, 0.1, SOL_PLAT, "apercu", session=s["id"], statistiques=stats))
 
 
 def _carte_du_monde(lieu, etage):
@@ -218,30 +218,28 @@ def _traiter(lieu, session):
     ecrire_pcd_ascii(dossier / L.FICHIERS_SESSION["nuage"], nuage[::4])
     etape("carte_2d", "Fabrication de la carte 2D…")
     L.enregistrer_carte(dossier / L.FICHIERS_SESSION["carte"], info, image)
-    etape("reconnaissance", "Reconnaissance des murs, des passages et des objets…")
-    avertissements, resume = [], None
-    if echec == "reconnaissance":
-        avertissements.append("La reconnaissance a échoué : la carte 2D reste utilisable.")
+    etape("nuage", "Nuage de la carte 3D…")
+    avertissements, affichage = [], None
+    if echec == "nuage":
+        avertissements.append("Nuage de la carte 3D non écrit (essai) ; la carte 2D est prête.")
     else:
-        r = L.reconnaissance_depuis_monde(monde, s["etage"], session=session)
-        for n, o in enumerate(r["objets"]):          # confiances d'une vraie reconnaissance
-            o["confiance"] = 0.45 if o["categorie"] == "chaise" and n % 2 == 0 else 0.8
-        L.ecrire_reconnaissance(dossier, r)
-        L.ecrire_monde_scan(dossier, r)
-        resume = L.resume_reconnaissance(r)
-    etape("monde", "Vérification du monde tiré du scan…")
-    rapport = {"version": 1, "session": session, "termine": L.scans.instant(), "duree_traitement_s": 4 * duree,
-               "etapes": etapes, "nuage": {"fichier": "nuage.pcd", "points": int(len(nuage[::4])), "nuages": 10,
-                                            "retires_mobiles": 0},
+        entete = L.ecrire_nuage(L.chemin_nuage_session(dossier), nuage,
+                                L.entete_nuage(nuage, 0.05, SOL_PLAT, "scan", session=session, etage=s["etage"],
+                                               mobiles_retires=0))
+        affichage = {"fichier": "nuage_affichage.bin", "points": entete["points"], "grille": 0.05}
+    rapport = {"version": 1, "session": session, "termine": L.scans.instant(), "duree_traitement_s": 3 * duree,
+               "etapes": etapes, "nuages": {"recus": 10, "utilises": 10, "ignores": 0}, "base_de_temps": "message",
+               "mobiles_retires": 0, "sol": dict(SOL_PLAT, points=100),
+               "nuage": {"fichier": "nuage.pcd", "points": int(len(nuage[::4])), "nuages": 10, "retires_mobiles": 0},
                "carte": {"fichier": "carte.yaml", "largeur": info.largeur, "hauteur": info.hauteur,
-                         "resolution": info.resolution, "occupes": int((image == 0).sum()), "sol": 0.0},
-               "reconnaissance": resume,
+                         "resolution": info.resolution, "occupes": int((image == 0).sum())},
+               "affichage": affichage,
                "comparaison": {"reference": f"cartes/{s['etage']}.yaml", "recouvrement": 0.987, "couverture": 0.66},
-               "avertissements": avertissements}
+               "repere": None, "avertissements": avertissements}
     L.ecrire_atomique(dossier / L.FICHIERS_SESSION["rapport"], json.dumps(rapport, ensure_ascii=False) + "\n")
-    message = "Scan terminé : vérifiez les éléments reconnus, puis adoptez la carte."
+    message = "Scan terminé : la carte 2D et le nuage 3D sont prêts. Regardez-les, puis « Utiliser cette carte »."
     if avertissements:
-        message = "Scan terminé, sans reconnaissance : " + avertissements[0]
+        message = "Scan terminé : la carte 2D est prête. " + avertissements[0]
     L.maj_session(lieu, session, etat="termine", etape="fini", progression=100, message=message)
     print(f"traitement de la session {session} fini", flush=True)
 
@@ -274,30 +272,17 @@ def _arreter(lieu, session, script):
     return 0
 
 
-def _adopter(lieu, session, avec_monde):
-    s = L.lire_session(lieu, session)
-    if s["etat"] != "termine":
-        print(f"erreur : le scan {session} n'est pas terminé ({s['etat']}) : il ne peut pas être adopté")
+def _adopter(lieu, session):
+    """La vraie adoption (sans ROS) : carte, nuage 3D, carte extrudée et monde de simulation."""
+    from atelier.scan.session import ErreurScan, adopter
+    try:
+        messages, rapport = adopter(lieu, session)
+    except ErreurScan as e:
+        print(f"erreur : {e}")
         return 1
-    dossier = L.dossier_session(lieu, session)
-    etage = s["etage"]
-    info, image = L.charger_carte(dossier / L.FICHIERS_SESSION["carte"])
-    if (dossier / L.FICHIERS_SESSION["reconnaissance"]).is_file():
-        image = L.carte_sans_elements_retires(info, image, L.lire_reconnaissance(dossier))
-    L.enregistrer_carte(L.chemin_carte(lieu, etage),
-                        L.InfoCarte(image=f"{etage}.pgm", resolution=info.resolution, origin=info.origin), image)
-    fiche = L.charger_fiche(lieu)
-    fiche.etage(etage).source_carte = "scan"
-    if s["mode"] == "robot":
-        fiche.carte_unitree = s["carte_unitree"]
-    L.enregistrer_fiche(fiche, lieu)
-    if avec_monde:
-        ancien = L.chemin_monde(lieu, etage)
-        if ancien.is_file():
-            shutil.copyfile(ancien, dossier / L.FICHIERS_SESSION["monde_remplace"])
-        shutil.copyfile(dossier / L.FICHIERS_SESSION["monde"], ancien)
-    L.maj_session(lieu, session, adoption={"quand": L.scans.instant(), "monde": avec_monde})
-    print(f"Scan {session} adopté pour l'étage {etage}" + (" (carte et monde)." if avec_monde else " (carte)."))
+    for m in messages:
+        print(m)
+    print(f"Scan {session} adopté. Vérification du lieu :\n{rapport.texte()}")
     return 0
 
 

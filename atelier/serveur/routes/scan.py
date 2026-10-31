@@ -1,17 +1,18 @@
-"""Routes du scan intégré (section 9.7 du plan), utilisées par l'onglet Scan de l'Atelier.
+"""Routes du scan intégré (sections 9.7 et 12.4 du plan), utilisées par l'écran de scan de l'Atelier.
 
   POST /api/scan/demarrer {lieu, etage, mode, repetition?, explorer?, nom?}   g1-scan demarrer
   POST /api/scan/arreter {lieu, session?}                                     g1-scan arreter (« Fin »)
   GET  /api/scan/etat ?lieu=L[&session=S]                                     atelier.lieu.etat_scan
   GET  /api/scan/apercu.png, /api/scan/apercu.json ?lieu=L[&session=S]        aperçu en direct
   GET  /api/scan/sessions ?lieu=L                                             scans du lieu (historique)
-  GET  /api/scan/sessions/{s}/reconnaissance ?lieu=L                          éléments reconnus
-  PUT  /api/scan/sessions/{s}/reconnaissance ?lieu=L {a_garder: {id: bool}}   cases « à garder »
-  GET  /api/scan/sessions/{s}/carte.png, carte.yaml, monde ?lieu=L            carte et monde du scan
+  GET  /api/scan/sessions/{s}/carte.png, carte.yaml ?lieu=L                   carte 2D du scan
   GET  /api/scan/sessions/{s}/rapport ?lieu=L                                 (ajout) rapport.json
-  POST /api/scan/sessions/{s}/adopter ?lieu=L {monde}                         g1-scan adopter [--monde]
+  POST /api/scan/sessions/{s}/adopter ?lieu=L {monde?}                        g1-scan adopter (« Utiliser
+                                                                              cette carte » ; monde ignoré)
+Le nuage 3D d'une session (GET /api/scan/nuage et …/info) est dans routes/nuage.py (vague 5). Retirées en
+vague 5 (reconnaissance) : GET et PUT /api/scan/sessions/{s}/reconnaissance, GET …/sessions/{s}/monde.
 
-Le serveur lance g1-scan (agent Orchestrateur) pour démarrer, arrêter et adopter ; il lit
+Le serveur lance g1-scan (agent Scan) pour démarrer, arrêter et adopter ; il lit
 directement les fichiers des sessions par atelier.lieu pour tout le reste (pas de sous-processus
 à chaque interrogation). Les commandes sont cherchées dans $ATELIER_BIN (fausses dans les tests).
 
@@ -29,7 +30,7 @@ import signal
 import subprocess
 import tempfile
 import time
-from typing import Dict, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
@@ -37,12 +38,10 @@ from fastapi.responses import Response
 from pydantic import BaseModel, StrictBool
 
 import atelier
-from atelier.lieu import (ETATS_ACTIFS, FICHIERS_SESSION, MODES, ErreurLieu, Monde, bornes_carte,
-                          charger_carte, charger_fichier, charger_info_carte, charger_itineraires, chemin_sdf,
-                          chemin_session, dossier_session, etat_scan, fichiers_presents, lire_reconnaissance,
-                          lire_session, lister_sessions, processus_vivant, resume_reconnaissance,
+from atelier.lieu import (ETATS_ACTIFS, MODES, ErreurLieu, bornes_carte, charger_carte, charger_fiche,
+                          charger_info_carte, charger_itineraires, chemin_sdf, chemin_session, dossier_session,
+                          etat_scan, fichiers_presents, lire_session, lister_sessions, processus_vivant,
                           session_active, session_interrompue, verifier_id_session)
-from atelier.lieu import changer_a_garder as _changer_a_garder
 
 from ..communs import ErreurAtelier, dossier_du_lieu, etage_du_lieu, png_gris, rapport_du_lieu
 from ..processus import CommandeAbsente, commande
@@ -103,7 +102,7 @@ async def _g1_scan(arguments, delai, quoi):
     try:
         r = await run_in_threadpool(executer_g1_scan, arguments, delai)
     except CommandeAbsente as e:
-        raise ErreurAtelier(503, f"Impossible de {quoi} : {e}. Elle est livrée par l'agent Orchestrateur "
+        raise ErreurAtelier(503, f"Impossible de {quoi} : {e}. Elle est livrée avec l'Atelier "
                                  "(bin/g1-scan).") from None
     if r["code"] != 0:
         raison = _derniere_ligne(r["sortie"]) or f"code de sortie {r['code']}"
@@ -128,7 +127,7 @@ def _session(dossier, session):
     session = _id_session(session)
     if not dossier_session(dossier, session).is_dir():
         raise ErreurAtelier(404, f"Le scan « {session} » n'existe pas dans le lieu « {dossier.name} » : "
-                                 "choisissez-en un dans la liste des scans de l'onglet Scan.")
+                                 "choisissez-en un dans l'arbre du lieu (Scans).")
     try:
         return lire_session(dossier, session)
     except ErreurLieu as e:
@@ -297,12 +296,8 @@ class DemandeArreter(BaseModel):
     session: Optional[str] = None
 
 
-class DemandeGarder(BaseModel):
-    a_garder: Dict[str, StrictBool]
-
-
 class DemandeAdopter(BaseModel):
-    monde: StrictBool = False
+    monde: StrictBool = False          # vague 2 ; accepté et ignoré depuis la vague 5
 
 
 @routeur.post("/demarrer")
@@ -329,7 +324,7 @@ async def demarrer(demande: DemandeDemarrer, request: Request):
         s = etat.simulation
         if (s["lieu"], s["etage"]) != (demande.lieu, demande.etage):
             raise ErreurAtelier(409, f"La simulation de l'Atelier tourne sur un autre lieu ou étage (lieu « {s['lieu']} », "
-                                     f"étage « {s['etage']} ») : arrêtez la simulation (onglet Simulation), puis "
+                                     f"étage « {s['etage']} ») : arrêtez la simulation (Simuler › Arrêter), puis "
                                      "relancez le scan.")
     # un seul scan actif par lieu
     try:
@@ -341,10 +336,10 @@ async def demarrer(demande: DemandeDemarrer, request: Request):
                                  f"{active['etat']}) : cliquez sur « Fin », ou attendez la fin de son traitement.")
     if simule and not chemin_sdf(dossier, demande.etage).is_file():
         raise ErreurAtelier(409, "Le monde Gazebo de cet étage n'existe pas encore : le robot simulé n'a rien à "
-                                 "scanner. Dans l'onglet Carte, cliquez sur « Fabriquer la carte », puis relancez "
-                                 "le scan.")
+                                 "scanner : dessinez le monde (Simulation › Dessiner) et enregistrez-le, puis "
+                                 "relancez le scan.")
     if demande.explorer and _couloirs_de_l_etage(dossier, demande.etage) == 0:
-        raise ErreurAtelier(409, "L'exploration automatique suit les couloirs de l'onglet Itinéraires, et cet étage "
+        raise ErreurAtelier(409, "L'exploration automatique suit les couloirs des itinéraires (Placer), et cet étage "
                                  "n'en a aucun : reliez au moins deux nœuds, ou décochez « Exploration "
                                  "automatique » et pilotez le robot avec les flèches.")
     if mode == "robot" and not demande.repetition:
@@ -356,7 +351,7 @@ async def demarrer(demande: DemandeDemarrer, request: Request):
                                      "sans robot ».")
     if commande("g1-scan") is None:
         raise ErreurAtelier(503, "Impossible de démarrer le scan : la commande g1-scan n'est pas encore installée "
-                                 f"dans {atelier.RACINE / 'bin'} (agent Orchestrateur).")
+                                 f"dans {atelier.RACINE / 'bin'}.")
 
     arguments = ["demarrer", "--lieu", dossier, "--etage", demande.etage, "--mode", mode]
     if demande.repetition:
@@ -453,49 +448,6 @@ def sessions(lieu: str):
 
 # ---------------------------------------------------------------- résultat d'une session
 
-def _session_finie(s, quoi):
-    if s["etat"] in ETATS_ACTIFS:
-        raise ErreurAtelier(409, f"Le scan « {s['nom']} » n'est pas fini (état {s['etat']}) : attendez la fin du "
-                                 f"traitement pour {quoi}.")
-
-
-@routeur.get("/sessions/{session}/reconnaissance")
-def lire_reconnaissance_session(lieu: str, session: str):
-    dossier = dossier_du_lieu(lieu)
-    s = _session(dossier, session)
-    if not chemin_session(dossier, s["id"], "reconnaissance").is_file():
-        if s["etat"] in ETATS_ACTIFS:
-            detail = "La reconnaissance de ce scan n'est pas encore faite : attendez la fin du traitement."
-        else:
-            detail = ("Ce scan n'a pas de reconnaissance (elle a échoué ou n'a pas été faite) : sa carte 2D peut "
-                      "quand même servir (« Utiliser cette carte pour l'étage »).")
-        raise ErreurAtelier(404, detail)
-    try:
-        donnees = lire_reconnaissance(dossier_session(dossier, s["id"]))
-    except ErreurLieu as e:
-        raise ErreurAtelier(422, "Le fichier reconnaissance.yaml de ce scan est invalide : corrigez les points "
-                                 "ci-dessous, ou refaites le traitement (g1-scan traiter).", e.erreurs) from None
-    return {"reconnaissance": donnees, "resume": resume_reconnaissance(donnees)}
-
-
-@routeur.put("/sessions/{session}/reconnaissance")
-def changer_a_garder(lieu: str, session: str, demande: DemandeGarder):
-    dossier = dossier_du_lieu(lieu)
-    s = _session(dossier, session)
-    _session_finie(s, "choisir les éléments à garder")
-    actuel = lire_reconnaissance_session(lieu, s["id"])["reconnaissance"]
-    connus = {e["id"] for cle in ("murs", "passages", "objets") for e in actuel[cle]}
-    inconnus = sorted(set(demande.a_garder) - connus)
-    if inconnus:
-        raise ErreurAtelier(400, f"Élément(s) inconnu(s) dans la reconnaissance de ce scan : {', '.join(inconnus)}. "
-                                 "Rechargez la page : la reconnaissance a peut-être été refaite.")
-    try:
-        resultat = _changer_a_garder(dossier, s["id"], dict(demande.a_garder))
-    except ErreurLieu as e:
-        raise ErreurAtelier(409, "Les choix n'ont pas été enregistrés : lisez les points ci-dessous.", e.erreurs) from None
-    return resultat
-
-
 def _carte_session(dossier, s):
     chemin = chemin_session(dossier, s["id"], "carte")
     if not chemin.is_file():
@@ -531,21 +483,6 @@ def carte_yaml(lieu: str, session: str):
                 bornes={"xmin": xmin, "ymin": ymin, "xmax": xmax, "ymax": ymax}, modifiee=chemin.stat().st_mtime)
 
 
-@routeur.get("/sessions/{session}/monde")
-def monde_session(lieu: str, session: str):
-    dossier = dossier_du_lieu(lieu)
-    s = _session(dossier, session)
-    chemin = chemin_session(dossier, s["id"], "monde")
-    if not chemin.is_file():
-        raise ErreurAtelier(404, "Ce scan n'a pas encore de monde : il est tiré de la reconnaissance, à la fin du "
-                                 "traitement.")
-    try:
-        return Monde.depuis_dict(charger_fichier(chemin, "monde", FICHIERS_SESSION["monde"])).vers_dict()
-    except ErreurLieu as e:
-        raise ErreurAtelier(422, "Le monde tiré de ce scan est invalide : cochez ou décochez un élément pour le "
-                                 "refaire, ou refaites le traitement.", e.erreurs) from None
-
-
 @routeur.get("/sessions/{session}/rapport")
 def rapport_session(lieu: str, session: str):
     """Ajout au contrat : rapport.json du traitement (étapes, comparaison, avertissements)."""
@@ -562,26 +499,28 @@ def rapport_session(lieu: str, session: str):
 
 @routeur.post("/sessions/{session}/adopter")
 async def adopter(lieu: str, session: str, demande: DemandeAdopter, request: Request):
+    """« Utiliser cette carte » : la carte et le nuage du scan deviennent ceux de l'étage, et sa simulation
+    tourne sur la carte extrudée (section 12.5). Le champ monde de la demande est accepté et ignoré."""
     dossier = dossier_du_lieu(lieu)
     s = _session(dossier, session)
     if s["etat"] != "termine":
         conseil = ("attendez la fin du traitement" if s["etat"] in ETATS_ACTIFS
                    else "il a échoué : faites un nouveau scan")
         raise ErreurAtelier(409, f"Le scan « {s['nom']} » ne peut pas être adopté (état {s['etat']}) : {conseil}.")
-    if demande.monde and not chemin_session(dossier, s["id"], "monde").is_file():
-        raise ErreurAtelier(409, "Ce scan n'a pas de monde (la reconnaissance a échoué) : utilisez seulement sa "
-                                 "carte (« Utiliser cette carte pour l'étage »).")
-    arguments = ["adopter", "--lieu", dossier, "--session", s["id"]]
-    if demande.monde:
-        arguments.append("--monde")
-    r = await _g1_scan(arguments, DELAI_ADOPTER, "adopter le scan")
+    try:
+        fiche = charger_fiche(dossier)
+        etage = fiche.etage(s["etage"])
+        ancien_source = etage.source_carte if etage is not None else None
+    except ErreurLieu:
+        ancien_source = None
+    r = await _g1_scan(["adopter", "--lieu", dossier, "--session", s["id"]], DELAI_ADOPTER, "adopter le scan")
     avertissements = []
     etat = request.app.state.atelier
     if etat.simulation_en_cours() and (etat.simulation["lieu"], etat.simulation["etage"]) == (lieu, s["etage"]):
         avertissements.append("La simulation de l'Atelier tourne encore sur l'ancienne carte : arrêtez-la puis "
                               "relancez-la pour essayer le nouvel étage.")
-    if s["mode"] == "robot":
+    if s["mode"] == "robot" and ancien_source == "monde":
         avertissements.append("Ce scan vient du vrai robot : son repère n'est pas celui du monde dessiné. Replacez "
                               "les salles, les itinéraires et les zones sur la nouvelle carte.")
-    return {"adopte": True, "monde": demande.monde, "session": s["id"], "etage": s["etage"], "sortie": r["sortie"],
+    return {"adopte": True, "monde": True, "session": s["id"], "etage": s["etage"], "sortie": r["sortie"],
             "avertissements": avertissements, "rapport": rapport_du_lieu(dossier)}

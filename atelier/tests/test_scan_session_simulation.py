@@ -7,9 +7,9 @@ Longs (5 à 10 min en tout) : sautés sans G1_SCAN_SIMULATION=1. Il faut ROS 2 c
 (source ~/robot-g1/setup/env.sh) et g1_sim compilé. Domaine ROS et partition Gazebo : ceux de
 l'environnement, 51 et scan_51 par défaut. Chaque test travaille sur une copie de lieux/demo.
 
-  - scan simu avec --explorer : demarrer rend la main en moins de 3 s, l'aperçu se met à jour,
-    la session finit « termine » seule, la carte recouvre celle du monde à 80 % au moins, puis
-    adopter --monde donne un lieu valide ;
+  - scan simu avec --explorer : demarrer rend la main en moins de 3 s, l'aperçu (et le nuage en direct)
+    se met à jour, la session finit « termine » seule, la carte recouvre celle du monde à 80 % au moins,
+    aucun nuage ignoré, nuage d'affichage lisible, puis adopter donne un lieu valide et un monde maillé ;
   - répétition du mode robot : faux service (1801 puis 1802 avec carte_unitree), relais, bag des
     sujets /unitree/slam_mapping/*, téléopération, arreter --attendre, « termine ».
 Après chaque test : aucun programme lancé par la session ne tourne encore.
@@ -21,6 +21,7 @@ import subprocess
 import time
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 import atelier
@@ -41,7 +42,7 @@ def env(tmp_path):
     e = dict(os.environ, ATELIER_LIEUX=str(lieux), G1_SLAM_FAUX="1", ROS_LOCALHOST_ONLY="0")
     e.setdefault("ROS_DOMAIN_ID", "51")
     e.setdefault("IGN_PARTITION", "scan_51")
-    for variable in ("DISPLAY", "WAYLAND_DISPLAY", "ATELIER_RECONNAISSANCE", "G1_SCAN_BIN"):
+    for variable in ("DISPLAY", "WAYLAND_DISPLAY", "G1_SCAN_BIN"):
         e.pop(variable, None)
     yield e, lieux / "essai"
     # Filet : si un test échoue en route, on arrête la session pour ne rien laisser tourner
@@ -123,23 +124,27 @@ def test_scan_simu_avec_exploration(env):
     rapport = json.loads((dossier / "rapport.json").read_text())
     assert rapport["comparaison"]["recouvrement"] == pytest.approx(c["recouvrement"], abs=1e-3)
     assert rapport["repere"]["capteur"] == "tf_static" and rapport["repere"]["deja_dans_le_monde"] is False
-    if (dossier / "reconnaissance.yaml").is_file():
-        L.charger_fichier(dossier / "monde_scan.monde.yaml", "monde")
-        reco = L.lire_reconnaissance(dossier)
-        assert not any(o["a_garder"] for o in reco["objets"] if o["categorie"] == "personne")
-        print(f"reconnaissance : {L.resume_reconnaissance(reco)}")
-    else:
-        print(f"pas de reconnaissance : {rapport['avertissements']}")
+    assert rapport["nuages"]["ignores"] <= 0.01 * rapport["nuages"]["recus"] and rapport["base_de_temps"] == "message"
+    points, entete = L.lire_nuage(L.chemin_nuage_session(dossier))
+    # Le sol du nuage d'affichage est à z = 0 (le plan est soustrait). Dans le repère de l'odométrie simulée, il
+    # est vers −0,06 m (odométrie plane, z = 0, alors que le corps du robot proxy repose un peu au-dessus du
+    # sol) : seul compte qu'il soit plat et retiré.
+    h = points[:, 2].astype(float)
+    sol_vu = float(np.median(h[np.abs(h) < 0.1]))
+    assert entete["points"] > 50000 and abs(sol_vu) <= 0.02 and entete["sol"]["inclinaison_deg"] < 0.1, entete["sol"]
+    assert abs(entete["sol"]["plan"][2]) < 0.1
+    assert not (dossier / "reconnaissance.yaml").exists()
+    assert L.lire_nuage(L.chemin_nuage_session(dossier, apercu=True))[1]["source"] == "apercu"
     verifier_rien_ne_tourne(lieu, ident, e)
 
-    # Adoption avec le monde : lieu valide, ancien monde gardé, masque à la taille de la carte
-    code, sortie = g1_scan(e, "adopter", "--lieu", "essai", "--session", ident,
-                           *(["--monde"] if (dossier / "reconnaissance.yaml").is_file() else []))
+    # « Utiliser cette carte » : lieu valide, monde maillé, ancien monde gardé, masque à la taille de la carte
+    code, sortie = g1_scan(e, "adopter", "--lieu", "essai", "--session", ident)
     assert code == 0, sortie
     rapport_lieu = L.valider_lieu(lieu)
     print(rapport_lieu.texte())
     assert not rapport_lieu.erreurs
     assert L.charger_fiche(lieu).etage("rdc").source_carte == "scan"
+    assert L.charger_monde(lieu, "rdc").carte_extrudee is not None and L.chemin_maillage(lieu, "rdc").is_file()
 
 
 def publier_vitesse(env, vx, duree):

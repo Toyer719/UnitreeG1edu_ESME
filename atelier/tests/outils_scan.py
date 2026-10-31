@@ -1,13 +1,13 @@
-"""Sessions de scan d'exemple, sans ROS, sans Gazebo ni robot (contrats de la section 9 du plan).
+"""Sessions de scan d'exemple, sans ROS, sans Gazebo ni robot (contrats des sections 9 et 12.5 du plan).
 
     from atelier.tests.outils_scan import creer_session_exemple
     s = creer_session_exemple(copie_du_demo, etat="termine")
 
 La session est tirée du monde du lieu, comme si le scan avait été parfait : la carte du scan est
-celle du monde, le nuage est fait de points posés sur les murs et les objets, et la reconnaissance
-est la vérité terrain (atelier.lieu.reconnaissance_depuis_monde). Tous les fichiers respectent
-les formats du contrat : les agents Interface et Testeur peuvent s'en servir avant que g1-scan
-et la reconnaissance soient prêts. À n'utiliser que sur une copie d'un lieu (jamais lieux/demo).
+celle du monde, et le nuage est fait de points posés sur les murs et les objets (nuage.pcd, et le
+nuage d'affichage nuage_affichage.bin et .json ; l'aperçu en direct apercu_nuage aussi). Tous les
+fichiers respectent les formats du contrat. Vague 5 : plus de reconnaissance. À n'utiliser que sur
+une copie d'un lieu (jamais lieux/demo).
 
 Aussi en ligne de commande, pour regarder les fichiers :
     .venv-projet/bin/python -m atelier.tests.outils_scan DOSSIER_DU_LIEU [etat]
@@ -74,8 +74,19 @@ def _trajectoire(lieu, etage, pas=0.25):
     return points
 
 
+SOL_PLAT = {"plan": [0.0, 0.0, 0.0], "inclinaison_deg": 0.0, "methode": "ransac"}
+
+
+def nuage_des_obstacles(info, image, hauteurs=(0.2, 0.45, 0.7, 0.95, 1.2)):
+    """Points (N, 3) posés sur les pixels occupés de la carte, à quelques hauteurs (sol à z = 0)."""
+    x, y = _points_occupes(info, image)
+    hauteurs = np.asarray(hauteurs, dtype=float)
+    return np.column_stack([np.repeat(x, len(hauteurs)), np.repeat(y, len(hauteurs)), np.tile(hauteurs, len(x))])
+
+
 def ecrire_apercu(dossier, session, info, image, trajectoire):
-    """apercu.png (vue de dessus) et apercu.json (points décimés, trajectoire), formats 9.2."""
+    """apercu.png (vue de dessus), apercu.json (points décimés, trajectoire), formats 9.2, et le nuage en
+    direct apercu_nuage (.bin et .json, source apercu, section 12.5)."""
     x, y = _points_occupes(info, image)
     n = len(x)
     pas = max(1, math.ceil(n / L.APERCU_POINTS_MAX))
@@ -93,21 +104,23 @@ def ecrire_apercu(dossier, session, info, image, trajectoire):
               "statistiques": session["statistiques"]}
     L.ecrire_atomique(Path(dossier) / L.FICHIERS_SESSION["apercu_json"],
                       json.dumps(apercu, ensure_ascii=False) + "\n")
+    direct = nuage_des_obstacles(info, image, (0.5, 1.0))[::2]
+    L.ecrire_nuage(L.chemin_nuage_session(dossier, apercu=True), direct,
+                   L.entete_nuage(direct, 0.1, SOL_PLAT, "apercu", session=session["id"]))
     return apercu
 
 
 def creer_session_exemple(lieu, etat="termine", mode="simu", etage="rdc", repetition=False):
     """Crée dans le lieu (une copie !) une session de scan cohérente, dans l'état demandé :
-      en_cours    session.json (processus = ce processus, donc vivant) et aperçu ;
-      traitement  en plus : nuage.pcd, carte.pgm/.yaml, étape reconnaissance à 70 % ;
-      termine     en plus : reconnaissance.yaml, monde_scan.monde.yaml, rapport.json ;
+      en_cours    session.json (processus = ce processus, donc vivant), aperçu et nuage en direct ;
+      traitement  en plus : nuage.pcd, carte.pgm/.yaml, étape nuage à 90 % ;
+      termine     en plus : nuage_affichage.bin/.json, rapport.json (format de la vague 5) ;
       echec       arrêt à l'étape carte_3d, avec un message qui dit quoi faire.
     Renvoie la session (dict, avec « dossier »)."""
     if etat not in ETATS_EXEMPLE:
         raise ValueError(f"état d'exemple inconnu : {etat} (possibles : {', '.join(ETATS_EXEMPLE)})")
     dossier_lieu = L.dossier_lieu(lieu)
     info, image = L.charger_carte(L.chemin_carte(dossier_lieu, etage))
-    monde = L.charger_monde(dossier_lieu, etage)
     session = L.creer_session(dossier_lieu, etage, mode, repetition=repetition, refuser_si_active=False)
     ident = session["id"]
     dossier = L.dossier_session(dossier_lieu, ident)
@@ -133,36 +146,37 @@ def creer_session_exemple(lieu, etat="termine", mode="simu", etage="rdc", repeti
         return session
 
     # Nuage : les obstacles de la carte, de 0,2 à 1,2 m de haut ; carte : celle du monde
-    hauteurs = np.linspace(0.2, 1.2, 6)
-    nuage = np.column_stack([np.repeat(x, len(hauteurs)), np.repeat(y, len(hauteurs)),
-                             np.tile(hauteurs, len(x))])
-    ecrire_pcd_ascii(dossier / L.FICHIERS_SESSION["nuage"], nuage[::3])
+    nuage = nuage_des_obstacles(info, image)[::2]
+    ecrire_pcd_ascii(dossier / L.FICHIERS_SESSION["nuage"], nuage)
     info_session = L.InfoCarte(image=L.FICHIERS_SESSION["carte_image"], resolution=info.resolution,
                                origin=info.origin)
     L.enregistrer_carte(dossier / L.FICHIERS_SESSION["carte"], info_session, image)
     if etat == "traitement":
-        session = L.maj_session(dossier_lieu, ident, etat="traitement", etape="reconnaissance", fin=fin,
-                                progression=L.progression_etape("reconnaissance", 0.2),
-                                message="Reconnaissance des murs, des passages et des objets…")
+        session = L.maj_session(dossier_lieu, ident, etat="traitement", etape="nuage", fin=fin,
+                                progression=L.progression_etape("nuage", 0.3),
+                                message="Nuage de la carte 3D…")
         session["dossier"] = str(dossier)
         return session
 
-    reconnaissance = L.reconnaissance_depuis_monde(monde, etage, session=ident)
-    L.ecrire_reconnaissance(dossier, reconnaissance)
-    L.ecrire_monde_scan(dossier, reconnaissance)
+    entete = L.ecrire_nuage(L.chemin_nuage_session(dossier), nuage,
+                            L.entete_nuage(nuage, 0.05, SOL_PLAT, "scan", session=ident, etage=etage,
+                                           mobiles_retires=0))
     rapport = {"version": 1, "session": ident, "termine": L.scans.instant(), "duree_traitement_s": 12.5,
                "etapes": [{"etape": e, "ok": True, "duree_s": 3.0, "message": ""} for e in L.ETAPES_TRAITEMENT],
-               "nuage": {"fichier": L.FICHIERS_SESSION["nuage"], "points": int(len(nuage[::3])),
+               "nuages": {"recus": stats["nuages"], "utilises": stats["nuages"], "ignores": 0},
+               "base_de_temps": "message", "mobiles_retires": 0,
+               "sol": dict(SOL_PLAT, points=1000),
+               "nuage": {"fichier": L.FICHIERS_SESSION["nuage"], "points": int(len(nuage)),
                          "nuages": stats["nuages"], "retires_mobiles": 0},
                "carte": {"fichier": L.FICHIERS_SESSION["carte"], "largeur": info.largeur, "hauteur": info.hauteur,
-                         "resolution": info.resolution, "occupes": int((image == 0).sum()), "sol": 0.0},
-               "reconnaissance": L.resume_reconnaissance(reconnaissance),
+                         "resolution": info.resolution, "occupes": int((image == 0).sum())},
+               "affichage": {"fichier": L.NUAGE_AFFICHAGE + ".bin", "points": entete["points"], "grille": 0.05},
                "comparaison": {"reference": f"cartes/{etage}.yaml", "recouvrement": 1.0, "couverture": 1.0},
-               "avertissements": []}
+               "repere": None, "avertissements": []}
     L.ecrire_atomique(dossier / L.FICHIERS_SESSION["rapport"], json.dumps(rapport, ensure_ascii=False, indent=2) + "\n")
     session = L.maj_session(dossier_lieu, ident, etat="termine", etape="fini", progression=100, fin=fin,
-                            message="Scan terminé : carte 2D et monde prêts. Vérifiez les éléments reconnus, "
-                                    "puis « Adopter ».")
+                            message="Scan terminé : la carte 2D et le nuage 3D sont prêts. Regardez-les, puis "
+                                    "« Utiliser cette carte ».")
     session["dossier"] = str(dossier)
     return session
 

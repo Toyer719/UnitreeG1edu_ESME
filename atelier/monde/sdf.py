@@ -8,9 +8,14 @@ Contenu du monde :
   - un modèle statique par objet : boîte, cylindre, ou meuble simple (chaise, table, banc,
     poubelle) écrit ici en SDF, sans rien télécharger ;
   - un <actor> par piéton, qui suit son trajet (voir pietons.py) : départ (depart_s, le
-    delay_start du script), pauses et répétition (repeter, le loop du script) compris.
+    delay_start du script), pauses et répétition (repeter, le loop du script) compris ;
+  - vague 5 (section 12.5 du plan) : pour un étage scanné (champ carte_extrudee du monde), la carte 2D
+    extrudée en un seul maillage STL (atelier.monde.extrusion), dans un seul modèle statique
+    « carte_du_scan », avec collision et visuel (le LiDAR simulé le voit). L'uri du maillage est
+    relative au .sdf (même dossier, mondes/) ; sdf_simulation la rend absolue.
 Les modèles portent l'id du mur, de l'objet ou du piéton. Le robot n'y est pas : g1_sim le fait
 apparaître à depart_robot. Le monde Gazebo porte le nom de l'étage (ex. « rdc »).
+Un monde sans carte_extrudee donne le même .sdf qu'avant la vague 5, octet pour octet.
 
 Piétons crédibles (vague 4, section 11.3 du plan) : le fichier .sdf du lieu garde les <actor> de la
 vague 1. Au lancement (g1_sim, pietons:=corps, le défaut), sdf_simulation() en tire le monde
@@ -22,7 +27,7 @@ position vraie par OdometryPublisher) ; les autres restent des <actor>.
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from atelier.lieu import MODELES_MOBILIER, charger_monde, chemin_sdf, ecrire_atomique
+from atelier.lieu import MODELE_CARTE_EXTRUDEE, MODELES_MOBILIER, charger_monde, chemin_sdf, ecrire_atomique
 from atelier.lieu.passants import reglages_pieton
 
 from .pietons import NOM_ANIMATION, NOM_MAILLAGE, points_de_passage, texte_maillage
@@ -203,9 +208,25 @@ def _ajouter_pieton(monde_sdf, pieton):
         _pose(point, x, y, 0.0, cap)
 
 
-def texte_sdf(monde, nom="monde", source=None):
+def _ajouter_carte_extrudee(monde_sdf, uri):
+    """Le modèle statique carte_du_scan : la carte du scan extrudée, un seul maillage (collision et visuel)."""
+    modele = _sous(monde_sdf, "model", name=MODELE_CARTE_EXTRUDEE)
+    _sous(modele, "static", "true")
+    _pose(modele, 0, 0, 0, 0)
+    lien = _sous(modele, "link", name="lien")
+    for balise, nom in (("collision", "carte_collision"), ("visual", "carte_visuel")):
+        element = _sous(lien, balise, name=nom)
+        maillage = _sous(_sous(element, "geometry"), "mesh")
+        _sous(maillage, "uri", uri)
+        if balise == "visual":
+            _materiau(element, "mur")
+
+
+def texte_sdf(monde, nom="monde", source=None, uri_maillage=None):
     """Monde → texte du fichier .sdf. nom : nom du monde Gazebo (l'id de l'étage).
-    source : nom du fichier monde.yaml, cité dans le commentaire d'en-tête."""
+    source : nom du fichier monde.yaml, cité dans le commentaire d'en-tête.
+    uri_maillage : uri du STL de la carte extrudée (défaut : monde.carte_extrudee.fichier, relatif au .sdf) ;
+    sans carte_extrudee, pas de modèle carte_du_scan."""
     racine = ET.Element("sdf", version=VERSION_SDF)
     monde_sdf = _sous(racine, "world", name=nom)
 
@@ -229,6 +250,9 @@ def texte_sdf(monde, nom="monde", source=None):
     _sous(soleil, "direction", "-0.5 0.1 -0.9")
 
     _ajouter_sol(monde_sdf, monde.emprise)
+    carte = getattr(monde, "carte_extrudee", None)
+    if carte is not None:
+        _ajouter_carte_extrudee(monde_sdf, uri_maillage or carte.fichier)
     for mur in monde.murs:
         _ajouter_mur(monde_sdf, mur)
     for objet in monde.objets:
@@ -337,13 +361,23 @@ def modele_corps(parent, pieton, rang=0):
     return modele
 
 
+def uri_absolue(uri, dossier):
+    """uri d'un maillage relative au .sdf → chemin absolu (dossier : celui du .sdf) ; une uri déjà absolue,
+    ou avec un schéma (file://, model://…), est rendue telle quelle."""
+    uri = (uri or "").strip()
+    if not uri or "://" in uri or Path(uri).is_absolute():
+        return uri
+    return str(Path(dossier) / uri)
+
+
 def sdf_simulation(texte, monde, dossier_maillage, mode="corps"):
     """Monde simulé par g1_sim, à partir du texte du .sdf du lieu (avec ses <actor> de la vague 1).
 
     mode « corps » : l'<actor> de chaque piéton qui a un corps est remplacé par modele_corps (ajouté
     même si le .sdf n'avait pas son <actor>) ; « acteurs » : rien ne change. Les chemins relatifs
-    des maillages des <actor> restants deviennent absolus (dossier_maillage : le dossier du .sdf du
-    lieu), car le monde simulé est écrit ailleurs. Renvoie (texte, ids des piétons-corps)."""
+    des maillages des <actor> restants, et l'uri du maillage de la carte extrudée (vague 5),
+    deviennent absolus (dossier_maillage : le dossier du .sdf du lieu), car le monde simulé est écrit
+    ailleurs. Renvoie (texte, ids des piétons-corps)."""
     corps = pietons_avec_corps(monde, mode)
     ids = [p.id for p in corps]
     racine = ET.fromstring(texte)
@@ -358,6 +392,8 @@ def sdf_simulation(texte, monde, dossier_maillage, mode="corps"):
             element = acteur.find(chemin)
             if element is not None and element.text and not Path(element.text.strip()).is_absolute():
                 element.text = str(Path(dossier_maillage) / element.text.strip())
+    for uri in monde_sdf.iter("uri"):              # maillages (carte extrudée d'un étage scanné)
+        uri.text = uri_absolue(uri.text, dossier_maillage)
     for rang, pieton in enumerate(corps):
         modele_corps(monde_sdf, pieton, rang)
     ET.indent(racine, space="  ")

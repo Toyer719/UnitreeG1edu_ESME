@@ -3,12 +3,16 @@
 
   g1-scan demarrer --lieu L --etage E --mode robot|simu [--repetition] [--explorer] [--nom N] [--json]
   g1-scan arreter  --lieu L [--session S] [--sans-traitement] [--attendre]
-  g1-scan traiter  --lieu L --session S
+  g1-scan traiter  --lieu L --session S [--refaire]
   g1-scan etat     --lieu L [--session S] [--json]
-  g1-scan adopter  --lieu L --session S [--monde]
+  g1-scan adopter  --lieu L --session S
+  g1-scan carte-unitree --lieu L [--etage E] [--delai 60]
 
 Le déroulé, les fichiers d'une session (LIEU/scans/<session>/) et les états de session.json sont
-ceux de la section 9 du plan. session.json n'est écrit que par atelier.lieu (maj_session).
+ceux des sections 9 et 12.5 du plan. session.json n'est écrit que par atelier.lieu (maj_session).
+Vague 5 : plus de reconnaissance des murs et des meubles ; le traitement fait la carte 3D, la carte 2D
+et le nuage de la carte 3D, et l'adoption donne à l'étage sa carte, son nuage et un monde de
+simulation tiré de la carte (la carte 2D extrudée en un seul maillage, atelier.monde).
 
 demarrer crée la session, puis lance, détaché (dans son propre groupe de processus), le
 processus de la session : « python -m atelier.scan.session session --lieu L --session S ».
@@ -21,7 +25,7 @@ Celui-ci :
      avec --explorer, le tour automatique des couloirs (atelier.scan.exploration) ;
   3. s'arrête sur SIGINT ou SIGTERM (g1-scan arreter), ou à la fin du tour : 1802 (mode robot),
      fermeture du bag, arrêt de tout ce qu'il a lancé. SIGUSR1 : pareil, sans le traitement ;
-  4. traite : carte 3D, carte 2D, reconnaissance, monde, rapport (comme g1-scan traiter).
+  4. traite : carte 3D, carte 2D, nuage d'affichage, rapport (comme g1-scan traiter).
 Chaque programme lancé a son groupe de processus et son journal (journaux/scan_<lieu>_<session>.<nom>.log),
 et reçoit SIGTERM si le processus de la session meurt. Leurs numéros sont notés dans
 scans/<session>/.processus.json : g1-scan arreter s'en sert pour nettoyer une session interrompue.
@@ -61,10 +65,8 @@ RESEAU_ROBOT = "192.168.123."
 # odométrie du bassin et informations du service de cartographie, pour l'analyse après coup
 SUJETS_ROBOT_EN_PLUS = ("/state_estimator/odom_pelvis", "/slam_info")
 FICHIER_PROCESSUS = ".processus.json"
-MODULE_RECONNAISSANCE = "atelier.scan.reconnaissance:reconnaitre"
-# Durées estimées des étapes longues (barre de progression) : par nuage enregistré, et fixe
-SECONDES_PAR_NUAGE = 0.012
-DUREE_RECONNAISSANCE = 30.0
+# Durée estimée de la carte 3D (barre de progression) : par nuage enregistré
+SECONDES_PAR_NUAGE = 0.004
 
 ETATS_LISIBLES = {"en_cours": "scan en cours", "arret_en_cours": "arrêt en cours", "traitement": "traitement",
                   "termine": "terminé", "echec": "échec"}
@@ -660,22 +662,6 @@ def analyser_repere(enregistrement, sujet_nuage, sujet_odom):
     return resultat
 
 
-def _fonction_reconnaissance():
-    """La fonction reconnaitre (agent Reconnaissance), ou (None, raison) si elle n'est pas là.
-    $ATELIER_RECONNAISSANCE=module:fonction en choisit une autre (essais)."""
-    import importlib
-    nom = os.environ.get("ATELIER_RECONNAISSANCE") or MODULE_RECONNAISSANCE
-    module, _, fonction = nom.partition(":")
-    try:
-        return getattr(importlib.import_module(module), fonction or "reconnaitre"), None
-    except ImportError as e:
-        if module == MODULE_RECONNAISSANCE.split(":")[0] and getattr(e, "name", "") == module:
-            return None, "le module de reconnaissance (atelier.scan.reconnaissance) n'est pas encore installé"
-        return None, f"le module de reconnaissance ne se charge pas ({type(e).__name__} : {e})"
-    except AttributeError:
-        return None, f"{nom} : fonction introuvable"
-
-
 def _supprimer(*chemins):
     for chemin in chemins:
         try:
@@ -684,10 +670,11 @@ def _supprimer(*chemins):
             pass
 
 
-def _verifier_avant_traitement(s, dossier):
-    if s.get("adoption"):
+def _verifier_avant_traitement(s, dossier, refaire=False):
+    if s.get("adoption") and not refaire:
         raise ErreurScan(f"la session {s['id']} a déjà été adoptée : refaire son traitement changerait la carte de "
-                         "l'étage. Faites un nouveau scan (g1-scan demarrer)")
+                         f"l'étage. Pour la refaire quand même (les résultats d'avant sont gardés) : g1-scan traiter "
+                         f"--lieu {s['lieu']} --session {s['id']} --refaire, puis g1-scan adopter")
     interrompue = session_interrompue(s) or not _autre_processus_vivant(s)
     if s["etat"] == "en_cours":
         if not session_interrompue(s):
@@ -698,16 +685,21 @@ def _verifier_avant_traitement(s, dossier):
     if s["etat"] in ETATS_ACTIFS and not interrompue:
         raise ErreurScan(f"la session {s['id']} est encore en {ETATS_LISIBLES[s['etat']]} (processus "
                          f"{s['processus']['pid']}) : attendez la fin (g1-scan etat --lieu {s['lieu']})")
+    if refaire and s["etat"] not in ("termine", "echec"):
+        raise ErreurScan(f"--refaire ne s'emploie que sur une session finie (terminée ou en échec), pas en "
+                         f"{ETATS_LISIBLES[s['etat']]}")
     if not enregistrement_complet(dossier) and not reparer_enregistrement(dossier):
         raise ErreurScan(f"la session {s['id']} n'a pas d'enregistrement complet (enregistrement/metadata.yaml) : "
                          "impossible de fabriquer ses cartes. Refaites le scan")
 
 
-def traiter(lieu, session, avertissements=(), dans_la_session=False):
-    """Carte 3D, carte 2D, reconnaissance, monde et rapport d'une session (9.5). Renvoie 0 ou 1.
-    ErreurScan si la session ne peut pas être traitée (en cours, adoptée, sans enregistrement)."""
+def traiter(lieu, session, avertissements=(), dans_la_session=False, refaire=False):
+    """Carte 3D, carte 2D, nuage d'affichage et rapport d'une session (9.5, 12.5). Renvoie 0 ou 1.
+    refaire : une session finie, même adoptée ; ses résultats d'avant vont dans ancien_<horodatage>/ et
+    elle perd son adoption. ErreurScan si la session ne peut pas être traitée (en cours, adoptée sans
+    refaire, sans enregistrement)."""
     try:
-        return _traiter(lieu, session, avertissements, dans_la_session)
+        return _traiter(lieu, session, avertissements, dans_la_session, refaire)
     except (ErreurScan, ErreurLieu):
         raise
     except Exception as e:                       # erreur inattendue : la session ne reste pas « traitement »
@@ -717,27 +709,37 @@ def traiter(lieu, session, avertissements=(), dans_la_session=False):
             maj_session(lieu, session, etat="echec", etape=s["etape"],
                         message=f"Le traitement a échoué à l'étape {s['etape']} (erreur inattendue "
                                 f"{type(e).__name__} : {e}). Refaites-le : g1-scan traiter --lieu "
-                                f"{dossier_lieu(lieu).name} --session {session}")
+                                f"{dossier_lieu(lieu).name} --session {session} --refaire")
         return 1
 
 
-def _traiter(lieu, session, avertissements, dans_la_session):
-    from atelier.lieu import (charger_fichier, enregistrer_carte, lire_reconnaissance, resume_reconnaissance,
-                              valider_donnees)
-    from atelier.scan import carte2d, carte3d
+def _traiter(lieu, session, avertissements, dans_la_session, refaire=False):
+    from atelier.lieu import chemin_nuage_session, enregistrer_carte, ranger_resultats
+    from atelier.lieu import NUAGE_AFFICHAGE
+    from atelier.scan import affichage, carte2d, carte3d
     lieu = dossier_lieu(lieu)
     dossier = dossier_session(lieu, session)
     s = lire_session(lieu, session)
     if not dans_la_session:
-        _verifier_avant_traitement(s, dossier)
+        _verifier_avant_traitement(s, dossier, refaire)
     avertissements = list(avertissements) or list(_lire_processus(dossier).get("avertissements", []))
     etage, mode, sujets = s["etage"], s["mode"], s["sujets"]
     enregistrement = dossier / FICHIERS_SESSION["enregistrement"]
     nuage, carte = dossier / FICHIERS_SESSION["nuage"], dossier / FICHIERS_SESSION["carte"]
-    fichier_reco, fichier_monde = dossier / FICHIERS_SESSION["reconnaissance"], dossier / FICHIERS_SESSION["monde"]
     rapport_fichier = dossier / FICHIERS_SESSION["rapport"]
-    # Un nouveau traitement remplace tout ce qu'avait fait le précédent
-    _supprimer(nuage, carte, dossier / FICHIERS_SESSION["carte_image"], fichier_reco, fichier_monde, rapport_fichier)
+    base_affichage = chemin_nuage_session(dossier)
+    if refaire:
+        # non destructif : les résultats d'avant sont gardés ; la session devra être réadoptée
+        ancien = ranger_resultats(lieu, session)
+        if ancien is not None:
+            dire(f"Résultats d'avant rangés dans {ancien.name}/")
+        if s.get("adoption"):
+            s = maj_session(lieu, session, adoption=None)
+            dire("La session n'est plus adoptée : adoptez-la de nouveau (g1-scan adopter) quand elle sera prête.")
+    else:
+        # Un nouveau traitement remplace tout ce qu'avait fait le précédent
+        _supprimer(nuage, carte, dossier / FICHIERS_SESSION["carte_image"], rapport_fichier,
+                   *[base_affichage.with_name(base_affichage.name + ext) for ext in (".bin", ".json")])
     debut, etapes = time.monotonic(), []
 
     def maj(**champs):
@@ -762,7 +764,7 @@ def _traiter(lieu, session, avertissements, dans_la_session):
     try:
         with Avancement(lieu, session, "carte_3d", 5.0 + SECONDES_PAR_NUAGE * n_nuages):
             infos = carte3d.fabriquer_pcd(enregistrement, nuage, sujet_nuage=sujets["nuage"], sujet_odom=sujets["odom"],
-                                          capteur=capteur, afficher=dire)
+                                          capteur=capteur, afficher=dire, avec_points=True)
         repere = analyser_repere(enregistrement, infos["sujet_nuage"], infos["sujet_odom"])
     except carte3d.ErreurCarte3d as e:
         return echec("carte_3d", f"La carte 3D n'a pas pu être fabriquée : {e}. Vérifiez que {sujets['nuage']} et "
@@ -770,7 +772,9 @@ def _traiter(lieu, session, avertissements, dans_la_session):
     except Exception as e:
         return echec("carte_3d", f"La carte 3D n'a pas pu être fabriquée (erreur inattendue {type(e).__name__} : {e}). "
                                  f"Voir le journal {s.get('journal') or ''}, puis refaites le traitement : g1-scan "
-                                 f"traiter --lieu {lieu.name} --session {session}")
+                                 f"traiter --lieu {lieu.name} --session {session} --refaire")
+    points = infos.pop("tableau")
+    avertissements += list(infos.get("avertissements") or [])
     repere["capteur"] = infos.get("capteur")
     message_repere = (f"Repère des points : « {repere['nuage']} »"
                       + (", déjà celui de l'odométrie : points pris tels quels, sans transformation"
@@ -781,86 +785,53 @@ def _traiter(lieu, session, avertissements, dans_la_session):
     if mode == "robot" and not s["repetition"]:
         avertissements.append(message_repere + ". À vérifier sur la carte : un repère mal compris donne une carte "
                               "dédoublée ou tournée.")
+    sol = infos["sol"]
     etapes.append({"etape": "carte_3d", "ok": True, "duree_s": round(time.monotonic() - t0, 1),
-                   "message": f"{infos['points']} points, {infos['nuages']} nuages, {infos['retires_mobiles']} points "
-                              "d'obstacles mobiles retirés"})
+                   "message": f"{infos['points']} points, {infos['nuages']} nuages sur {infos['recus']} "
+                              f"({infos['ignores']} ignorés), {infos['retires_mobiles']} points de passants retirés, "
+                              f"sol {carte2d.texte_sol(sol)}"})
 
-    # 2. carte 2D
+    # 2. carte 2D, en hauteur au-dessus du plan du sol
     t0 = time.monotonic()
     maj(etape="carte_2d", progression=progression_etape("carte_2d"),
         message="Carte 2D : tranche de 0,1 à 1,5 m au-dessus du sol, projetée et nettoyée…")
     try:
         if mode == "simu":                       # emprise du monde : comparable pixel à pixel au monde dessiné
-            r = carte2d.fabriquer_carte_lieu(lieu, etage, pcd=nuage, sortie=carte, afficher=dire)
+            r = carte2d.fabriquer_carte_lieu(lieu, etage, pcd=nuage, sortie=carte, afficher=dire, plan=sol)
         else:                                    # emprise du nuage (repère de la carte Unitree)
-            points = carte3d.lire_pcd(nuage)
-            info, image, sol = carte2d.fabriquer_carte(points, None, image=FICHIERS_SESSION["carte_image"])
+            info, image, sol_carte = carte2d.fabriquer_carte(points, None, image=FICHIERS_SESSION["carte_image"],
+                                                             plan=sol)
             occupes = int((image == carte2d.OCCUPE).sum())
             if occupes == 0:
-                raise carte2d.ErreurCarte2d(f"aucun obstacle entre 0,1 et 1,5 m au-dessus du sol (sol à {sol:.2f} m)")
+                raise carte2d.ErreurCarte2d("aucun obstacle entre 0,1 et 1,5 m au-dessus du sol "
+                                            f"({carte2d.texte_sol(sol_carte)})")
             enregistrer_carte(carte, info, image)
-            r = {"fichier": str(carte), "sol": sol, "occupes": occupes, "largeur": info.largeur,
+            r = {"fichier": str(carte), "sol": sol_carte, "occupes": occupes, "largeur": info.largeur,
                  "hauteur": info.hauteur}
-            dire(f"Carte écrite : {carte} ({info.largeur} × {info.hauteur} pixels), sol à {sol:.2f} m")
+            dire(f"Carte écrite : {carte} ({info.largeur} × {info.hauteur} pixels, {occupes} occupés)")
     except (carte2d.ErreurCarte2d, carte3d.ErreurCarte3d, ErreurLieu) as e:
         return echec("carte_2d", f"La carte 2D n'a pas pu être fabriquée : {e}. Le nuage 3D est dans {nuage} ; "
                                  "refaites le scan en passant plus près des murs.")
     except Exception as e:
         return echec("carte_2d", f"La carte 2D n'a pas pu être fabriquée (erreur inattendue {type(e).__name__} : "
                                  f"{e}) ; refaites le traitement : g1-scan traiter --lieu {lieu.name} "
-                                 f"--session {session}")
+                                 f"--session {session} --refaire")
     etapes.append({"etape": "carte_2d", "ok": True, "duree_s": round(time.monotonic() - t0, 1),
-                   "message": f"{r['largeur']} × {r['hauteur']} pixels, {r['occupes']} occupés, "
-                              f"sol à {r['sol']:.2f} m"})
+                   "message": f"{r['largeur']} × {r['hauteur']} pixels, {r['occupes']} occupés"})
 
-    # 3. reconnaissance (un échec ne fait pas échouer la session)
+    # 3. nuage d'affichage de la carte 3D : hauteur au-dessus du sol, grille de 5 cm
     t0 = time.monotonic()
-    maj(etape="reconnaissance", progression=progression_etape("reconnaissance"),
-        message="Reconnaissance des murs, des passages et des objets…")
-    reconnaitre, raison = _fonction_reconnaissance()
-    resultat_reco = None
-    if reconnaitre is not None:
-        premiere = repere.get("premiere_pose")
-        parametres = {"session": session, "etage": etage, "sol": r["sol"]}
-        if premiere:
-            parametres["depart_robot"] = tuple(premiere)
-        try:
-            with Avancement(lieu, session, "reconnaissance", DUREE_RECONNAISSANCE):
-                resultat_reco = reconnaitre(str(nuage), str(carte), str(dossier), parametres)
-            if not fichier_reco.is_file() or not fichier_monde.is_file():
-                raise RuntimeError("reconnaitre n'a pas écrit reconnaissance.yaml et monde_scan.monde.yaml")
-        except Exception as e:
-            raison = f"{e}" if type(e).__name__ == "ErreurReconnaissance" else f"{type(e).__name__} : {e}"
-            resultat_reco = None
-            _supprimer(fichier_reco, fichier_monde)
-    if resultat_reco is None:
-        texte = f"Reconnaissance non faite : {raison}. La carte 2D est prête : vous pouvez l'adopter seule."
+    maj(etape="nuage", progression=progression_etape("nuage"), message="Nuage de la carte 3D…")
+    try:
+        entete = affichage.ecrire_nuage_affichage(base_affichage, points, sol, "scan", session=session, etage=etage,
+                                                  grille=carte3d_grille(), mobiles_retires=int(infos["retires_mobiles"]))
+    except Exception as e:                       # sans nuage, la carte 2D sert quand même
+        texte = f"Nuage de la carte 3D non écrit ({type(e).__name__} : {e}) ; la carte 2D est prête."
         dire(texte)
         avertissements.append(texte)
-        etapes.append({"etape": "reconnaissance", "ok": False, "duree_s": round(time.monotonic() - t0, 1),
-                       "message": texte})
-    else:
-        avertissements += list(resultat_reco.get("avertissements") or [])
-        etapes.append({"etape": "reconnaissance", "ok": True, "duree_s": round(time.monotonic() - t0, 1),
-                       "message": "murs, passages et objets reconnus"})
-
-    # 4. monde et rapport
-    t0 = time.monotonic()
-    maj(etape="monde", progression=progression_etape("monde"), message="Vérification du monde tiré du scan, bilan…")
-    resume = None
-    if resultat_reco is not None:
-        try:
-            donnees = lire_reconnaissance(fichier_reco)
-            monde = charger_fichier(fichier_monde, "monde", f"scans/{session}/{fichier_monde.name}")
-            erreurs = valider_donnees("monde", monde, fichier_monde.name)
-            if erreurs:
-                raise ErreurLieu(erreurs)
-            resume = resume_reconnaissance(donnees)
-        except ErreurLieu as e:
-            texte = f"Monde tiré du scan invalide, reconnaissance écartée : {'; '.join(e.erreurs)}"
-            dire(texte)
-            avertissements.append(texte)
-            _supprimer(fichier_reco, fichier_monde)
+        entete = None
+    etapes.append({"etape": "nuage", "ok": entete is not None, "duree_s": round(time.monotonic() - t0, 1),
+                   "message": f"{entete['points']} points" if entete else "pas de nuage d'affichage"})
     comparaison = None
     reference = chemin_carte(lieu, etage)
     if reference.is_file():
@@ -872,37 +843,83 @@ def _traiter(lieu, session, avertissements, dans_la_session):
                  f"couverture {c['couverture'] * 100:.1f} %")
         except (ErreurLieu, carte2d.ErreurCarte2d) as e:
             avertissements.append(f"comparaison avec cartes/{etage}.yaml impossible : {e}")
-    etapes.append({"etape": "monde", "ok": resume is not None, "duree_s": round(time.monotonic() - t0, 1),
-                   "message": "monde_scan.monde.yaml valide" if resume is not None else "pas de monde tiré du scan"})
     rapport = {"version": 1, "session": session, "termine": instant(),
                "duree_traitement_s": round(time.monotonic() - debut, 1), "etapes": etapes,
+               "nuages": {"recus": int(infos["recus"]), "utilises": int(infos["nuages"]),
+                          "ignores": int(infos["ignores"])},
+               "base_de_temps": infos["base_de_temps"], "mobiles_retires": int(infos["retires_mobiles"]),
+               "sol": {"plan": sol["plan"], "inclinaison_deg": sol["inclinaison_deg"], "methode": sol["methode"],
+                       "points": sol["points"]},
                "nuage": {"fichier": FICHIERS_SESSION["nuage"], "points": int(infos["points"]),
                          "nuages": int(infos["nuages"]), "retires_mobiles": int(infos["retires_mobiles"])},
                "carte": {"fichier": FICHIERS_SESSION["carte"], "largeur": int(r["largeur"]),
                          "hauteur": int(r["hauteur"]), "resolution": carte2d.RESOLUTION,
-                         "occupes": int(r["occupes"]), "sol": round(r["sol"], 3)},
-               "reconnaissance": resume, "comparaison": comparaison, "repere": repere,
-               "avertissements": avertissements}
+                         "occupes": int(r["occupes"])},
+               "affichage": None if entete is None else {"fichier": NUAGE_AFFICHAGE + ".bin",
+                                                         "points": int(entete["points"]), "grille": entete["grille"]},
+               "comparaison": comparaison, "repere": repere, "avertissements": avertissements}
     ecrire_atomique(rapport_fichier, json.dumps(rapport, ensure_ascii=False, indent=2) + "\n")
-    if resume is not None:
-        objets = sum(resume["objets"].values())
-        message = (f"Scan terminé : carte 2D et monde prêts ({resume['murs']} murs, {resume['passages']} passages, "
-                   f"{objets} objets reconnus). Vérifiez les éléments reconnus, puis « Adopter ».")
-    else:
-        message = f"Scan terminé : la carte 2D est prête. {avertissements[-1] if avertissements else ''}".strip()
-    maj(etat="termine", etape="fini", progression=100, message=message)
+    nombre = f"{entete['points']:,}".replace(",", " ") if entete else "?"
+    message = (f"Scan terminé : la carte 2D et le nuage 3D ({nombre} points) sont prêts. Regardez-les, puis "
+               "« Utiliser cette carte ».")
+    if avertissements and (infos["ignores"] > carte3d.PART_IGNORES_MAX * infos["recus"] or entete is None):
+        message += " Attention : " + avertissements[-1]
+    maj(etat="termine", etape="fini", progression=100, message=message[:2000])
     dire(f"{message} ({rapport['duree_traitement_s']:.0f} s)")
     return 0
 
 
+def carte3d_grille():
+    """Grille du nuage d'affichage d'une session : celle de la carte 3D (5 cm)."""
+    from atelier.lieu.nuage import GRILLE_NUAGE
+    return GRILLE_NUAGE
+
+
 # ================================================================ adoption
 
+def _monde_pour_l_adoption(lieu, etage, ancien_source, dossier, messages):
+    """Le monde de l'étage avant l'extrusion de la carte (section 12.5) : un monde dessiné est gardé dans la
+    session (monde_remplace.monde.yaml) et remplacé par un monde qui ne garde que ses piétons dans
+    l'emprise de la carte ; un étage déjà scanné garde son monde, sans les éléments tirés d'une ancienne
+    reconnaissance (source: scan), que la carte extrudée remplace."""
+    from atelier.lieu import charger_info_carte, charger_monde, enregistrer_monde
+    from atelier.monde import monde_minimal
+    chemin = chemin_monde(lieu, etage)
+    info = charger_info_carte(chemin_carte(lieu, etage))
+    if not chemin.is_file():
+        return
+    garde = dossier / FICHIERS_SESSION["monde_remplace"]
+    monde = charger_monde(lieu, etage)
+    if ancien_source == "monde":
+        if not garde.is_file():
+            shutil.copyfile(chemin, garde)
+        nouveau = monde_minimal(lieu, etage, info)
+        e = nouveau.emprise
+        dedans = [p for p in monde.pietons if all(e.contient(x, y) for x, y in p.trajet)]
+        nouveau.pietons = dedans
+        nouveau.carte_extrudee = monde.carte_extrudee
+        enregistrer_monde(lieu, etage, nouveau)
+        messages.append(f"Monde dessiné gardé dans scans/{dossier.name}/{garde.name}, puis remplacé par la carte "
+                        f"extrudée ({len(monde.murs)} murs et {len(monde.objets)} objets retirés, {len(dedans)} "
+                        f"piéton(s) gardé(s) sur {len(monde.pietons)})")
+        return
+    anciens = [m for m in monde.murs if m.source == "scan"] + [o for o in monde.objets if o.source == "scan"]
+    if anciens:
+        if not garde.is_file():
+            shutil.copyfile(chemin, garde)
+        monde.murs = [m for m in monde.murs if m.source != "scan"]
+        monde.objets = [o for o in monde.objets if o.source != "scan"]
+        enregistrer_monde(lieu, etage, monde)
+        messages.append(f"{len(anciens)} élément(s) d'une ancienne reconnaissance retiré(s) du monde (la carte "
+                        f"extrudée les remplace) ; monde d'avant gardé dans scans/{dossier.name}/{garde.name}")
+
+
 def adopter(lieu, session, avec_monde=False):
-    """La session devient la carte de l'étage (et, avec avec_monde, son monde). Renvoie le rapport
-    de valider_lieu. ErreurScan si la session n'est pas terminée."""
-    from atelier.lieu import (InfoCarte, carte_sans_elements_retires, charger_carte, charger_fichier,
-                              enregistrer_carte, enregistrer_fiche, enregistrer_fichier, lire_reconnaissance,
-                              valider_lieu)
+    """La session devient la carte de l'étage, son nuage 3D et son monde de simulation (section 12.5).
+    avec_monde : accepté et ignoré (vague 5 : le monde vient toujours de la carte, extrudée).
+    Renvoie (messages, rapport de valider_lieu). ErreurScan si la session n'est pas terminée."""
+    from atelier.lieu import (InfoCarte, charger_carte, chemin_nuage, chemin_nuage_session, ecrire_nuage,
+                              enregistrer_carte, enregistrer_fiche, lire_nuage, valider_lieu)
     from atelier.monde import generer
     lieu = dossier_lieu(lieu)
     dossier = dossier_session(lieu, session)
@@ -914,18 +931,13 @@ def adopter(lieu, session, avec_monde=False):
     fiche = charger_fiche(lieu)
     if fiche.etage(etage) is None:
         raise ErreurScan(f"le lieu {lieu.name} n'a plus d'étage « {etage} »")
-    reconnaissance = None
-    if (dossier / FICHIERS_SESSION["reconnaissance"]).is_file():
-        reconnaissance = lire_reconnaissance(dossier)
-    fichier_monde = dossier / FICHIERS_SESSION["monde"]
-    if avec_monde and (reconnaissance is None or not fichier_monde.is_file()):
-        raise ErreurScan(f"la session {session} n'a pas de monde tiré du scan (reconnaissance non faite) : adoptez "
-                         "la carte seule (sans --monde)")
+    if not (dossier / FICHIERS_SESSION["carte"]).is_file():
+        raise ErreurScan(f"la session {session} n'a pas de carte 2D : refaites son traitement (g1-scan traiter "
+                         f"--lieu {lieu.name} --session {session} --refaire)")
+    ancien_source = fiche.etage(etage).source_carte
     messages = []
-    # Carte : celle du scan, sans les objets retirés ni les personnes
+    # Carte : celle du scan, telle quelle (plus d'effacement de « personnes »)
     info, image = charger_carte(dossier / FICHIERS_SESSION["carte"])
-    if reconnaissance is not None:
-        image = carte_sans_elements_retires(info, image, reconnaissance)
     cible = chemin_carte(lieu, etage)
     cible.parent.mkdir(parents=True, exist_ok=True)
     nouvelle = InfoCarte(image=f"{etage}.pgm", resolution=info.resolution, origin=tuple(info.origin),
@@ -940,31 +952,39 @@ def adopter(lieu, session, avec_monde=False):
         shutil.copyfile(pcd, temporaire)
         os.replace(temporaire, destination)
         messages.append(f"Nuage 3D copié : cartes/{etage}.pcd")
+    # Nuage de la carte 3D : celui de la session (fabriqué ici pour une session d'avant la vague 5)
+    base = chemin_nuage_session(dossier)
+    try:
+        if not base.with_name(base.name + ".bin").is_file() and pcd.is_file():
+            from atelier.scan import affichage, carte3d, sol as S
+            nuage = carte3d.lire_pcd(pcd)
+            affichage.ecrire_nuage_affichage(base, nuage, S.trouver_sol(nuage), "scan", session=session, etage=etage)
+            messages.append("Nuage de la carte 3D fabriqué depuis nuage.pcd (session d'avant la vague 5)")
+        points, entete = lire_nuage(base)
+        entete = dict(entete, source="scan", session=session, etage=etage)
+        ecrire_nuage(chemin_nuage(lieu, etage), points, entete)
+        messages.append(f"Nuage de la carte 3D copié : cartes/{etage}.nuage.bin et .json ({entete['points']} points)")
+    except (ErreurLieu, OSError) as e:
+        texte = "; ".join(getattr(e, "erreurs", [str(e)]))
+        messages.append(f"Attention : nuage de la carte 3D non copié ({texte})")
     fiche.etage(etage).source_carte = "scan"
     if s["mode"] == "robot" and s.get("carte_unitree"):
         fiche.carte_unitree = s["carte_unitree"]
         messages.append(f"lieu.yaml : carte_unitree: {s['carte_unitree']} (pour la relocalisation 1804)")
     enregistrer_fiche(fiche)
     messages.append(f"lieu.yaml : l'étage {etage} utilise la carte du scan (source_carte: scan)")
-    if avec_monde:
-        ancien = chemin_monde(lieu, etage)
-        garde = dossier / FICHIERS_SESSION["monde_remplace"]
-        if ancien.is_file() and not garde.is_file():
-            shutil.copyfile(ancien, garde)
-            messages.append(f"Ancien monde gardé dans scans/{session}/{garde.name}")
-        enregistrer_fichier(ancien, "monde", charger_fichier(fichier_monde, "monde"))
-        messages.append(f"Monde de l'étage remplacé par le monde du scan : mondes/{etage}.monde.yaml")
-        # Vague 4 (section 11.2) : le monde du scan a son propre départ ; la simulation part du point principal
-        from atelier.lieu.principal import synchroniser_depart
-        try:
-            if synchroniser_depart(lieu):
-                messages.append(f"mondes/{etage}.monde.yaml : départ du robot remis sur le point principal")
-        except Exception as e:  # noqa: BLE001 : l'adoption est faite ; valider_lieu dira ce qui ne va pas
-            messages.append(f"Départ du robot non remis sur le point principal ({e}) : voyez g1-lieu valider")
+    # Monde de simulation : la carte extrudée (atelier.monde.generer), départ sur le point principal
+    _monde_pour_l_adoption(lieu, etage, ancien_source, dossier, messages)
+    from atelier.lieu.principal import synchroniser_depart
+    try:
+        if synchroniser_depart(lieu):
+            messages.append(f"mondes/{etage}.monde.yaml : départ du robot remis sur le point principal")
+    except Exception as e:  # noqa: BLE001 : l'adoption est faite ; valider_lieu dira ce qui ne va pas
+        messages.append(f"Départ du robot non remis sur le point principal ({e}) : voyez g1-lieu valider")
     generation = generer(lieu, etage)
     messages.append("Génération : " + generation.texte().replace("\n", " ; "))
-    maj_session(lieu, session, adoption={"quand": instant(), "monde": bool(avec_monde)})
-    if s["mode"] == "robot":
+    maj_session(lieu, session, adoption={"quand": instant(), "monde": bool(generation.maillage)})
+    if s["mode"] == "robot" and ancien_source == "monde":
         messages.append("Attention : le repère du scan du robot n'est pas celui du monde dessiné. Replacez les salles, "
                         "les nœuds des itinéraires et les zones sur la nouvelle carte.")
     return messages, valider_lieu(lieu)
@@ -1165,13 +1185,13 @@ def commande_arreter(args):
         print(f"Enregistrement fermé, sans traitement. Pour le faire : g1-scan traiter --lieu {dossier.name} "
               f"--session {ident}")
         return 0
-    print("Enregistrement fermé ; le traitement continue (carte 3D, carte 2D, reconnaissance).")
+    print("Enregistrement fermé ; le traitement continue (carte 3D, carte 2D, nuage de la carte 3D).")
     return _attendre_le_bout(dossier, ident) if args.attendre else 0
 
 
 def commande_traiter(args):
     dossier = _ouvrir_lieu(args.lieu)
-    return traiter(dossier, args.session)
+    return traiter(dossier, args.session, refaire=args.refaire)
 
 
 def _texte_session(s):
@@ -1194,7 +1214,7 @@ def _texte_session(s):
     if s.get("carte_unitree"):
         lignes.append(f"  carte Unitree : {s['carte_unitree']}")
     if s.get("adoption"):
-        avec = " (avec son monde)" if s["adoption"]["monde"] else ""
+        avec = " (avec sa carte extrudée pour la simulation)" if s["adoption"]["monde"] else ""
         lignes.append(f"  adoptée le {s['adoption']['quand']}{avec}")
     return "\n".join(lignes)
 
@@ -1216,11 +1236,17 @@ def commande_etat(args):
 
 def commande_adopter(args):
     dossier = _ouvrir_lieu(args.lieu)
-    messages, rapport = adopter(dossier, args.session, args.monde)
+    messages, rapport = adopter(dossier, args.session)
     for m in messages:
         print(m)
     print(f"Vérification du lieu (g1-lieu valider) :\n{rapport.texte()}")
     return 0
+
+
+def commande_carte_unitree(args):
+    from atelier.scan import carte_unitree
+    dossier = _ouvrir_lieu(args.lieu)
+    return carte_unitree.commande(dossier, args.etage, args.delai)
 
 
 def commande_session(args):
@@ -1228,15 +1254,19 @@ def commande_session(args):
     return ProcessusSession(args.lieu, args.session).executer()
 
 
-AIDE = """Scan intégré d'un étage, de « Scan » à la carte 2D et au monde (section 9 du plan).
+AIDE = """Scan intégré d'un étage, de « Scan » à la carte 2D et au nuage 3D (sections 9 et 12.5 du plan).
 
 Modes : simu (le robot simulé scanne le monde de l'étage dans Gazebo, --explorer pour qu'il
 parcoure seul les couloirs) ; robot (le vrai G1, avec sa cartographie Unitree 1801/1802 ; le PC
 suit le robot au câble Ethernet) ; robot --repetition (tout le déroulé du mode robot, sans robot).
+Après « Fin » : carte 3D, carte 2D et nuage de la carte 3D. « Utiliser cette carte » (adopter) :
+la carte et le nuage deviennent ceux de l'étage, et sa simulation tourne sur la carte extrudée.
 
 Exemple : g1-scan demarrer --lieu demo --etage rdc --mode simu --explorer
           g1-scan etat --lieu demo          g1-scan arreter --lieu demo --attendre
-          g1-scan adopter --lieu demo --session 2026-10-25_17h42 --monde"""
+          g1-scan adopter --lieu demo --session 2026-10-25_17h42
+          g1-scan traiter --lieu seance --session 2026-10-27_14h22 --refaire
+          g1-scan carte-unitree --lieu seance --etage rdc"""
 
 
 def principal(argv=None):
@@ -1264,9 +1294,12 @@ def principal(argv=None):
     s.add_argument("--attendre", action="store_true", help="attendre la fin du traitement (code 0 : terminé)")
     s.set_defaults(fonction=commande_arreter)
 
-    s = sous.add_parser("traiter", help="carte 3D, carte 2D, reconnaissance et monde d'une session (au premier plan)")
+    s = sous.add_parser("traiter", help="carte 3D, carte 2D et nuage de la carte 3D d'une session (au premier plan)")
     s.add_argument("--lieu", required=True, help="dossier du lieu, ou id seul")
     s.add_argument("--session", required=True, help="id de la session, ex. 2026-10-25_17h42")
+    s.add_argument("--refaire", action="store_true",
+                   help="refaire le traitement d'une session finie, même adoptée : les résultats d'avant sont "
+                        "gardés dans ancien_<date>/, et la session est à adopter de nouveau")
     s.set_defaults(fonction=commande_traiter)
 
     s = sous.add_parser("etat", help="état du scan d'un lieu")
@@ -1275,11 +1308,19 @@ def principal(argv=None):
     s.add_argument("--json", action="store_true", help="seulement le JSON (atelier.lieu.etat_scan)")
     s.set_defaults(fonction=commande_etat)
 
-    s = sous.add_parser("adopter", help="la carte de la session devient celle de l'étage")
+    s = sous.add_parser("adopter", help="« Utiliser cette carte » : la carte et le nuage de la session deviennent "
+                                        "ceux de l'étage, et sa simulation tourne sur la carte extrudée")
     s.add_argument("--lieu", required=True, help="dossier du lieu, ou id seul")
     s.add_argument("--session", required=True, help="id de la session, ex. 2026-10-25_17h42")
-    s.add_argument("--monde", action="store_true", help="remplacer aussi le monde de l'étage par celui du scan")
+    s.add_argument("--monde", action="store_true", help=argparse.SUPPRESS)      # vague 2 : accepté, sans effet
     s.set_defaults(fonction=commande_adopter)
+
+    s = sous.add_parser("carte-unitree", help="attendre la carte d'Unitree (publiée au début d'un repérage) et "
+                                              "l'enregistrer dans le lieu")
+    s.add_argument("--lieu", required=True, help="dossier du lieu, ou id seul")
+    s.add_argument("--etage", help="id de l'étage (défaut : le premier du lieu)")
+    s.add_argument("--delai", type=float, default=60.0, help="attente maximale, en s (défaut 60)")
+    s.set_defaults(fonction=commande_carte_unitree)
 
     argv = sys.argv[1:] if argv is None else list(argv)
     if argv[:1] == ["session"]:                   # processus de la session (interne, lancé par demarrer)

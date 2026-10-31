@@ -506,7 +506,9 @@ POSE_LIDAR = (-0.004, 0.0, 1.245)   # LiDAR dans base_link (model.sdf de g1_prox
 SUJETS_JUMEAU = {"requete": "/api/slam_operate/request", "reponse": "/api/slam_operate/response",
                  "verite": "/g1_jumeau/odom", "nuage": "/g1_jumeau/points",
                  "relocalisation": "/unitree/slam_relocation/odom", "points": "/unitree/slam_relocation/points",
-                 "info": "/slam_info", "panne": "/faux_slam/panne"}
+                 "info": "/slam_info", "panne": "/faux_slam/panne",
+                 "carte_globale": "/unitree/slam_relocation/global_map"}
+PAS_CARTE_GLOBALE = 0.1             # m : points de la fausse carte globale, sur les murs et objets du monde
 
 
 class DeplacementJumeau:
@@ -561,6 +563,7 @@ class FauxSlamJumeau(FauxSlam):
     def __init__(self, repere, cartes, **options):
         self.repere = tuple(float(v) for v in repere)
         self.cartes_connues = {sc.adresse_carte(c) for c in cartes if c}
+        self.sur_relocalise = None      # appelée après chaque 1804 réussi (frontal ROS 2 : la carte globale)
         super().__init__(relocalise=False, carte=None, deplacement=DeplacementJumeau(self.repere), **options)
 
     def reinitialiser(self, depart=None, relocalise=False, carte=None, **options):
@@ -598,6 +601,11 @@ class FauxSlamJumeau(FauxSlam):
             return self._refus(ERREUR_RELOCALISATION, "relocalisation impossible : le robot n'est pas à la position "
                                                       f"donnée (à {distance:.1f} m et {math.degrees(ecart_cap):.0f}°)")
         self.mode, self.carte, self.cible = "relocalise", adresse, None
+        if self.sur_relocalise is not None:          # vague 5 : la carte globale, une fois par 1804 réussi
+            try:
+                self.sur_relocalise()
+            except Exception as e:      # noqa: BLE001 : le repérage reste réussi
+                print(f"[faux slam_operate] carte globale non publiée : {e}", flush=True)
         return self._reponse(info="robot repéré sur la carte")
 
 
@@ -631,12 +639,16 @@ class FrontalRos:
       /unitree/slam_relocation/points le dernier nuage, placé dans le repère d'Unitree, frame map
       /slam_info                      pos_info (repère d'Unitree)
       /faux_slam/panne                « aucune » ou « muet » (plus de relocalisation : essais de perte)
+      /unitree/slam_relocation/global_map  vague 5 (section 12.5 du plan) : la carte globale, publiée une
+                                      fois après chaque 1804 réussi (QoS fiable, transient_local), comme
+                                      le vrai robot d'après sa documentation ; carte_globale : ses points
+                                      (repère d'Unitree), tirés du monde de l'étage (lancer_jumeau)
     bruit : écart-type (m) ajouté à la position publiée (et la moitié, en radians, au cap) ;
     retard : secondes entre la mesure et la publication (horodatage : celui de Gazebo).
     """
 
     def __init__(self, faux, bruit=0.0, retard=0.0, frequence=FREQUENCE_RELOCALISATION, graine=None,
-                 bavard=True):
+                 bavard=True, carte_globale=None):
         import random
         from collections import deque
 
@@ -656,6 +668,8 @@ class FrontalRos:
         self.bavard = bavard
         self.panne = "aucune"
         self.publiees = 0               # relocalisations publiées
+        self.carte_globale = carte_globale
+        self.cartes_publiees = 0        # cartes globales publiées (une par 1804 réussi)
         self._hasard = random.Random(graine)
         self._verites = deque(maxlen=200)       # (horodatage s, pose map) : vérité de chaque instant
         self._nuage = None                      # dernier PointCloud2 de /g1_jumeau/points
@@ -678,12 +692,16 @@ class FrontalRos:
         self._pub_reloc = n.create_publisher(Odometry, SUJETS_JUMEAU["relocalisation"], 10)
         self._pub_points = n.create_publisher(PointCloud2, SUJETS_JUMEAU["points"], qos_profile_sensor_data)
         self._pub_info = n.create_publisher(String, SUJETS_JUMEAU["info"], 10)
+        self._pub_carte = n.create_publisher(PointCloud2, SUJETS_JUMEAU["carte_globale"], QoSProfile(
+            depth=1, reliability=ReliabilityPolicy.RELIABLE, durability=DurabilityPolicy.TRANSIENT_LOCAL))
         n.create_timer(1.0 / frequence, self._publier)
         n.create_timer(0.01, self._vider_file)
         self._executeur = SingleThreadedExecutor(context=self._contexte)
         self._executeur.add_node(n)
         self._fil = threading.Thread(target=self._tourner, name="frontal ROS 2 du faux slam", daemon=True)
         self._fil.start()
+        if carte_globale is not None:                # après chaque 1804 réussi, par ROS 2 ou par le SDK
+            faux.sur_relocalise = self._publier_carte_globale
 
     def _tourner(self):
         try:
@@ -707,6 +725,13 @@ class FrontalRos:
         r.header.status.code = int(code)
         r.data = texte or ""
         self._pub_reponse.publish(r)
+
+    def _publier_carte_globale(self):
+        """La carte globale, une fois après un 1804 réussi (repère d'Unitree, frame map)."""
+        stamp = self._noeud.get_clock().now().to_msg()
+        self._pub_carte.publish(_nuage_xyz(self.carte_globale, "map", stamp))
+        self.cartes_publiees += 1
+        self._dire(f"carte globale publiée sur {SUJETS_JUMEAU['carte_globale']} ({len(self.carte_globale)} points)")
 
     def _sur_verite(self, msg):
         from atelier.lieu import quaternion_vers_cap
@@ -821,6 +846,7 @@ def lancer_jumeau(lieu, etage, bruit=0.0, retard=0.0, sdk=True, bavard=True):
     repere = repere_unitree(lieu, etage)
     repere = (repere.x, repere.y, repere.theta)
     cartes = [charger_fiche(lieu).carte_unitree, CARTE_REPETITION]
+    carte_globale = carte_globale_du_monde(lieu, etage, repere)
     faux = FauxSlamJumeau(repere, cartes, bavard=bavard)
     if sdk:
         try:
@@ -829,8 +855,35 @@ def lancer_jumeau(lieu, etage, bruit=0.0, retard=0.0, sdk=True, bavard=True):
             faux.demarrer()
         except Exception as e:      # noqa: BLE001 : le frontal ROS 2 suffit à la répétition
             print(f"[faux slam_operate] serveur du SDK indisponible ({e}) : seul le frontal ROS 2 répond", flush=True)
-    frontal = FrontalRos(faux, bruit=bruit, retard=retard, bavard=bavard)
+    frontal = FrontalRos(faux, bruit=bruit, retard=retard, bavard=bavard, carte_globale=carte_globale)
     return faux, frontal
+
+
+def carte_globale_du_monde(lieu, etage, repere, pas=PAS_CARTE_GLOBALE):
+    """Fausse carte globale d'Unitree, dans le repère d'Unitree (origine au LiDAR, comme le vrai : sol à
+    −1,245 m) : le nuage de l'étage s'il a été scanné (cartes/<etage>.nuage, réduit à une grille de « pas »),
+    sinon les murs et objets du monde de l'étage (et son sol), échantillonnés tous les « pas » mètres.
+    None si l'étage n'a ni nuage ni monde."""
+    from atelier.lieu import ErreurLieu, charger_monde, chemin_monde, chemin_nuage, fichiers_nuage, lire_nuage
+    from atelier.scan.affichage import nuage_du_monde, reduire_grille
+    from atelier.scan.carte_unitree import vers_unitree
+    points = None
+    nuage = chemin_nuage(lieu, etage)
+    if all(f.is_file() for f in fichiers_nuage(nuage)):
+        try:
+            points = reduire_grille(lire_nuage(nuage)[0].astype(float), pas)
+        except ErreurLieu:
+            points = None
+    if points is None and chemin_monde(lieu, etage).is_file():
+        try:
+            points = nuage_du_monde(charger_monde(lieu, etage), pas=pas, sol_pas=4 * pas)
+        except ErreurLieu:
+            points = None
+    if points is None or not len(points):
+        return None
+    unitree = vers_unitree(points, repere)
+    unitree[:, 2] -= POSE_LIDAR[2]
+    return unitree
 
 
 def fermer_jumeau(faux, frontal):

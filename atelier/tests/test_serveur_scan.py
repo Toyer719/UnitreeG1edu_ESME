@@ -1,4 +1,6 @@
-"""Tests des routes du scan intégré (section 9.7 du plan) et de la téléopération, sans ROS 2.
+"""Tests des routes du scan intégré (sections 9.7 et 12.4 du plan) et de la téléopération, sans ROS 2.
+Vague 5 : plus de revue de la reconnaissance ; le nuage 3D d'une session (GET /api/scan/nuage) et
+l'adoption qui donne à l'étage sa carte, son nuage et sa carte extrudée.
 
 fastapi.testclient sur une copie complète de lieux/demo ; g1-scan est le faux de
 test_serveur_scan_communs (sessions réelles écrites par atelier.lieu, processus détachés réels),
@@ -90,7 +92,8 @@ def test_scan_simu_de_bout_en_bout(client_scan, lieux_scan, faux_scan):
         vus.add((s["etat"], s["etape"]))
         return s["etat"] == "termine"
     assert attendre(suivre, 20, 0.05)
-    assert ("traitement", "reconnaissance") in vus or ("traitement", "monde") in vus, vus
+    assert ("traitement", "nuage") in vus or ("traitement", "carte_2d") in vus, vus
+    assert not any(etape in ("reconnaissance", "monde") for _, etape in vus)
     e = c.get("/api/scan/etat?lieu=demo").json()
     assert not e["actif"] and e["session"]["progression"] == 100
     assert all(e["session"]["fichiers"].values()), e["session"]["fichiers"]
@@ -100,43 +103,38 @@ def test_scan_simu_de_bout_en_bout(client_scan, lieux_scan, faux_scan):
 
     # historique
     liste = c.get("/api/scan/sessions?lieu=demo").json()
-    assert [x["id"] for x in liste] == [ident] and liste[0]["fichiers"]["reconnaissance"]
+    assert [x["id"] for x in liste] == [ident] and liste[0]["fichiers"]["nuage_affichage"]
     assert liste[0]["interrompue"] is False
 
-    # revue : carte, monde, reconnaissance, rapport
+    # résultat : carte 2D, nuage 3D, rapport ; plus de reconnaissance ni de monde du scan
     base = f"/api/scan/sessions/{ident}"
     info = c.get(base + "/carte.yaml?lieu=demo").json()
     assert info["image"] == "carte.pgm" and info["bornes"]["xmax"] > 29
     carte = lire_png(c.get(base + "/carte.png?lieu=demo").content)
     assert carte.shape == (info["hauteur"], info["largeur"])
-    reco = c.get(base + "/reconnaissance?lieu=demo").json()
-    objets = {o["id"]: o for o in reco["reconnaissance"]["objets"]}
-    assert objets["personne_b204"]["a_garder"] is False          # personne décochée d'office
-    assert reco["resume"]["objets"]["table"] == 2 and reco["resume"]["passages"] == 5
-    monde = c.get(base + "/monde?lieu=demo").json()
-    assert "personne_b204" not in {o["id"] for o in monde["objets"]} and "table_cdi" in {o["id"] for o in monde["objets"]}
+    r = c.get(f"/api/scan/nuage?lieu=demo&session={ident}")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/octet-stream"
+    assert int(r.headers["x-nuage-points"]) * 12 == len(r.content) > 0 and r.headers["x-nuage-source"] == "scan"
     assert c.get(base + "/rapport?lieu=demo").json()["comparaison"]["recouvrement"] == pytest.approx(0.987)
+    for retiree in ("/reconnaissance?lieu=demo", "/monde?lieu=demo"):
+        assert c.get(base + retiree).status_code == 404
+    assert c.put(base + "/reconnaissance?lieu=demo", json={"a_garder": {}}).status_code in (404, 405)
 
-    # décocher la table et un passage : le monde du scan suit, la reconnaissance garde les choix
-    r = c.put(base + "/reconnaissance?lieu=demo", json={"a_garder": {"table_cdi": False, "passage_1": False}})
-    assert r.status_code == 200, r.text
-    assert "table_cdi" not in {o["id"] for o in r.json()["monde"]["objets"]}
-    assert "passage_1" in {m["id"] for m in r.json()["monde"]["murs"]}       # passage bouché par un mur
-    assert r.json()["resume"]["objets_gardes"]["table"] == 1
-    assert c.get(base + "/reconnaissance?lieu=demo").json()["resume"]["passages_gardes"] == 4
-
-    # adopter avec le monde : l'étage passe à la carte du scan, le monde du scan remplace l'ancien
+    # « Utiliser cette carte » : la carte, le nuage, et le monde de simulation tiré de la carte
     ancien = L.chemin_monde(dossier, "rdc").read_text()
-    r = c.post(base + "/adopter?lieu=demo", json={"monde": True})
+    r = c.post(base + "/adopter?lieu=demo", json={"monde": True})          # monde : accepté, sans effet
     assert r.status_code == 200, r.text
-    assert r.json()["adopte"] is True and r.json()["monde"] is True and "adopté" in r.json()["sortie"]
-    assert _appels(faux_scan, "adopter") == [f"g1-scan adopter --lieu {dossier} --session {ident} --monde"]
+    assert r.json()["adopte"] is True and "adopté" in r.json()["sortie"]
+    assert _appels(faux_scan, "adopter") == [f"g1-scan adopter --lieu {dossier} --session {ident}"]
     assert L.charger_fiche(dossier).etage("rdc").source_carte == "scan"
     nouveau = L.charger_monde(dossier, "rdc")
-    assert "table_cdi" not in {o.id for o in nouveau.objets} and not nouveau.pietons
+    assert nouveau.murs == [] and nouveau.objets == [] and nouveau.carte_extrudee is not None
     assert (dossier / "scans" / ident / "monde_remplace.monde.yaml").read_text() == ancien
     assert c.get("/api/scan/etat?lieu=demo").json()["session"]["adoption"]["monde"] is True
-    assert "personne_b204" not in {o["id"] for o in c.get("/api/lieux/demo/etages/rdc/monde").json()["objets"]}
+    r = c.get("/api/lieux/demo/etages/rdc/nuage")
+    assert r.status_code == 200 and r.headers["x-nuage-session"] == ident
+    r = c.get("/api/lieux/demo/etages/rdc/monde/maillage")
+    assert r.status_code == 200 and r.headers["content-type"] == "model/stl" and len(r.content) > 84
 
 
 def test_exploration_finit_seule(client_scan, lieux_scan, faux_scan, monkeypatch):
@@ -203,7 +201,7 @@ def test_demarrer_refuse_ce_qui_ne_peut_pas_marcher(client_scan, lieux_scan, fau
     # pas de monde Gazebo : le robot simulé n'a rien à scanner
     sdf = L.chemin_sdf(lieux_scan / "demo", "rdc")
     sdf.rename(sdf.with_suffix(".sdf.bak"))
-    assert "Fabriquer la carte" in _erreur(_demarrer(c), 409)["detail"]
+    assert "Simulation › Dessiner" in _erreur(_demarrer(c), 409)["detail"]
     sdf.with_suffix(".sdf.bak").rename(sdf)
     # exploration sans couloir
     itin = lieux_scan / "demo" / "itineraires.yaml"
@@ -211,7 +209,7 @@ def test_demarrer_refuse_ce_qui_ne_peut_pas_marcher(client_scan, lieux_scan, fau
     donnees = c.get("/api/lieux/demo/itineraires").json()
     donnees["couloirs"] = []
     assert c.put("/api/lieux/demo/itineraires", json=donnees).status_code == 200
-    assert "Itinéraires" in _erreur(_demarrer(c, explorer=True), 409)["detail"]
+    assert "itinéraires (Placer)" in _erreur(_demarrer(c, explorer=True), 409)["detail"]
     itin.write_text(sauvegarde)
     assert _appels(faux_scan) == []
     # un scan déjà en cours dans le lieu
@@ -239,7 +237,7 @@ def test_g1_scan_absent_ou_en_echec(client_scan, faux_scan, monkeypatch):
     assert "le faux g1-scan échoue exprès" in d["detail"] and "préparation" in d["sortie"]
     faux_scan.retirer("g1-scan")
     d = _erreur(_demarrer(client_scan), 503)
-    assert "g1-scan" in d["detail"] and "Orchestrateur" in d["detail"]
+    assert "g1-scan" in d["detail"] and "pas encore installée" in d["detail"]
 
 
 # ---------------------------------------------------------------- état, aperçu, sessions
@@ -275,12 +273,12 @@ def test_liste_des_sessions(client_scan, lieux_scan):
     liste = client_scan.get("/api/scan/sessions?lieu=demo").json()
     assert [s["id"] for s in liste] == [b["id"], a["id"], "2026-01-02_09h00"]
     assert liste[0]["etat"] == "echec" and "LiDAR" in liste[0]["message"]
-    assert liste[1]["fichiers"]["monde"] and liste[1]["interrompue"] is False
+    assert liste[1]["fichiers"]["nuage_affichage"] and liste[1]["interrompue"] is False
     assert liste[2]["illisible"] is True and liste[2]["erreurs"] and liste[2]["fichiers"]["carte"] is False
     # l'état d'une session choisie dans l'historique
     e = client_scan.get(f"/api/scan/etat?lieu=demo&session={a['id']}").json()
     assert e["session"]["id"] == a["id"] and e["session"]["etat"] == "termine"
-    assert "illisible" in _erreur(client_scan.get("/api/scan/sessions/2026-01-02_09h00/reconnaissance?lieu=demo"),
+    assert "illisible" in _erreur(client_scan.get("/api/scan/sessions/2026-01-02_09h00/rapport?lieu=demo"),
                                   422)["detail"]
 
 
@@ -296,41 +294,38 @@ def test_arreter_une_session_interrompue(client_scan, lieux_scan, faux_scan):
     assert r.json()["session"]["etat"] == "echec" and "recommencez" in r.json()["session"]["message"]
 
 
-# ---------------------------------------------------------------- revue et adoption : refus
+# ---------------------------------------------------------------- adoption : refus
 
-def test_revue_et_adoption_refusees(client_scan, lieux_scan, faux_scan, monkeypatch):
+def test_adoption_refusee(client_scan, lieux_scan, faux_scan, monkeypatch):
     c, dossier = client_scan, lieux_scan / "demo"
     t = creer_session_exemple(dossier, "traitement")
     base = f"/api/scan/sessions/{t['id']}"
-    assert "attendez la fin" in _erreur(c.get(base + "/reconnaissance?lieu=demo"), 404)["detail"]
-    assert "pas fini" in _erreur(c.put(base + "/reconnaissance?lieu=demo", json={"a_garder": {"x": True}}), 409)["detail"]
     assert "attendez" in _erreur(c.post(base + "/adopter?lieu=demo", json={}), 409)["detail"]
     assert c.get(base + "/carte.yaml?lieu=demo").status_code == 200        # la carte est déjà là
-    assert "pas encore de monde" in _erreur(c.get(base + "/monde?lieu=demo"), 404)["detail"]
     assert "rapport" in _erreur(c.get(base + "/rapport?lieu=demo"), 404)["detail"]
-    L.maj_session(dossier, t["id"], etat="termine", etape="fini", progression=100, message="fini (test)")
-    # terminé, mais sans reconnaissance : la carte seule peut servir
-    assert "Utiliser cette carte" in _erreur(c.get(base + "/reconnaissance?lieu=demo"), 404)["detail"]
-    assert "Utiliser cette carte" in _erreur(c.post(base + "/adopter?lieu=demo", json={"monde": True}), 409)["detail"]
     e = creer_session_exemple(dossier, "echec")
     d = _erreur(c.post(f"/api/scan/sessions/{e['id']}/adopter?lieu=demo", json={"monde": False}), 409)
     assert "échoué" in d["detail"] and "nouveau scan" in d["detail"]
     assert "carte 2D de ce scan" in _erreur(c.get(f"/api/scan/sessions/{e['id']}/carte.png?lieu=demo"), 404)["detail"]
-    # session terminée : ids inconnus, valeurs qui ne sont pas des booléens
-    f = creer_session_exemple(dossier, "termine")
-    base = f"/api/scan/sessions/{f['id']}/reconnaissance?lieu=demo"
-    d = _erreur(c.put(base, json={"a_garder": {"table_cdi": False, "licorne_1": True}}), 400)
-    assert "licorne_1" in d["detail"]
-    assert "true ou false" in _erreur(c.put(base, json={"a_garder": {"table_cdi": "non"}}), 422)["detail"]
-    assert c.get(base).json()["reconnaissance"]["objets"][0]["a_garder"] is True      # rien n'a changé
+    assert "true ou false" in _erreur(c.post(f"/api/scan/sessions/{e['id']}/adopter?lieu=demo",
+                                             json={"monde": "oui"}), 422)["detail"]
     # adoption : g1-scan échoue
+    f = creer_session_exemple(dossier, "termine")
     monkeypatch.setenv("FAUX_SCAN_ECHEC", "adopter")
-    d = _erreur(c.post(f"/api/scan/sessions/{f['id']}/adopter?lieu=demo", json={"monde": False}), 502)
+    d = _erreur(c.post(f"/api/scan/sessions/{f['id']}/adopter?lieu=demo", json={}), 502)
     monkeypatch.delenv("FAUX_SCAN_ECHEC")
     assert "adopter le scan" in d["detail"] and d["sortie"]
-    r = c.post(f"/api/scan/sessions/{f['id']}/adopter?lieu=demo", json={"monde": False})
-    assert r.status_code == 200 and r.json()["monde"] is False and r.json()["rapport"]["ok"] in (True, False)
+    r = c.post(f"/api/scan/sessions/{f['id']}/adopter?lieu=demo", json={})
+    assert r.status_code == 200 and r.json()["monde"] is True and r.json()["rapport"]["ok"] in (True, False)
     assert L.charger_fiche(dossier).etage("rdc").source_carte == "scan"
+    assert r.json()["avertissements"] == []                                 # simulation : même repère
+
+
+def test_adoption_robot_previent_du_repere(client_scan, lieux_scan, faux_scan):
+    s = creer_session_exemple(lieux_scan / "demo", "termine", mode="robot")
+    r = client_scan.post(f"/api/scan/sessions/{s['id']}/adopter?lieu=demo", json={})
+    assert r.status_code == 200, r.text
+    assert any("Replacez les salles" in a for a in r.json()["avertissements"])
 
 
 # ---------------------------------------------------------------- avec le serveur

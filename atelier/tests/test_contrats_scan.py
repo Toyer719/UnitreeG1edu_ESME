@@ -1,15 +1,16 @@
-"""Tests des contrats du scan intégré (agent Intégrateur, section 9 du plan).
+"""Tests des contrats du scan intégré (sections 9 et 12.5 du plan).
 
   ~/robot-g1/.venv-projet/bin/python -m pytest ~/robot-g1/atelier/tests/test_contrats_scan.py -v
 
 Vérifie que :
-  - session_scan.schema.json et reconnaissance.schema.json sont des schémas draft-07 valides,
-    que leurs exemples passent, que les erreurs courantes sont refusées, et que le validateur de
-    atelier.lieu dit la même chose que jsonschema ;
-  - le schéma du monde accepte les champs facultatifs categorie, source et confiance, refuse les
-    valeurs inconnues, et qu'un monde sans ces champs reste valide ;
-  - le lieu demo sert de référence à la reconnaissance : chaque catégorie y est présente, et ses
-    passages suivent la règle (trou de 0,7 à 1,6 m entre deux murs alignés).
+  - session_scan.schema.json est un schéma draft-07 valide, que son exemple passe, que les erreurs
+    courantes sont refusées, et que le validateur de atelier.lieu dit la même chose que jsonschema ;
+  - vague 5 : le format de la reconnaissance est retiré (schéma, type, fonctions, modules) ; les étapes
+    de session.json sont carte_3d, carte_2d et nuage, les anciennes (reconnaissance, monde) restant
+    acceptées pour les sessions d'avant ;
+  - le schéma du monde accepte encore les champs facultatifs categorie, source et confiance (anciens
+    lieux), refuse les valeurs inconnues, et un monde sans ces champs reste valide ;
+  - le lieu demo garde ses catégories (critères 1 à 10) et ses passages suivent la règle.
 """
 import copy
 import json
@@ -43,32 +44,6 @@ EXEMPLE_SESSION = {
     "carte_unitree": "rdc_2026-10-25_17h42.pcd",
     "adoption": None,
 }
-EXEMPLE_RECONNAISSANCE = {
-    "version": 1, "session": "2026-10-25_17h42", "etage": "rdc",
-    "emprise": {"min": [0.0, 0.0], "max": [30.0, 20.0]},
-    "depart_robot": {"x": 2.5, "y": 10.0, "theta": 0.0},
-    "sol": 0.01, "parametres": {"tranche": [0.1, 1.5]},
-    "murs": [
-        {"id": "mur_1", "categorie": "mur", "de": [0.0, 5.5], "a": [6.4, 5.5], "epaisseur": 0.15, "hauteur": 2.5,
-         "confiance": 0.95, "a_garder": True},
-        {"id": "mur_2", "categorie": "mur", "de": [7.6, 5.5], "a": [14.4, 5.5], "epaisseur": 0.15, "hauteur": 2.5,
-         "confiance": 0.9, "a_garder": True, "infos": {"points": 5321}},
-    ],
-    "passages": [
-        {"id": "passage_1", "categorie": "passage", "de": [6.4, 5.5], "a": [7.6, 5.5], "murs": ["mur_1", "mur_2"],
-         "confiance": 0.85, "a_garder": True},
-    ],
-    "objets": [
-        {"id": "objet_1", "categorie": "table", "forme": "boite", "centre": [29.2, 6.1], "taille": [1.2, 0.8, 0.75],
-         "cap": 0.0, "confiance": 0.7, "a_garder": True},
-        {"id": "objet_2", "categorie": "poteau", "forme": "cylindre", "centre": [26.0, 10.0], "rayon": 0.2,
-         "hauteur": 2.5, "confiance": 0.92, "a_garder": True},
-        {"id": "objet_3", "categorie": "personne", "forme": "cylindre", "centre": [21.0, 16.5], "rayon": 0.25,
-         "hauteur": 1.7, "confiance": 0.6, "a_garder": False},
-    ],
-}
-
-
 def schema(nom):
     return json.loads((DOSSIER_SCHEMAS / f"{nom}.schema.json").read_text(encoding="utf-8"))
 
@@ -83,17 +58,16 @@ def modifie(exemple, changement):
     return donnees
 
 
-# ---------------------------------------------------------------- schémas de la session et de la reconnaissance
+# ---------------------------------------------------------------- schéma de la session
 
-@pytest.mark.parametrize("nom", ["session_scan", "reconnaissance", "monde"])
+@pytest.mark.parametrize("nom", ["session_scan", "monde"])
 def test_schema_draft07_valide(nom):
     s = schema(nom)
     assert s["$schema"] == "http://json-schema.org/draft-07/schema#"
     jsonschema.Draft7Validator.check_schema(s)
 
 
-@pytest.mark.parametrize("nom, exemple", [("session_scan", EXEMPLE_SESSION),
-                                          ("reconnaissance", EXEMPLE_RECONNAISSANCE)])
+@pytest.mark.parametrize("nom, exemple", [("session_scan", EXEMPLE_SESSION)])
 def test_exemples_du_contrat_valides(nom, exemple):
     assert erreurs_js(nom, exemple) == []
     assert L.valider_donnees(nom, exemple) == []
@@ -112,20 +86,7 @@ REFUS_SCHEMA = {
     "session : sujet sans /": ("session_scan", EXEMPLE_SESSION, lambda d: d["sujets"].update(nuage="points")),
     "session : champ inconnu": ("session_scan", EXEMPLE_SESSION, lambda d: d.update(etat_robot="ok")),
     "session : carte_unitree sans .pcd": ("session_scan", EXEMPLE_SESSION, lambda d: d.update(carte_unitree="rdc")),
-    "reco : mur sans a_garder": ("reconnaissance", EXEMPLE_RECONNAISSANCE, lambda d: d["murs"][0].pop("a_garder")),
-    "reco : mur de catégorie table": ("reconnaissance", EXEMPLE_RECONNAISSANCE,
-                                      lambda d: d["murs"][0].update(categorie="table")),
-    "reco : confiance 1,5": ("reconnaissance", EXEMPLE_RECONNAISSANCE, lambda d: d["objets"][0].update(confiance=1.5)),
-    "reco : catégorie inconnue": ("reconnaissance", EXEMPLE_RECONNAISSANCE,
-                                  lambda d: d["objets"][0].update(categorie="armoire")),
-    "reco : boîte sans taille": ("reconnaissance", EXEMPLE_RECONNAISSANCE, lambda d: d["objets"][0].pop("taille")),
-    "reco : cylindre avec cap": ("reconnaissance", EXEMPLE_RECONNAISSANCE, lambda d: d["objets"][1].update(cap=0.0)),
-    "reco : forme modele": ("reconnaissance", EXEMPLE_RECONNAISSANCE, lambda d: d["objets"][0].update(forme="modele")),
-    "reco : passage à un mur": ("reconnaissance", EXEMPLE_RECONNAISSANCE,
-                                lambda d: d["passages"][0].update(murs=["mur_1"])),
-    "reco : sans liste passages": ("reconnaissance", EXEMPLE_RECONNAISSANCE, lambda d: d.pop("passages")),
-    "reco : a_garder « oui »": ("reconnaissance", EXEMPLE_RECONNAISSANCE,
-                                lambda d: d["objets"][2].update(a_garder="oui")),
+    "session : étape inconnue": ("session_scan", EXEMPLE_SESSION, lambda d: d.update(etape="reconnaitre")),
 }
 
 
@@ -152,26 +113,6 @@ REFUS_REGLES = {
     "adoptée avant la fin": ("session_scan", EXEMPLE_SESSION,
                              lambda d: d.update(adoption={"quand": "2026-10-25T18:00:00+01:00", "monde": False}),
                              "seule une session terminée"),
-    "id en double": ("reconnaissance", EXEMPLE_RECONNAISSANCE, lambda d: d["objets"][0].update(id="mur_1"),
-                     "utilisé 2 fois"),
-    "id réservé": ("reconnaissance", EXEMPLE_RECONNAISSANCE, lambda d: d["objets"][0].update(id="sol"), "réservé"),
-    "passage trop étroit": ("reconnaissance", EXEMPLE_RECONNAISSANCE,
-                            lambda d: (d["murs"][1].update(de=[6.9, 5.5]), d["passages"][0].update(a=[6.9, 5.5])),
-                            "un passage est un trou de 0.7 à 1.6 m"),
-    "passage trop large": ("reconnaissance", EXEMPLE_RECONNAISSANCE,
-                           lambda d: (d["murs"][1].update(de=[8.4, 5.5]), d["passages"][0].update(a=[8.4, 5.5])),
-                           "un passage est un trou de 0.7 à 1.6 m"),
-    "passage entre murs non alignés": ("reconnaissance", EXEMPLE_RECONNAISSANCE,
-                                       lambda d: d["murs"][1].update(de=[7.6, 5.5], a=[7.6, 12.0]),
-                                       "ne sont pas alignés"),
-    "passage vers un mur inconnu": ("reconnaissance", EXEMPLE_RECONNAISSANCE,
-                                    lambda d: d["passages"][0].update(murs=["mur_1", "mur_9"]), "n'existe pas"),
-    "passage loin de ses murs": ("reconnaissance", EXEMPLE_RECONNAISSANCE,
-                                 lambda d: d["passages"][0].update(de=[6.0, 5.5], a=[7.0, 5.5]), "qui bordent le trou"),
-    "objet hors de l'emprise": ("reconnaissance", EXEMPLE_RECONNAISSANCE,
-                                lambda d: d["objets"][1].update(centre=[31.0, 10.0]), "sort de l'emprise"),
-    "mur de longueur nulle": ("reconnaissance", EXEMPLE_RECONNAISSANCE,
-                              lambda d: d["murs"][0].update(a=[0.0, 5.5]), "même endroit"),
 }
 
 
@@ -183,8 +124,7 @@ def test_regles_refusent(cas):
     assert any(attendu in m for m in messages), messages
 
 
-@pytest.mark.parametrize("nom, exemple", [("session_scan", EXEMPLE_SESSION),
-                                          ("reconnaissance", EXEMPLE_RECONNAISSANCE)])
+@pytest.mark.parametrize("nom, exemple", [("session_scan", EXEMPLE_SESSION)])
 def test_meme_verdict_que_jsonschema(nom, exemple):
     """Sur des centaines de variantes des exemples, atelier.lieu et jsonschema sont d'accord."""
     validateur = jsonschema.Draft7Validator(schema(nom))
@@ -267,10 +207,7 @@ def test_categorie_effective_et_personne_hors_carte():
     personne = L.Objet.cylindre("h", (0, 0), 0.25, 1.7, categorie="personne")
     assert not personne.sur_la_carte and L.Objet.cylindre("p", (0, 0), 0.2, 2.5).sur_la_carte
     assert L.CATEGORIES_OBJETS == ("table", "chaise", "banc", "poteau", "meuble", "poubelle", "personne", "inconnu")
-    # mêmes catégories dans les deux schémas
     assert schema("monde")["definitions"]["categorie_objet"]["enum"] == list(L.CATEGORIES_OBJETS)
-    assert (schema("reconnaissance")["definitions"]["objet"]["properties"]["categorie"]["enum"]
-            == list(L.CATEGORIES_OBJETS))
 
 
 def test_une_personne_n_est_jamais_sur_la_carte(tmp_path):
@@ -300,24 +237,45 @@ def test_demo_reference_toutes_les_categories():
 
 
 def test_demo_reference_passages():
+    """Les cinq passages de 1,2 m du demo (règle de 9.4, toujours dans atelier.lieu.geometrie)."""
     monde = L.charger_monde(DEMO, "rdc")
-    passages = L.passages_du_monde(monde)
-    assert len(passages) == 5
-    for p in passages:
-        assert p["largeur"] == pytest.approx(1.2)
-        m1, m2 = (monde.element(i) for i in p["murs"])
-        assert L.est_passage(m1.de, m1.a, m2.de, m2.a)
+    trous = []
+    for i, m1 in enumerate(monde.murs):
+        for m2 in monde.murs[i + 1:]:
+            if L.est_passage(m1.de, m1.a, m2.de, m2.a):
+                trous.append(L.trou_entre(m1.de, m1.a, m2.de, m2.a)[0])
+    assert len(trous) == 5 and all(t == pytest.approx(1.2) for t in trous)
 
 
-def test_demo_reference_au_format_reconnaissance():
-    monde = L.charger_monde(DEMO, "rdc")
-    verite = L.reconnaissance_depuis_monde(monde, "rdc")
-    assert L.valider_reconnaissance(verite) == []
-    resume = L.resume_reconnaissance(verite)
-    assert resume["murs"] == 18 and resume["passages"] == 5
-    assert resume["objets"] == {"meuble": 2, "banc": 1, "poubelle": 1, "poteau": 2, "table": 2, "chaise": 3,
-                                "personne": 1}
-    assert "personne" not in resume["objets_gardes"]           # a_garder faux par défaut
+# ---------------------------------------------------------------- vague 5 : la reconnaissance est retirée
+
+def test_la_reconnaissance_est_retiree():
+    import importlib.util
+    assert "reconnaissance" not in L.TYPES_FICHIERS
+    assert not (DOSSIER_SCHEMAS / "reconnaissance.schema.json").exists()
+    for module in ("atelier.scan.reconnaissance", "atelier.scan.evaluation"):
+        assert importlib.util.find_spec(module) is None, module
+    for nom in ("nouvelle_reconnaissance", "lire_reconnaissance", "ecrire_reconnaissance", "valider_reconnaissance",
+                "resume_reconnaissance", "monde_depuis_reconnaissance", "ecrire_monde_scan", "passages_du_monde",
+                "reconnaissance_depuis_monde", "changer_a_garder", "carte_sans_elements_retires",
+                "a_garder_par_defaut"):
+        assert not hasattr(L, nom) and nom not in L.__all__, nom
+    assert "reconnaissance" not in L.FICHIERS_SESSION and "monde" not in L.FICHIERS_SESSION
+    # Ce qui reste : les champs facultatifs du monde, les catégories, la personne hors de la carte
+    assert L.CATEGORIES_OBJETS and L.CATEGORIES_HORS_CARTE == ("personne",)
+
+
+def test_etapes_du_traitement_vague_5():
+    assert L.ETAPES_TRAITEMENT == ("carte_3d", "carte_2d", "nuage")
+    assert set(L.ETAPES) | set(L.ANCIENNES_ETAPES) == set(schema("session_scan")["properties"]["etape"]["enum"])
+    assert [L.progression_etape(e) for e in L.ETAPES] == [0, 0, 5, 10, 70, 85, 100]
+    for etape in L.ETAPES_TRAITEMENT:              # chaque étape du traitement, état traitement puis échec
+        for etat in ("traitement", "echec"):
+            assert L.valider_donnees("session_scan", modifie(EXEMPLE_SESSION, lambda d: d.update(
+                etat=etat, etape=etape, progression=L.progression_etape(etape)))) == [], (etat, etape)
+    for ancienne in L.ANCIENNES_ETAPES:            # sessions d'avant : toujours lisibles
+        assert L.valider_donnees("session_scan", modifie(EXEMPLE_SESSION, lambda d: d.update(
+            etat="echec", etape=ancienne))) == [], ancienne
 
 
 def test_regle_des_passages():

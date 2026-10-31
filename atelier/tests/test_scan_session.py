@@ -35,7 +35,6 @@ def lieux(tmp_path, monkeypatch):
     """Dossier de lieux temporaire avec une copie du demo (« essai »), sans scan."""
     monkeypatch.setenv("ATELIER_LIEUX", str(tmp_path / "lieux"))
     monkeypatch.delenv("G1_SCAN_BIN", raising=False)
-    monkeypatch.delenv("ATELIER_RECONNAISSANCE", raising=False)
     (tmp_path / "lieux").mkdir()
     L.copier_lieu(DEMO, tmp_path / "lieux" / "essai")
     return tmp_path / "lieux"
@@ -157,7 +156,9 @@ def test_traiter_refuse(lieux):
     finie = creer_session_exemple(lieux / "essai", "termine")
     L.maj_session(lieux / "essai", finie["id"], adoption={"quand": L.scans.instant(), "monde": False})
     code, sortie = g1_scan("traiter", "--lieu", "essai", "--session", finie["id"])
-    assert code == 1 and "déjà été adoptée" in sortie
+    assert code == 1 and "déjà été adoptée" in sortie and "--refaire" in sortie
+    code, sortie = g1_scan("traiter", "--lieu", "essai", "--session", en_cours["id"], "--refaire")
+    assert code == 1 and "pas d'enregistrement complet" in sortie
 
 
 def test_etat(lieux):
@@ -177,7 +178,9 @@ def test_etat(lieux):
 
 # ================================================================ adoption
 
-def test_adopter_carte_seule(lieux):
+def test_adopter_un_etage_dessine(lieux):
+    """Vague 5 (section 12.5) : la carte du scan telle quelle, son nuage 3D, et le monde dessiné remplacé par la
+    carte extrudée (gardé dans la session), avec ses piétons et le départ sur le point principal."""
     lieu = lieux / "essai"
     s = creer_session_exemple(lieu, "termine")
     dossier = L.dossier_session(lieu, s["id"])
@@ -187,47 +190,82 @@ def test_adopter_carte_seule(lieux):
                          origin=(info.origin[0] + 0.05, info.origin[1] + 0.05, 0.0))
     L.enregistrer_carte(dossier / "carte.yaml", petite, image[1:-1, 1:-1])
     monde_avant = (lieu / "mondes" / "rdc.monde.yaml").read_text()
+    dessine = L.charger_monde(lieu, "rdc")
     code, sortie = g1_scan("adopter", "--lieu", "essai", "--session", s["id"])
     assert code == 0, sortie
-    assert "source_carte: scan" in sortie and "Vérification du lieu" in sortie
+    assert "source_carte: scan" in sortie and "Vérification du lieu" in sortie and "carte extrudée" in sortie
+    assert "Replacez les salles" not in sortie                                   # simulation : même repère
     fiche = L.charger_fiche(lieu)
     assert fiche.etage("rdc").source_carte == "scan" and fiche.carte_unitree is None
-    carte = L.charger_info_carte(lieu / "cartes" / "rdc.yaml")
+    carte, adoptee = L.charger_carte(lieu / "cartes" / "rdc.yaml")
     masque = L.charger_info_carte(lieu / "cartes" / "rdc_interdit.yaml")
     assert (carte.largeur, carte.hauteur) == (masque.largeur, masque.hauteur) == (image.shape[1] - 2,
                                                                                   image.shape[0] - 2)
+    assert (adoptee == image[1:-1, 1:-1]).all()                                  # telle quelle, rien d'effacé
     assert carte.image == "rdc.pgm" and (lieu / "cartes" / "rdc.pcd").is_file()
-    assert (lieu / "mondes" / "rdc.monde.yaml").read_text() == monde_avant
-    assert not (dossier / "monde_remplace.monde.yaml").exists()
-    assert L.lire_session(lieu, s["id"])["adoption"]["monde"] is False
-    assert not L.valider_lieu(lieu).erreurs
-
-
-def test_adopter_avec_monde_et_personne_effacee(lieux):
-    lieu = lieux / "essai"
-    s = creer_session_exemple(lieu, "termine")
-    dossier = L.dossier_session(lieu, s["id"])
-    # La personne debout de b204 : marquons sa place occupée dans la carte du scan
-    reco = L.lire_reconnaissance(dossier)
-    personne = next(o for o in reco["objets"] if o["categorie"] == "personne")
-    info, image = L.charger_carte(dossier / "carte.yaml")
-    colonne, ligne = L.monde_vers_pixel(personne["centre"][0], personne["centre"][1], info)
-    image[ligne - 2:ligne + 3, colonne - 2:colonne + 3] = 0
-    L.enregistrer_carte(dossier / "carte.yaml", info, image)
-    ancien = (lieu / "mondes" / "rdc.monde.yaml").read_text()
-    code, sortie = g1_scan("adopter", "--lieu", "essai", "--session", s["id"], "--monde")
-    assert code == 0, sortie
-    assert (dossier / "monde_remplace.monde.yaml").read_text() == ancien
+    points, entete = L.lire_nuage(L.chemin_nuage(lieu, "rdc"))
+    assert entete["source"] == "scan" and entete["session"] == s["id"] and entete["etage"] == "rdc"
+    assert len(points) == entete["points"] > 1000
+    # le monde dessiné est gardé, puis remplacé
+    assert (dossier / "monde_remplace.monde.yaml").read_text() == monde_avant
     monde = L.charger_monde(lieu, "rdc")
-    assert not monde.pietons and all(m.source == "scan" for m in monde.murs)
-    assert {o.id for o in monde.objets} == {o["id"] for o in reco["objets"] if o["a_garder"]}
-    info, image = L.charger_carte(lieu / "cartes" / "rdc.yaml")
-    colonne, ligne = L.monde_vers_pixel(personne["centre"][0], personne["centre"][1], info)
-    assert (image[ligne - 2:ligne + 3, colonne - 2:colonne + 3] != 0).all()      # personne effacée
-    assert (lieu / "mondes" / "rdc.sdf").stat().st_mtime >= (lieu / "mondes" / "rdc.monde.yaml").stat().st_mtime - 1
+    assert monde.murs == [] and monde.objets == []
+    assert [p.id for p in monde.pietons] == [p.id for p in dessine.pietons]       # piétons dans l'emprise
+    assert monde.carte_extrudee == L.CarteExtrudee("rdc_carte.stl", 1.5)
+    principal = L.pose_principale(lieu)
+    assert (monde.depart_robot.x, monde.depart_robot.y, monde.depart_robot.theta) == pytest.approx(
+        (principal.x, principal.y, principal.theta))
+    assert L.chemin_maillage(lieu, "rdc").is_file()
+    assert "carte_du_scan" in (lieu / "mondes" / "rdc.sdf").read_text()
     assert L.lire_session(lieu, s["id"])["adoption"]["monde"] is True
     rapport = L.valider_lieu(lieu)
     assert not rapport.erreurs, rapport.texte()
+
+
+def test_adopter_un_etage_deja_scanne(lieux):
+    """Un étage déjà scanné garde son monde (ajouts de l'utilisateur), sans les éléments d'une ancienne
+    reconnaissance (source: scan), gardé dans la session ; seule carte_extrudee change."""
+    lieu = lieux / "essai"
+    premiere = creer_session_exemple(lieu, "termine")
+    assert g1_scan("adopter", "--lieu", "essai", "--session", premiere["id"])[0] == 0
+    monde = L.charger_monde(lieu, "rdc")
+    monde.objets = [L.Objet.boite("ajout", (15.0, 10.0), (1.0, 1.0, 1.0)),
+                    L.Objet.boite("vieux_scan", (20.0, 10.0), (1.0, 1.0, 1.0), source="scan", confiance=0.6)]
+    L.enregistrer_monde(lieu, "rdc", monde)
+    seconde = creer_session_exemple(lieu, "termine")
+    code, sortie = g1_scan("adopter", "--lieu", "essai", "--session", seconde["id"])
+    assert code == 0, sortie
+    assert "ancienne reconnaissance" in sortie
+    monde = L.charger_monde(lieu, "rdc")
+    assert [o.id for o in monde.objets] == ["ajout"] and monde.carte_extrudee is not None
+    garde = L.dossier_session(lieu, seconde["id"]) / "monde_remplace.monde.yaml"
+    assert "vieux_scan" in garde.read_text()
+
+
+def test_adopter_une_session_d_avant_la_vague_5(lieux):
+    """Session sans nuage d'affichage (traitée avant la vague 5) : il est fabriqué depuis nuage.pcd."""
+    lieu = lieux / "essai"
+    s = creer_session_exemple(lieu, "termine")
+    dossier = L.dossier_session(lieu, s["id"])
+    for nom in ("nuage_affichage.bin", "nuage_affichage.json"):
+        (dossier / nom).unlink()
+    (dossier / "reconnaissance.yaml").write_text("ancienne reconnaissance, lue par personne\n")
+    code, sortie = g1_scan("adopter", "--lieu", "essai", "--session", s["id"], "--monde")      # --monde : sans effet
+    assert code == 0, sortie
+    assert "fabriqué depuis nuage.pcd" in sortie
+    points, entete = L.lire_nuage(L.chemin_nuage(lieu, "rdc"))
+    assert entete["source"] == "scan" and len(points) > 1000
+
+
+def test_adopter_robot_previent_si_le_repere_change(lieux):
+    lieu = lieux / "essai"
+    s = creer_session_exemple(lieu, "termine", mode="robot")
+    code, sortie = g1_scan("adopter", "--lieu", "essai", "--session", s["id"])
+    assert code == 0, sortie
+    assert "Replacez les salles" in sortie and f"carte_unitree: {s['carte_unitree']}" in sortie
+    seconde = creer_session_exemple(lieu, "termine", mode="robot")
+    code, sortie = g1_scan("adopter", "--lieu", "essai", "--session", seconde["id"])
+    assert code == 0 and "Replacez les salles" not in sortie                     # déjà scanné : même repère
 
 
 def test_adopter_refuse(lieux):
@@ -235,9 +273,9 @@ def test_adopter_refuse(lieux):
     code, sortie = g1_scan("adopter", "--lieu", "essai", "--session", s["id"])
     assert code == 1 and "n'est pas terminée" in sortie
     t = creer_session_exemple(lieux / "essai", "termine")
-    (L.dossier_session(lieux / "essai", t["id"]) / "reconnaissance.yaml").unlink()
-    code, sortie = g1_scan("adopter", "--lieu", "essai", "--session", t["id"], "--monde")
-    assert code == 1 and "sans --monde" in sortie
+    (L.dossier_session(lieux / "essai", t["id"]) / "carte.yaml").unlink()
+    code, sortie = g1_scan("adopter", "--lieu", "essai", "--session", t["id"])
+    assert code == 1 and "pas de carte 2D" in sortie and "--refaire" in sortie
     assert L.charger_fiche(lieux / "essai").etage("rdc").source_carte == "monde"
 
 
@@ -292,8 +330,13 @@ def test_lancement_et_arret_de_groupe(tmp_path):
 # ================================================================ traitement d'un faux enregistrement
 
 def ecrire_bag(dossier, monde, poses, sujet_nuage="/points", sujet_odom="/odom", repere_nuage="lidar",
-               repere_odom="odom", hauteur_lidar=1.245, avec_tf=True, frequence=5.0):
-    """ros2 bag d'un faux scan : points des murs et objets du monde visibles depuis le robot."""
+               repere_odom="odom", hauteur_lidar=1.245, avec_tf=True, frequence=5.0, horodatage_nul=False,
+               decalage_odom=0.0, plan_sol=None):
+    """ros2 bag d'un faux scan : points des murs et objets du monde visibles depuis le robot.
+
+    Comme le vrai G1 (scan du 27/10, section 12.5 du plan) : horodatage_nul (nuages à horodatage nul),
+    decalage_odom (horloge du robot, −138 s), plan_sol (sol penché et sous l'origine : z + a·x + b·y + c,
+    l'odométrie donnant alors la position du LiDAR, comme le repère d'Unitree)."""
     rosbag2_py = pytest.importorskip("rosbag2_py", reason="ROS 2 n'est pas chargé : source ~/robot-g1/setup/env.sh")
     from builtin_interfaces.msg import Time
     from geometry_msgs.msg import TransformStamped
@@ -302,8 +345,11 @@ def ecrire_bag(dossier, monde, poses, sujet_nuage="/points", sujet_odom="/odom",
     from sensor_msgs.msg import PointCloud2, PointField
     from tf2_msgs.msg import TFMessage
 
-    from atelier.tests.test_scan_cartes import _visibles, nuage_synthetique
+    from atelier.tests.test_scan_cartes import _visibles, incliner, nuage_synthetique
     tous = nuage_synthetique(monde, pas=0.05)
+
+    def sol(points):
+        return points if plan_sol is None else incliner(points, plan_sol)
     ecrivain = rosbag2_py.SequentialWriter()
     ecrivain.open(rosbag2_py.StorageOptions(uri=str(dossier), storage_id="sqlite3"),
                   rosbag2_py.ConverterOptions("cdr", "cdr"))
@@ -326,8 +372,9 @@ def ecrire_bag(dossier, monde, poses, sujet_nuage="/points", sujet_odom="/odom",
         t = t0 + k / frequence
         o = Odometry()
         o.header.frame_id, o.child_frame_id = repere_odom, "base_link"
-        o.header.stamp = instant(t)
-        o.pose.pose.position.x, o.pose.pose.position.y = x, y
+        o.header.stamp = instant(t + decalage_odom)
+        position = sol(np.array([[x, y, 0.0 if plan_sol is None else hauteur_lidar]]))[0]
+        o.pose.pose.position.x, o.pose.pose.position.y, o.pose.pose.position.z = (float(v) for v in position)
         o.pose.pose.orientation.z, o.pose.pose.orientation.w = math.sin(theta / 2), math.cos(theta / 2)
         ecrivain.write(sujet_odom, serialize_message(o), int(t * 1e9))
         proches = tous[np.hypot(tous[:, 0] - x, tous[:, 1] - y) < 8.0]
@@ -338,10 +385,12 @@ def ecrire_bag(dossier, monde, poses, sujet_nuage="/points", sujet_odom="/odom",
             d = visibles - capteur
             local = np.column_stack([c * d[:, 0] + s * d[:, 1], -s * d[:, 0] + c * d[:, 1], d[:, 2]])
         else:
-            local = visibles                                         # déjà dans le repère du monde
+            local = sol(visibles)                                    # déjà dans le repère du monde
         local = local.astype(np.float32)
         nuage = PointCloud2()
-        nuage.header.frame_id, nuage.header.stamp = repere_nuage, instant(t)
+        nuage.header.frame_id = repere_nuage
+        if not horodatage_nul:
+            nuage.header.stamp = instant(t)
         nuage.height, nuage.width = 1, len(local)
         nuage.fields = [PointField(name=n, offset=4 * i, datatype=PointField.FLOAT32, count=1)
                         for i, n in enumerate("xyz")]
@@ -359,43 +408,25 @@ def parcours_nord():
     return poses
 
 
+PLAN_DU_27_10 = [0.0009, -0.0101, -1.271]        # sol du scan du 27/10 : 0,58°, 1,27 m sous l'origine
+
+
 @pytest.fixture(scope="module")
 def faux_bags(tmp_path_factory):
-    """Deux faux enregistrements du couloir nord, écrits une fois pour tous les tests :
-    « lidar » (simulation : /points dans le repère du LiDAR, /tf_static) et « map » (comme peut-être
-    le vrai robot : /unitree/slam_mapping/points déjà dans le repère de la carte)."""
+    """Trois faux enregistrements du couloir nord, écrits une fois pour tous les tests :
+    « lidar » (simulation : /points dans le repère du LiDAR, /tf_static), « map »
+    (/unitree/slam_mapping/points déjà dans le repère de la carte) et « g1 » (comme le vrai G1 le 27/10 :
+    nuages dans map à horodatage nul, odométrie décalée de −138 s, sol penché de 0,58° sous l'origine)."""
     pytest.importorskip("rosbag2_py", reason="ROS 2 n'est pas chargé : source ~/robot-g1/setup/env.sh")
     base = tmp_path_factory.mktemp("bags")
     monde = L.charger_monde(DEMO, "rdc")
     ecrire_bag(base / "lidar", monde, parcours_nord())
     ecrire_bag(base / "map", monde, parcours_nord(), sujet_nuage="/unitree/slam_mapping/points",
                sujet_odom="/unitree/slam_mapping/odom", repere_nuage="map", repere_odom="map", avec_tf=False)
+    ecrire_bag(base / "g1", monde, parcours_nord(), sujet_nuage="/unitree/slam_mapping/points",
+               sujet_odom="/unitree/slam_mapping/odom", repere_nuage="map", repere_odom="map", avec_tf=False,
+               horodatage_nul=True, decalage_odom=-138.0, plan_sol=PLAN_DU_27_10)
     return base
-
-
-def fausse_reconnaissance(nuage, carte, dossier, parametres=None):
-    """Remplace atelier.scan.reconnaissance.reconnaitre dans les tests : un seul mur."""
-    parametres = parametres or {}
-    info = L.charger_info_carte(carte)
-    xmin, ymin, xmax, ymax = L.bornes_carte(info)
-    donnees = L.nouvelle_reconnaissance(parametres.get("etage", "rdc"), (xmin, ymin, xmax, ymax),
-                                        parametres.get("depart_robot", ((xmin + xmax) / 2, (ymin + ymax) / 2, 0.0)),
-                                        session=parametres.get("session"), sol=parametres.get("sol"))
-    donnees["murs"].append({"id": "mur_1", "categorie": "mur", "de": [0.0, 14.5], "a": [8.4, 14.5],
-                            "epaisseur": 0.15, "hauteur": 2.5, "confiance": 0.9, "a_garder": True})
-    fichier = L.ecrire_reconnaissance(dossier, donnees)
-    L.ecrire_monde_scan(dossier, donnees)
-    return {"fichier": str(fichier), "monde": str(Path(dossier) / "monde_scan.monde.yaml"),
-            "resume": L.resume_reconnaissance(donnees), "duree_s": 0.0, "avertissements": []}
-
-
-class ErreurReconnaissance(Exception):
-    pass
-
-
-def reconnaissance_ratee(nuage, carte, dossier, parametres=None):
-    (Path(dossier) / "reconnaissance.yaml").write_text("à moitié écrit")
-    raise ErreurReconnaissance("aucun mur trouvé dans le nuage : scannez plus près des murs")
 
 
 @pytest.fixture
@@ -409,52 +440,85 @@ def session_enregistree(lieux, faux_bags):
     return lieux / "essai", s["id"]
 
 
-def test_traiter_simu(session_enregistree, monkeypatch):
+def test_traiter_simu(session_enregistree):
     lieu, ident = session_enregistree
-    monkeypatch.setenv("ATELIER_RECONNAISSANCE", "atelier.tests.test_scan_session:fausse_reconnaissance")
     assert S.traiter(lieu, ident) == 0
     s = L.lire_session(lieu, ident)
     assert (s["etat"], s["etape"], s["progression"]) == ("termine", "fini", 100)
-    assert "Adopter" in s["message"] and s["processus"]["pid"] == os.getpid()
+    assert "Utiliser cette carte" in s["message"] and s["processus"]["pid"] == os.getpid()
     dossier = L.dossier_session(lieu, ident)
     assert all(L.fichiers_presents(lieu, ident).values()) is False          # pas d'aperçu dans ce faux scan
-    for nom in ("nuage.pcd", "carte.pgm", "carte.yaml", "reconnaissance.yaml", "monde_scan.monde.yaml", "rapport.json"):
+    for nom in ("nuage.pcd", "carte.pgm", "carte.yaml", "nuage_affichage.bin", "nuage_affichage.json", "rapport.json"):
         assert (dossier / nom).is_file(), nom
+    assert not (dossier / "reconnaissance.yaml").exists() and not (dossier / "monde_scan.monde.yaml").exists()
     rapport = json.loads((dossier / "rapport.json").read_text())
     assert [e["etape"] for e in rapport["etapes"]] == list(L.ETAPES_TRAITEMENT)
-    assert all(e["ok"] for e in rapport["etapes"])
+    assert all(e["ok"] for e in rapport["etapes"]) and "reconnaissance" not in rapport
     assert rapport["repere"]["nuage"] == "lidar" and rapport["repere"]["deja_dans_le_monde"] is False
     assert rapport["repere"]["capteur"] == "tf_static" and rapport["repere"]["premiere_pose"][:2] == [2.5, 10.0]
-    assert rapport["reconnaissance"]["murs"] == 1 and rapport["nuage"]["nuages"] == len(parcours_nord())
+    n = len(parcours_nord())
+    assert rapport["nuages"] == {"recus": n, "utilises": n, "ignores": 0} and rapport["nuage"]["nuages"] == n
+    assert rapport["base_de_temps"] == "message" and rapport["mobiles_retires"] >= 0
+    assert rapport["sol"]["inclinaison_deg"] < 0.1 and len(rapport["sol"]["plan"]) == 3
+    points, entete = L.lire_nuage(L.chemin_nuage_session(dossier))
+    assert entete["points"] == rapport["affichage"]["points"] == len(points) and entete["grille"] == 0.05
+    assert entete["session"] == ident and entete["source"] == "scan"
     # Emprise du monde en simu : comparable pixel à pixel ; le couloir nord est bien vu
     carte = L.charger_info_carte(dossier / "carte.yaml")
     monde = L.charger_info_carte(lieu / "cartes" / "rdc.yaml")
     assert (carte.largeur, carte.hauteur, tuple(carte.origin)) == (monde.largeur, monde.hauteur, tuple(monde.origin))
     assert rapport["comparaison"]["reference"] == "cartes/rdc.yaml"
     assert rapport["comparaison"]["recouvrement"] > 0.9
-    # Refaire le traitement d'une session finie : permis, et la reconnaissance est remplacée
-    monkeypatch.setenv("ATELIER_RECONNAISSANCE", "atelier.tests.test_scan_session:reconnaissance_ratee")
-    assert S.traiter(lieu, ident) == 0
-    s = L.lire_session(lieu, ident)
-    assert s["etat"] == "termine" and "Reconnaissance non faite" in s["message"]
-    assert "scannez plus près des murs" in s["message"] and "adopter seule" in s["message"]
-    assert not (dossier / "reconnaissance.yaml").exists() and not (dossier / "monde_scan.monde.yaml").exists()
-    rapport = json.loads((dossier / "rapport.json").read_text())
-    assert rapport["reconnaissance"] is None and not rapport["etapes"][2]["ok"]
+    # Refaire le traitement d'une session finie (non adoptée) : permis, les fichiers sont remplacés
+    assert S.traiter(lieu, ident) == 0 and L.anciens_resultats(lieu, ident) == []
 
 
-def test_traiter_sans_module_de_reconnaissance(session_enregistree, monkeypatch):
+def test_traiter_refaire_une_session_adoptee(session_enregistree):
+    """g1-scan traiter --refaire : une session finie, même adoptée ; les résultats d'avant sont gardés dans
+    ancien_<horodatage>/ ; la session repasse « termine » sans adoption."""
     lieu, ident = session_enregistree
-    monkeypatch.setenv("ATELIER_RECONNAISSANCE", "atelier.scan.module_absent_essai:reconnaitre")
     assert S.traiter(lieu, ident) == 0
+    assert g1_scan("adopter", "--lieu", "essai", "--session", ident)[0] == 0
+    dossier = L.dossier_session(lieu, ident)
+    avant = {nom: (dossier / nom).read_bytes() for nom in ("carte.pgm", "rapport.json", "nuage_affichage.bin")}
+    code, sortie = g1_scan("traiter", "--lieu", "essai", "--session", ident)
+    assert code == 1 and "--refaire" in sortie
+    code, sortie = g1_scan("traiter", "--lieu", "essai", "--session", ident, "--refaire")
+    assert code == 0, sortie
+    assert "Résultats d'avant rangés dans ancien_" in sortie and "adoptez-la de nouveau" in sortie
+    anciens = L.anciens_resultats(lieu, ident)
+    assert len(anciens) == 1 and all((anciens[0] / nom).read_bytes() == v for nom, v in avant.items())
     s = L.lire_session(lieu, ident)
-    assert s["etat"] == "termine" and "ne se charge pas" in s["message"]
+    assert s["etat"] == "termine" and s["adoption"] is None
+    assert (dossier / "carte.pgm").is_file() and (dossier / "nuage_affichage.bin").is_file()
+    assert g1_scan("adopter", "--lieu", "essai", "--session", ident)[0] == 0           # réadoptée
 
 
-def test_traiter_robot_points_deja_dans_le_monde(lieux, faux_bags, monkeypatch):
-    """Mode robot : nuage dans le repère « map » (comme peut-être /unitree/slam_mapping/points) :
+def test_traiter_comme_le_g1(lieux, faux_bags):
+    """Le scan du 27/10 reproduit (mode robot) : nuages à horodatage nul dans map, odométrie décalée de
+    −138 s, sol penché de 0,58° : aucun nuage ignoré, base « reception », sol trouvé, nuage d'affichage
+    avec le sol à z = 0 et x, y inchangés ; la carte recouvre celle du monde (même repère dans ce faux bag)."""
+    s = L.creer_session(lieux / "essai", "rdc", "robot")
+    dossier = L.dossier_session(lieux / "essai", s["id"])
+    shutil.copytree(faux_bags / "g1", dossier / "enregistrement")
+    L.maj_session(lieux / "essai", s["id"], etape="enregistrement")
+    L.maj_session(lieux / "essai", s["id"], etat="arret_en_cours", etape="arret", fin=L.scans.instant())
+    assert S.traiter(lieux / "essai", s["id"]) == 0
+    rapport = json.loads((dossier / "rapport.json").read_text())
+    n = len(parcours_nord())
+    assert rapport["nuages"] == {"recus": n, "utilises": n, "ignores": 0}
+    assert rapport["base_de_temps"] == "reception"
+    assert 0.5 <= rapport["sol"]["inclinaison_deg"] <= 0.7 and rapport["sol"]["plan"][2] == pytest.approx(-1.271, abs=0.02)
+    assert rapport["comparaison"]["recouvrement"] > 0.9                      # pas de damier
+    points, entete = L.lire_nuage(L.chemin_nuage_session(dossier))
+    h = points[:, 2]
+    assert abs(float(np.median(h[np.abs(h) < 0.1]))) < 0.02                  # sol à z = 0
+    assert entete["sol"]["inclinaison_deg"] == rapport["sol"]["inclinaison_deg"]
+
+
+def test_traiter_robot_points_deja_dans_le_monde(lieux, faux_bags):
+    """Mode robot : nuage dans le repère « map » (comme /unitree/slam_mapping/points) :
     pris tel quel, noté dans le rapport ; emprise du nuage."""
-    monkeypatch.setenv("ATELIER_RECONNAISSANCE", "atelier.tests.test_scan_session:fausse_reconnaissance")
     s = L.creer_session(lieux / "essai", "rdc", "robot")
     dossier = L.dossier_session(lieux / "essai", s["id"])
     shutil.copytree(faux_bags / "map", dossier / "enregistrement")
@@ -490,10 +554,9 @@ def test_traiter_carte3d_en_echec(lieux):
     assert s["fin"] is not None
 
 
-def test_arreter_session_interrompue_avec_enregistrement(session_enregistree, monkeypatch):
+def test_arreter_session_interrompue_avec_enregistrement(session_enregistree):
     """Processus mort après l'enregistrement : arreter relance le traitement, en arrière-plan."""
     lieu, ident = session_enregistree
-    monkeypatch.setenv("ATELIER_RECONNAISSANCE", "atelier.tests.test_scan_session:fausse_reconnaissance")
     L.maj_session(lieu, ident, processus={"pid": _pid_mort(), "debut": 1, "hote": socket.gethostname()})
     code, sortie = g1_scan("arreter", "--lieu", "essai", "--attendre")
     assert code == 0, sortie
@@ -638,6 +701,97 @@ def test_placement_des_nuages():
     assert p.source_capteur == "tf_static"
     assert p.placer(points, "map", 10.0) is points and p.placer(points, "/odom", 10.0) is points
     assert apercu.position_lidar_proxy() == pytest.approx((-0.004, 0.0, 1.245))
+
+
+# ---------------------------------------------------------------- aperçu en direct (vague 5 : bogues du 27/10)
+
+def _salle_penchee(plan=PLAN_DU_27_10):
+    """Salle de 20 × 30 m vue « comme le G1 » : sol (un point tous les 5 cm, en deux couches à −2 et +3 cm : le
+    sol mesuré a quelques centimètres d'épaisseur) et murs de 2,5 m, penchés et abaissés selon le plan [a, b, c]
+    (z + a·x + b·y + c : x et y ne bougent pas). Sur 30 m, le sol monte de 0,3 m vers y = 0."""
+    x, y = np.meshgrid(np.arange(0.025, 20.0, 0.05), np.arange(0.025, 30.0, 0.05))
+    sol = np.vstack([np.column_stack([x.ravel(), y.ravel(), np.full(x.size, dz)]) for dz in (-0.02, 0.03)])
+    murs = np.vstack([mur(0, 0, 20, 0, pas=0.05), mur(20, 0, 20, 30, pas=0.05), mur(20, 30, 0, 30, pas=0.05),
+                      mur(0, 30, 0, 0, pas=0.05)])
+    p = np.vstack([sol, murs])
+    p[:, 2] += plan[0] * p[:, 0] + plan[1] * p[:, 1] + plan[2]
+    return p
+
+
+def _accumulateur_penche():
+    accu = apercu.Accumulateur()
+    salle = _salle_penchee()
+    for _ in range(3):                                  # chaque case vue par trois nuages (IMPACTS_MIN)
+        accu.ajouter_nuage(salle)
+    accu.ajouter_pose(10.0, 15.0, 0.0)
+    return accu
+
+
+def _obstacles_loin_des_murs(accu, plan, marge=0.3):
+    i, j = accu.obstacles(plan)
+    x, y = (i + 0.5) * accu.resolution, (j + 0.5) * accu.resolution
+    return int(((x > marge) & (x < 20 - marge) & (y > marge) & (y < 30 - marge)).sum())
+
+
+def test_apercu_sol_penche_sans_damier():
+    """Bogue n° 3 dans l'aperçu : le sol du vrai G1 est penché (0,58°). Avec un seul niveau de sol (l'ancien
+    1er centile), le haut du sol entrait dans la tranche des obstacles : le « damier » noir. Avec le plan
+    (atelier.scan.sol), aucun obstacle loin des murs, et les points de apercu.json sont dans la tranche."""
+    accu = _accumulateur_penche()
+    plan = accu.plan_sol()                                                       # (fusionne les cases en attente)
+    _, _, k = apercu.indices_cases(accu.cles)
+    ancien = float((np.percentile(k, 1.0) + 0.5) * accu.resolution_z)          # l'ancien sol : un seul niveau
+    assert _obstacles_loin_des_murs(accu, ancien) > 1000                         # le damier d'avant
+    # plan ajusté sur les cases de 5 cm de l'aperçu : approché (le traitement final l'ajuste sur les points)
+    assert plan[:2] == pytest.approx(PLAN_DU_27_10[:2], abs=2e-3) and plan[2] == pytest.approx(PLAN_DU_27_10[2], abs=0.04)
+    assert _obstacles_loin_des_murs(accu, plan) == 0
+    image, infos = accu.vue()
+    assert infos["plan_sol"] == pytest.approx(plan, abs=1e-6)
+    donnees = accu.donnees_json("s", infos)
+    from atelier.scan import sol as S
+    h = S.hauteurs(np.asarray(donnees["points"]), plan)
+    assert len(h) and h.min() >= 0.1 - 0.03 and h.max() <= 1.5 + 0.06               # tranche 0,1–1,5 m (cases de 5 cm)
+    assert accu.plan_sol() is plan                                                 # pas recalculé sans raison
+
+
+def test_apercu_nuage_en_direct(tmp_path):
+    """Le nuage en direct de l'écran de scan (apercu_nuage) : une case de 10 cm par point, toutes hauteurs, z au-dessus
+    du plan du sol, au plus APERCU_NUAGE_POINTS_MAX points (tirés à graine fixe), écrit avec apercu.png et .json."""
+    accu = _accumulateur_penche()
+    points, plan = accu.nuage_apercu()
+    assert points.dtype == np.float32 and plan is not None and len(points) <= L.nuage.APERCU_NUAGE_POINTS_MAX
+    centres = points[:, :2].astype(float) / 0.1 - 0.5                               # centres des cases de 10 cm
+    assert np.abs(centres - np.round(centres)).max() < 1e-3
+    h = points[:, 2].astype(float)
+    assert abs(float(np.median(h[np.abs(h) < 0.1]))) <= 0.04                       # le sol à z = 0
+    assert h.max() == pytest.approx(2.5, abs=0.15)                                 # le haut des murs aussi
+    peu, _ = accu.nuage_apercu(points_max=1000)
+    encore, _ = accu.nuage_apercu(points_max=1000)
+    assert len(peu) == 1000 and np.array_equal(peu, encore)
+    vide, rien = apercu.Accumulateur().nuage_apercu()
+    assert len(vide) == 0 and rien is None
+    s = L.creer_session(L.copier_lieu(DEMO, tmp_path / "lieu"), "rdc", "simu")
+    dossier = L.dossier_session(tmp_path / "lieu", s["id"])
+    accu.ecrire(dossier, s["id"])
+    lus, entete = L.lire_nuage(L.chemin_nuage_session(dossier, apercu=True))
+    assert entete["source"] == "apercu" and entete["grille"] == 0.1 and entete["session"] == s["id"]
+    assert len(lus) == entete["points"] == len(points)
+    assert 0.5 <= entete["sol"]["inclinaison_deg"] <= 0.7                         # 0,58° (cases de 5 cm : approché)
+    assert L.fichiers_presents(tmp_path / "lieu", s["id"])["apercu_nuage"]
+
+
+def test_placement_horodatage_nul():
+    """Bogue n° 1 dans l'aperçu : un nuage à horodatage nul (vrai G1) est placé avec la pose reçue au même moment,
+    même quand l'odométrie a l'horloge du robot (138 s de retard sur le PC)."""
+    from atelier.scan.carte3d import transformation
+    p = apercu.Placement(capteur=(0.0, 0.0, 1.0))
+    p.ajouter_tf("lidar", "base_link", transformation((0.0, 0.0, 1.0), (0, 0, 0, 1)))
+    for k in range(10):                     # horloge du robot : −138 s ; reçues à 1000 + k (heure du PC)
+        p.ajouter_odom(862.0 + k, (float(k), 0.0, 0.0), (0, 0, 0, 1), "odom", "base_link", reception=1000.0 + k)
+    points = np.array([[1.0, 0.0, 0.0]])
+    assert np.allclose(p.placer(points, "lidar", 0.0, reception=1003.1), [[4.0, 0.0, 1.0]])   # reçue à 1003
+    assert np.allclose(p.placer(points, "lidar", 865.0), [[4.0, 0.0, 1.0]])                    # horodatage valide
+    assert np.allclose(p.placer(points, "lidar", 1003.0), [[10.0, 0.0, 1.0]])                  # autre horloge : la dernière
 
 
 def test_cles_cases():

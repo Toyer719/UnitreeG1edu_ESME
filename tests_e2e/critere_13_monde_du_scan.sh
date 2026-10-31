@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Critère 13, monde issu du scan : dans la revue de la session du critère 11, un objet est décoché
-# (PUT …/reconnaissance), puis la session est adoptée avec son monde (« Adopter la carte et le
-# monde », POST /api/scan/sessions/{s}/adopter) ; l'objet décoché n'est pas dans le monde adopté ;
-# la carte de l'étage est celle du scan,
-# l'ancien monde est gardé dans la session ; g1-lieu valider ne signale aucune erreur ; g1-monde
-# generer réussit sans toucher à la carte du scan ; la simulation démarre sur le monde du scan et le
-# robot va de l'accueil à une salle placée depuis l'API (le parcours du critère 4).
+# Critère 13, monde issu du scan (vague 5, section 12.5 du plan) : la session du critère 11 est adoptée
+# (« Utiliser cette carte », POST /api/scan/sessions/{s}/adopter) : la carte de l'étage est celle du scan,
+# telle quelle ; son nuage 3D devient celui de l'étage (cartes/rdc.nuage, source scan) ; le monde de
+# simulation est la carte extrudée (mondes/rdc_carte.stl, carte_extrudee de 1,5 m), sans les murs et objets
+# dessinés (le monde d'avant est gardé dans la session), avec ses piétons ; g1-lieu valider ne signale
+# aucune erreur ; g1-monde generer réussit sans toucher à la carte du scan ; la simulation démarre sur le
+# monde maillé et le robot va de l'accueil à une salle placée depuis l'API (le parcours du critère 4).
 # Sans session gardée par le critère 11 (ou E2E_SESSION_SCAN=DOSSIER), le critère 11 est lancé d'abord.
 source "$(dirname "$0")/commun.sh"
 LIEU=scan_e2e                  # lieu de ce test : nom propre, car les journaux de session portent son nom
@@ -39,43 +39,15 @@ serveur
 "$PY" "$OUTILS_SCAN" route --api "$API" POST "/api/scan/sessions/{s}/adopter" \
   || en_attente "le serveur n'a pas encore la route POST /api/scan/sessions/{s}/adopter (agent Interface)"
 
-# La revue : décocher un objet (le plus loin de l'accueil, hors du trajet du guide plus bas)
-RETIRE=$("$PY" - "$API" "$LIEU" "$SESSION" <<'PYTHON'
-import json, math, sys, urllib.request
-api, lieu, session = sys.argv[1:4]
-url = f"{api}/api/scan/sessions/{session}/reconnaissance?lieu={lieu}"
-def appel(methode, corps=None):
-    r = urllib.request.Request(url, method=methode, data=None if corps is None else json.dumps(corps).encode(),
-                               headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(r, timeout=30) as reponse:
-        return json.loads(reponse.read())
-objets = [o for o in appel("GET")["reconnaissance"]["objets"] if o["a_garder"] and o["categorie"] != "personne"]
-if not objets:
-    sys.exit("aucun objet gardé à décocher")
-choisi = max(objets, key=lambda o: math.hypot(o["centre"][0] - 2.5, o["centre"][1] - 10.0))
-r = appel("PUT", {"a_garder": {choisi["id"]: False}})
-garde = [o for o in r["reconnaissance"]["objets"] if o["id"] == choisi["id"]][0]["a_garder"]
-if garde or choisi["id"] in {o["id"] for o in r["monde"].get("objets") or []}:
-    sys.exit(f"{choisi['id']} décoché, mais encore gardé ou encore dans le monde du scan")
-print(choisi["id"])
-PYTHON
-) || echoue "décocher un objet de la reconnaissance (PUT …/reconnaissance) a échoué"
-dire "objet décoché dans la revue : $RETIRE"
-
-# « Adopter la carte et le monde »
-"$PY" "$OUTILS_SCAN" appel --api "$API" POST "/api/scan/sessions/$SESSION/adopter?lieu=$LIEU" '{"monde": true}' \
+# « Utiliser cette carte »
+"$PY" "$OUTILS_SCAN" appel --api "$API" POST "/api/scan/sessions/$SESSION/adopter?lieu=$LIEU" '{}' \
   --codes 200 --sortie "$TRAVAIL/adoption.json" || echoue "l'adoption de la session a échoué"
 "$PY" -c "import json, sys; r = json.load(open(sys.argv[1])); sys.exit(0 if r.get('adopte') and r.get('monde') else 1)" \
   "$TRAVAIL/adoption.json" || echoue "la réponse de l'adoption ne dit pas « adopte » et « monde »"
-"$PY" "$OUTILS_SCAN" verifier-adoption --lieu "$LIEU" --session "$SESSION" --monde --reference "$RACINE/lieux/demo" \
-  || echoue "carte, masque, monde ou session non conformes après l'adoption"
+"$PY" "$OUTILS_SCAN" verifier-adoption --lieu "$LIEU" --session "$SESSION" --reference "$RACINE/lieux/demo" --api "$API" \
+  || echoue "carte, nuage, masque, monde maillé ou session non conformes après l'adoption"
 cmp -s "$TRAVAIL/monde_dessine.yaml" "$L/scans/$SESSION/monde_remplace.monde.yaml" \
   || echoue "monde_remplace.monde.yaml n'est pas l'ancien monde dessiné"
-"$PY" -c "
-import sys
-from atelier import lieu as L
-sys.exit(1 if sys.argv[2] in {o.id for o in L.charger_monde(sys.argv[1], 'rdc').objets} else 0)" "$L" "$RETIRE" \
-  || echoue "l'objet décoché $RETIRE est dans le monde adopté"
 
 SORTIE=$(g1-lieu valider --lieu "$LIEU" 2>&1); CODE=$?
 echo "$SORTIE"
@@ -85,7 +57,8 @@ g1-monde generer --lieu "$LIEU" --etage rdc > "$TRAVAIL/journaux/generer.log" 2>
   || echoue "g1-monde generer a échoué sur le monde du scan ($(tail -n 3 "$TRAVAIL/journaux/generer.log" | tr '\n' ' '))"
 cat "$TRAVAIL/journaux/generer.log"
 [ "$(md5sum < "$L/cartes/rdc.pgm")" = "$AVANT" ] || echoue "g1-monde generer a remplacé la carte du scan"
-grep -q 'source: scan' "$L/mondes/rdc.monde.yaml" || echoue "le monde de l'étage ne vient pas du scan"
+grep -q '^carte_extrudee:' "$L/mondes/rdc.monde.yaml" || echoue "le monde de l'étage n'est pas la carte extrudée du scan"
+grep -q '<model name="carte_du_scan"' "$L/mondes/rdc.sdf" || echoue "le monde Gazebo n'a pas la carte extrudée"
 grep -q '<model name="ext_sud"' "$L/mondes/rdc.sdf" && echoue "le monde Gazebo contient encore les murs dessinés"
 
 # Le parcours du critère 4 sur le monde du scan : une salle placée par l'API, puis « Y aller »
@@ -122,4 +95,4 @@ cat "$TRAVAIL/journaux/guide.log"
 [ $CODE -eq 0 ] || echoue "le guide n'est pas arrivé à salle_e2e dans le monde du scan"
 "$PY" "$OUTILS" pres-de --lieu "$LIEU" --salle salle_e2e --max 0.3 || echoue "le robot est à plus de 0,3 m de la salle"
 http POST /api/simulation/arreter > /dev/null
-reussi "session $SESSION adoptée avec son monde ; lieu valide ; arrivé à salle_e2e dans le monde du scan"
+reussi "session $SESSION adoptée : carte, nuage et monde maillé ; lieu valide ; arrivé à salle_e2e dans le monde maillé"
