@@ -393,7 +393,11 @@ télécommande en main, deux ou trois volontaires.
 5. **Collision Monitor et obstacles bas** (robot immobile, puis à 0,2 m/s) : dans RViz
    (`collision_ralentir`, `collision_ralentir_pres`, `collision_arret`), aucun point du robot
    lui-même (bras, mains) dans les zones ; une valise et un sac au sol sont vus (carte locale) ;
-   le robot ralentit à moins de 1 m devant, s'arrête à 0,4 m.
+   le robot s'arrête à 0,4 m. Attention (vague 5) : le vrai G1 ne marche pas sous 0,2 m/s et le pont
+   remonte toute petite consigne à 0,2 m/s ; sous 0,4 m/s (donc toujours avec `vitesse_max:=0.2`), les
+   zones « ralentir » ne ralentissent plus le robot (le lancement de la navigation le dit) : seul le
+   cercle d'arrêt de 0,4 m l'arrête. Télécommande en main ; noter la distance d'arrêt réelle devant un
+   volontaire immobile, à 0,2 m/s.
 6. **Robot perdu** : couper la relocalisation (couvrir le LiDAR n'est pas sûr : plutôt une
    pièce sans repères, ou attendre une perte réelle) ; noter le message et le délai.
 

@@ -62,9 +62,11 @@ puis **Ouvrir**. En Robot réel, l'accueil vérifie aussi le câble, le robot et
 L'espace de travail ne défile jamais (habillage d'Unitree Explore, thème sombre ou clair ◐) :
 
 - la **barre d'outils** : ⌂ (retour à l'accueil), lieu et étage, mode, Annuler / Rétablir,
-  **Enregistrer**, et le gros bouton **ARRÊT** (touche **Échap**) : il arrête le guide, la
-  téléopération et le pilotage en moins d'une seconde, et en Réel il bloque le robot jusqu'à
-  **Débloquer** ;
+  **Enregistrer**, et le gros bouton **ARRÊT** : il arrête le guide, la téléopération et le
+  pilotage en moins d'une seconde, et en Réel il bloque le robot jusqu'à **Débloquer**. La touche
+  **Échap** envoie l'ARRÊT dès que le robot bouge ou que quelque chose tourne (simulation, navigation,
+  pilotage) ; sinon elle ferme seulement le menu ou la fenêtre, ou annule la saisie ou l'outil en
+  cours. Revenu à l'accueil pendant une navigation, l'ARRÊT y est aussi ;
 - le **ruban**, avec de grosses icônes ; ce qui est rare est dans son menu **⚙ Avancé** :
 
 | Mode | Onglets du ruban |
@@ -304,7 +306,8 @@ guide** règle les délais ci-dessus.
 répétition). La vue du robot est au centre, avec deux **joysticks** en surimpression (tactiles sur une
 tablette) ; le ruban donne **Prendre la main** / **Rendre la main**, **Postures**, **Gestes**,
 **Voix**, **Lumière**, et le groupe **Spectacle** ; le bouton **ARRÊT** de la barre d'outils (touche
-Échap) reste toujours là :
+Échap dès que le robot bouge) reste toujours là ; en répétition, si le pilotage n'est pas démarré,
+la première commande du ruban s'appelle **Démarrer** :
 
 - **Postures** : 500 démarrer, 706 accroupi ↔ debout, 702 se relever, 3 s'asseoir ; **⚙ Avancé ›
   Portique** : 1 amortir et 0 couple nul, seulement avec la case « robot au portique » et une double
@@ -646,7 +649,7 @@ g1-atelier                            # ou G1_VITESSE_MAX=0.2 g1-atelier pour le
 2. Posez le robot **sur le point principal, dans le sens de la flèche** (l'étoile sur la carte),
    debout en mode marche.
 3. **Naviguer › Repérer** : « Repéré », avec la précision, en quelques secondes. Si le robot n'est
-   pas sur le point principal : **⚙ Avancé › Robot ailleurs**, cliquez sa position sur la carte,
+   pas sur le point principal : **⚙ Avancé › Situer le robot**, cliquez sa position sur la carte,
    glissez vers son orientation, puis repérez.
 4. **Y aller** vers une salle. « Y aller » reste grisé tant que le robot n'est pas repéré.
 5. Pour finir : **Naviguer › Arrêter** (arrêt propre du conteneur).
@@ -675,8 +678,10 @@ Sans l'Atelier : `g1-jetson demarrer --lieu L --etage E [--vitesse-max 0.2]`, `g
   arrêt quand il quitte.
 - **Pas de mouvement sans repérage** : tant que le robot n'est pas repéré, ou si le repérage est
   perdu (plus de position d'Unitree depuis 3 s), le pont refuse de le faire bouger.
-- **ARRÊT** (barre d'outils de l'Atelier, touche Échap) : arrête le guide, la téléopération et le
-  pilotage en moins d'une seconde, et bloque le robot jusqu'à **Débloquer** ; `g1-guide stop` :
+- **ARRÊT** (barre d'outils de l'Atelier, et de l'accueil quand quelque chose tourne ; touche Échap
+  dès que le robot bouge ou qu'une navigation tourne) : arrête le guide, la téléopération et le
+  pilotage en moins d'une seconde, et bloque le robot jusqu'à **Débloquer** ; sans réponse du serveur
+  en 1,5 s, la barre d'état dit de prendre la télécommande ; `g1-guide stop` :
   arrêt immédiat, puis 1 s sans mouvement. **Naviguer › Bloquer** : il reste immobile, quoi qu'on lui
   demande, jusqu'à « Débloquer ».
 - Si le robot ne répond plus (`robot_muet`), refuse les ordres (`refus`) ou n'est pas en mode marche

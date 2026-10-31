@@ -32,19 +32,33 @@ Structure de SolidWorks, habillage d'Unitree Explore (thème sombre par défaut,
 | Simulation | **Dessiner** (choisir, mur, passage, objet, piéton, départ), **Placer** (salle, accueil, nœud, relier, zones), **Simuler** (lancer, arrêter, Y aller, accompagner, retour ; Avancé : faux visiteur, passants, réglages du guide, scan simulé), **Équipe** (personnalités, dialogues, caméra ; Avancé : réglages de la caméra) |
 | Réel (et répétition) | **Scanner** (Scan, Fin, Utiliser cette carte), **Placer**, **Naviguer** (lancer, repérer, Y aller, bloquer, débloquer, arrêter), **Piloter** (prendre la main, postures, gestes, voix, lumière, joysticks ; groupe Spectacle : danses, chorégraphies), **Équipe** |
 
-- **Arbre** : Lieu ▸ Étage ▸ Carte, Monde, Points (★ Accueil d'abord), Itinéraires, Zones, Scans, Équipe ;
-  clic : l'élément choisi dans la vue et ses propriétés à droite ; double-clic : la vue 3D se centre dessus ;
-  ⚠ sur ce que signale « Vérifier le lieu ».
+- **Arbre** : Lieu ▸ Étage ▸ Carte, Monde, Points (★ Accueil d'abord, puis les salles dans l'ordre et avec le
+  numéro de leur épingle 3D), Itinéraires, Zones, Scans, Équipe ; clic : l'élément choisi dans la vue et ses
+  propriétés à droite ; double-clic : la vue 3D se centre dessus ; ⚠ sur ce que signale « Vérifier le lieu ».
+  Replié (bouton « Replier l'arbre », double chevron en tête de l'arbre), il se rouvre par la languette
+  « ▸ Le lieu » au bord gauche de la vue (ou ⚙ › Montrer l'arbre du lieu).
 - **Vue centrale** : 3D (la carte 3D de `js/carte3d/`, partagée : nuage du scan en Réel, monde en Simulation,
   points, itinéraires, zones, robot, piétons), Plan 2D (Leaflet : la carte de l'écran ouvert), Caméra (Réel).
   Sans WebGL, la coque passe au Plan 2D. Gestes 3D : glisser = tourner, clic droit ou Maj = déplacer,
-  molette = zoom vers le pointeur, F = tout voir.
-- **Panneau de tâches** : le formulaire de la commande ou les propriétés de l'élément choisi, avec
-  ✓ Enregistrer et ✗ Annuler en haut ; il défile seul.
-- **ARRÊT** (barre d'outils, touche **Échap**, partout) : `POST /api/arret` arrête en moins de 1 s le guide,
-  la téléopération et le pilotage, et en Réel ou en répétition bloque le robot (verrou du pont) ; le
-  bouton devient alors « Débloquer » (confirmation dans la page). Les écrans lâchent leurs manettes à
-  l'appui (événement `atelier-arret` de la page). L'ARRÊT n'arrête pas un scan (« Fin » le fait).
+  molette = zoom vers le pointeur, F = tout voir. « Recadrer » (et F) existe aussi en Plan 2D. Le sol du
+  nuage (moins de 12 cm) a sa couleur (`--nuage-sol`), le dégradé ne colore que ce qui dépasse ; avec un
+  outil de pose, un aperçu du repère et sa consigne suivent le pointeur.
+- **Panneau de tâches** : l'état et la tâche en cours (pas une seconde barre de commandes : Lancer,
+  Repérer, Bloquer… sont dans le ruban), ou les propriétés de l'élément choisi, avec ✓ Enregistrer et
+  ✗ Annuler en haut ; il défile seul. ✓ et ✗ s'activent dès qu'on tape ; un champ se valide en le quittant,
+  et le clic sur ✓ (ou Ctrl+S, même pendant une saisie) l'enregistre avec le reste ; redessiné, le panneau
+  garde son défilement, ses blocs « Avancé » ouverts et le curseur (Tab passe au champ suivant).
+- **ARRÊT** (barre d'outils ; sur l'accueil quand quelque chose tourne encore) : `POST /api/arret` arrête en
+  moins de 1 s le guide, la téléopération et le pilotage, et en Réel ou en répétition bloque le robot
+  (verrou du pont) ; le bouton devient alors « Débloquer » (confirmation dans la page), aussi quand le pont
+  garde un verrou d'avant un redémarrage de l'Atelier. Chaque appui part (délai de 1,5 s : sans réponse, la
+  barre d'état dit de prendre la télécommande). Les écrans lâchent leurs manettes et les flèches à l'appui
+  (événement `atelier-arret` de la page ; une flèche tenue ne relance rien). L'ARRÊT n'arrête pas un scan.
+- **Échap** (revue de la vague 5) : l'ARRÊT dès que le robot bouge (guide en mission, pont en marche, main
+  prise, flèches tenues), et quand quelque chose tourne (simulation, navigation, pilotage, pont vivant) si
+  la touche ne sert pas déjà à fermer un menu, une fenêtre, un volet ou un tiroir, à annuler une saisie,
+  l'outil ou le geste en cours ; rien ne tourne : Échap ferme et annule seulement (`decisionEchap` de
+  `js/coque/arret.js`).
 - **Messages** : dans la barre d'état (une ligne) et son journal (le message complet, ses détails), plus de
   notifications volantes. « Ce qui tourne » (commandes lancées par l'Atelier) : menu ⚙, ou le bouton de la
   barre d'état quand quelque chose tourne.
@@ -166,6 +180,11 @@ DISPLAY=:1 E2E_DOMAINE=101 tests_e2e/tout.sh 32 35                           # c
   `tests_e2e/outils_coque_e2e.py captures --api http://127.0.0.1:8111 --sortie dossier`.
 - Critère 36 (`tests_e2e/critere_36_arret.sh`) : l'ARRÊT en simulation (sans verrou), en répétition (guide,
   verrou, Débloquer), par le bouton et Échap dans Firefox, et avec le nœud pilotage (joystick, nœud arrêté).
+- Revue de la vague 5 (`test_coque_navigateur.py`, fin du fichier) : l'arbre replié se rouvre ; un seul vrai
+  clic sur ✓ après une saisie enregistre, Tab garde le curseur, Ctrl+S pendant une saisie ; le Plan 2D cadré
+  après avoir été caché ; Échap n'arrête que ce qui tourne (`decisionEchap`) ; l'ARRÊT sans réponse et les
+  flèches lâchées ; « Démarrer » le pilotage depuis le ruban ; ordre et numéros des salles, textes sans jargon.
+  Le critère 31 refait ces mesures (`parcours_revue_v5` de `test_coque_communs.py`).
 - Les écrans des vagues précédentes ont leurs tests dans Firefox sans fenêtre, réécrits sur les repères de la
   coque : `test_serveur_navigateur.py` (critère 9 : créer, dessiner, carte, salle, simulation, Y aller),
   `test_robot_navigateur.py`, `test_principal_navigateur.py`, `test_passants_navigateur.py`,

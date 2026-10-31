@@ -55,8 +55,8 @@ d'abord `g1-jetson arreter`, puis `ssh unitree@192.168.123.164 'docker rmi g1-je
    « le robot répond ».
 4. **Vitesses :** 0,2 m/s au plus, au portique comme au sol (`G1_VITESSE_MAX=0.2`). Les mesures de
    l'étape M vont jusqu'à 0,2 m/s et 0,4 rad/s, pendant 3 s au plus.
-5. **Le bouton ARRÊT de l'Atelier** (ou la touche **Échap**) arrête le guide, le pilotage et bloque le
-   robot. **Il ne remplace pas la télécommande.**
+5. **Le bouton ARRÊT de l'Atelier** (ou la touche **Échap**, dès qu'une navigation ou le pilotage
+   tourne) arrête le guide, le pilotage et bloque le robot. **Il ne remplace pas la télécommande.**
 6. **Danses :** jamais 401, 402 ni 403. La danse 604 d'abord **au portique, robot tenu**, 3 m libres.
 7. **On note tout** dans `docs/releves/seance-2.md`. Un point qui échoue : on note ce qu'on a vu, puis
    on passe au suivant s'il n'y a pas de danger.
