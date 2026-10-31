@@ -114,6 +114,19 @@ def verifier_reglages(r):
                          '(YUYV brut, photo ou vidéo)')
 
 
+def faut_relancer(maintenant, derniere, lancement, delai=SANS_IMAGE_S):
+    """
+    Vrai si le v4l2-ctl en cours n'a donné aucune image depuis delai secondes.
+
+    On compte depuis le plus récent de la dernière image et du lancement de ce v4l2-ctl : un
+    v4l2-ctl relancé après un débranchement a toujours ses delai secondes pour donner sa première
+    image (revue de la vague 5 : comparé à la dernière image d'avant, il était tué au tic suivant,
+    et la caméra ne revenait jamais).
+    """
+    depuis = lancement if derniere is None else max(derniere, lancement)
+    return maintenant - depuis > delai
+
+
 class CameraPoitrine(Node):
     """Lit la caméra (ou la mire, ou un fichier) et publie les JPEG et l'état."""
 
@@ -235,8 +248,7 @@ class CameraPoitrine(Node):
         """Publie l'état (1 Hz) ; relance v4l2-ctl s'il ne donne plus d'image."""
         processus = self._processus
         if processus is not None and processus.poll() is None:
-            depuis = self._derniere if self._derniere is not None else self._lancement
-            if time.monotonic() - depuis > SANS_IMAGE_S:
+            if faut_relancer(time.monotonic(), self._derniere, self._lancement):
                 self._signaler(f'plus aucune image de {self.peripherique} depuis '
                                f'{SANS_IMAGE_S:.0f} s : v4l2-ctl est relancé')
                 self._arreter_processus()

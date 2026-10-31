@@ -33,6 +33,14 @@ ou `g1-guide navigation ... --pont oui`.
 | Vitesse minimale (vague 5, règle 11) | le 27/10, le vrai G1 ne faisait aucun pas à 0,1 m/s et marchait à 0,2 m/s. Si la norme de (vx, vy) atteint `vitesse_min_lin` (0,2 m/s) ou si \|wz\| atteint `vitesse_min_rot` (0,3 rad/s), la consigne passe telle quelle ; sinon toute la consigne est petite : sous `zone_morte_lin` (0,05 m/s, sur la norme) et `zone_morte_rot` (0,1 rad/s), la composante vaut 0 ; puis la marche est portée à 0,2 m/s dans la même direction (sans dépasser les plafonds), ou la rotation seule à ± 0,3 rad/s. 0 désactive. Exemples : (0,1 ; 0 ; 0) → (0,2 ; 0 ; 0) ; (0,1 ; 0,1 ; 0) → (0,141 ; 0,141 ; 0) ; (0 ; 0 ; 0,15) → (0 ; 0 ; 0,3) ; (0,03 ; 0 ; 0) → arrêt. `vx_max` (ou `wz_max`) sous le minimum est refusé au démarrage, sauf avec le minimum à 0 (mesures) |
 | Mode du robot (vague 5, règle 12) | lecture de 7001 (GetFsmId, `{}`) une fois par seconde ; hors de `modes_marche` (500, 501, 801 : assis 3, pas démarré 0, course 802...) : état `pas_en_marche`, un arrêt s'il bougeait, `/cmd_vel` ignoré, message qui dit quoi faire ; de retour en marche : `pret`, reprise avec un `/cmd_vel` neuf. Un mode inconnu (pas de réponse lisible, lecture refusée, lu il y a plus de 3 s) ne bloque rien. Seules les réponses à nos requêtes comptent (identity.id, et api_id quand il est rempli) : les 7001 des autres programmes du robot arrivent sur le même sujet |
 
+**Zones « ralentir » de Nav2 et vitesse minimale** (revue de la vague 5) : le Collision Monitor de Nav2
+ralentit le robot (× 0,5) près d'un obstacle ou d'une personne, puis le pont monte toute consigne
+comprise entre 0,05 et 0,2 m/s à 0,2 m/s. Sous 0,4 m/s (et toujours avec `vitesse_max:=0.2`), ces zones
+ne ralentissent donc plus le vrai robot : seul le cercle d'arrêt de 0,4 m l'arrête près d'un obstacle,
+et `navigation.launch.py` le dit au lancement. Gardez la télécommande en main ; la conduite près des
+personnes est à mesurer à la séance 2 (des zones « stop » arrêteraient aussi le robot devant les murs
+des couloirs étroits et des portes).
+
 L'arrêt est `{"velocity": [0.0, 0.0, 0.0], "duration": 1.0}` (StopMove du SDK). La requête est
 remplie exactement comme `LocoClient::SetVelocity` (C++) et `LocoClient.SetVelocity` (SDK Python) :
 `test/test_requete.py` compare le message sérialisé octet par octet au SDK Python, et à la requête
@@ -49,7 +57,7 @@ vraiment envoyé, après la vitesse minimale), `minimums` (les quatre réglages)
 |---|---|---|
 | `vitesse_min_lin` | 0,2 m/s (mesuré le 27/10) | norme minimale de (vx, vy) ; 0 désactive ; 0,3 au plus |
 | `vitesse_min_rot` | 0,3 rad/s (à mesurer) | rotation sur place minimale ; 0 désactive ; 0,5 au plus |
-| `zone_morte_lin`, `zone_morte_rot` | 0,05 m/s, 0,1 rad/s | en dessous : 0 ; pas plus que le minimum |
+| `zone_morte_lin`, `zone_morte_rot` | 0,05 m/s, 0,1 rad/s | en dessous : 0 ; pas plus que le minimum ; avec le minimum actif, au moins 0,01 m/s et 0,02 rad/s (une zone nulle ferait marcher le robot sur le moindre résidu de consigne : refusée au démarrage) ; une composante sous 0,001 n'est jamais montée au minimum |
 | `lire_mode` | true | lecture de 7001 chaque seconde |
 | `modes_marche` | [500, 501, 801] | ajouter 802 accepte la course |
 

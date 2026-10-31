@@ -293,6 +293,23 @@ def test_exposition_refusee(ecoute, lancer, faux_v4l2, monkeypatch):
                for a in etat['avertissements']), etat['avertissements']
 
 
+def test_v4l2_ctl_relance_garde_son_delai():
+    """
+    Revue de la vague 5 : un v4l2-ctl relancé garde son délai.
+
+    Après un débranchement (dernière image il y a 30 s), il a ses 5 s pour donner sa première
+    image ; il n'est relancé que si rien n'arrive pendant ce temps.
+    """
+    from g1_equipe.camera_usb import faut_relancer, SANS_IMAGE_S
+    t = 1000.0
+    assert not faut_relancer(t, derniere=t - 30.0, lancement=t - 0.5)       # vient d'être relancé
+    assert faut_relancer(t, derniere=t - 30.0, lancement=t - SANS_IMAGE_S - 0.1)
+    assert not faut_relancer(t, derniere=None, lancement=t - 1.0)             # premier lancement
+    assert faut_relancer(t, derniere=None, lancement=t - 6.0)
+    assert not faut_relancer(t, derniere=t - 1.0, lancement=t - 60.0)         # images récentes
+    assert faut_relancer(t, derniere=t - 6.0, lancement=t - 60.0)             # flux arrêté
+
+
 def test_reglages_faux_refuses():
     for arguments, morceau in ((['-p', 'exposition:=nuit'], 'inconnue'),
                                (['-p', 'source:=usb'], 'inconnue'),

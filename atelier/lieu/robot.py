@@ -93,6 +93,10 @@ EXEMPLE_DEMANDE_REPERAGE = {"id": "atelier-1", "x": 2.5, "y": 10.0, "theta": 0.0
 # Paramètres ROS du pont : vitesse_min_lin, vitesse_min_rot, zone_morte_lin, zone_morte_rot (0 : désactivé).
 VITESSES_MIN_PONT = {"lin": 0.20, "rot": 0.30}     # m/s (mesuré le 27/10), rad/s (à mesurer à la séance 2)
 ZONES_MORTES_PONT = {"lin": 0.05, "rot": 0.10}     # sous ces valeurs, la composante vaut 0
+# Revue de la vague 5 : avec un minimum actif, une zone morte nulle ferait marcher le robot sur le moindre
+# résidu de consigne (lisseur de Nav2, fin de trajet) ; le pont refuse une zone plus petite que celle-ci
+ZONES_MORTES_MIN_PONT = {"lin": 0.01, "rot": 0.02}
+SEUIL_NUL_PONT = 1e-3           # une composante plus petite n'est jamais montée au minimum (bruit numérique)
 VITESSE_MIN_LIN_MAX = 0.30      # un réglage plus haut est refusé (une faute de frappe ne fait pas courir le robot)
 VITESSE_MIN_ROT_MAX = 0.50
 VITESSE_MAX_MIN = 0.20          # G1_VITESSE_MAX, --vitesse-max et vitesse_max:= refusés en dessous
@@ -135,7 +139,8 @@ def vitesse_effective(vx, vy, wz, plafonds=None, minimums=None, zones=None):
        marche : (vx, vy) porté à la norme du minimum, même direction (borné pour qu'aucune composante
        ne dépasse son plafond), wz gardé ; rotation : (0, 0, ±minimum de rotation), borné par wz_max.
     Un minimum (ou une zone) à 0 est désactivé : avec un minimum à 0, l'axe compte comme franc dès
-    qu'il n'est pas nul. Une valeur non finie donne un arrêt.
+    qu'il n'est pas nul. Avec un minimum actif, une composante sous SEUIL_NUL_PONT (bruit numérique) vaut 0,
+    même si la zone morte est à 0 : elle n'est jamais montée au minimum. Une valeur non finie donne un arrêt.
     plafonds : {"vx", "vy", "wz"} (LIMITES_PONT) ; minimums, zones : {"lin", "rot"}. Renvoie (vx, vy, wz).
 
     Le pont (g1_bridge, qui tourne sans atelier) en a une copie exacte ; le joystick du pilotage
@@ -150,9 +155,9 @@ def vitesse_effective(vx, vy, wz, plafonds=None, minimums=None, zones=None):
     n, a = math.hypot(vx, vy), abs(wz)
     if (smin > 0 and n >= smin) or (wmin > 0 and a >= wmin):
         return (vx, vy, wz)
-    if n < z["lin"]:
+    if n < z["lin"] or (smin > 0 and n < SEUIL_NUL_PONT):
         vx = vy = n = 0.0
-    if a < z["rot"]:
+    if a < z["rot"] or (wmin > 0 and a < SEUIL_NUL_PONT):
         wz = a = 0.0
     lin_petit = 0.0 < n < smin
     rot_petit = 0.0 < a < wmin
@@ -188,6 +193,15 @@ EXEMPLES_VITESSE_MIN = (
     ((-0.1, 0.0, 0.0), (-0.2, 0.0, 0.0), None),          # marche arrière montée (Nav2 n'en envoie plus)
     ((0.0, 0.1, 0.0), (0.0, 0.125, 0.0), PLAFONDS_VITESSE_MAX_0_2),   # borné par vy_max
     ((0.0, 0.0, 0.0), (0.0, 0.0, 0.0), None),
+)
+# Zones mortes à 0 (refusées par le pont avec un minimum actif, mais la fonction doit rester sûre) :
+# (entrée, sortie attendue). Un résidu sous SEUIL_NUL_PONT n'est jamais monté au minimum.
+ZONES_NULLES_PONT = {"lin": 0.0, "rot": 0.0}
+EXEMPLES_ZONES_NULLES = (
+    ((0.0004, 0.0, 0.0), (0.0, 0.0, 0.0)),
+    ((0.0, 0.0, -1e-6), (0.0, 0.0, 0.0)),
+    ((0.0004, 0.0, -1e-6), (0.0, 0.0, 0.0)),
+    ((0.05, 0.0, 0.0), (0.2, 0.0, 0.0)),            # au-dessus du seuil nul : monté (la zone est à 0)
 )
 
 

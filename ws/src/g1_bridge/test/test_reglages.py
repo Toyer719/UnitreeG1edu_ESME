@@ -55,6 +55,9 @@ def test_valeurs_du_contrat(fichier):
         == robot.ZONES_MORTES_PONT == logique.ZONES_MORTES
     assert logique.VITESSE_MIN_LIN_MAX == robot.VITESSE_MIN_LIN_MAX
     assert logique.VITESSE_MIN_ROT_MAX == robot.VITESSE_MIN_ROT_MAX
+    # revue de la vague 5 : zone morte minimale avec un minimum actif, et seuil du bruit
+    assert logique.ZONES_MORTES_MIN == robot.ZONES_MORTES_MIN_PONT
+    assert logique.SEUIL_NUL == robot.SEUIL_NUL_PONT
     assert fichier['lire_mode'] is True
     assert fichier['modes_marche'] == list(lieu.pilotage.MODES_MARCHE) \
         == list(logique.MODES_MARCHE)
@@ -93,6 +96,10 @@ def test_vitesse_effective_copie_exacte_du_contrat():
     robot = lieu.robot
     for entree, attendu, plafonds in robot.EXEMPLES_VITESSE_MIN:
         assert logique.vitesse_effective(*entree, plafonds=plafonds) == \
+            pytest.approx(attendu, abs=2e-6)
+    # zones mortes à 0 : un résidu sous le seuil nul n'est jamais monté au minimum
+    for entree, attendu in robot.EXEMPLES_ZONES_NULLES:
+        assert logique.vitesse_effective(*entree, zones=robot.ZONES_NULLES_PONT) == \
             pytest.approx(attendu, abs=2e-6)
     aleatoire = random.Random(2000)
     for _ in range(2000):

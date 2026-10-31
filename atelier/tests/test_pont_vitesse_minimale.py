@@ -30,6 +30,13 @@ def test_consigne_du_joystick(entree, attendu):
     assert D.consigne_marche(*entree) == pytest.approx(attendu, abs=1e-9)
 
 
+@pytest.mark.parametrize("entree, attendu", R.EXEMPLES_ZONES_NULLES)
+def test_bruit_jamais_monte_au_minimum(entree, attendu):
+    """Revue de la vague 5 : zones mortes à 0, minimums actifs : un résidu sous SEUIL_NUL_PONT reste un
+    arrêt (il ne fait jamais marcher le robot à 0,2 m/s ni tourner à 0,3 rad/s)."""
+    assert R.vitesse_effective(*entree, zones=R.ZONES_NULLES_PONT) == pytest.approx(attendu, abs=1e-9)
+
+
 def test_consigne_du_joystick_avec_vitesse_reduite():
     limites = D.limites_marche(0.2)
     assert D.consigne_marche(0.0, 0.1, 0.0, limites) == pytest.approx((0.0, 0.125, 0.0))   # vy_max

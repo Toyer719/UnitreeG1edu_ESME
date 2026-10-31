@@ -330,6 +330,31 @@ def test_vitesse_reduite_aussi_pour_nav2(lancement, dossier):
     assert any('vitesse_max ignorée' in texte(a.msg) for a in liste if isinstance(a, LogInfo))
 
 
+def test_zones_ralentir_sans_effet_avec_le_pont(lancement, dossier):
+    """
+    Revue de la vague 5 : les zones « ralentir » sous la vitesse minimale du pont.
+
+    Avec le pont, une zone « ralentir » (×0,5) qui descend sous la vitesse minimale (0,2 m/s) ne
+    ralentit plus le robot ; le lancement le dit (et ce qui protège encore).
+    """
+    reglages = str(PAQUET / 'config' / 'nav2_g1_reel.yaml')
+    # Nav2 à 0,4 m/s : ×0,5 → 0,2 m/s, au minimum : les zones agissent encore
+    assert lancement.zones_ralentir_sans_effet(reglages, 0.4, 0.2) == []
+    # vitesse_max:=0.2 (premiers essais) : 0,1 m/s, remonté à 0,2 par le pont
+    assert lancement.zones_ralentir_sans_effet(reglages, 0.2, 0.2) == [
+        ('ralentir', 0.1), ('ralentir_pres', 0.1)]
+    assert lancement.zones_ralentir_sans_effet(reglages, 0.2, 0.0) == []    # minimum désactivé
+    liste = actions(lancement, dossier, localisation='unitree', vitesse_max='0.2')
+    messages = [texte(a.msg) for a in liste if isinstance(a, LogInfo)]
+    assert any('ne ralentissent plus' in m and 'ralentir_pres' in m and 'télécommande' in m
+               for m in messages), messages
+    # vitesse par défaut : rien à dire ; simulation sans pont : rien non plus
+    liste = actions(lancement, dossier, localisation='unitree')
+    assert not any('ne ralentissent plus' in texte(a.msg) for a in liste if isinstance(a, LogInfo))
+    liste = actions(lancement, dossier, simu='true')
+    assert not any('ne ralentissent plus' in texte(a.msg) for a in liste if isinstance(a, LogInfo))
+
+
 def test_reglages_du_guide_avec_le_pont(lancement, dossier):
     """Avec le pont : tolérance de cap relevée, ralenti jamais sous la vitesse minimale."""
     guide = parametres(noeuds(actions(lancement, dossier, localisation='unitree'))['guide'])

@@ -713,6 +713,26 @@ def test_minimums_a_zero_comme_avant():
                                           'zone_morte_lin': 0.0, 'zone_morte_rot': 0.0}
 
 
+def test_bruit_jamais_monte_au_minimum():
+    """
+    Revue de la vague 5 : un bruit n'est jamais monté au minimum.
+
+    Avec les minimums actifs, une composante sous SEUIL_NUL (bruit numérique) vaut 0, même zones
+    mortes à 0 (réglage refusé par le pont, mais la règle reste sûre).
+    """
+    from g1_bridge.logique import vitesse_effective
+    zones = {'lin': 0.0, 'rot': 0.0}
+    assert vitesse_effective(0.0004, 0.0, 0.0, zones=zones) == (0.0, 0.0, 0.0)
+    assert vitesse_effective(0.0, 0.0, -1e-6, zones=zones) == (0.0, 0.0, 0.0)
+    assert vitesse_effective(0.0004, 0.0, -1e-6, zones=zones) == (0.0, 0.0, 0.0)
+    assert vitesse_effective(0.05, 0.0, 0.0, zones=zones) == pytest.approx((0.2, 0.0, 0.0))
+    # zone minimale permise : 0,01 m/s et 0,02 rad/s ; refusée en dessous, avec quoi faire
+    Pont(Reglages(zone_morte_lin=0.01, zone_morte_rot=0.02))
+    with pytest.raises(ErreurReglages) as erreur:
+        Pont(Reglages(zone_morte_lin=0.0))
+    assert 'bruit' in str(erreur.value) and 'vitesse_min_lin:=0' in str(erreur.value)
+
+
 def test_zone_morte_seule_sans_minimum():
     """vitesse_min_lin:=0 avec la zone morte par défaut : rien n'est monté, 0,03 donne 0."""
     pont, h = pret(vitesse_min_lin=0.0)
@@ -727,6 +747,9 @@ def test_zone_morte_seule_sans_minimum():
     ({'zone_morte_rot': 0.35}, 'zone_morte_rot'), ({'zone_morte_lin': -0.01}, 'zone_morte_lin'),
     ({'vx_max': 0.1}, 'vx_max'), ({'wz_max': 0.2}, 'wz_max'),
     ({'vitesse_min_lin': 0.0, 'zone_morte_lin': 0.4}, 'zone_morte_lin'),
+    # revue de la vague 5 : zone morte nulle avec le minimum actif (le bruit ferait marcher)
+    ({'zone_morte_lin': 0.0}, 'zone_morte_lin'), ({'zone_morte_rot': 0.0}, 'zone_morte_rot'),
+    ({'zone_morte_lin': 0.005}, 'zone_morte_lin'),
     ({'modes_marche': []}, 'modes_marche'), ({'modes_marche': ['marche']}, 'modes_marche'),
     ({'modes_marche': [True]}, 'modes_marche'), ({'modes_marche': 501}, 'modes_marche'),
     ({'lire_mode': 'oui'}, 'lire_mode'), ({'vitesse_min_lin': math.nan}, 'vitesse_min_lin')])

@@ -70,7 +70,9 @@ from .requete import (API_GET_FSM_ID, API_SET_VELOCITY, DUREE_ARRET_S, Identifia
 
 # Plafonds durs du pont (atelier.lieu.LIMITES_PONT) : un réglage plus haut est refusé
 PLAFONDS = {'vx': 0.4, 'vy': 0.25, 'wz': 0.6}
-# Une consigne dont toutes les composantes sont sous ce seuil est un arrêt
+# Une consigne dont toutes les composantes sont sous ce seuil est un arrêt ; avec un minimum
+# actif, une composante sous ce seuil n'est jamais montée au minimum (copie de
+# atelier.lieu.robot.SEUIL_NUL_PONT)
 SEUIL_NUL = 1e-3
 # Durée maximale d'une consigne : si le pont meurt, le robot s'arrête seul au plus tard après
 DUREE_CONSIGNE_MAX_S = 0.5
@@ -91,6 +93,10 @@ TOLERANCE_ENVOI_S = 0.008
 # ZONES_MORTES_PONT, VITESSE_MIN_LIN_MAX, VITESSE_MIN_ROT_MAX ; test/test_reglages.py compare)
 VITESSES_MIN = {'lin': 0.20, 'rot': 0.30}
 ZONES_MORTES = {'lin': 0.05, 'rot': 0.10}
+# Avec un minimum actif, la zone morte ne descend pas sous ces valeurs (copie de
+# atelier.lieu.robot.ZONES_MORTES_MIN_PONT) : un résidu de consigne ne fait jamais repartir
+# le robot
+ZONES_MORTES_MIN = {'lin': 0.01, 'rot': 0.02}
 VITESSE_MIN_LIN_MAX = 0.30      # un réglage plus haut est refusé (une faute de frappe ne fait
 VITESSE_MIN_ROT_MAX = 0.50      # pas courir le robot)
 # Lecture du mode (règle 12) : atelier.lieu.PERIODE_LECTURE_MODE_S et DELAI_MODE_PERIME_S
@@ -245,6 +251,14 @@ class Reglages:
                 erreurs.append(f'zone_morte_{genre} = {_fr(zone)} {unite} : pas plus que '
                                + (f'la vitesse minimale ({_fr(minimum)})' if minimum > 0
                                   else f'{_fr(maximum)} {unite}'))
+            elif minimum > 0 and zone < ZONES_MORTES_MIN[genre] - 1e-9:
+                # revue de la vague 5 : un résidu de quelques mm/s (lisseur de Nav2, fin de
+                # trajet) serait monté au minimum et ferait repartir le robot
+                erreurs.append(f'zone_morte_{genre} = {_fr(zone)} {unite} avec '
+                               f'vitesse_min_{genre} {_fr(minimum)} : le moindre bruit de '
+                               f'consigne ferait marcher le robot à {_fr(minimum)} {unite} ; '
+                               f'mettez zone_morte_{genre} ≥ {_fr(ZONES_MORTES_MIN[genre])}, '
+                               f'ou vitesse_min_{genre}:=0 aussi (mesures)')
         return erreurs
 
     def avertissements(self):
@@ -300,7 +314,9 @@ def vitesse_effective(vx, vy, wz, plafonds=None, minimums=None, zones=None):
        rotation) : marche : (vx, vy) porté à la norme du minimum, même direction (borné pour
        qu'aucune composante ne dépasse son plafond), wz gardé ; rotation : (0, 0, ±minimum de
        rotation), borné par wz_max.
-    Un minimum (ou une zone) à 0 est désactivé. Une valeur non finie donne un arrêt.
+    Un minimum (ou une zone) à 0 est désactivé ; avec un minimum actif, une composante sous
+    SEUIL_NUL (bruit numérique) vaut 0, même zone morte à 0. Une valeur non finie donne un
+    arrêt.
     plafonds : {"vx", "vy", "wz"} ; minimums, zones : {"lin", "rot"}. Renvoie (vx, vy, wz).
     """
     p = PLAFONDS if plafonds is None else plafonds
@@ -312,9 +328,9 @@ def vitesse_effective(vx, vy, wz, plafonds=None, minimums=None, zones=None):
     n, a = math.hypot(vx, vy), abs(wz)
     if (smin > 0 and n >= smin) or (wmin > 0 and a >= wmin):
         return (vx, vy, wz)
-    if n < z['lin']:
+    if n < z['lin'] or (smin > 0 and n < SEUIL_NUL):
         vx = vy = n = 0.0
-    if a < z['rot']:
+    if a < z['rot'] or (wmin > 0 and a < SEUIL_NUL):
         wz = a = 0.0
     lin_petit = 0.0 < n < smin
     rot_petit = 0.0 < a < wmin

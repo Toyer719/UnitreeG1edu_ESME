@@ -347,7 +347,10 @@ def vitesses_nav2(reglages, plafonds):
     Renvoie {nœud: paramètres} pour le controller_server (FollowPath.vx_max, vy_max, wz_max) et le
     velocity_smoother (max_velocity, min_velocity), ou {} sans vitesse_max. Le rapport est
     vitesse_max / vx_max du fichier (au plus 1) : vx_max de Nav2 vaut alors vitesse_max, et vy,
-    wz baissent d'autant. Le modèle de MPPI reste juste, et le Collision Monitor ralentit encore.
+    wz baissent d'autant. Le modèle de MPPI reste juste. Attention : avec le pont, une consigne
+    ralentie sous sa vitesse minimale (0,2 m/s) est remontée à 0,2 : les zones « ralentir » du
+    Collision Monitor ne ralentissent plus sous 0,4 m/s (zones_ralentir_sans_effet, dit au
+    lancement).
     """
     if not plafonds:
         return {}
@@ -367,6 +370,35 @@ def vitesses_nav2(reglages, plafonds):
         'velocity_smoother': {'max_velocity': [baisser(v) for v in lisseur['max_velocity']],
                               'min_velocity': [baisser(v) for v in lisseur['min_velocity']]},
     }
+
+
+def zones_ralentir_sans_effet(reglages, vitesse_nav2, vitesse_min):
+    """
+    Zones « slowdown » du Collision Monitor qui ne peuvent plus ralentir le robot.
+
+    Revue de la vague 5 : le pont monte toute consigne comprise entre sa zone morte et sa vitesse
+    minimale (0,2 m/s) à la vitesse minimale : une zone qui ralentit la vitesse maximale de Nav2
+    sous ce minimum n'a plus d'effet (seul le cercle d'arrêt protège alors). Renvoie
+    [(nom, vitesse ralentie)] de ces zones.
+    """
+    import yaml
+    if not (vitesse_nav2 > 0 and vitesse_min > 0):
+        return []
+    try:
+        with open(reglages, encoding='utf-8') as f:
+            d = yaml.safe_load(f)
+        cm = d['collision_monitor']['ros__parameters']
+    except (OSError, KeyError, TypeError, yaml.YAMLError):
+        return []
+    sans_effet = []
+    for nom in cm.get('polygons', []):
+        p = cm.get(nom) or {}
+        if p.get('action_type') != 'slowdown':
+            continue
+        ralentie = vitesse_nav2 * float(p.get('slowdown_ratio', 1.0))
+        if ralentie < vitesse_min - 1e-9:
+            sans_effet.append((nom, round(ralentie, 3)))
+    return sans_effet
 
 
 def vitesse_min_pont():
@@ -493,6 +525,18 @@ def _lancer(context):
         parametres_guide['vitesse_max_nav2'] = vitesse_max_nav2(reglages, vitesses)
     if pont:                 # vague 5 : rotation finale et ralenti à travers le pont
         parametres_guide.update(reglages_guide_pont(parametres_guide.get('vitesse_max_nav2', 0.0)))
+        if moteur == 'nav2':
+            # le robot ne marche pas sous 0,2 m/s : une zone « ralentir » qui descend plus bas ne
+            # ralentit plus (le pont remonte la consigne) ; on le dit, avec ce qui protège encore
+            minimum = vitesse_min_pont()
+            sans_effet = zones_ralentir_sans_effet(reglages, parametres_guide['vitesse_max_nav2'],
+                                                   minimum)
+            if sans_effet:
+                zones = ', '.join(f'« {nom} » ({v:g} m/s)' for nom, v in sans_effet)
+                actions.append(LogInfo(msg=(
+                    f'g1_nav : attention, avec le pont (vitesse minimale {minimum:g} m/s), les '
+                    f'zones {zones} ne ralentissent plus le robot : seul le cercle d\'arrêt '
+                    '(0,4 m) l\'arrête près d\'un obstacle. Gardez la télécommande en main.')))
     if personnes:
         actions.append(noeud_g1_nav('detecteur_personnes', 'g1_nav.personnes',
                                     'detecteur_personnes',
