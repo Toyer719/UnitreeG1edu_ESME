@@ -64,9 +64,10 @@ L'espace de travail ne défile jamais (habillage d'Unitree Explore, thème sombr
 - la **barre d'outils** : ⌂ (retour à l'accueil), lieu et étage, mode, Annuler / Rétablir,
   **Enregistrer**, et le gros bouton **ARRÊT** : il arrête le guide, la téléopération et le
   pilotage en moins d'une seconde, et en Réel il bloque le robot jusqu'à **Débloquer**. La touche
-  **Échap** envoie l'ARRÊT dès que le robot bouge ou que quelque chose tourne (simulation, navigation,
-  pilotage) ; sinon elle ferme seulement le menu ou la fenêtre, ou annule la saisie ou l'outil en
-  cours. Revenu à l'accueil pendant une navigation, l'ARRÊT y est aussi ;
+  **Échap** envoie l'ARRÊT dès que le robot bouge ou peut repartir seul (retour automatique prévu,
+  départ qui attend la navigation), même si elle ferme aussi un menu ; quand quelque chose tourne
+  (simulation, navigation, pilotage), aussi, sauf si elle ferme seulement le menu ou la fenêtre, ou
+  annule la saisie ou l'outil en cours. Revenu à l'accueil pendant une navigation, l'ARRÊT y est aussi ;
 - le **ruban**, avec de grosses icônes ; ce qui est rare est dans son menu **⚙ Avancé** :
 
 | Mode | Onglets du ruban |
@@ -686,7 +687,10 @@ Sans l'Atelier : `g1-jetson demarrer --lieu L --etage E [--vitesse-max 0.2]`, `g
   arrêt immédiat, puis 1 s sans mouvement. **Naviguer › Bloquer** : le trajet en cours est annulé et
   le robot reste immobile, quoi qu'on lui demande (guide, pilotage), jusqu'à « Débloquer ». **Un
   déblocage ne relance jamais l'ancien trajet** : le robot attend un nouveau « Y aller » ; de même
-  quand il est remis en mode marche, ou qu'il répond de nouveau (section 12.15 du plan).
+  quand il est remis en mode marche, qu'il répond de nouveau, ou que le pont vers la marche, tué ou
+  figé, est relancé (le guide annule son trajet dès que le pont se tait) ; au joystick, il faut
+  lâcher puis reprendre le manche, et une chorégraphie interrompue (robot assis, amorti, muet) ne
+  reprend pas (section 12.15 du plan).
 - Si le robot ne répond plus (`robot_muet`), refuse les ordres (`refus`) ou n'est pas en mode marche
   (`pas_en_marche`), le pont le dit en français (pastille du robot dans la barre d'outils, panneau de
   Naviguer).

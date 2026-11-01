@@ -69,13 +69,25 @@ def prendre(p, h):
     assert [s.message['maitre'] for s in r.sorties if isinstance(s, Maitre)] == ['pilotage']
 
 
-def avancer(p, h, duree, pas=0.02):
-    """Fait tourner la logique à 50 Hz pendant duree ; renvoie [(t, sortie)]."""
+def avancer(p, h, duree, pas=0.02, repondre_lectures=None):
+    """
+    Fait tourner la logique à 50 Hz pendant duree ; renvoie [(t, sortie)].
+
+    repondre_lectures (None : si le robot a déjà répondu) : le robot répond aux lectures du mode
+    (7001), sans dire son mode (réponse vide : le mode devient inconnu après 3 s, comme avant). Un
+    robot relié répond toujours : sans cela, il serait muet après 2 s (relecture du 01/11/2026).
+    """
+    if repondre_lectures is None:
+        repondre_lectures = p.t_reponse is not None
     sorties = []
     fin = h.t + duree
     while h.t < fin - 1e-9:
         h.t = round(h.t + pas, 6)
-        sorties += [(h.t, s) for s in p.pas(h.t)]
+        lot = p.pas(h.t)
+        sorties += [(h.t, s) for s in lot]
+        if repondre_lectures:
+            for e in envois(lot, 'sport', 7001):
+                p.sur_reponse(e.identifiant, 0, '')
     return sorties
 
 
@@ -692,6 +704,138 @@ def test_verrou_du_pont_arrete_une_choregraphie_sans_reprise(p, h):
     assert p.lecture is None and p.activite() == 'repos'
 
 
+# ---------------------------------------------------------------- relecture du 01/11/2026
+# Joystick tenu et chorégraphie : aucune levée d'un empêchement (verrou, mode, robot muet) ne
+# relance un mouvement (section 12.15) ; mesuré en répétition : 1,8 m au joystick après « assis »
+# puis la remise en marche, 1,5 m après une coupure du lien, 0,74 rad de chorégraphie après
+# « assis ».
+
+def joystick_tenu(p, h, duree, vx=0.3):
+    """Le manche tenu duree secondes (un ordre toutes les 0,1 s) ; renvoie les Resultat."""
+    resultats = []
+    for _ in range(int(round(duree / 0.1))):
+        resultats.append(p.ordre_joystick(vx, 0.0, 0.0))
+        avancer(p, h, 0.1)
+    return resultats
+
+
+def marche_non_nulle(sorties):
+    return [s for s in sorties if isinstance(s, Envoi) and s.api_id == 7105
+            and json.loads(s.parametre)['velocity'] != [0.0, 0.0, 0.0]]
+
+
+@pytest.mark.parametrize('fsm', [3, 1])
+def test_joystick_tenu_assis_ou_amorti_puis_remis_en_marche_ne_repart_pas(p, h, fsm):
+    prendre(p, h)
+    en_801(p, h)
+    assert all(r.statut == 200 for r in joystick_tenu(p, h, 0.5))
+    en_mode(p, h, fsm)                     # télécommande : assis (3) ou amorti (1)
+    refus_mode = joystick_tenu(p, h, 2.0)
+    assert all(r.statut == 409 for r in refus_mode)
+    assert not marche_non_nulle([s for r in refus_mode for s in r.sorties])
+    en_mode(p, h, 501)                     # remis en marche, le manche toujours tenu
+    apres = joystick_tenu(p, h, 2.0)
+    assert all(r.statut == 409 and 'Lâchez le joystick' in r.corps['detail'] for r in apres)
+    assert 'quitté le mode marche' in apres[0].corps['detail']
+    assert not marche_non_nulle([s for r in apres for s in r.sorties])
+    p.ordre_joystick(0.0, 0.0, 0.0)        # lâché, puis repris : il repart
+    h.t += 0.1
+    assert marche_non_nulle(p.ordre_joystick(0.3, 0.0, 0.0).sorties)
+
+
+def test_joystick_tenu_pendant_une_coupure_du_lien_ne_repart_pas(p, h):
+    prendre(p, h)
+    en_801(p, h)
+    sorties = []
+    for _ in range(20):                    # 2 s de marche : le robot répond
+        r = p.ordre_joystick(0.3, 0.0, 0.0)
+        repondre(p, r.sorties)
+        sorties += r.sorties
+        sorties += [x for _, x in avancer(p, h, 0.1)]
+    assert marche_non_nulle(sorties) and p.robot_repond()
+    coupure = []                           # câble débranché 5 s : plus aucune réponse
+    for _ in range(50):
+        coupure.append(p.ordre_joystick(0.3, 0.0, 0.0))
+        avancer(p, h, 0.1, repondre_lectures=False)
+    refuses = [r for r in coupure if r.statut == 409]
+    assert refuses and 'ne répond plus' in refuses[0].corps['detail']
+    assert p.robot_muet() and not p.marche
+    # le lien revient (le robot répond de nouveau aux lectures), le manche toujours tenu
+    avancer(p, h, 1.1, repondre_lectures=True)
+    assert p.robot_repond()
+    apres = joystick_tenu(p, h, 2.0)
+    assert all(r.statut == 409 and 'cessé de répondre' in r.corps['detail'] for r in apres)
+    assert not marche_non_nulle([s for r in apres for s in r.sorties])
+    p.lacher_joystick()
+    h.t += 0.1
+    assert marche_non_nulle(p.ordre_joystick(0.3, 0.0, 0.0).sorties)
+
+
+@pytest.mark.parametrize('geste', ['lache_puis_repris', 'page_rechargee'])
+def test_joystick_repris_pendant_le_verrou_ne_repart_pas_au_deblocage(p, h, geste):
+    """Relecture du 01/11/2026 : lâché puis repris (ou WebSocket rouvert) pendant le blocage."""
+    prendre(p, h)
+    en_801(p, h)
+    assert marche_non_nulle(p.ordre_joystick(0.3, 0.0, 0.0).sorties)
+    h.t += 0.1
+    p.sur_verrou(True)
+    if geste == 'lache_puis_repris':
+        p.ordre_joystick(0.0, 0.0, 0.0)
+    else:
+        p.lacher_joystick()                 # page rechargée : WebSocket fermé, puis rouvert
+        p.joystick_ouvert()
+    pendant = joystick_tenu(p, h, 1.0)      # repris pendant le blocage : refusé
+    assert all(r.statut == 409 and 'bloqué' in r.corps['detail'] for r in pendant)
+    p.sur_verrou(False)
+    apres = joystick_tenu(p, h, 1.0)        # toujours tenu après « Débloquer » : rien
+    assert all(r.statut == 409 and 'Lâchez le joystick' in r.corps['detail'] for r in apres)
+    assert not marche_non_nulle([s for r in apres for s in r.sorties])
+    p.ordre_joystick(0.0, 0.0, 0.0)
+    h.t += 0.1
+    assert marche_non_nulle(p.ordre_joystick(0.3, 0.0, 0.0).sorties)
+    # lâché pendant le blocage et pas repris : le premier geste après « Débloquer » marche
+    h.t += 0.1
+    p.sur_verrou(True)
+    p.ordre_joystick(0.0, 0.0, 0.0)
+    avancer(p, h, 1.0)
+    p.sur_verrou(False)
+    h.t += 0.1
+    assert marche_non_nulle(p.ordre_joystick(0.3, 0.0, 0.0).sorties)
+
+
+@pytest.mark.parametrize('fsm', [3, 1])
+def test_choregraphie_arretee_si_le_robot_quitte_la_marche(p, h, fsm):
+    d, _ = prete(p, h)
+    avancer(p, h, 9.0)                      # en pleine chorégraphie, bras à poids 1
+    assert p.lecture is not None and p.lecture.poids == pytest.approx(1.0)
+    en_mode(p, h, fsm)                      # assis, ou amorti, à la télécommande
+    sorties = avancer(p, h, 1.5)
+    assert p.lecture is None and p.activite() != 'choregraphie'
+    assert 'n\'est plus en mode marche' in p.message and 'rejouez-la' in p.message
+    arrets = [s for _, s in sorties if isinstance(s, Envoi) and s.api_id == 7105]
+    assert arrets and json.loads(arrets[0].parametre)['velocity'] == [0.0, 0.0, 0.0]
+    bras = [s for _, s in sorties if isinstance(s, Bras)]
+    assert bras and bras[-1].poids == 0.0   # poids des bras ramené à 0
+    # remis en marche : la chorégraphie ne reprend pas (aucun pas, aucun bras)
+    en_mode(p, h, 501)
+    apres = avancer(p, h, 20.0)
+    assert not marche_non_nulle([s for _, s in apres])
+    assert not [s for _, s in apres if isinstance(s, (Bras, Dire))
+                or (isinstance(s, Envoi) and s.api_id in (1010, 7106))]
+
+
+def test_choregraphie_arretee_si_le_robot_ne_repond_plus(p, h):
+    d, _ = prete(p, h)
+    avancer(p, h, 5.0)
+    assert p.lecture is not None
+    sorties = avancer(p, h, 4.0, repondre_lectures=False)       # câble débranché
+    assert p.lecture is None and 'ne répond plus' in p.message
+    apres = avancer(p, h, 20.0, repondre_lectures=True)          # le lien revient
+    assert not marche_non_nulle([s for _, s in apres])
+    assert not [s for _, s in apres if isinstance(s, Bras) and s.poids > 0.0]
+    assert any(isinstance(s, Bras) for _, s in sorties)
+
+
 def test_quitter_rend_la_main_au_guide(p, h):
     prendre(p, h)
     sorties = p.quitter()
@@ -806,6 +950,12 @@ def test_joystick_refuse_hors_marche(p, h):
     assert r.corps['fsm'] == 3
     en_mode(p, h, 0)
     assert "n'est pas démarré" in p.ordre_joystick(0.3, 0.0, 0.0).corps['detail']
+    # relecture du 01/11/2026 : le manche tenu pendant le refus doit être lâché, puis repris
+    en_mode(p, h, 501)
+    h.t += 0.1
+    r = p.ordre_joystick(0.3, 0.0, 0.0)
+    assert r.statut == 409 and 'Lâchez le joystick' in r.corps['detail'] and not envois(r)
+    p.ordre_joystick(0.0, 0.0, 0.0)
     for permis in (501, 500, 801, 802):                    # marche et course : permis
         en_mode(p, h, permis)
         h.t += 0.1
@@ -820,8 +970,12 @@ def test_joystick_refuse_hors_marche(p, h):
     r = p.ordre_joystick(0.3, 0.0, 0.0)
     assert r.statut == 409 and [json.loads(e.parametre)['velocity'] for e in envois(r)] == \
         [[0.0, 0.0, 0.0]]
-    # mode inconnu (plus de réponse depuis 3 s) : rien n'est bloqué
-    h.t += 3.5
+    # mode inconnu (le robot répond, mais plus de mode lisible depuis 3 s) : rien n'est bloqué,
+    # une fois le manche lâché
+    avancer(p, h, 3.5)
+    assert p.mode_connu() is None and p.robot_repond()
+    p.ordre_joystick(0.0, 0.0, 0.0)
+    h.t += 0.1
     assert p.ordre_joystick(0.3, 0.0, 0.0).statut == 200
 
 

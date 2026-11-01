@@ -116,6 +116,18 @@ def test_pont_position_etat_du_guide_et_commandes(faux_robot):
         assert faux_robot.tourner(10, lambda: pont._pub_stop.get_subscription_count() > 0)
         pont.stop()
         assert faux_robot.tourner(5, lambda: faux_robot.stops == 1)
+        # relecture du 01/11/2026 : guides_a_l_ecoute ne compte que les nœuds « guide » (le pont vers la marche
+        # écoute aussi /guide/stop) ; le faux robot n'en est pas un
+        assert pont.guides_a_l_ecoute() == 0
+        guide = rclpy.create_node("guide", context=faux_robot.contexte)
+        guide.create_subscription(Empty, "/guide/stop", lambda m: None, 10)
+        faux_robot.executeur.add_node(guide)
+        try:
+            assert faux_robot.tourner(10, lambda: pont.guides_a_l_ecoute() == 1), pont.guides_a_l_ecoute()
+            assert pont.stop() == 2
+        finally:
+            faux_robot.executeur.remove_node(guide)
+            guide.destroy_node()
         # /guide/etat qui n'est pas du JSON : gardé tel quel, sans planter
         faux_robot.pub_etat.publish(String(data="pas du json"))
         assert faux_robot.tourner(5, lambda: pont.etat()["guide"]["etat"] == "inconnu")

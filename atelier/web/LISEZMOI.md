@@ -181,8 +181,10 @@ DISPLAY=:1 E2E_DOMAINE=101 tests_e2e/tout.sh 32 35                           # c
 - Critère 36 (`tests_e2e/critere_36_arret.sh`) : l'ARRÊT en simulation (sans verrou), en répétition (guide,
   verrou, Débloquer), par le bouton et Échap dans Firefox, et avec le nœud pilotage (joystick, nœud arrêté) ;
   « Bloquer » puis « Débloquer » ne relance jamais l'ancien trajet (15 s sans mouvement, section 12.15 du plan) ;
-  pendant le blocage, « Y aller » est grisé (« Robot bloqué : « Débloquer » d'abord ») et le panneau de Naviguer
-  le dit (`TITRES_IMMOBILE`, champ `immobilise` du guide).
+  pendant le blocage, les boutons « Y aller » de Naviguer et la commande du ruban sont grisés (« Robot bloqué :
+  « Débloquer » d'abord ») et le panneau le dit (`TITRES_IMMOBILE`, champ `immobilise` du guide) : vérifié dans
+  Firefox depuis la relecture du 01/11/2026 (`Y_ALLER_GRISE`), comme Échap avec le menu « Y aller » ouvert pendant
+  l'attente du retour automatique (l'ARRÊT part : `guideActif` de `js/coque/arret.js`).
 - Revue de la vague 5 (`test_coque_navigateur.py`, fin du fichier) : l'arbre replié se rouvre ; un seul vrai
   clic sur ✓ après une saisie enregistre, Tab garde le curseur, Ctrl+S pendant une saisie ; le Plan 2D cadré
   après avoir été caché ; Échap n'arrête que ce qui tourne (`decisionEchap`) ; l'ARRÊT sans réponse et les

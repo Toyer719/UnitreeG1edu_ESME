@@ -24,7 +24,12 @@
          transient_local) et avec le faux G1 assis puis remis en marche (pas_en_marche) ; puis un
          nouveau « Y aller » repart ;
       4. Firefox sans fenêtre, robot en route : le clic sur [data-role=arret] et la touche Échap envoient
-         POST /api/arret ; le bouton passe à « Débloquer » (data-etat=bloque) ;
+         POST /api/arret ; le bouton passe à « Débloquer » (data-etat=bloque) ; pendant le blocage, les
+         boutons « Y aller » de Naviguer et la commande du ruban sont grisés, et le panneau dit « Robot
+         bloqué » (relecture du 01/11/2026) ;
+      4 bis. arrivé à une salle proche, retour automatique prévu, le menu « Y aller » du ruban ouvert : Échap
+         envoie POST /api/arret (le retour prévu compte comme un robot qui peut repartir), et rien ne part
+         pendant 15 s après « Débloquer » (relecture du 01/11/2026) ;
       5. nœud pilotage (POST /api/pilotage/demarrer), main prise, joystick à vx 0,3 par /ws/pilotage :
          « Bloquer » arrête aussi le joystick (le pilotage parle directement au robot), qui reste refusé
          pendant le blocage et après « Débloquer » tant qu'il n'est pas lâché ;
@@ -385,7 +390,10 @@ def partie_deblocage(a, obs):
     t = time.monotonic()
     r = bloquer_robot(a, True)
     verifier("trajet en cours est annulé" in (r.get("message") or ""), f"« Bloquer » : message {r.get('message')!r}")
-    verifier((r.get("guide") or 0) >= 1, f"« Bloquer » n'a pas envoyé /guide/stop au guide ({r.get('guide')})")
+    # relecture du 01/11/2026 : le champ guide compte les guides (le pont, qui écoute aussi /guide/stop, ne compte
+    # plus), et /guide/stop doit vraiment partir (l'observateur du test l'écoute)
+    verifier((r.get("guide") or 0) >= 1, f"« Bloquer » : aucun guide n'écoute /guide/stop ({r.get('guide')})")
+    attendre(lambda: any(s >= t for s in list(obs.stops)), 2.0, "« Bloquer » n'a pas publié /guide/stop")
     retard = arret_mesure(obs, t, "« Bloquer » en route")
     attendre(lambda: obs.guide().get("etat") == "attente" and obs.guide().get("immobilise") == "verrou", 2.0,
              f"après « Bloquer », le guide ne dit pas qu'il est bloqué ({obs.guide()})")
@@ -454,14 +462,33 @@ def partie_deblocage(a, obs):
     ok(f"nouveau « Y aller » {cible} : le robot repart ({obs.deplacement(t0):.2f} m)")
 
 
+# Relecture du 01/11/2026 : pendant le blocage, « Y aller » est grisé dans Naviguer (boutons du panneau et
+# commande du ruban), et le titre de l'état du guide le dit
+Y_ALLER_GRISE = """const b = Array.from(document.querySelectorAll('[data-role=salles] button'));
+const r = document.querySelector('[data-commande="navigation.y-aller"]');
+const t = document.querySelector('[data-role=guide]');
+if (!b.length || !b.every((x) => x.disabled) || !r || !r.disabled || !t) return null;
+return [b.length, b[0].title, r.title, t.textContent];"""
+ECHAP = ("document.body.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true, "
+         "cancelable: true}))")
+
+
 def partie_navigateur(a, lieu, obs):
-    """Robot en route : ARRÊT par le bouton de la page, puis Échap (outils_coque_e2e)."""
+    """Robot en route : ARRÊT par le bouton de la page, puis Échap (outils_coque_e2e) ; pendant le blocage,
+    « Y aller » grisé dans Naviguer, et le panneau le dit."""
     import outils_coque_e2e as N
     from atelier.tests import test_coque_communs as C
     attendre_roule(obs, quoi="le robot (avant le clic sur ARRÊT)")
     with N.Firefox() as nav:
         nav.taille(1366, 768)
         vu = C.parcours_arret(nav, a, "repetition", lieu=lieu, verrou=True)
+        nav.onglet("naviguer")
+        C.attendre_pret(nav)
+        grise = nav.attendre(Y_ALLER_GRISE, delai=10.0, message="« Y aller » grisé pendant le blocage")
+        verifier(grise[1].startswith("Robot bloqué") and grise[2].startswith("Robot bloqué")
+                 and grise[3].startswith("Robot bloqué"), f"« Y aller » grisé, mais les textes : {grise}")
+        vu.append(f"pendant le blocage : {grise[0]} boutons « Y aller » et la commande du ruban grisés "
+                  f"(« {grise[1]} »), panneau « {grise[3]} »")
         erreurs = nav.js("return window.erreursAtelier || []")
     verifier(not erreurs, f"erreurs JavaScript dans la page : {erreurs[:4]}")
     for phrase in vu:
@@ -469,6 +496,47 @@ def partie_navigateur(a, lieu, obs):
     time.sleep(1.0)
     verifier(vitesse_verite(obs) < SEUIL_ARRET, "navigateur : le robot roule encore après l'ARRÊT de la page")
     debloquer(a)
+
+
+def salle_proche(obs, minimum=3.0):
+    """La salle la plus proche du robot, à plus de minimum mètres (une arrivée rapide)."""
+    x, y, _ = obs.pose()
+    loin = {s: p for s, p in SALLES_DEMO.items() if math.dist((x, y), p) >= minimum and s != "accueil"}
+    return min(loin, key=lambda s: math.dist((x, y), loin[s]))
+
+
+def partie_echap_retour(a, lieu, obs):
+    """Relecture du 01/11/2026 : arrivé, retour automatique prévu, un menu ouvert : Échap fermait seulement le
+    menu et le robot partait seul 13 s plus tard. Échap doit envoyer l'ARRÊT ; rien ne part ensuite."""
+    import outils_coque_e2e as N
+    from atelier.tests import test_coque_communs as C
+    cible = salle_proche(obs)
+    with N.Firefox() as nav:
+        nav.taille(1366, 768)
+        C.ouvrir_espace(nav, a, "repetition", lieu=lieu)
+        nav.onglet("naviguer")
+        C.attendre_pret(nav)
+        aller(a, cible)
+        attendre(lambda: obs.guide().get("etat") == "arrive" and obs.guide().get("cible") == cible
+                 and obs.guide().get("retour_dans_s") is not None, 150, f"Échap : pas d'arrivée à {cible} en 150 s")
+        reste = obs.guide().get("retour_dans_s")
+        nav.commande("navigation.y-aller")          # le menu « Y aller » du ruban, ouvert pour la salle suivante
+        nav.attendre("return !!document.querySelector('.menu-ruban')", delai=5.0, message="menu « Y aller » ouvert")
+        avant = len(C.requetes(nav, "POST", "/api/arret"))
+        t = time.monotonic()
+        nav.js(ECHAP)
+        r = nav.attendre(C.DERNIER_ARRET, avant, "/api/arret", delai=3.0,
+                         message="Échap, menu ouvert, retour prévu : pas d'ARRÊT")
+        erreurs = nav.js("return window.erreursAtelier || []")
+    verifier(not erreurs, f"erreurs JavaScript dans la page : {erreurs[:4]}")
+    verifier((r.get("corps") or {}).get("mode") == "repetition", f"Échap : corps de l'ARRÊT {r.get('corps')}")
+    attendre(lambda: obs.guide().get("retour_dans_s") is None, 2.0, "après Échap, le retour automatique est encore prévu")
+    debloquer(a)
+    t_libre = time.monotonic()
+    bouge = sans_reprise(obs, t_libre, SANS_REPRISE_S, "Échap pendant l'attente du retour, puis « Débloquer »")
+    verifier("retour" not in [e.get("code") for e in obs.codes_depuis(t)], "le retour automatique est parti après Échap")
+    ok(f"Échap avec le menu « Y aller » ouvert, arrivé à {cible} (retour prévu dans {reste:.0f} s) : POST /api/arret ; "
+       f"après « Débloquer », {bouge * 100:.1f} cm en {SANS_REPRISE_S:.0f} s, pas de retour")
 
 
 class Joystick:
@@ -619,6 +687,7 @@ def critere_36(args):
         partie_guide(a, obs)
         partie_deblocage(a, obs)
         partie_navigateur(a, args.lieu, obs)
+        partie_echap_retour(a, args.lieu, obs)
         partie_pilotage(a, obs)
         verifier(not obs.non_conformes, f"/pont/etat non conforme : {obs.non_conformes[:2]}")
     finally:

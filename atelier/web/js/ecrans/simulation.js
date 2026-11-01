@@ -78,6 +78,8 @@ export const TITRES_IMMOBILE = {
   pas_en_marche: 'Pas en mode marche : il ne bouge pas',
   robot_muet: 'Le robot ne répond plus : trajet annulé',
   refus: 'Le robot refuse de marcher : trajet annulé',
+  // relecture du 01/11/2026 : le pont vers la marche ne donne plus de nouvelles (tué ou figé)
+  pont_absent: 'Pas de nouvelles du pont : il ne bouge pas',
 };
 export const MESSAGE_BLOQUE = 'Robot bloqué : le trajet en cours est annulé. Il reste immobile jusqu\'à « Débloquer », '
   + 'puis attend un nouveau « Y aller ».';
@@ -87,6 +89,7 @@ export const MESSAGE_DEBLOQUE = 'Robot débloqué : il ne repartira qu\'avec un 
 export function raisonImmobile(d, g) {
   if (verrouVu(d) || (g && g.immobilise === 'verrou')) return 'Robot bloqué : « Débloquer » d\'abord';
   if (g && g.immobilise === 'pas_en_marche') return 'Le robot n\'est pas en mode marche : remettez-le en marche d\'abord';
+  if (g && g.immobilise === 'pont_absent') return 'Pas de nouvelles du pont vers la marche : vérifiez la navigation d\'abord';
   return null;
 }
 

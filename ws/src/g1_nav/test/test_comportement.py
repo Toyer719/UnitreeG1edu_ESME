@@ -99,6 +99,19 @@ class Banc:
                            suspension=lambda: self.perdu, reglages=reglages, principal=principal,
                            personnes=self._personnes, au_evenement=self.evenements.append,
                            limiter_vitesse=self.limites.append, maitre=lambda: self.pilote)
+        # /pont/etat (section 12.15) : comme le vrai pont, le dernier état reçu est republié 2 fois
+        # par seconde pendant tourner(), sauf si le pont est mort (pont_mort)
+        self.pont_dernier = None
+        self.pont_mort = False
+        self._prochain_pont = None
+        recevoir = self.guide.etat_pont
+
+        def etat_pont(donnees):
+            self.pont_dernier = donnees
+            self._prochain_pont = self.horloge.t + 0.5
+            recevoir(donnees)
+        self._recevoir_pont = recevoir
+        self.guide.etat_pont = etat_pont
 
     def _position(self):
         return None if self.sans_position else self.moteur.position
@@ -124,6 +137,10 @@ class Banc:
             self.horloge.t += PAS_S
             if obstacle is not None:
                 self.moteur.bloquer(obstacle(self.guide, self.moteur))
+            if self.pont_dernier is not None and not self.pont_mort \
+                    and self.horloge.t >= self._prochain_pont - 1e-9:
+                self._prochain_pont += 0.5
+                self._recevoir_pont(self.pont_dernier)
             etat = self.guide.pas()
             if etat['etat'] in jusqu_a:
                 break
@@ -619,10 +636,16 @@ def test_pilotage_refuse_aller_et_arrete_la_mission(dossier):
 # Constat du 01/11/2026 : « Bloquer » ne posait que le verrou du pont ; Nav2 gardait le but, le
 # guide le trajet (bloque, détour, échec puis retour), et le robot repartait seul au « Débloquer ».
 
-def pont(etat, age_reponse_s=0.05, verrou=None):
-    """Un /pont/etat réduit à ce que le guide lit."""
+def pont(etat, age_reponse_s=0.05, verrou=None, age_cmd_vel_s=0.05, reponses=12):
+    """
+    Un /pont/etat réduit à ce que le guide lit.
+
+    age_cmd_vel_s : dernier /cmd_vel reçu par le pont (petit : Nav2 conduit ; grand ou None : au
+    repos) ; reponses : réponses du robot aux ordres de marche depuis le lancement du pont.
+    """
     return {'version': 1, 'etat': etat, 'verrou': etat == 'arret_verrouille' if verrou is None
-            else verrou, 'age_reponse_s': age_reponse_s}
+            else verrou, 'age_reponse_s': age_reponse_s, 'age_cmd_vel_s': age_cmd_vel_s,
+            'reponses': reponses}
 
 
 def immobile(banc, duree_s):
@@ -792,10 +815,19 @@ def test_verrou_vu_par_l_etat_du_pont(dossier):
     banc.guide.etat_pont(pont('pret'))
     assert banc.guide.etat()['message'] == 'Robot débloqué : il attend un nouveau « Y aller ».'
     assert immobile(banc, 20.0) == 0.0
-    # un /pont/etat de plus de 2 s ne compte plus
+    # relecture du 01/11/2026 : un pont qui se tait n'est pas un pont débloqué (pont_absent)
     banc.guide.etat_pont(pont('arret_verrouille'))
-    banc.tourner(2.4, jusqu_a=())
-    assert 'immobilise' not in banc.guide.etat() and banc.guide.aller('cdi')
+    banc.pont_mort = True
+    banc.tourner(1.8, jusqu_a=())
+    assert banc.guide.etat()['immobilise'] == 'verrou'          # le dernier état compte encore
+    banc.tourner(0.6, jusqu_a=())
+    etat = banc.guide.etat()
+    assert etat['immobilise'] == 'pont_absent' and 'débloqué' not in etat['message']
+    assert etat['message'].startswith('Plus de nouvelles du pont vers la marche')
+    assert not banc.guide.aller('cdi') and banc.guide.etat()['immobilise'] == 'pont_absent'
+    banc.pont_mort = False
+    banc.guide.etat_pont(pont('pret'))
+    assert banc.guide.aller('cdi')
 
 
 def test_pas_en_marche_annule_et_refuse(dossier):
@@ -860,13 +892,22 @@ def test_robot_muet_annule_apres_le_delai(dossier):
 
 def test_robot_qui_n_a_jamais_repondu_n_annule_pas(dossier):
     """Un robot qui ne répond jamais aux 7105 (à vérifier sur le vrai) : comme avant."""
-    banc = Banc(dossier)
-    banc.guide.etat_pont(pont('robot_muet'))
+    banc = Banc(dossier, delai_avant_retour_s=2.0)
+    banc.guide.etat_pont(pont('robot_muet', reponses=0))
     banc.guide.aller('b204')
     for _ in range(40):
-        banc.guide.etat_pont(pont('robot_muet'))
+        banc.guide.etat_pont(pont('robot_muet', reponses=0))
         banc.tourner(0.25, jusqu_a=())
     assert banc.guide.etat()['etat'] == 'en_route' and 'immobilise' not in banc.guide.etat()
+    # relecture du 01/11/2026 : comme avant jusqu'au bout, retour automatique compris
+    while banc.guide.etat()['etat'] == 'en_route':
+        banc.guide.etat_pont(pont('robot_muet', reponses=0))
+        banc.tourner(0.5, jusqu_a=())
+    assert banc.guide.etat()['etat'] == 'arrive'
+    for _ in range(12):                       # au repos : le pont reste muet (rien n'y passe)
+        banc.guide.etat_pont(pont('robot_muet', reponses=0, age_cmd_vel_s=5.0))
+        banc.tourner(0.5, jusqu_a=())
+    assert banc.codes()[-1] == 'retour' and 'immobilise' not in banc.guide.etat()
 
 
 def test_refus_qui_dure_annule_mais_pas_un_vieux_refus(dossier):
@@ -892,17 +933,290 @@ def test_refus_qui_dure_annule_mais_pas_un_vieux_refus(dossier):
     banc.conformes()
 
 
-def test_retour_automatique_pas_lance_pendant_une_panne(dossier):
+def test_reponse_perdue_au_repos_n_annule_ni_le_retour_ni_l_attente_du_passant(dossier):
+    """
+    Une réponse perdue au repos n'est pas une panne (relecture du 01/11/2026, régression).
+
+    Au repos, le pont n'envoie rien ; si la réponse à son dernier arrêt se perd, il reste
+    robot_muet. Le retour automatique part, l'attente d'un passant reprend.
+    """
     banc = Banc(dossier, delai_avant_retour_s=2.0)
     banc.guide.etat_pont(pont('pret'))
     banc.guide.aller('amphi')
     assert banc.tourner(60.0)['etat'] == 'arrive' and banc.guide.retour_prevu is not None
-    for _ in range(12):                                # muet juste avant le départ du retour
-        banc.guide.etat_pont(pont('robot_muet'))
-        banc.tourner(0.25, jusqu_a=())
-    assert banc.guide.retour_prevu is None and 'retour' not in banc.codes()
-    assert immobile(banc, 20.0) == 0.0
-    assert any('immobilis' in m for m in banc.messages)
+    t = banc.horloge.t
+    while banc.guide.etat()['mission'] != 'retour' and banc.horloge.t - t < 10.0:
+        banc.guide.etat_pont(pont('robot_muet', age_cmd_vel_s=banc.horloge.t - t + 0.4))
+        banc.tourner(0.5, jusqu_a=())
+    assert banc.codes()[-1] == 'retour' and 'immobilise' not in banc.guide.etat()
+    # pendant le retour, le robot répond de nouveau (premier ordre) : le retour va au bout
+    banc.guide.etat_pont(pont('en_mouvement'))
+    assert banc.tourner(120.0, jusqu_a=('attente', 'echec'))['etat'] == 'attente'
+    assert banc.codes()[-1] == 'retour_arrive'
+    # un passant devant : le guide arrête lui-même Nav2 ; le pont, sans consigne, reste muet
+    banc = Banc(dossier)
+    banc.guide.etat_pont(pont('en_mouvement'))
+    banc.guide.aller('b204')
+    banc.tourner(4.0, jusqu_a=())
+    banc.vues = passant_devant
+    banc.moteur.bloquer(True)
+    banc.tourner(DELAI_BLOQUE_S + 1.4, jusqu_a=('attente_passage',))
+    assert banc.guide.etat()['etat'] == 'attente_passage'
+    t = banc.horloge.t
+    for _ in range(12):
+        banc.guide.etat_pont(pont('robot_muet', age_cmd_vel_s=banc.horloge.t - t + 1.2))
+        banc.tourner(0.5, jusqu_a=())
+    assert banc.guide.etat()['etat'] == 'attente_passage' and 'immobilise' not in banc.guide.etat()
+    banc.vues = []
+    banc.moteur.bloquer(False)
+    banc.tourner(LIBRE_S, jusqu_a=('en_route',))
+    assert banc.guide.etat()['etat'] == 'en_route' and banc.codes()[-1] == 'passage_libre'
+    banc.conformes()
+
+
+def test_robot_muet_pendant_le_retour_annule_le_retour(dossier):
+    """Câble coupé au repos : le retour part, le robot ne répond pas à ses ordres : annulé."""
+    from g1_nav.guide import DELAI_PONT_PANNE_S
+    banc = Banc(dossier, delai_avant_retour_s=2.0)
+    banc.guide.etat_pont(pont('pret'))
+    banc.guide.aller('amphi')
+    assert banc.tourner(60.0)['etat'] == 'arrive'
+    banc.guide.etat_pont(pont('pret', age_cmd_vel_s=3.0))
+    banc.tourner(2.4, jusqu_a=('retour',))
+    assert banc.guide.etat()['mission'] == 'retour'
+    debut = banc.horloge.t
+    while banc.guide.etat()['mission'] == 'retour' and banc.horloge.t - debut < 5.0:
+        banc.guide.etat_pont(pont('robot_muet'))          # Nav2 conduit, le robot se tait
+        banc.tourner(0.2, jusqu_a=())
+    etat = banc.guide.etat()
+    assert etat['immobilise'] == 'robot_muet' and banc.horloge.t - debut >= DELAI_PONT_PANNE_S
+    assert etat['message'].startswith('Le robot ne répond plus aux ordres de marche : le retour')
+    assert not banc.moteur.etat()['en_cours'] and immobile(banc, 10.0) == 0.0
+
+
+def test_pont_absent_en_route_annule_sans_reprise(dossier):
+    """
+    Le pont tué en route : trajet annulé ; relancé, rien ne repart.
+
+    Relecture du 01/11/2026 : le pont tué (ou figé) en route, puis relancé, suivait de nouveau
+    l'ancien but de Nav2 (4,2 m en 15 s). Le guide annule le trajet dès que le pont se tait.
+    """
+    from g1_nav.guide import DELAI_PONT_PERIME_S
+    banc = Banc(dossier, delai_avant_retour_s=1.0)
+    banc.guide.aller('b204')
+    for _ in range(10):
+        banc.guide.etat_pont(pont('en_mouvement'))
+        banc.tourner(0.5, jusqu_a=())
+    assert banc.guide.etat()['etat'] == 'en_route'
+    banc.guide.etat_pont(pont('en_mouvement'))
+    banc.pont_mort = True                   # pont tué : plus de /pont/etat
+    t_mort = banc.horloge.t
+    banc.tourner(DELAI_PONT_PERIME_S - 0.2, jusqu_a=())
+    assert banc.guide.etat()['etat'] == 'en_route'
+    banc.tourner(0.6, jusqu_a=())
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'attente' and etat['immobilise'] == 'pont_absent'
+    assert banc.horloge.t - t_mort <= DELAI_PONT_PERIME_S + 0.5
+    assert etat['message'] == ('Plus de nouvelles du pont vers la marche : le trajet vers « Salle '
+                               'B204 » est annulé. Vérifiez que la navigation tourne encore, puis '
+                               '« Y aller ».')
+    assert not banc.moteur.etat()['en_cours'] and banc.guide.retour_prevu is None
+    e = banc.evenements[-1]
+    assert e['code'] == 'immobilise' and e['raison'] == 'pont_absent' and e['salle'] == 'b204'
+    assert immobile(banc, 10.0) == 0.0
+    assert not banc.guide.aller('cdi')
+    assert 'Plus de nouvelles du pont' in banc.guide.etat()['message']
+    # le pont relancé : demarrage, puis pret ; rien ne repart
+    banc.pont_mort = False
+    banc.guide.etat_pont(pont('demarrage', reponses=0))
+    banc.guide.etat_pont(pont('pret', reponses=1, age_cmd_vel_s=None))
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'attente' and 'immobilise' not in etat
+    assert etat['message'] == ('Le pont vers la marche répond de nouveau : le robot attend un '
+                               'nouveau « Y aller ».')
+    for _ in range(30):
+        banc.guide.etat_pont(pont('pret', reponses=1, age_cmd_vel_s=None))
+        banc.tourner(0.5, jusqu_a=())
+    assert not banc.moteur.etat()['en_cours'] and banc.etats()[-1] == 'attente'
+    assert banc.routeur.couloirs_bloques() == [] and 'retour' not in banc.codes()
+    assert banc.guide.aller('cdi') and banc.guide.etat()['etat'] == 'en_route'
+    banc.conformes()
+
+
+def test_pont_absent_pendant_l_attente_du_retour(dossier):
+    """Le pont tué juste après l'arrivée : le retour automatique ne part pas (5,2 m mesurés)."""
+    banc = Banc(dossier, delai_avant_retour_s=4.0)
+    banc.guide.etat_pont(pont('pret'))
+    banc.guide.aller('amphi')
+    while banc.guide.etat()['etat'] != 'arrive':
+        banc.guide.etat_pont(pont('en_mouvement'))
+        banc.tourner(0.5, jusqu_a=('arrive',))
+    assert banc.guide.retour_prevu is not None and banc.guide.etat()['actif'] is True
+    banc.guide.etat_pont(pont('pret', age_cmd_vel_s=0.4))
+    banc.pont_mort = True                   # pont tué pendant l'attente du retour
+    banc.tourner(2.6, jusqu_a=())
+    etat = banc.guide.etat()
+    assert etat['immobilise'] == 'pont_absent' and banc.guide.retour_prevu is None
+    assert etat['message'].startswith('Plus de nouvelles du pont vers la marche : le retour au '
+                                      'point principal est annulé.')
+    assert banc.codes()[-1] == 'immobilise' and immobile(banc, 20.0) == 0.0
+    banc.pont_mort = False
+    banc.guide.etat_pont(pont('pret', age_cmd_vel_s=None))
+    assert immobile(banc, 20.0) == 0.0 and 'retour' not in banc.codes()
+
+
+def test_pont_absent_au_repos_ne_dit_pas_que_le_robot_est_libre(dossier):
+    """Robot assis, puis le pont se tait : ni « de nouveau en mode marche », ni « Y aller »."""
+    banc = Banc(dossier)
+    banc.guide.etat_pont(pont('pret'))
+    banc.guide.aller('b204')
+    banc.tourner(3.0, jusqu_a=())
+    banc.guide.etat_pont(pont('pas_en_marche'))
+    assert banc.guide.etat()['immobilise'] == 'pas_en_marche'
+    banc.pont_mort = True
+    banc.tourner(2.4, jusqu_a=())
+    etat = banc.guide.etat()
+    assert etat['immobilise'] == 'pont_absent' and 'mode marche' not in etat['message']
+    assert etat['message'] == ('Plus de nouvelles du pont vers la marche : le robot ne bouge pas. '
+                               'Vérifiez que la navigation tourne encore avant « Y aller ».')
+    assert not banc.guide.aller('cdi') and not banc.moteur.etat()['en_cours']
+    banc.pont_mort = False
+    banc.guide.etat_pont(pont('pas_en_marche'))          # le pont revient : toujours assis
+    assert banc.guide.etat()['immobilise'] == 'pas_en_marche'
+    assert not banc.guide.aller('cdi')
+    banc.guide.etat_pont(pont('pret'))
+    assert banc.guide.etat()['message'].startswith('Le robot est de nouveau en mode marche')
+    banc.conformes()
+
+
+def test_guide_fige_ne_prend_pas_son_retard_pour_un_pont_absent(dossier):
+    """Le fil du guide occupé 3 s : au pas suivant, le pont n'est pas déclaré absent."""
+    banc = Banc(dossier)
+    banc.guide.aller('b204')
+    banc.guide.etat_pont(pont('en_mouvement'))
+    banc.tourner(1.0, jusqu_a=())
+    banc.guide.etat_pont(pont('en_mouvement'))
+    banc.horloge.t += 3.0                    # aucun pas, aucun message traité pendant 3 s
+    banc.guide.pas()
+    assert banc.guide.etat()['etat'] == 'en_route' and 'immobilise' not in banc.guide.etat()
+    banc.guide.etat_pont(pont('en_mouvement'))       # les messages en retard arrivent
+    banc.tourner(1.0, jusqu_a=())
+    assert banc.guide.etat()['etat'] == 'en_route'
+
+
+class Couple:
+    """
+    Le guide et la vraie logique du pont (g1_bridge.logique), à la même fausse horloge.
+
+    Nav2 envoie /cmd_vel au pont (20 Hz) tant que le moteur du guide roule ; le pont publie
+    /pont/etat au guide 2 fois par seconde et répond aux lectures du mode ; le robot répond aux
+    ordres de marche, sauf ceux qu'on perd (réponses best_effort) ou s'il est muet.
+    """
+
+    def __init__(self, dossier, perdre=None, repond=True, **reglages):
+        logique = pytest.importorskip('g1_bridge.logique')
+        self.logique = logique
+        self.banc = Banc(dossier, **reglages)
+        self.h = self.banc.horloge
+        self.perdre = perdre or (lambda envoi, couple: False)
+        self.repond = repond
+        self.perdues = []
+        self.non_nuls = []                   # (instant, envoi) des 7105 non nuls
+        self.n = 0
+        self.pont = None
+        self.relancer_pont()
+
+    def relancer_pont(self):
+        self.pont = self.logique.Pont(self.logique.Reglages(), horloge=self.h)
+        self._traiter(self.pont.demarrer())
+        self.pont.sur_reperage(True)
+
+    def _traiter(self, envois):
+        for e in envois:
+            if e.api_id == 7001:
+                self.pont.sur_reponse(e.identifiant, 0, '{"data": 501}', 7001)
+                continue
+            if any(abs(v) > 1e-6 for v in (e.vx, e.vy, e.wz)):
+                self.non_nuls.append((self.h.t, e))
+            if not self.repond or self.perdre(e, self):
+                self.perdues.append((round(self.h.t, 2), e.raison))
+                continue
+            self.pont.sur_reponse(e.identifiant, 0)
+
+    def tourner(self, duree, pont_vivant=True):
+        for _ in range(int(round(duree / 0.02))):
+            self.h.t = round(self.h.t + 0.02, 6)
+            self.n += 1
+            if pont_vivant:
+                lot = []
+                if self.n % 10 == 0:
+                    lot += self.pont.sur_reperage(True)
+                if self.n % 3 == 0 and self.banc.moteur.etat()['en_cours']:
+                    lot += self.pont.sur_cmd_vel(0.3, 0.0, 0.0)      # Nav2 suit le but
+                lot += self.pont.pas()
+                self._traiter(lot)
+                if self.n % 25 == 0:
+                    self.banc._recevoir_pont(self.pont.etat())
+            if self.n % 10 == 0:
+                self.banc.guide.pas()
+
+
+def test_avec_le_vrai_pont_reponse_perdue_et_robot_qui_ne_repond_jamais(dossier):
+    """
+    Avec la logique du pont : réponse perdue, puis robot qui ne répond jamais.
+
+    Relecture du 01/11/2026 : la réponse au dernier arrêt de l'arrivée se perd (le pont reste
+    robot_muet au repos) ; le retour automatique part quand même. Un robot qui ne répond jamais
+    aux ordres de marche : visite et retour, comme avant la correction.
+    """
+    def perdre(envoi, couple):
+        return (couple.banc.guide.etat()['etat'] == 'arrive' and envoi.raison == 'delai_cmd_vel'
+                and not couple.perdues)
+    c = Couple(dossier, perdre=perdre, delai_avant_retour_s=5.0)
+    assert c.banc.guide.aller('amphi')
+    c.tourner(60.0)
+    assert c.perdues and c.banc.codes() == ['depart', 'arrivee', 'retour', 'retour_arrive']
+    assert 'immobilise' not in c.banc.guide.etat()
+    c = Couple(dossier, repond=False, delai_avant_retour_s=5.0)
+    assert c.banc.guide.aller('amphi')
+    c.tourner(60.0)
+    assert c.pont.etat()['etat'] == 'robot_muet'
+    assert c.banc.codes() == ['depart', 'arrivee', 'retour', 'retour_arrive']
+
+
+def test_avec_le_vrai_pont_tue_puis_relance_rien_ne_repart(dossier):
+    """Le pont tué en route (plus rien), relancé 4 s plus tard : aucun ordre de marche non nul."""
+    c = Couple(dossier, delai_avant_retour_s=5.0)
+    assert c.banc.guide.aller('b204')
+    c.tourner(8.0)
+    assert c.banc.guide.etat()['etat'] == 'en_route' and c.non_nuls
+    c.tourner(4.0, pont_vivant=False)
+    assert c.banc.guide.etat()['immobilise'] == 'pont_absent'
+    c.relancer_pont()
+    t_relance = c.h.t
+    c.tourner(15.0)
+    assert not [e for t, e in c.non_nuls if t >= t_relance]
+    etat = c.banc.guide.etat()
+    assert etat['etat'] == 'attente' and 'immobilise' not in etat and etat['mission'] is None
+    assert 'retour' not in c.banc.codes()
+
+
+def test_champ_actif(dossier):
+    """Champ actif : mission, départ en attente, retour prévu ; faux au repos (touche Échap)."""
+    banc = Banc(dossier, delai_avant_retour_s=5.0)
+    assert banc.guide.etat()['actif'] is False
+    banc.guide.aller('amphi')
+    assert banc.guide.etat()['actif'] is True
+    assert banc.tourner(60.0)['etat'] == 'arrive'
+    assert banc.guide.etat()['actif'] is True and banc.guide.etat()['retour_dans_s'] > 0
+    banc.guide.stop()
+    assert banc.guide.etat()['actif'] is False
+    pret = {'oui': False}
+    banc.guide.preparation = lambda: None if pret['oui'] else ('attendre', 'Nav2 démarre')
+    banc.guide.aller('b204')
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'attente' and etat['actif'] is True
+    banc.conformes()
 
 
 def test_sans_nouvelles_du_pont_le_guide_fait_comme_avant(dossier):

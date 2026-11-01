@@ -422,6 +422,35 @@ def test_echap_n_arrete_que_ce_qui_tourne(sans_ros, serveur, navigateur, lieux):
     assert nav.js("return window.erreursAtelier") == []
 
 
+def test_echap_arrete_pendant_l_attente_du_retour(sans_ros, serveur, navigateur, lieux):
+    """Relecture du 01/11/2026 : arrivé, retour automatique prévu dans 13 s, un menu ouvert : Échap fermait
+    seulement le menu, et le robot partait seul. Un guide qui peut repartir d'un instant à l'autre (retour
+    prévu, départ qui attend la navigation, champ actif) compte comme un robot qui bouge : l'ARRÊT part."""
+    _, base = serveur
+    nav = navigateur
+    nav.taille(1366, 768)
+    C.ouvrir_espace(nav, base, "repetition")
+    d = nav.js_async("""const fini = arguments[arguments.length - 1];
+      import('/js/coque/arret.js').then((A) => {
+        const nav = { processus: { navigation: { en_cours: true } }, mode: 'repetition', simulation: null, pont: null,
+          maitre: null };
+        const avec = (g) => Object.assign({}, nav, { guide: Object.assign({ age_s: 0.2 }, g) });
+        const D = (d, servi) => A.decisionEchap(A.etatMouvement(d, false), servi);
+        fini([
+          D(avec({ etat: 'arrive', mission: 'visite', retour_dans_s: 13.2 }), true),
+          D(avec({ etat: 'echec', mission: 'visite', retour_dans_s: 3.0 }), true),
+          D(avec({ etat: 'attente', mission: 'visite', cible: 'b204' }), true),
+          D(avec({ etat: 'arrive', mission: 'visite', actif: true }), true),
+          D(avec({ etat: 'attente', mission: null, actif: false }), true),
+          D(avec({ etat: 'arrive', mission: 'visite', retour_dans_s: 13.2, age_s: 30 }), true),
+          A.etatMouvement(avec({ etat: 'arrive', mission: 'visite', retour_dans_s: 5 }), false).enMouvement,
+          A.guideActif({ etat: 'attente', mission: null }), A.guideActif(null),
+          A.guideActif({ etat: 'echec', mission: 'visite' }), A.guideActif({ etat: 'perdu' })]);
+      }).catch((e) => fini(String(e)));""")
+    assert d == ["arret", "arret", "arret", "arret", "local", "local", True, False, False, False, True], d
+    assert nav.js("return window.erreursAtelier") == []
+
+
 def test_arret_qui_ne_repond_pas_et_fleches_lachees(sans_ros, serveur, navigateur, lieux):
     """Revue de la vague 5 : chaque appui sur ARRÊT part, même si le précédent attend encore ; sans réponse en
     1,5 s, la barre d'état dit de prendre la télécommande. Une flèche de téléopération tenue pendant l'ARRÊT
@@ -680,11 +709,14 @@ def test_y_aller_grise_quand_le_robot_est_bloque(sans_ros, serveur, navigateur, 
         fini([R({ arret: { verrou: true } }, null), R({ pont: { verrou: true, perime: false } }, null),
               R({ pont: { verrou: true, perime: true } }, null), R({}, { immobilise: 'verrou' }),
               R({}, { immobilise: 'pas_en_marche' }), R({}, { immobilise: 'robot_muet' }), R(null, null),
-              S.TITRES_IMMOBILE.verrou, S.MESSAGE_BLOQUE, S.MESSAGE_DEBLOQUE]);
+              S.TITRES_IMMOBILE.verrou, S.MESSAGE_BLOQUE, S.MESSAGE_DEBLOQUE,
+              R({}, { immobilise: 'pont_absent' }), S.TITRES_IMMOBILE.pont_absent]);
       }).catch((e) => fini({ erreur: String(e) }));""")
     assert r[0] == r[1] == r[3] == "Robot bloqué : « Débloquer » d'abord", r
     assert r[2] is None and r[5] is None and r[6] is None, r
     assert "mode marche" in r[4], r
     assert r[7] == "Robot bloqué : il ne bouge pas"
     assert "trajet en cours est annulé" in r[8] and "nouveau « Y aller »" in r[9], r
+    # relecture du 01/11/2026 : le pont vers la marche qui ne donne plus de nouvelles grise aussi « Y aller »
+    assert r[10] and "Pas de nouvelles du pont" in r[10] and r[11].startswith("Pas de nouvelles du pont"), r
     assert nav.js("return window.erreursAtelier") == []

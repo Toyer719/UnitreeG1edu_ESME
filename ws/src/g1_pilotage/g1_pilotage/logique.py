@@ -60,6 +60,9 @@ Dire = namedtuple('Dire', 'message')              # message : dict du schéma ro
 
 DELAI_REPONSE_S = 2.0           # attente de la réponse du robot à une requête
 ROBOT_REPOND_S = 2.0            # robot_repond : une réponse il y a moins de ce temps
+# robot_muet : plus aucune réponse depuis ce temps (relecture du 01/11/2026 ; le mode est lu chaque
+# seconde : deux lectures perdues d'affilée ne suffisent pas)
+DELAI_MUET_S = 3.0
 PERIODE_FSM_S = 1.0             # lecture du mode (7001) une fois par seconde
 ECART_MIN_7105_S = 0.05         # au plus 20 ordres de marche par seconde (joystick qui inonde)
 PERIODE_PAS_S = 0.1             # pas d'une chorégraphie : 7105 renvoyé 10 fois par seconde
@@ -79,6 +82,25 @@ RELACHER_GESTE_AUTO_S = 5.0     # ... puis les bras sont relâchés (99) après 
 DUREE_GESTE_VU_S = 10.0         # champ « geste » de l'état (Vue du robot) : pendant ce temps
 
 STOP_MOVE = D.parametre_vitesse(0.0, 0.0, 0.0, 1.0)
+
+# Joystick tenu ignoré jusqu'à ce qu'il soit lâché (assemblage de la vague 5, section 12.13 ;
+# relecture du 01/11/2026, section 12.15) : pourquoi, et quoi faire. Tout ordre refusé alors que le
+# manche est tenu (ARRÊT, robot bloqué, hors du mode marche, robot muet, danse ou chorégraphie)
+# arme ce blocage : quand l'empêchement cesse, un pouce resté sur le manche ne relance pas le
+# robot.
+_REPRENDRE = ' Lâchez le joystick, puis reprenez-le pour repartir.'
+TEXTES_JOYSTICK_BLOQUE = {
+    'arret': 'Joystick : ARRÊT demandé.' + _REPRENDRE,
+    'verrou': 'Joystick : le robot a été bloqué.' + _REPRENDRE,
+    'mode': 'Joystick : le robot a quitté le mode marche.' + _REPRENDRE,
+    'muet': 'Joystick : le robot a cessé de répondre.' + _REPRENDRE,
+    'occupe': 'Joystick : une danse ou une chorégraphie était en cours.' + _REPRENDRE,
+}
+MESSAGE_CHOREGRAPHIE_MODE = ('Chorégraphie « {nom} » arrêtée : le robot n\'est plus en mode '
+                             'marche ({mode}). Elle ne reprend pas : rejouez-la quand il est de '
+                             'nouveau en marche.')
+MESSAGE_CHOREGRAPHIE_MUET = ('Chorégraphie « {nom} » arrêtée : le robot ne répond plus. Elle ne '
+                             'reprend pas : rejouez-la quand il répond de nouveau.')
 
 
 def heure_iso(mur=None):
@@ -171,8 +193,10 @@ class Pilotage:
         self.ordre_en_attente = False
         self.t_mouvement = None               # dernier ordre de marche non nul envoyé
         # après un ARRÊT, le joystick reste sans effet jusqu'à ce qu'il soit lâché (assemblage
-        # de la vague 5 : un pouce resté sur le manche ne relance pas le robot)
-        self.joystick_bloque = False
+        # de la vague 5 : un pouce resté sur le manche ne relance pas le robot) ; relecture du
+        # 01/11/2026 : aussi après tout ordre refusé (robot bloqué, hors du mode marche, muet,
+        # danse ou chorégraphie). None, ou la raison (clé de TEXTES_JOYSTICK_BLOQUE)
+        self.joystick_bloque = None
         # Correction du 01/11/2026 (section 12.15) : le verrou du pont (/pont/arret : Bloquer,
         # ARRÊT, ligne de commande) vaut aussi pour le pilotage, qui parle directement au robot :
         # posé, tout s'arrête comme à l'ARRÊT et les mouvements sont refusés ; levé, rien ne repart
@@ -248,6 +272,16 @@ class Pilotage:
     def robot_repond(self, t=None):
         t = self.maintenant() if t is None else t
         return self.t_reponse is not None and t - self.t_reponse < ROBOT_REPOND_S
+
+    def robot_muet(self, t=None):
+        """
+        Le robot a répondu, puis plus rien depuis DELAI_MUET_S (câble coupé, robot éteint).
+
+        Le mode est lu chaque seconde (7001) : un robot relié répond toujours. Un robot qui n'a
+        jamais répondu n'est pas « muet » (inconnu : il ne bloque rien, comme avant).
+        """
+        t = self.maintenant() if t is None else t
+        return self.t_reponse is not None and t - self.t_reponse >= DELAI_MUET_S
 
     def guide_en_mission(self, t=None):
         """
@@ -503,22 +537,41 @@ class Pilotage:
         if not self.a_la_main():
             return refus(409, 'Joystick : prenez la main dans l\'onglet Pilotage (le guide a la '
                               'main).')
-        occupe = self._occupe('Joystick') or self._bloque('Joystick')
+        consigne = D.consigne_marche(vx, vy, wz, self.limites)
+        nulle = all(abs(v) < 1e-3 for v in consigne)
+        raison = None
+        occupe = self._occupe('Joystick')
+        if occupe is not None:
+            raison = 'occupe'
+        else:
+            occupe = self._bloque('Joystick')
+            raison = 'verrou' if occupe is not None else None
         if occupe is None:
             fsm = self.mode_connu(t)
             if fsm is not None and fsm not in D.MODES_MARCHE and fsm not in D.MODES_COURSE:
                 occupe = refus(409, 'Joystick : ' + D.message_pas_en_marche(fsm), fsm=fsm)
+                raison = 'mode'
+            elif self.robot_muet(t):
+                occupe = refus(409, 'Joystick : le robot ne répond plus (câble, robot éteint ?). '
+                                    'Lâchez le joystick ; reprenez-le quand il répond de nouveau.')
+                raison = 'muet'
         if occupe is not None:
             if self.marche:
                 occupe.sorties.append(self._stop_move('joystick_refuse'))
+            if nulle:
+                # manche lâché pendant l'empêchement : rien à bloquer pour plus tard
+                self.joystick_bloque = None
+            elif raison is not None:
+                # relecture du 01/11/2026 : le manche tenu pendant l'empêchement devra être lâché,
+                # puis repris, quand l'empêchement cessera (rien ne repart de lui-même)
+                self.joystick_bloque = raison
             return occupe
-        consigne = D.consigne_marche(vx, vy, wz, self.limites)
         self.t_ordre = t
-        if all(abs(v) < 1e-3 for v in consigne):
+        if nulle:
             return self.lacher_joystick('manche lâché')
         if self.joystick_bloque:
-            return refus(409, 'Joystick : ARRÊT demandé. Lâchez le joystick, puis reprenez-le '
-                              'pour repartir.')
+            return refus(409, TEXTES_JOYSTICK_BLOQUE.get(self.joystick_bloque,
+                                                         TEXTES_JOYSTICK_BLOQUE['arret']))
         self.consigne = consigne
         self.marche = True
         self.message = 'Marche au joystick.'
@@ -539,13 +592,18 @@ class Pilotage:
                            'joystick')
 
     def joystick_ouvert(self):
-        """Un joystick (WebSocket) s'ouvre : le blocage d'après un ARRÊT ne vaut pas pour lui."""
-        self.joystick_bloque = False
+        """
+        Un joystick (WebSocket) s'ouvre : le blocage d'avant ne vaut pas pour lui.
+
+        S'il est pris pendant un empêchement (robot bloqué…), son premier ordre est refusé et le
+        bloque de nouveau (relecture du 01/11/2026 : page rechargée pendant un blocage).
+        """
+        self.joystick_bloque = None
         return Resultat(200, {'consigne': self._consigne_dict()})
 
     def lacher_joystick(self, raison='WebSocket fermé'):
         """Manche lâché ou WebSocket fermé : StopMove tout de suite si le robot marchait."""
-        self.joystick_bloque = False          # lâché : le joystick refonctionne (après un ARRÊT)
+        self.joystick_bloque = None           # lâché : le joystick refonctionne (après un ARRÊT)
         if not self.marche:
             self.consigne = (0.0, 0.0, 0.0)
             return Resultat(200, {'consigne': self._consigne_dict()})
@@ -1042,7 +1100,7 @@ class Pilotage:
         """
         t = self.maintenant()
         self.t_arret = t
-        self.joystick_bloque = True
+        self.joystick_bloque = 'arret'
         if self.danse is not None:
             # aucun ordre connu n'interrompt une danse : StopMove seulement (à vérifier)
             self.message = ('ARRÊT envoyé (StopMove) : une danse du robot ne s\'interrompt pas, '
@@ -1051,20 +1109,46 @@ class Pilotage:
             return Resultat(200, {'detail': self.message, 'danse': True},
                             [self._stop_move('arret_danse')])
         sorties = [self._stop_move('arret')]
-        if self.lecture is not None:
-            lec = self.lecture
-            self.lecture = None
-            if lec.bras and lec.poids > TOLERANCE_POIDS:
-                self.descente = {'t0': t, 'poids0': lec.poids, 'q': dict(lec.q),
-                                 'q_taille': lec.q_taille,
-                                 'id': lec.d['id']}
-        if self.bras_tenus or (self.t_geste is not None and t - self.t_geste < DUREE_GESTE_S):
-            sorties.append(self._envoi('arm', 7106, D.parametre_geste(D.GESTE_RELACHER),
-                                       f'geste:{D.GESTE_RELACHER}'))
-            self._voir_geste('bras', D.GESTE_RELACHER, sorties[-1])
+        self._couper_lecture(t)
+        sorties += self._relacher_bras(t)
         sorties.append(ArretGuide(f'ARRÊT ({par})'))
         self.message = 'ARRÊT : robot arrêté.'
         return Resultat(200, {'detail': self.message}, sorties)
+
+    def _couper_lecture(self, t):
+        """Arrête la chorégraphie en cours : plus aucun pas, poids des bras ramené à 0 en 1 s."""
+        lec, self.lecture = self.lecture, None
+        if lec is not None and lec.bras and lec.poids > TOLERANCE_POIDS:
+            self.descente = {'t0': t, 'poids0': lec.poids, 'q': dict(lec.q),
+                             'q_taille': lec.q_taille, 'id': lec.d['id']}
+        return lec
+
+    def _relacher_bras(self, t):
+        """Geste 99 (bras relâchés) si les bras tiennent un geste, ou viennent d'en faire un."""
+        if self.bras_tenus or (self.t_geste is not None and t - self.t_geste < DUREE_GESTE_S):
+            envoi = self._envoi('arm', 7106, D.parametre_geste(D.GESTE_RELACHER),
+                                f'geste:{D.GESTE_RELACHER}')
+            self._voir_geste('bras', D.GESTE_RELACHER, envoi)
+            return [envoi]
+        return []
+
+    def _surveiller_lecture(self, t):
+        """
+        Arrête la chorégraphie si le robot quitte le mode marche ou cesse de répondre.
+
+        Relecture du 01/11/2026 : assis ou amorti à la télécommande, câble débranché ; comme à
+        l'ARRÊT (sans /guide/stop). Elle ne reprend jamais seule quand il revient en marche.
+        """
+        fsm = self.mode_connu(t)
+        hors_marche = fsm is not None and fsm not in D.MODES_MARCHE
+        if not hors_marche and not self.robot_muet(t):
+            return []
+        sorties = [self._stop_move('choregraphie_interrompue')]
+        lec = self._couper_lecture(t)
+        sorties += self._relacher_bras(t)
+        modele = MESSAGE_CHOREGRAPHIE_MODE if hors_marche else MESSAGE_CHOREGRAPHIE_MUET
+        self.message = modele.format(nom=lec.d['nom'], mode=D.nom_mode(fsm) if hors_marche else '')
+        return sorties
 
     def sur_verrou(self, actif, par='verrou du pont'):
         """
@@ -1084,6 +1168,7 @@ class Pilotage:
             self.message = 'Robot débloqué : il ne bougera qu\'à la prochaine commande.'
             return Resultat(200, {'detail': self.message, 'verrou': False})
         r = self.arret(par)
+        self.joystick_bloque = 'verrou'
         sorties = [s for s in r.sorties if not isinstance(s, ArretGuide)]
         self.message = ('Robot bloqué (Naviguer › Bloquer, ou ARRÊT) : il ne bouge plus jusqu\'à '
                         '« Débloquer ».')
@@ -1164,6 +1249,8 @@ class Pilotage:
             self._suivre_danse(t)
         sorties += self._relacher_geste_auto(t)
         if self.lecture is not None:
+            sorties += self._surveiller_lecture(t)
+        if self.lecture is not None:
             sorties += self._pas_lecture(t)
         elif self.descente is not None:
             sorties += self._pas_descente(t)
@@ -1185,11 +1272,7 @@ class Pilotage:
 
     def arreter_bras(self):
         """Avant de quitter : chorégraphie arrêtée, descente du poids des bras commencée."""
-        if self.lecture is not None:
-            lec, self.lecture = self.lecture, None
-            if lec.bras and lec.poids > TOLERANCE_POIDS:
-                self.descente = {'t0': self.maintenant(), 'poids0': lec.poids, 'q': dict(lec.q),
-                                 'q_taille': lec.q_taille, 'id': lec.d['id']}
+        self._couper_lecture(self.maintenant())
 
 
 PERIODE_PAS_BRAS_S = 1.0 / D.FREQUENCE_BRAS_HZ

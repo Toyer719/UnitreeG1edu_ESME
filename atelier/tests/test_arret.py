@@ -20,16 +20,18 @@ from .test_serveur_communs import client, faux_bin, journaux, lieux  # noqa: F40
 class FauxPont:
     """Les méthodes du pont ROS 2 dont l'ARRÊT se sert, sans ROS."""
 
-    def __init__(self, pont, ecoute=1, panne=None, lent=0.0):
+    def __init__(self, pont, ecoute=1, panne=None, lent=0.0, guides=1):
         self.stops = 0
         self.verrous = []
         self.ecoute = ecoute
+        self.guides = guides
         self.panne = panne
         self.lent = lent
         pont.actif = True
         pont.erreur = None
         pont.stop = self.stop
         pont.bloquer = self.bloquer
+        pont.guides_a_l_ecoute = lambda: self.guides
         pont.dernier = lambda sujet: None
 
     def stop(self):
@@ -239,11 +241,13 @@ def test_demande_mal_formee_jamais_refusee(client, sans_pilotage, corps):
 
 
 def test_bloquer_de_naviguer_met_a_jour_le_meme_etat(client):
-    pont = FauxPont(_etat(client).pont)
+    # deux abonnés à /guide/stop (le guide et le pont vers la marche) : un seul guide
+    pont = FauxPont(_etat(client).pont, ecoute=2, guides=1)
     r = client.post("/api/robot/arret", json={"verrou": True})
     assert r.status_code == 200 and pont.verrous == [True]
-    # section 12.15 : « Bloquer » envoie aussi /guide/stop (trajet annulé, rien ne repart au déblocage)
-    assert pont.stops == 1 and r.json()["guide"] == 1
+    # section 12.15 : « Bloquer » envoie aussi /guide/stop (trajet annulé, rien ne repart au déblocage) ;
+    # relecture du 01/11/2026 : le champ guide compte les guides, pas le pont qui écoute aussi
+    assert pont.stops == 1 and r.json()["guide"] == 1 and r.json()["ecoute"] == 2
     assert r.json()["message"] == A.MESSAGE_BLOQUE and "trajet en cours est annulé" in A.MESSAGE_BLOQUE
     a = client.get("/api/arret").json()
     assert a["verrou"] is True and a["par"] == "bloquer"

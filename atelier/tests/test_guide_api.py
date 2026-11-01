@@ -134,10 +134,15 @@ def test_aller_pendant_un_blocage_avertit(client, monkeypatch, cas):
         assert r.json()["immobilise"] == "pas_en_marche" and "mode marche" in r.json()["avertissement"]
     else:
         assert r.json()["immobilise"] == "verrou" and "Débloquer" in r.json()["avertissement"]
-    # un /pont/etat périmé ne compte pas
+    # relecture du 01/11/2026 : un /pont/etat périmé n'est plus un pont débloqué, mais un pont absent (le guide
+    # refusera) ; sans guide à l'écoute, seul l'avertissement « Le guide ne tourne pas » reste
     if cas == "verrou_pont":
         monkeypatch.setattr(etat.pont, "etat_pont", lambda: dict(pont_etat, perime=True))
-        assert "avertissement" not in client.post("/api/guide/aller", json={"cible": "b204"}).json()
+        d = client.post("/api/guide/aller", json={"cible": "b204"}).json()
+        assert d["immobilise"] == "pont_absent" and "Plus de nouvelles du pont" in d["avertissement"], d
+        monkeypatch.setattr(etat.pont, "aller", lambda message: 0)
+        d = client.post("/api/guide/aller", json={"cible": "b204"}).json()
+        assert "immobilise" not in d and "Le guide ne tourne pas" in d["avertissement"], d
 
 
 def test_evenements_et_faux_visiteur(client):

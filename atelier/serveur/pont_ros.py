@@ -37,6 +37,7 @@ from atelier.lieu import quaternion_vers_cap
 from atelier.lieu.equipe import SUJET_ETAT_CAMERA, SUJETS_IMAGES
 
 PERIMEE_S = 2.0      # s : au-delà, la position du robot est signalée comme ancienne
+NOEUD_GUIDE = "guide"     # nom du nœud du guide (g1_nav, navigation.launch.py le lance sans le renommer)
 REPERAGE_PERIME_S = 2.0   # s : au-delà, /reperage/etat et /pont/etat sont tenus pour muets
 FINS_REPERAGE = ("repere", "echec")
 
@@ -288,11 +289,23 @@ class PontRos:
         return self._pub_aller.get_subscription_count()
 
     def stop(self):
-        """Publie sur /guide/stop. Renvoie le nombre de nœuds qui écoutent ce sujet."""
+        """Publie sur /guide/stop. Renvoie le nombre de nœuds qui écoutent ce sujet (le guide, mais aussi le pont
+        vers la marche g1_bridge, qui s'arrête aussi sur /guide/stop)."""
         if not self.actif:
             raise RuntimeError(self.erreur or "le pont ROS 2 n'est pas démarré")
         self._pub_stop.publish(self._Vide())
         return self._pub_stop.get_subscription_count()
+
+    def guides_a_l_ecoute(self):
+        """Nombre de guides (nœuds nommés « guide », g1_nav) abonnés à /guide/stop ; le pont vers la marche, qui
+        l'écoute aussi, ne compte pas (relecture du 01/11/2026). None si on ne peut pas le savoir."""
+        if not self.actif or self._noeud is None:
+            return None
+        try:
+            infos = self._noeud.get_subscriptions_info_by_topic("/guide/stop")
+        except Exception:       # noqa: BLE001 : graphe ROS indisponible (arrêt en cours)
+            return None
+        return sum(1 for i in infos if i.node_name == NOEUD_GUIDE)
 
     def reperer(self, demande):
         """Publie une demande de repérage (dict {id, x?, y?, theta?}) sur /reperage/demander.

@@ -28,13 +28,19 @@ Robot immobilisé (correction du 01/11/2026, section 12.15 du plan) : le pont je
 quand le robot est bloqué (/pont/arret), pas en mode marche, muet ou qu'il refuse de marcher ;
 Nav2, lui, continuerait de suivre l'ancien but, et le robot repartirait seul dès la levée. Le guide
 annule donc lui-même son trajet, le retour automatique prévu et le départ en attente :
-  verrou, pas_en_marche  tout de suite ; « Y aller » est refusé (echec, événement immobilise) tant
-                         que cela dure ;
-  robot_muet, refus      après DELAI_PONT_PANNE_S, pendant une mission (robot_muet : seulement si
-                         le robot a répondu pendant cette mission) ; « Y aller » reste permis.
+  verrou, pas_en_marche, tout de suite ; « Y aller » est refusé (echec, événement immobilise) tant
+  pont_absent            que cela dure. pont_absent : le pont, déjà vu, ne publie plus /pont/etat
+                         (tué, figé : relancé, il suivrait l'ancien but de Nav2) ;
+  robot_muet, refus      après DELAI_PONT_PANNE_S, seulement pendant que Nav2 conduit le robot
+                         (en_route, retour, bloque, detour) et que le pont reçoit ses consignes
+                         (robot_muet : et seulement si le robot a déjà répondu) ; au repos, le pont
+                         garde ces états (une réponse perdue) : ce n'est pas une panne en cours.
+                         « Y aller » reste permis.
 L'état passe à attente, avec un message qui dit quoi faire, le champ immobilise de /guide/etat et
 l'événement immobilise (« Je ne peux pas bouger pour le moment. »). À la levée, rien ne repart : le
-robot attend un nouveau « Y aller ».
+robot attend un nouveau « Y aller ». Relecture du 01/11/2026 : champ actif de /guide/etat (le
+robot peut bouger d'un instant à l'autre : mission, départ en attente, retour prévu), pour la
+touche Échap.
 
 États (atelier.lieu.comportement.ETATS_GUIDE) :
   attente          au repos ; après un retour, au point principal, tourné selon sa flèche ; aussi
@@ -194,19 +200,28 @@ FENETRE_VITESSE_S = 4.0
 VITESSE_MESURABLE_M_S = 0.05
 POURCENTAGE_MIN = 10.0
 
-# Robot immobilisé (correction du 01/11/2026, section 12.15 du plan). /pont/etat plus vieux que
-# DELAI_PONT_PERIME_S est ignoré (le pont le publie 2 fois par seconde et à chaque changement).
-# Bloquants (« Y aller » refusé, trajet annulé tout de suite) : le verrou et le mode du robot.
-# Pannes (trajet annulé après DELAI_PONT_PANNE_S) : le robot muet ou qui refuse. « Y aller » reste
-# permis pendant une panne : au repos, le pont n'envoie rien, et ne verrait donc jamais la fin
-# d'une panne si on attendait qu'elle cesse.
+# Robot immobilisé (correction du 01/11/2026, section 12.15 du plan). Le pont publie /pont/etat 2
+# fois par seconde et à chaque changement : un pont déjà vu qui se tait depuis DELAI_PONT_PERIME_S
+# (et PAS_SANS_PONT pas du guide : un guide resté figé ne prend pas son propre retard pour un pont
+# muet) est absent (pont_absent). Jusque-là, son dernier état compte.
+# Bloquants (« Y aller » refusé, trajet annulé tout de suite) : le verrou, le mode du robot, le
+# pont absent. Pannes (trajet annulé après DELAI_PONT_PANNE_S) : le robot muet ou qui refuse,
+# seulement pendant que Nav2 conduit (ETATS_ROULANT) et que le pont reçoit ses consignes : au
+# repos, le pont n'envoie rien et garde l'état de sa dernière réponse (perdue : robot_muet ;
+# refusée : refus).
+# « Y aller » reste permis pendant une panne : au repos, on ne verrait jamais sa fin.
 DELAI_PONT_PERIME_S = 2.0
+PAS_SANS_PONT = 5               # pas() du guide (5 par seconde) sans /pont/etat, au moins
 DELAI_PONT_PANNE_S = 2.0
 DELAI_REFUS_FRAIS_S = 1.0       # refus : la dernière réponse (refusée) date de moins que cela
+DELAI_CMD_VEL_ACTIF_S = 1.0     # robot_muet : le pont a reçu un /cmd_vel il y a moins que cela
 DELAI_STOP_VERROU_S = 2.0       # /guide/stop puis le verrou de peu après : le même arrêt
-BLOCANTS = ('verrou', 'pas_en_marche')
+BLOCANTS = ('verrou', 'pas_en_marche', 'pont_absent')
 PANNES_PONT = ('robot_muet', 'refus')
 ETATS_PONT_OK = ('pret', 'en_mouvement')
+# États où Nav2 conduit le robot (but envoyé) : les seuls où une panne du pont compte (relecture
+# du 01/11/2026 : en attente d'un passant, du visiteur ou du repérage, le guide a arrêté Nav2)
+ETATS_ROULANT = ('en_route', 'retour', 'bloque', 'detour')
 assert set(BLOCANTS + PANNES_PONT) == set(RAISONS_IMMOBILE)
 # Ce qui est annulé, puis quoi faire ({quoi} : « Le trajet vers « Salle B204 » », « Le retour au
 # point principal »...), et le message quand l'empêchement cesse
@@ -219,6 +234,8 @@ TEXTES_IMMOBILE = {
                    'câble et le robot, puis « Y aller ».'),
     'refus': ('Le robot refuse de marcher : {quoi} est annulé. Vérifiez son mode à la '
               'télécommande, puis « Y aller ».'),
+    'pont_absent': ('Plus de nouvelles du pont vers la marche : {quoi} est annulé. Vérifiez que '
+                    'la navigation tourne encore, puis « Y aller ».'),
 }
 TEXTES_REFUS_IMMOBILE = {
     'verrou': ('Robot bloqué : « Y aller » refusé. Cliquez sur « Débloquer », puis de nouveau sur '
@@ -226,18 +243,30 @@ TEXTES_REFUS_IMMOBILE = {
     'pas_en_marche': ('Le robot n\'est pas en mode marche : « Y aller » refusé. Remettez-le en '
                       'marche (télécommande, ou « Démarrer » dans Piloter), puis de nouveau '
                       '« Y aller ».'),
+    'pont_absent': ('Plus de nouvelles du pont vers la marche : « Y aller » refusé. Vérifiez que '
+                    'la navigation tourne encore, puis de nouveau « Y aller ».'),
 }
 TEXTES_BLOQUE_AU_REPOS = {
     'verrou': 'Robot bloqué : il ne bouge plus. « Débloquer », puis « Y aller » pour repartir.',
     'pas_en_marche': ('Le robot n\'est pas en mode marche : il ne bouge pas. Remettez-le en '
                       'marche (télécommande, ou « Démarrer » dans Piloter) avant « Y aller ».'),
+    'pont_absent': ('Plus de nouvelles du pont vers la marche : le robot ne bouge pas. Vérifiez '
+                    'que la navigation tourne encore avant « Y aller ».'),
 }
 TEXTES_LEVEE = {
     'verrou': 'Robot débloqué : il attend un nouveau « Y aller ».',
     'pas_en_marche': 'Le robot est de nouveau en mode marche : il attend un nouveau « Y aller ».',
     'robot_muet': 'Le robot répond de nouveau : il attend un nouveau « Y aller ».',
     'refus': 'Le robot ne refuse plus de marcher : il attend un nouveau « Y aller ».',
+    'pont_absent': ('Le pont vers la marche répond de nouveau : le robot attend un nouveau '
+                    '« Y aller ».'),
 }
+
+
+def _nombre(valeur, maximum):
+    """Vrai si valeur est un nombre (pas un booléen) d'au plus maximum (âges de /pont/etat)."""
+    return (isinstance(valeur, (int, float)) and not isinstance(valeur, bool)
+            and math.isfinite(valeur) and valeur <= maximum)
 
 
 def distance_segment(p, a, b):
@@ -328,10 +357,12 @@ class Guide:
         self._suivi = SuiviVisiteur()
         self._accompagner = False
         # Robot immobilisé (section 12.15) : dernier /pont/arret, dernier /pont/etat (état,
-        # instant, verrou, panne), début d'une panne du pont, et l'empêchement en cours ou la panne
-        # qui a annulé le dernier trajet (champ immobilise de /guide/etat), avec son message
+        # instant, verrou, panne, le robot a déjà répondu), pas du guide depuis, début d'une panne
+        # du pont, et l'empêchement en cours ou la panne qui a annulé le dernier trajet (champ
+        # immobilise de /guide/etat), avec son message
         self._verrou_sujet = False
         self._pont = None
+        self._pas_sans_pont = 0
         self._panne_depuis = None
         self._pont_ok_vu = False
         self._immobilise = None
@@ -439,25 +470,41 @@ class Guide:
             return
         t = self.horloge()
         etat = donnees['etat']
-        # une panne qui dure : robot muet, ou refus de ce que le pont envoie maintenant (au
-        # repos, le pont n'envoie rien et garde le code de la dernière réponse : ce n'est pas
-        # une panne en cours)
-        age = donnees.get('age_reponse_s')
-        refus_frais = (isinstance(age, (int, float)) and not isinstance(age, bool)
-                       and age <= DELAI_REFUS_FRAIS_S)
-        panne = etat if etat == 'robot_muet' or (etat == 'refus' and refus_frais) else None
+        # une panne en cours : le robot ne répond pas aux consignes que le pont reçoit de Nav2 en
+        # ce moment (robot_muet), ou refuse ce que le pont lui envoie maintenant (refus). Au repos,
+        # le pont n'envoie rien et garde l'état de sa dernière réponse : une réponse perdue le
+        # laisse en robot_muet, un vieux refus en refus ; ce ne sont pas des pannes en cours
+        # (relecture du 01/11/2026 : le retour automatique et l'attente d'un passant étaient
+        # annulés)
+        refus_frais = _nombre(donnees.get('age_reponse_s'), DELAI_REFUS_FRAIS_S)
+        commande = _nombre(donnees.get('age_cmd_vel_s'), DELAI_CMD_VEL_ACTIF_S)
+        if etat == 'robot_muet' and commande:
+            panne = 'robot_muet'
+        elif etat == 'refus' and refus_frais:
+            panne = 'refus'
+        else:
+            panne = None
         if panne is None:
             self._panne_depuis = None
         elif self._pont is None or self._pont[3] != panne or self._panne_depuis is None:
             self._panne_depuis = t
         if etat in ETATS_PONT_OK:
             self._pont_ok_vu = True
-        self._pont = (etat, t, donnees.get('verrou') is True or etat == 'arret_verrouille', panne)
+        # le robot a déjà répondu à un ordre de marche depuis le lancement du pont : un robot qui
+        # se tait alors est en panne ; un robot qui n'a jamais répondu (à vérifier sur le vrai G1)
+        # est laissé faire, comme avant
+        reponses = donnees.get('reponses')
+        a_repondu = (isinstance(reponses, int) and not isinstance(reponses, bool)
+                     and reponses > 0)
+        self._pont = (etat, t, donnees.get('verrou') is True or etat == 'arret_verrouille', panne,
+                      a_repondu)
+        self._pas_sans_pont = 0
         self._revoir_immobile(t)
 
     def pas(self):
         """Lit l'état du moteur et fait avancer la machine à états. Renvoie etat()."""
         maintenant = self.horloge()
+        self._pas_sans_pont += 1
         if self._revoir_immobile(maintenant):
             return self.etat()
         if self._en_attente is not None:
@@ -528,9 +575,12 @@ class Guide:
         if self._retour_prevu is not None:
             etat['retour_dans_s'] = round(max(0.0, self._retour_prevu - maintenant), 1)
         if self._immobilise is not None:
-            # section 12.15 : pourquoi le robot ne bouge pas (verrou, pas_en_marche), ou la panne
-            # qui a annulé le dernier trajet (robot_muet, refus), tant qu'elle dure
+            # section 12.15 : pourquoi le robot ne bouge pas (verrou, pas_en_marche, pont_absent),
+            # ou la panne qui a annulé le dernier trajet (robot_muet, refus), tant qu'elle dure
             etat['immobilise'] = self._immobilise
+        # relecture du 01/11/2026 : le robot peut bouger d'un instant à l'autre (mission, départ
+        # en attente, retour prévu) ; la touche Échap envoie alors l'ARRÊT
+        etat['actif'] = self._actif()
         return etat
 
     @property
@@ -620,7 +670,9 @@ class Guide:
             return
         if self._pilote():
             return
-        empeche = self._blocage() or self._panne_pont(self.horloge(), en_mission=False)
+        # verrou, mode du robot, pont absent ; une panne (robot muet, refus) ne se voit qu'en
+        # marche : elle sera vue pendant le retour (relecture du 01/11/2026)
+        empeche = self._blocage()
         if empeche is not None:
             self.journal(f'pas de retour automatique : robot immobilisé ({empeche})')
             return
@@ -635,7 +687,7 @@ class Guide:
         if pose is None or (self.suspension and self.suspension()):
             self.journal('retour annulé : la position du robot est inconnue')
             return
-        empeche = self._blocage() or self._panne_pont(self.horloge(), en_mission=False)
+        empeche = self._blocage()
         if empeche is not None:
             self.journal(f'retour annulé : robot immobilisé ({empeche})')
             return
@@ -870,44 +922,62 @@ class Guide:
         return (self._etat in ETATS_ACTIFS or self._en_attente is not None
                 or self._retour_prevu is not None)
 
+    def _pont_absent(self, maintenant):
+        """
+        Vrai si le pont, déjà vu, ne publie plus /pont/etat (tué, figé).
+
+        Il faut DELAI_PONT_PERIME_S et PAS_SANS_PONT pas du guide sans nouvelles : un guide resté
+        figé (fil occupé) ne prend pas son propre retard pour un pont muet.
+        """
+        return (self._pont is not None and maintenant - self._pont[1] > DELAI_PONT_PERIME_S
+                and self._pas_sans_pont >= PAS_SANS_PONT)
+
     def _pont_frais(self, maintenant):
-        """(état, instant, verrou, panne) du dernier /pont/etat s'il a moins de 2 s, sinon None."""
-        if self._pont is None or maintenant - self._pont[1] > DELAI_PONT_PERIME_S:
+        """
+        (état, instant, verrou, panne, a_repondu) du dernier /pont/etat, ou None.
+
+        None : jamais reçu, ou pont absent. Jusqu'à l'absence, le dernier état compte (relecture
+        du 01/11/2026 : un état trop vieux était lu comme « rien n'empêche »).
+        """
+        if self._pont is None or self._pont_absent(maintenant):
             return None
         return self._pont
 
     def _blocage(self, maintenant=None):
-        """Renvoie verrou ou pas_en_marche si le robot ne peut pas marcher maintenant, ou None."""
+        """verrou, pont_absent ou pas_en_marche si le robot ne peut pas marcher, sinon None."""
         maintenant = self.horloge() if maintenant is None else maintenant
         pont = self._pont_frais(maintenant)
         if self._verrou_sujet or (pont is not None and pont[2]):
             return 'verrou'
+        if self._pont_absent(maintenant):
+            return 'pont_absent'
         if pont is not None and pont[0] == 'pas_en_marche':
             return 'pas_en_marche'
         return None
 
-    def _panne_pont(self, maintenant, en_mission=True):
-        """
-        robot_muet ou refus si le pont est en panne, sinon None.
+    def _roule(self):
+        """Vrai si Nav2 conduit le robot en ce moment (but envoyé) : ETATS_ROULANT."""
+        return self._etat in ETATS_ROULANT and self._en_attente is None
 
-        en_mission : il faut que la panne dure depuis DELAI_PONT_PANNE_S (un ordre perdu n'annule
-        pas une visite), et, pour robot_muet, que le robot ait répondu pendant ce trajet. Sinon
-        (départ d'un retour automatique) : la panne en cours, tout de suite.
+    def _panne_pont(self, maintenant):
+        """
+        robot_muet ou refus si le pont est en panne depuis DELAI_PONT_PANNE_S, sinon None.
+
+        Un ordre perdu n'annule pas une visite ; robot_muet ne compte que si le robot a déjà
+        répondu (pendant ce trajet, ou depuis le lancement du pont).
         """
         pont = self._pont_frais(maintenant)
         if pont is None or pont[3] is None:
             return None
-        if not en_mission:
-            return pont[3]
         if self._panne_depuis is None or maintenant - self._panne_depuis < DELAI_PONT_PANNE_S:
             return None
-        if pont[3] == 'robot_muet' and not self._pont_ok_vu:
+        if pont[3] == 'robot_muet' and not (self._pont_ok_vu or pont[4]):
             return None
         return pont[3]
 
     def _revoir_immobile(self, maintenant):
         """
-        Verrou, mode et pannes du pont : annule ce qui bougerait, ou dit que l'empêchement cesse.
+        Verrou, mode, pont absent, pannes : annule ce qui bougerait, ou dit que cela cesse.
 
         Renvoie True si quelque chose vient d'être annulé (le pas s'arrête là).
         """
@@ -917,7 +987,9 @@ class Guide:
                 self._interrompre(blocage)
                 return True
             return False
-        panne = self._panne_pont(maintenant) if self._actif() else None
+        # une panne ne compte que pendant que Nav2 conduit (relecture du 01/11/2026 : pas pendant
+        # l'attente d'un passant, du visiteur, du repérage, ni avant un retour prévu)
+        panne = self._panne_pont(maintenant) if self._roule() else None
         if panne is not None:
             self._interrompre(panne)
             return True

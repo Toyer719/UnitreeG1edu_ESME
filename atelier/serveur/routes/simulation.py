@@ -265,19 +265,25 @@ AVERTISSEMENTS_IMMOBILE = {
                "nouveau sur « Y aller »."),
     "pas_en_marche": ("Le robot n'est pas en mode marche : le guide refusera d'y aller. Remettez-le en marche "
                       "(télécommande, ou « Démarrer » dans Piloter), puis de nouveau « Y aller »."),
+    # relecture du 01/11/2026 : le pont vers la marche, déjà vu, ne donne plus de nouvelles
+    "pont_absent": ("Plus de nouvelles du pont vers la marche : le guide refusera d'y aller. Vérifiez que la "
+                    "navigation tourne encore (« Ce qui tourne »), puis de nouveau « Y aller »."),
 }
 
 
-def robot_immobilise(etat):
-    """Section 12.15 : « verrou » ou « pas_en_marche » si le guide refusera « Y aller » (répétition et robot :
-    verrou posé par l'Atelier ou vu par le pont, mode du robot qui n'est pas la marche), sinon None. En
-    simulation, il n'y a pas de pont : un verrou resté posé ne compte pas."""
+def robot_immobilise(etat, guide_lance=True):
+    """Section 12.15 : « verrou », « pas_en_marche » ou « pont_absent » si le guide refusera « Y aller »
+    (répétition et robot : verrou posé par l'Atelier ou vu par le pont, mode du robot qui n'est pas la marche,
+    pont vers la marche qui ne donne plus de nouvelles alors qu'un guide tourne), sinon None. En simulation, il
+    n'y a pas de pont : un verrou resté posé ne compte pas."""
     if etat.mode_navigation() not in ("repetition", "robot"):
         return None
     pont = etat.pont.etat_pont()
     frais = pont if pont and not pont.get("perime") else None
     if (getattr(etat, "arret", None) or {}).get("verrou") or (frais and frais.get("verrou")):
         return "verrou"
+    if pont and pont.get("perime") and guide_lance:
+        return "pont_absent"
     if frais and frais.get("etat") == "pas_en_marche":
         return "pas_en_marche"
     return None
@@ -322,8 +328,9 @@ def aller(demande: DemandeAller, request: Request):
         reponse["avertissement"] = ("Le robot est piloté à la main (Réel › Piloter) : le guide refusera "
                                     "d'y aller. Rendez d'abord la main.")
     else:
-        # section 12.15 : robot bloqué ou pas en mode marche, le guide refuse (la demande n'est pas gardée)
-        raison = robot_immobilise(etat)
+        # section 12.15 : robot bloqué, pas en mode marche ou pont absent, le guide refuse (la demande n'est
+        # pas gardée)
+        raison = robot_immobilise(etat, guide_lance=bool(ecoute))
         if raison is not None:
             reponse["avertissement"] = AVERTISSEMENTS_IMMOBILE[raison]
             reponse["immobilise"] = raison

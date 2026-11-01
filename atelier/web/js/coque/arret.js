@@ -34,9 +34,20 @@ export const ETATS_EN_MISSION = ['en_route', 'retour', 'bloque', 'detour', 'atte
 // Commandes lancées par l'Atelier qui font (ou peuvent faire) bouger le robot
 const ROLES_QUI_BOUGENT = ['simulation', 'navigation', 'faux_slam', 'pilotage', 'scan'];
 
+// Le guide peut faire bouger le robot d'un instant à l'autre, d'après son /guide/etat : mission en cours, mais aussi
+// retour automatique prévu (retour_dans_s) ou départ qui attend la navigation (attente avec une mission). Champ
+// actif du guide (relecture du 01/11/2026) ; pour un guide d'avant, les deux autres signes.
+export function guideActif(g) {
+  if (!g) return false;
+  if (g.actif === true || ETATS_EN_MISSION.indexOf(g.etat) >= 0) return true;
+  if (g.retour_dans_s !== undefined && g.retour_dans_s !== null) return true;
+  return g.etat === 'attente' && !!g.mission;
+}
+
 // Ce qui peut bouger, d'après un message de /ws/etat (d, ou null s'il n'y en a pas encore) et les flèches
 // tenues dans la page (local) : {connu, enMouvement, tourne: [noms]}. enMouvement : le robot bouge ou peut
-// repartir à l'instant (guide en mission, pont qui envoie des consignes, pilotage qui a la main, flèches).
+// repartir à l'instant (guide en mission, retour prévu ou départ en attente, pont qui envoie des consignes,
+// pilotage qui a la main, flèches).
 export function etatMouvement(d, local) {
   const tourne = [];
   const noter = (nom) => { if (tourne.indexOf(nom) < 0) tourne.push(nom); };
@@ -52,7 +63,7 @@ export function etatMouvement(d, local) {
     if (d.pont.etat === 'en_mouvement') enMouvement = true;
   }
   const g = d.guide;
-  if (g && ETATS_EN_MISSION.indexOf(g.etat) >= 0 && !(g.age_s > 3)) {
+  if (g && !(g.age_s > 3) && guideActif(g)) {
     noter('guide');
     enMouvement = true;
   }

@@ -55,8 +55,10 @@ CODES_EVENEMENT = {
 }
 # Ce qui immobilise le robot (événement immobilise, champ raison ; champ immobilise de /guide/etat) :
 # verrou du pont (/pont/arret : Bloquer, ARRÊT, ligne de commande), mode du robot qui n'est pas la marche
-# (pas_en_marche), robot qui ne répond plus (robot_muet) ou qui refuse de marcher (refus)
-RAISONS_IMMOBILE = ("verrou", "pas_en_marche", "robot_muet", "refus")
+# (pas_en_marche), robot qui ne répond plus (robot_muet) ou qui refuse de marcher (refus) ; relecture du
+# 01/11/2026 : pont vers la marche qui ne publie plus son état (pont_absent : tué ou figé ; relancé, il
+# suivrait l'ancien but de Nav2)
+RAISONS_IMMOBILE = ("verrou", "pas_en_marche", "robot_muet", "refus", "pont_absent")
 
 # Délais et distances par défaut (section guide de lieu.yaml, schéma lieu)
 DELAIS_GUIDE = {
