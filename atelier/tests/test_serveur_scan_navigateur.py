@@ -181,6 +181,9 @@ def test_ecran_de_scan_dans_le_navigateur(sans_ros, scan_lent, serveur, navigate
     assert _api(base, "/api/lieux/demo")["etages"][0]["source_carte"] == "scan"
     nav.attendre("return document.querySelector('#essai-scan [data-role=scan-resume]').textContent"
                  ".includes('Déjà utilisée')", delai=10, message="session marquée utilisée")
+    # recette de la vague 5 : le message ne dit plus « … puis Utiliser cette carte » pour un scan déjà utilisé
+    nav.attendre("return document.querySelector('#essai-scan [data-role=scan-message]').textContent"
+                 ".includes('déjà la carte de l')", delai=10, message="message d'un scan déjà utilisé")
 
     # commandes du ruban : « Fin » sans scan en cours → un message clair, rien d'envoyé
     appels = len(faux_scan.appels())

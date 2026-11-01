@@ -363,6 +363,12 @@ export function ouvrir(racine, options) {
         ? 'Appuyez sur « Scan » : le robot simulé démarre, et la carte se construit en direct.'
         : 'Appuyez sur « Scan », puis promenez le robot lentement dans tout l\'étage.');
     }
+    // un scan déjà utilisé : son message de fin (« …, puis Utiliser cette carte ») ne vaut plus (recette de la
+    // vague 5 : il contredisait « Déjà utilisée » du résumé)
+    if (s.etat === 'termine' && s.adoption) {
+      return 'Ce scan est déjà la carte de l\'étage (utilisé le ' + dateCourte(s.adoption.quand)
+        + '). « Nouveau scan » pour en refaire un.';
+    }
     return s.message || '';
   }
 

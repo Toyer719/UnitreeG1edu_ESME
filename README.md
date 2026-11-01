@@ -391,7 +391,8 @@ passée au conteneur par `g1-jetson demarrer` quand elle est là (sinon il déma
 JPEG de 640 pixels à 10 images par seconde sur `/camera_poitrine/image/compressed`. Sur le PC,
 **`g1-visiteurs`** (YOLO pose et suivi, sur la carte graphique) trouve les personnes, estime leur
 distance et publie `/visiteurs/detectes` ; l'Atelier montre l'image en direct avec un cadre autour de
-chaque visiteur (vue **Caméra**, et en incrustation dans Piloter et Naviguer).
+chaque visiteur (vue **Caméra** de Naviguer, en incrustation dans Naviguer, et **Équipe › Caméra** ;
+Piloter garde sa caméra de la tête).
 
 ```bash
 ros2 run g1_equipe camera_usb                                   # la caméra branchée sur ce PC, sans conteneur
