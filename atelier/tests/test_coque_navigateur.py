@@ -646,3 +646,20 @@ def test_fonctions_et_textes_de_la_revue(sans_ros, serveur, navigateur, lieux):
                       "document.querySelector('[data-role=ouvrir]').getBoundingClientRect().bottom, window.innerHeight]")
     assert hauteurs[0] < 60 and hauteurs[1] <= hauteurs[2], hauteurs
     assert nav.js("return window.erreursAtelier") == []
+
+
+def test_chemin_du_guide_avec_les_noms(sans_ros, serveur, navigateur, lieux):
+    """Recette de la vague 5 (vu sur la capture de Simuler) : le chemin du guide dans le panneau donne le nom des
+    salles et les autres nœuds lisibles (« Couloir nord 1 »), plus les identifiants (« couloir_nord_1 »)."""
+    _, base = serveur
+    nav = navigateur
+    nav.taille(1366, 768)
+    C.ouvrir_espace(nav, base, "simu")
+    r = nav.js_async("""const fini = arguments[arguments.length - 1];
+      import('/js/ecrans/simulation.js').then((S) => {
+        const salles = [{ id: 'accueil', nom: 'Accueil' }, { id: 'amphi', nom: 'Amphithéâtre' }, { id: 'b204', nom: 'Salle B204' }];
+        fini([S.texteChemin(['accueil', 'hall_nord', 'amphi', 'couloir_nord_1', 'b204'], salles),
+              S.texteChemin([], salles), S.texteChemin(['x_1'], null)]);
+      }).catch((e) => fini({ erreur: String(e) }));""")
+    assert r == ["Accueil → Hall nord → Amphithéâtre → Couloir nord 1 → Salle B204", "", "X 1"], r
+    assert nav.js("return window.erreursAtelier") == []

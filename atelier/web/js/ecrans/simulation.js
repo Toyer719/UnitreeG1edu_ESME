@@ -25,6 +25,7 @@ import * as G from '../geometrie.js';
 import { afficherErreur } from '../messages.js';
 import { creerPlan, iconeOrientee, ll, lls, suivrePointeur } from '../plan.js';
 import { sallesDansLOrdre } from '../carte3d/geometrie3d.js';
+import { nomLisible } from '../coque/arbre.js';
 import { etiquetteSalle, iconePrincipal, sallePrincipale } from './salles.js';
 // Vague 4 (section 11 du plan) : panneaux des agents Comportement du guide et Passants
 import * as panneauGuide from '../panneaux/guide.js';
@@ -71,6 +72,15 @@ const CONFIRMATION_ROBOT = 'La navigation va commander le vrai robot :\n'
   + '- Atelier lancé après « source ~/robot-g1/setup/robot.sh » ;\n'
   + '- télécommande en main : elle reste l\'arrêt d\'urgence ;\n'
   + '- robot debout, en mode marche, avec quelqu\'un à côté.';
+
+// Le chemin du guide pour l'utilisateur : le nom de la salle pour un nœud de salle, sinon l'identifiant rendu
+// lisible (« couloir_nord_1 » → « Couloir nord 1 »), comme l'arbre du lieu (recette de la vague 5)
+export function texteChemin(itineraire, salles) {
+  return (itineraire || []).map((id) => {
+    const s = (salles || []).find((x) => x.id === id);
+    return s ? s.nom : nomLisible(id);
+  }).join(' → ');
+}
 
 export function ouvrir(racine, options) {
   const ecran = preparerEcran(racine, options);
@@ -610,7 +620,7 @@ export function ouvrir(racine, options) {
     }
     let detail = '';
     if (g.reste_m !== null && g.reste_m !== undefined && g.etat !== 'arrive') detail = 'Encore ' + G.nb(g.reste_m, 1) + ' m.';
-    if (g.itineraire && g.itineraire.length) detail += ' Chemin : ' + g.itineraire.join(' → ');
+    if (g.itineraire && g.itineraire.length) detail += ' Chemin : ' + texteChemin(g.itineraire, etat.salles);
     return { titre: titre, detail: detail };
   }
 
