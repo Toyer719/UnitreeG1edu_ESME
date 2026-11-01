@@ -5,7 +5,7 @@ BLOCS = [
     ("chapeau", "Le logiciel n'a pas été écrit ligne par ligne par une seule personne : Claude, une IA, l'a "
                 "construit avec une équipe d'autres instances de Claude (les « agents »), en cinq vagues, du "
                 "25/10 au 01/11/2026. Ce chapitre explique la méthode, la chronologie, la revue et la recette de la "
-                "vague 5, les décisions et les problèmes rencontrés."),
+                "vague 5, la correction de sécurité du 01/11 au soir, les décisions et les problèmes rencontrés."),
 
     ("h2", "La méthode : un plan, des contrats, des agents, une recette"),
     ("schema", "methode", "Le déroulé d'une vague", 10.5, 13.0),
@@ -63,6 +63,10 @@ BLOCS = [
              "reconnaissance, vitesse minimale et mode du pont, caméra de poitrine ; phase « comprendre » "
              "(5 lecteurs), 5 agents, assemblage ; revue (30 défauts : 28 corrigés, 2 écartés), puis recette "
              "le 01/11", "36 / 36 en un passage", "5bb9e95 → 31c4350 (21 commits)"],
+            ["Verrou", "01/11, 21 h → 02/11, 1 h", "Correction de sécurité : un « Débloquer » relançait l'ancien "
+             "trajet du guide (vu en relisant la séance n° 2). Un correcteur ; puis deux relecteurs (en répétition et "
+             "dans le code) et un finisseur, qui a vérifié et corrigé chacune de leurs trouvailles (chapitre 9)",
+             "12 critères : 11 / 12, puis le 29 rejoué : réussi", "2385386, 9650d0c, c554ea2 et les documents"],
         ],
     }),
     ("p", "Le nombre de tests de `atelier/tests` montre la croissance : 408 à la vague 1, 609 à la vague 2, 694 "
@@ -119,6 +123,30 @@ BLOCS = [
           "chapitre 12), et les 36 critères en un seul passage, sans en rejouer aucun : **36 / 36**, en 2 h 08 "
           "(7 662 s, de 17 h 25 à 19 h 33). Les captures du chapitre 11 ont été prises à la fin. Rien de la "
           "vague 5 n'a encore tourné sur le vrai G1 : c'est le but de la séance n° 2."),
+
+    ("h2", "La correction du verrou (01/11 au soir)"),
+    ("p", "En relisant les documents de la séance n° 2, on a vu qu'à l'étape F3 (« Bloquer », puis « Débloquer ») "
+          "le robot repartait seul vers l'ancien but : le verrou ne valait que pour le pont, et Nav2 gardait le "
+          "but du guide. Un correcteur a d'abord reproduit le défaut en répétition (3,5 m parcourus en 15 s, sans "
+          "aucune demande), puis l'a corrigé : le guide écoute lui-même le verrou et l'état du pont, annule son "
+          "trajet, et le robot attend un nouveau « Y aller » (section 12.15 du plan, chapitre 9)."),
+    ("p", "Comme après la vague 5, deux relecteurs ont ensuite cherché ce qui restait : l'un en répétition, en "
+          "mesurant chaque mouvement sur la vérité du faux G1, l'autre dans le code, avec une horloge simulée. Ils "
+          "ont trouvé 8 défauts ; le finisseur les a vérifiés un à un : 6 failles réelles (le pont tué puis "
+          "relancé, un état du pont trop vieux lu comme « rien n'empêche », une réponse perdue au repos qui annulait "
+          "le retour automatique, le joystick tenu après une assise ou un blocage, la chorégraphie qui continuait, "
+          "la touche Échap pendant l'attente du retour) et 2 vérifications qui ne prouvaient rien. Toutes sont "
+          "corrigées, chacune avec un test qui échoue sur le code d'avant ; la seule suggestion écartée (que le pont "
+          "ignore, à son lancement, un flux de vitesses déjà en cours) l'est avec sa raison : le pont ne peut pas "
+          "distinguer un flux d'avant son lancement d'un flux qui commence juste après."),
+    ("p", "Tout a été relancé sur le code corrigé : **1 473 tests** de `atelier/tests` réussis (plus les 4 du "
+          "repérage ROS), 288 de la navigation, 116 du pilotage, 180 du pont et 70 du conteneur, **0 échec** ; les "
+          "scénarios des relecteurs et ceux du correcteur, rejoués en répétition : **0,00 m** parcouru après chaque "
+          "levée, sans aucun ordre de marche ; les critères qui touchent au pont, au guide, au pilotage et à "
+          "l'ARRÊT (16 à 20, 22, 27 à 29 et 34 à 36) : **11 sur 12** au premier passage, puis le 29 au second "
+          "(l'aperçu d'une chorégraphie dans la page n'avait pas avancé : un hasard de minutage, son test a "
+          "réussi trois fois de suite ensuite) ; les images du Jetson ont été refaites. Rien de tout cela n'a "
+          "encore tourné sur le vrai G1 : à vérifier à la séance n° 2 (étapes F3 et P3)."),
 
     ("h2", "Les décisions et leurs raisons"),
     ("table", {
@@ -205,6 +233,10 @@ BLOCS = [
              "Démarrés depuis le PC ; à vérifier après un redémarrage du robot"],
             ["Séance 1 : robot assis mais pont « en mouvement »", "Le robot accepte 7105 sans bouger hors du mode marche",
              "Lecture du mode (7001) et état `pas_en_marche` (vague 5)"],
+            ["Un « Débloquer » relançait l'ancien trajet (01/11)", "Le verrou ne valait que pour le pont : Nav2 gardait "
+             "le but du guide ; le pilotage ignorait le verrou", "Le guide et le pilotage écoutent le verrou et l'état "
+             "du pont ; rien ne repart sans nouvelle demande (12.15) ; puis 6 failles de plus, trouvées par la "
+             "relecture, corrigées"],
         ],
     }),
 
@@ -215,7 +247,8 @@ BLOCS = [
         "séance ; le journal et le plan gardent la trace de chaque décision.",
         "**Ses limites** : rien n'est sûr tant que le vrai robot ne l'a pas confirmé (plusieurs formats d'Unitree "
         "viennent d'une documentation non officielle) ; les tests ne voient pas tout (la revue de la vague 5 a "
-        "trouvé 30 défauts qu'ils n'avaient pas vus) ; les sessions longues sont coupées par la limite d'utilisation ; ce que l'IA garde dans un dossier temporaire peut se perdre ; et "
+        "trouvé 30 défauts qu'ils n'avaient pas vus, et un défaut de sécurité n'a été vu qu'en relisant le "
+        "déroulé de la séance n° 2) ; les sessions longues sont coupées par la limite d'utilisation ; ce que l'IA garde dans un dossier temporaire peut se perdre ; et "
         "l'utilisateur doit "
         "relire, essayer et dire ce qui ne lui convient pas : c'est ainsi que sont nées la vague 4 (le point "
         "principal), la vague 5 (l'interface, le scan) et ce document.",

@@ -2,9 +2,9 @@
 
 | Fichier | Contenu | Pages |
 |---|---|---|
-| `Seance2_A_faire.docx` | Séance robot n° 2 : ce qu'il faut faire (préparation, étapes, commandes, cases à cocher), avec l'avancement du projet | 21 |
+| `Seance2_A_faire.docx` | Séance robot n° 2 : ce qu'il faut faire (préparation, étapes, commandes, cases à cocher), avec l'avancement du projet | 22 |
 | `Seance2_A_remplir.docx` | Séance robot n° 2 : feuille de résultats à remplir (mêmes lignes que `docs/releves/seance-2.md`, mesures des seuils, notes) | 12 |
-| `Atelier_G1_documentation_logiciel.docx` | Document complet sur le logiciel : technologies, code, construction, revue et recette de la vague 5, nouvelle interface avec ses captures | 64 |
+| `Atelier_G1_documentation_logiciel.docx` | Document complet sur le logiciel : technologies, code, construction, revue et recette de la vague 5, nouvelle interface avec ses captures | 66 |
 
 **Version finale de la vague 5, du 01/11/2026**, après la recette (36 / 36, 2 281 tests réussis, 0 échec) :
 
@@ -22,7 +22,22 @@
 **Fiches de la séance 2 refaites le 01/11 au soir, après la correction du verrou** (section 12.15 du plan) :
 à F3, « Débloquer » ne relance plus l'ancien trajet du guide ; la précaution de la touche Échap avant
 « Débloquer » n'est plus utile et a été retirée ; F3 dit maintenant ce qu'on doit voir (trajet annulé, « Y aller »
-grisé pendant le blocage, rien ne bouge au « Débloquer »). Le document du logiciel n'a pas été refait.
+grisé pendant le blocage, rien ne bouge au « Débloquer »). Le document du logiciel n'avait pas été refait (il l'est
+ensuite, ci-dessous).
+
+**Refaits dans la nuit du 01 au 02/11, après la relecture de la correction du verrou** (section 12.15 du plan) :
+
+- la fiche « à faire » : la touche Échap envoie l'ARRÊT pendant l'attente du retour automatique, même avec un
+  menu ouvert (règle d'or 5, F2) ; à C4, un pont relancé suit tout ordre frais ; à F3, il faut refaire
+  « Y aller » après « Débloquer », et un robot qui repartirait seul arrête la séance ; à P3, le joystick tenu
+  pendant une assise ou un amortissement ne relance pas le robot à la remise en marche ; la répétition de la
+  veille dure environ 12 min (22 pages ; la feuille à remplir ne change pas : son fichier n'est pas recopié) ;
+- le document du logiciel : chapitre 9 (la barrière « Aucune reprise seule », la correction du verrou et sa
+  relecture, ce qui reste à surveiller), chapitre 10 (chronologie, la correction du verrou, un problème de
+  plus) et annexe C (le guide et le pilotage écoutent le verrou) ; refait : 66 pages (64 avant), la table des
+  matières tient toujours sur deux pages ;
+- `docs/tutoriel-seance-2.md` a repris les précautions que la fiche avait en plus (ci-dessous) : la fiche et
+  le tutoriel disent maintenant la même chose.
 
 **Relus le 01/11 au soir** (relecture critique : chaque affirmation confrontée au dépôt, toutes les pages lues) :
 

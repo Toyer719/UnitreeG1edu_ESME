@@ -408,7 +408,7 @@ class Generateur:
         self._style_paragraphe("Titre TDM", taille=17, gras=True, couleur=BLEU, apres=10)
         for niveau in (1, 2):
             st = self._style_paragraphe(f"toc {niveau}", taille=10.5 if niveau == 1 else 10, gras=niveau == 1,
-                                        apres=2 if niveau == 2 else 1, avant=5 if niveau == 1 else 0,
+                                        apres=1.5 if niveau == 2 else 1, avant=5 if niveau == 1 else 0,
                                         interligne=1.0, retrait_gauche=0 if niveau == 1 else 0.6)
             st.element.set(qn("w:styleId"), f"TOC{niveau}")
             tabs = st.paragraph_format.tab_stops

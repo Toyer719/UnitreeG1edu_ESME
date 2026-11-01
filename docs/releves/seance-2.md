@@ -32,7 +32,7 @@ notes libres, en bas.
 | E4 | `g1-scan carte-unitree` pendant Repérer | `rdc_unitree.pcd` écrit ; nombre de points ; ou « rien reçu » | | |
 | F1 | Y aller « Essai à 2,5 m » à 0,2 m/s | `arrive` ; durée ; écart | | |
 | F2 | Retour seul à l'accueil, rotation finale | une seule rotation ; écart à la flèche (°) | | |
-| F3 | ARRÊT à mi-chemin, puis Y aller, puis Débloquer | arrêt net ; « Débloquer » ; immobile tant que bloqué | | |
+| F3 | ARRÊT à mi-chemin, Y aller grisé, puis Débloquer | arrêt net ; « Débloquer » ; immobile tant que bloqué, et après « Débloquer » (rien ne repart : il faut refaire « Y aller ») | | |
 | F4 | Écart à l'arrivée sur la croix | moins de 30 cm | | |
 | F5 | Spin de 90° (si F2 oscille) | dépassement (°) ; réglages du guide ; une seule rotation ensuite | | |
 | G1 | Images de la caméra sur le PC | environ 10 par seconde ; taille d'une image | | |
@@ -46,7 +46,7 @@ notes libres, en bas.
 | P2 | Joystick à peine incliné | marche à 0,2 m/s | | |
 | P3 | ARRÊT, joystick toujours tenu | arrêt ; le manche tenu ne relance pas le robot | | |
 | P4 | Danse 604 depuis 501, au portique | durée ; mode à la fin (501 ou 801) | | |
-| Fin | Journal du conteneur, `g1-jetson arreter` | arrêt propre, conteneur retiré | | |
+| Fin | Journaux du conteneur gardés, `g1-jetson arreter` | journal enregistré ; arrêt propre, conteneur retiré | | |
 
 ## Notes libres
 

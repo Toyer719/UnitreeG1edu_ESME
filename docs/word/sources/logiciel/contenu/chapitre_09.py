@@ -19,10 +19,19 @@ BLOCS = [
              "l'arrêt d'urgence. Toujours en main pendant un essai.", "robot (Unitree)", "séance n° 2 (C5)"],
             ["ARRÊT unique", "Bouton de la barre d'outils ou touche Échap : arrête le guide, la téléopération et le "
              "pilotage en moins d'1 s, même si une partie ne répond pas ; en Réel et en répétition, pose aussi le "
-             "verrou, jusqu'à « Débloquer ».", "`routes/arret.py`, `js/coque/arret.js`", "critère 36"],
+             "verrou, jusqu'à « Débloquer ». Échap l'envoie toujours quand le robot bouge ou va repartir seul "
+             "(retour automatique prévu), même si elle ferme aussi un menu.",
+             "`routes/arret.py`, `js/coque/arret.js`", "critère 36"],
             ["Verrou du pont", "`/pont/arret` à vrai : arrêt immédiat, plus aucun mouvement jusqu'au déverrouillage ; "
-             "puis il faut une consigne neuve. Le message est gardé (transient_local) : un pont relancé le retrouve.",
+             "puis il faut une consigne neuve. Le message est gardé (transient_local) : un pont relancé le retrouve. "
+             "« Bloquer » envoie aussi l'arrêt du guide (`/guide/stop`).",
              "`g1_bridge/logique.py`", "critères 17, 20, 36"],
+            ["Aucune reprise seule", "Le guide et le pilotage écoutent le verrou et l'état du pont. Robot bloqué, pas "
+             "en mode marche, ou pont qui ne donne plus de nouvelles : le trajet, le retour prévu et le départ en "
+             "attente sont annulés tout de suite, et « Y aller » est refusé ; robot muet ou qui refuse pendant que "
+             "Nav2 le conduit (2 s) : trajet annulé. Quand l'empêchement cesse, **rien ne repart** : il faut un "
+             "nouveau « Y aller », lâcher puis reprendre le joystick, rejouer une chorégraphie.",
+             "`g1_nav/guide.py`, `g1_pilotage/logique.py`", "critère 36"],
             ["Plafonds", "Chaque vitesse est ramenée à 0,4 m/s en avant, 0,25 m/s de côté, 0,6 rad/s en rotation ; "
              "une valeur absurde (NaN, infini) donne un arrêt ; le pont refuse de démarrer avec des plafonds plus "
              "hauts. `G1_VITESSE_MAX=0.2` les baisse pour les premiers essais (jamais sous 0,2).",
@@ -78,6 +87,42 @@ BLOCS = [
             ["pret", "tout va bien, aucune consigne en cours", "non"],
         ],
     }),
+
+    ("h2", "Un déblocage ne relance jamais un mouvement (correction du 01/11)"),
+    ("p", "En relisant les documents de la séance n° 2, le 01/11 au soir, on a vu un défaut grave : « Bloquer » "
+          "(Naviguer) ne posait que le verrou du pont. Nav2 gardait le but du guide et calculait encore des "
+          "vitesses, que le pont jetait ; au « Débloquer », **le robot repartait seul** vers l'ancien but. Mesuré "
+          "en répétition, sans robot : 3,5 m en 15 s, sans aucune demande. Même chose pour le retour automatique "
+          "prévu (4,1 m), pour le robot assis puis remis en marche (3,8 m) ; le joystick tenu ignorait le verrou "
+          "(1,2 m pendant le blocage), et une chorégraphie continuait."),
+    ("p", "La règle est maintenant écrite dans le plan (section 12.15) : **aucune levée d'un empêchement (verrou, "
+          "mode du robot, panne ou relance du pont) ne relance un mouvement**. Le guide annule lui-même son trajet "
+          "(c'est la cause : le pont seul ne suffisait pas), dit pourquoi dans l'Atelier (« Robot bloqué : le "
+          "trajet vers « Accueil » est annulé… »), et le robot attend un nouveau « Y aller »."),
+    ("p", "Deux relecteurs ont ensuite cherché les failles qui restaient, en répétition et dans le code. Ils en ont "
+          "trouvé et mesuré plusieurs, corrigées le soir même, chacune avec un test qui échoue sans la correction :"),
+    ("puces", [
+        "**le pont tué puis relancé en route** : le robot reprenait l'ancien trajet (4,2 m et 4,9 m en 15 s), ou "
+        "partait vers l'accueil (5,2 m) : le guide prenait un pont silencieux pour « rien n'empêche ». Un pont qui "
+        "se tait plus de 2 s compte maintenant comme un empêchement (`pont_absent`) ;",
+        "**une réponse perdue au repos** laissait le pont en « robot muet » : le retour automatique et l'attente "
+        "d'un passant étaient annulés à tort. Une panne ne compte plus que pendant que Nav2 conduit le robot ;",
+        "**le joystick tenu** pendant que le robot était assis, amorti ou muet repartait à la remise en marche "
+        "(1,5 à 1,8 m), comme s'il était lâché puis repris pendant un blocage : tout ordre refusé oblige maintenant "
+        "à lâcher, puis reprendre le manche ;",
+        "**une chorégraphie** continuait quand le robot s'asseyait (0,74 rad de rotation à la remise en marche) : "
+        "elle s'arrête, comme à l'ARRÊT, et ne reprend pas ;",
+        "**la touche Échap**, avec un menu ouvert pendant l'attente du retour automatique, fermait seulement le "
+        "menu : le robot partait 13 s plus tard (2,5 m). Elle envoie maintenant l'ARRÊT.",
+    ]),
+    ("encadre", "Ce qui reste à surveiller",
+     ["- Un but envoyé à Nav2 par un autre programme que le guide (RViz, ligne de commande), ou une vitesse "
+      "envoyée à la main, n'est pas annulé : il repartirait au déblocage ou à la relance du pont (étape C4 de la "
+      "séance n° 2 : Ctrl+C avant de relancer le pont).",
+      "- Le pont lui-même ne change pas : il ne peut pas savoir si un flux de vitesses courait déjà avant son "
+      "lancement (la découverte réseau retarde le premier message).",
+      "- Tout cela a été vérifié en répétition, contre le faux G1 : à refaire sur le vrai robot (étapes F3 et P3)."],
+     "attention"),
 
     ("h2", "Ce que la séance n° 1 a appris (27/10)"),
     ("p", "La première séance avec le robot a validé le scan et l'ordre de marche 7105. Elle a surtout appris "

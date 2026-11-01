@@ -1,8 +1,9 @@
 # Document Word « Atelier G1 : le logiciel, de A à Z » : notes
 
 Dossier : `~/robot-g1-donnees/vague5/documents/logiciel/` (hors de `/tmp` : il survit à un redémarrage).
-Le document : `Atelier_G1_documentation_logiciel.docx` (15 chapitres, 14 schémas, 9 captures, 64 pages dans le
-PDF de contrôle). Version finale de la vague 5 : 01/11/2026, après la recette (36 / 36), relue le soir même (point 16).
+Le document : `Atelier_G1_documentation_logiciel.docx` (15 chapitres, 14 schémas, 9 captures, 66 pages dans le
+PDF de contrôle). Version finale de la vague 5 : 01/11/2026, après la recette (36 / 36), relue le soir même (point 16),
+puis complétée après la correction du verrou et sa relecture (point 19).
 
 ## Regénérer
 
@@ -148,4 +149,15 @@ Essai avec d'autres captures, sans toucher au document :
     encore (F3 : Échap avant « Débloquer », sinon le robot reprend le trajet demandé pendant le blocage ; C5 :
     Ctrl+C de la marche de 10 s ; journal gardé avant chaque arrêt du conteneur, `seance-2_relances.log` ; plan B :
     vérifier qu'aucun conteneur ne tourne, retour automatique annoncé ; diagnostic de `g1-etat`). La fiche dit
-    de la suivre en cas d'écart ; le tutoriel est à mettre à jour de la même façon.
+    de la suivre en cas d'écart ; le tutoriel est à mettre à jour de la même façon. **Fait dans la nuit du 01 au
+    02/11** (finisseur du verrou) : le tutoriel a repris ces précautions ; la précaution F3 (« Échap avant
+    « Débloquer » ») n'est plus utile depuis la correction du verrou (section 12.15 du plan).
+19. **Correction du verrou et sa relecture (01/11 au soir, regénéré dans la nuit du 01 au 02/11)** : le
+    chapitre 9 a une barrière de plus (« Aucune reprise seule ») et une section sur la correction, ses mesures
+    en répétition et ce qui reste à surveiller ; le chapitre 10 une ligne de chronologie, une section et un
+    problème. Les chiffres de la correction (distances mesurées, tests, critères) viennent de
+    `docs/journal-atelier.md` (entrées « Correcteur du verrou » et « Finisseur du verrou ») et de
+    `~/robot-g1-donnees/vague5/verrou/` ; ceux de la recette du 01/11 (chapitres 10 et 12) ne changent pas.
+    L'annexe C dit que le guide et le pilotage écoutent `/pont/arret` et `/pont/etat`. Les deux titres de plus
+    faisaient déborder la table des matières de deux lignes sur une troisième page : l'espace après une ligne de
+    niveau 2 passe de 2 à 1,5 point (`generer.py`, style « toc 2 ») ; 66 pages au lieu de 64.

@@ -114,7 +114,8 @@ BLOCS = [
             ["`/api/sport/request`, `/response`", "unitree_api", "pont, pilotage ↔ service de marche"],
             ["`/api/arm/*`, `/api/voice/*`, `/api/videohub/*`", "unitree_api", "pilotage ↔ bras, voix et LED, caméra de la tête"],
             ["`/arm_sdk`, `/lowstate`", "unitree_hg LowCmd, LowState", "pilotage → bras (chorégraphies) ; robot → pilotage"],
-            ["`/pont/etat`, `/pont/arret`", "String (JSON) ; Bool", "pont → Atelier ; Atelier → pont (verrou, transient_local)"],
+            ["`/pont/etat`, `/pont/arret`", "String (JSON) ; Bool", "pont → Atelier, guide, pilotage ; Atelier → pont, guide, "
+             "pilotage (verrou, transient_local)"],
             ["`/mouvement/maitre`, `/pilotage/etat`", "String (JSON)", "pilotage → guide, pont, Atelier"],
             ["`/g1_jetson/etat`", "String (JSON)", "conteneur → `g1-jetson etat`"],
             ["`/g1_jumeau/cmd_vel`, `/odom`, `/points`, `/etat`, `/panne`, `/mode`", "divers", "faux G1 ↔ Gazebo, tests"],

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Fiches Word de la séance robot n° 2 (Atelier G1, vague 5 : 31/10/2026, mises à jour le 01/11 après la recette,
-puis après la relecture critique du soir).
+puis après la relecture critique du soir, la correction du verrou et sa relecture : section 12.15 du plan).
 
     /home/joonho/robot-g1-donnees/venv-docx/bin/python \
         /home/joonho/robot-g1-donnees/vague5/documents/fiches/generer_fiches.py
@@ -1046,8 +1046,10 @@ def page_titre_a_faire(f):
         "(`Seance2_A_remplir.docx`) : la flèche « → feuille : M1 » dit quelle ligne remplir.",
         "Préparé le 31/10/2026 (vague 5) et mis à jour le 01/11, après la recette (36 / 36), **sans robot** : les "
         "commandes ont été vérifiées dans le dépôt et essayées contre le faux G1 (la simulation), pas encore sur le "
-        "vrai robot. Il suit `docs/tutoriel-seance-2.md`, avec quelques précautions de plus (relecture du 01/11) : "
-        "en cas d'écart, suis ce document-ci. Une surprise n'est pas une faute de ta part : "
+        "vrai robot. Il suit `docs/tutoriel-seance-2.md` (qui a repris ses précautions le 01/11 au soir) ; en cas "
+        "d'écart, suis ce document-ci. Depuis la correction du verrou (01/11 au soir), **un déblocage ne relance "
+        "jamais un mouvement** : après « Débloquer », une remise en marche ou une relance du pont, il faut un "
+        "nouveau « Y aller », ou lâcher puis reprendre le joystick. Une surprise n'est pas une faute de ta part : "
         "note-la.",
     ], cellule, taille=10)
     f.saut_page()
@@ -1114,8 +1116,10 @@ def partie_regles(f):
         "**Vitesses : 0,2 m/s au plus**, au portique comme au sol (`G1_VITESSE_MAX=0.2`). Les mesures de l'étape M "
         "vont jusqu'à 0,2 m/s et 0,4 rad/s (radians par seconde : 0,4 rad/s, c'est environ 23° par seconde), "
         "pendant 3 s au plus.",
-        "**Le bouton ARRÊT de l'Atelier** (ou la touche **Échap**, dès qu'une navigation ou le pilotage tourne) "
-        "arrête le guide, le pilotage et bloque le robot. **Il ne remplace pas la télécommande.**",
+        "**Le bouton ARRÊT de l'Atelier** (ou la touche **Échap**, dès qu'une navigation ou le pilotage tourne, et "
+        "toujours quand le robot bouge ou va repartir seul, par exemple pendant les 15 s avant le retour "
+        "automatique, même si un menu est ouvert) arrête le guide, le pilotage et bloque le robot. **Il ne "
+        "remplace pas la télécommande.**",
         "**Danses : jamais 401, 402 ni 403** (401 et 402 couchent le robot par terre, 403 est inconnue). La "
         "danse 604 d'abord **au portique, robot tenu**, 3 m libres autour.",
         "**On note tout** sur la feuille de résultats. Un point qui échoue : on note ce qu'on a vu, puis on passe "
@@ -1168,7 +1172,8 @@ def partie_veille(f, schemas):
     f.cmd("PC", ['pgrep -af "ign gazebo|ros2 launch|uvicorn"'])
     f.attendu("**aucune ligne**. Sinon : dans l'Atelier ouvert, « Arrêter », puis Ctrl+C dans son terminal, et "
               "recommence.")
-    f.case("La répétition sans robot (environ 10 min, mesuré à la recette du 01/11) : elle vérifie le conteneur, le "
+    f.case("La répétition sans robot (environ 12 min, mesuré après la correction du verrou) : elle vérifie le "
+           "conteneur, le "
            "pont, le repérage, le trajet, la sécurité, la vitesse minimale et les modes, la caméra et l'ARRÊT, contre "
            "le faux G1.")
     f.cmd("PC", ["tests_e2e/tout.sh 16 17 18 19 20 34 35 36"])
@@ -1458,8 +1463,9 @@ def etape_c(f):
     f.attendu("le robot s'arrête en **moins d'une seconde**.")
     f.stop("**s'il continue : télécommande, amortissement, fin de la séance.**")
     f.case("**Avant de relancer le pont, arrête la marche dans T5 (Ctrl+C)**, ou attends qu'elle soit finie : "
-           "sinon le nouveau pont reprend ces ordres et **le robot repart tout seul**. Relance ensuite le pont dans "
-           "T2 (la même commande qu'au début de l'étape : flèche ↑ pour la retrouver).")
+           "sinon le nouveau pont reprend ces ordres et **le robot repart tout seul** (un pont relancé suit tout "
+           "ordre frais, même ceux d'une marche lancée avant lui). Relance ensuite le pont dans T2 (la même "
+           "commande qu'au début de l'étape : flèche ↑ pour la retrouver).")
     f.case("**C5. La télécommande reste-t-elle prioritaire ?** C'est **la condition pour continuer**. Relance la "
            "marche de 10 s dans T5 (la même commande, flèche ↑) ; pendant ce temps, la personne 1 arrête le robot "
            "avec la télécommande.", feuille="C5")
@@ -1604,6 +1610,8 @@ def etape_f(f):
     f.case("**F2. Le retour seul.** 15 s après l'arrivée, le robot revient seul à l'accueil et **se tourne dans le "
            "sens de la flèche**. Regarde s'il tourne **une seule fois** ou s'il oscille (il tourne, dépasse, "
            "revient…). Note l'écart final à la flèche, en degrés (à l'œil ou au rapporteur).", feuille="F2")
+    f.note("pendant ces 15 s, **ARRÊT** (ou Échap, même avec un menu ouvert) annule le retour : le robot reste sur "
+           "place.", mot="Bon à savoir :", couleur=C["texte"])
     f.case("**F3. ARRÊT.** **Y aller** « Essai à 2,5 m » de nouveau, puis clique sur **ARRÊT** (barre d'outils, en "
            "haut à droite) à mi-chemin.", feuille="F3")
     f.attendu("arrêt net ; le bouton devient « **Débloquer** » ; le panneau dit « Robot bloqué : le trajet vers "
@@ -1612,7 +1620,9 @@ def etape_f(f):
               "pour plus tard.")
     f.case("Clique sur **Débloquer** (l'Atelier demande de confirmer : « Débloquer ») : **rien ne bouge**, le robot "
            "ne reprend pas l'ancien trajet (correction du 01/11), et le panneau dit « Robot débloqué : il attend un "
-           "nouveau « Y aller » ». Puis **Y aller** « Accueil ».")
+           "nouveau « Y aller » ». Pour repartir, il faut **refaire « Y aller »** : **Y aller** « Accueil ».")
+    f.stop("**si le robot repart seul au « Débloquer » : télécommande, amortissement, fin de la séance** ; "
+           "note-le (ligne F3).")
     f.case("**F4.** À l'arrivée, l'écart entre le robot et la croix.", feuille="F4")
     f.attendu("**moins de 30 cm**.")
     f.case("**F5. La rotation finale, seulement si le robot a oscillé en F2** (10 min ; 1 m libre autour du "
@@ -1742,6 +1752,9 @@ def etape_p(f):
            feuille="P3")
     f.attendu("le robot s'arrête, et **le manche tenu ne le relance pas** : il faut le lâcher, puis le reprendre. "
               "Clique ensuite sur **Débloquer** (et confirme).")
+    f.note("de même, si le robot est mis assis ou en amortissement à la télécommande pendant que le manche est "
+           "tenu, il ne repart pas à la remise en marche tant que le manche n'a pas été lâché ; une chorégraphie "
+           "interrompue ainsi ne reprend pas (correction du 01/11).", mot="Bon à savoir :", couleur=C["texte"])
     f.case("**P4. Une danse sûre, depuis 501** : robot **tenu** au portique, 3 m libres autour. **Spectacle › "
            "Danses**, la **604** (environ 18 s), coche « Zone libre de 2 à 3 m, télécommande en main », **Jouer**, "
            "confirme. **Jamais 401, 402 ni 403.**", feuille="P4")
@@ -1847,7 +1860,7 @@ def partie_depannage(f):
 
 def partie_rapport(f):
     f.titre("Après la séance : ce qu'il faut me rapporter", 1)
-    f.p("Dis-moi **« séance 2 faite »**, avec :", apres=2)
+    f.p("Dis-moi **« séance 2 faite »**, avec :", apres=2, garder=True)
     f.numeros([
         "**la feuille remplie** : le fichier Word `Seance2_A_remplir.docx` enregistré dans `~/robot-g1/docs/releves/` "
         "(par exemple sous le nom `seance-2_resultats.docx`), ou `docs/releves/seance-2.md`, avec **les résultats "

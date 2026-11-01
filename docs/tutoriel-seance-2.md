@@ -56,7 +56,9 @@ d'abord `g1-jetson arreter`, puis `ssh unitree@192.168.123.164 'docker rmi g1-je
 4. **Vitesses :** 0,2 m/s au plus, au portique comme au sol (`G1_VITESSE_MAX=0.2`). Les mesures de
    l'étape M vont jusqu'à 0,2 m/s et 0,4 rad/s, pendant 3 s au plus.
 5. **Le bouton ARRÊT de l'Atelier** (ou la touche **Échap**, dès qu'une navigation ou le pilotage
-   tourne) arrête le guide, le pilotage et bloque le robot. **Il ne remplace pas la télécommande.**
+   tourne, et toujours quand le robot bouge ou va repartir seul, par exemple pendant les 15 s avant le
+   retour automatique, même si un menu est ouvert) arrête le guide, le pilotage et bloque le robot.
+   **Il ne remplace pas la télécommande.**
 6. **Danses :** jamais 401, 402 ni 403. La danse 604 d'abord **au portique, robot tenu**, 3 m libres.
 7. **On note tout** dans `docs/releves/seance-2.md`. Un point qui échoue : on note ce qu'on a vu, puis
    on passe au suivant s'il n'y a pas de danger.
@@ -191,7 +193,9 @@ source ~/robot-g1/setup/robot.sh
    g1-etat                               # « Connecté » et la batterie (Ctrl+C pour quitter)
    ```
 
-   Note la batterie (ligne A).
+   Note la batterie (ligne A). Si `g1-etat` ne dit pas « Connecté » (« Aucune donnée du robot… ») :
+   le robot a-t-il fini de démarrer ? Le câble est-il branché ? Relance
+   `source ~/robot-g1/setup/robot.sh` (il réactive la connexion du câble), puis recommence.
 
 ### Étape M : mesurer les vrais seuils, au portique (25 min)
 
@@ -311,11 +315,15 @@ C'est la reprise des points C3 à C5 et C7 de la séance n° 1, avec le nouveau 
    - Attendu : le robot s'arrête en **moins d'une seconde**.
    - **S'il continue : télécommande, amortissement, fin de la séance.**
    - **Avant de relancer le pont, arrête la marche dans T5 (Ctrl+C)**, ou attends qu'elle soit finie :
-     sinon le nouveau pont reprend ces ordres et **le robot repart tout seul**.
+     sinon le nouveau pont reprend ces ordres et **le robot repart tout seul** (un pont relancé suit
+     tout ordre frais, même ceux d'une marche lancée avant lui ; le guide, lui, annule son trajet dès
+     que le pont se tait : section 12.15 du plan).
    - Relance ensuite le pont dans T2 (même commande qu'au point 1).
 5. **C5. La télécommande reste-t-elle prioritaire ?** C'est **la condition pour continuer** (ligne C5).
    Relance la marche de 10 s ; pendant ce temps, la personne à la télécommande arrête le robot.
-   Attendu : la télécommande gagne **tout de suite**.
+   Attendu : la télécommande gagne **tout de suite**. **Si la télécommande ne reprend pas la main :
+   amortissement, fin de la séance.** Puis **Ctrl+C dans T5** si la marche n'est pas finie : sinon,
+   quand la télécommande lâche, le robot peut repartir.
 6. **C6. Hors du mode marche** (ligne C6). Mets le robot **assis**, puis lance une marche de 2 s :
 
    ```bash
@@ -376,8 +384,9 @@ La carte est celle du 27/10, retraitée : l'accueil (le point principal) est sur
 3. Sur l'accueil de l'Atelier : **Robot réel** (sans « Répétition »), le lieu **« Séance robot »**.
    Les vérifications doivent être au vert : ROS lancé avec `robot.sh`, câble branché, PC1 et Jetson
    qui répondent ; coche **« Télécommande en main »**. Puis **Ouvrir**.
-4. Ruban **Naviguer** : **Lancer**. L'Atelier copie le lieu sur le Jetson et démarre
-   notre conteneur, avec la caméra. Attendu : « Non repéré », et la pastille du robot « à repérer ».
+4. Ruban **Naviguer** : **Lancer**. L'Atelier demande de confirmer : relis sa liste, puis
+   « **Lancer sur le robot** ». Il copie alors le lieu sur le Jetson et démarre notre conteneur, avec
+   la caméra. Attendu : « Non repéré », et la pastille du robot « à repérer ».
 5. **La carte d'Unitree** (ligne E4) : dans T5, **avant** de repérer, lance l'attente (90 s au plus) :
 
    ```bash
@@ -411,14 +420,18 @@ La carte est celle du 27/10, retraitée : l'accueil (le point principal) est sur
    droit vers le but, puis `arrive`. Note la durée et l'écart au mètre ruban.
 3. **F2. Le retour seul.** 15 s après l'arrivée, le robot revient seul à l'accueil et **se tourne dans
    le sens de la flèche**. Regarde s'il tourne **une seule fois** ou s'il oscille (il tourne, dépasse,
-   revient…). Note l'écart final à la flèche (en degrés, à l'œil ou au rapporteur).
+   revient…). Note l'écart final à la flèche (en degrés, à l'œil ou au rapporteur). Pendant ces 15 s,
+   **ARRÊT** (ou Échap, même avec un menu ouvert) annule le retour : le robot reste sur place.
 4. **F3. ARRÊT.** **Y aller** « Essai à 2,5 m » de nouveau, puis clique sur **ARRÊT** (barre d'outils,
    en haut à droite) à mi-chemin. Attendu : arrêt net ; le bouton devient **« Débloquer »** ; le panneau
    dit « Robot bloqué : le trajet vers « Essai à 2,5 m » est annulé… ». **Y aller** est grisé
    (« Robot bloqué : « Débloquer » d'abord ») ; demandé quand même (par le chatbot, par exemple), il est
-   refusé et ne fait pas bouger le robot. Clique sur **Débloquer** : le robot **reste immobile** (il ne
-   reprend pas l'ancien trajet ; correction du 01/11, section 12.15 du plan) et le panneau dit « Robot
-   débloqué : il attend un nouveau « Y aller » ». Puis **Y aller** « Accueil ».
+   refusé et ne fait pas bouger le robot : aucune demande n'est gardée pour plus tard. Clique sur
+   **Débloquer** (l'Atelier demande de confirmer) : **rien ne bouge**. Le robot **ne reprend pas
+   l'ancien trajet** (correction du 01/11, section 12.15 du plan) et le panneau dit « Robot débloqué :
+   il attend un nouveau « Y aller » ». Pour repartir, il faut **refaire « Y aller »** : **Y aller**
+   « Accueil ». **Si le robot repart seul au « Débloquer » : télécommande, amortissement, fin de la
+   séance**, et note-le (ligne F3).
 5. **F4.** À l'arrivée, l'écart entre le robot et la croix. Attendu : **moins de 30 cm**.
 6. **F5. La rotation finale, si le robot a oscillé en F2** (10 min). Dans T5 :
 
@@ -504,8 +517,14 @@ Le but : comparer la carte de la **nouvelle chaîne** à celle d'Unitree Explore
 ### Étape P : le pilotage et une danse sûre (25 min)
 
 **Si tu as sauté l'étape H**, le conteneur de la navigation tourne encore et `g1-jetson demarrer`
-refuserait (« le conteneur g1-jetson tourne déjà ») : fais d'abord le point 1 de l'étape H (journal,
-puis **Naviguer › Arrêter**).
+refuserait (« le conteneur g1-jetson tourne déjà ») : fais d'abord le point 1 de l'étape H, le
+journal de la navigation (le conteneur l'emporte avec lui quand il s'arrête) :
+
+```bash
+g1-jetson journal --lignes 100000 > ~/robot-g1/docs/releves/seance-2_navigation.log 2>&1
+```
+
+puis **Naviguer › Arrêter**.
 
 1. **Robot raccroché au portique**, pieds au sol, en mode marche.
 2. Le nœud pilotage seul, sur le Jetson. Dans T5 :
@@ -528,7 +547,10 @@ puis **Naviguer › Arrêter**).
    robot à 0,2 m/s (le minimum du pont), pas moins (ligne P2).
 6. **P3. ARRÊT pendant le joystick** (ligne P3) : un pouce tient le manche, l'autre main clique sur
    **ARRÊT**. Attendu : le robot s'arrête, et **le manche tenu ne le relance pas** : il faut le lâcher,
-   puis le reprendre. Clique sur **Débloquer**.
+   puis le reprendre. Clique sur **Débloquer** (et confirme). De même, si le robot est mis assis ou en
+   amortissement à la télécommande pendant que le manche est tenu, il ne repart pas quand il est remis
+   en marche tant que le manche n'a pas été lâché, et une chorégraphie interrompue ainsi ne reprend
+   pas (relecture du 01/11).
 7. **P4. Une danse sûre, depuis 501** (ligne P4) : robot **tenu** au portique, 3 m libres autour.
    **Spectacle › Danses**, la **604**, coche la zone libre, confirme. Ou, dans T5 :
 
@@ -547,7 +569,14 @@ puis **Naviguer › Arrêter**).
 
 ### Fin (5 min)
 
-1. Si le conteneur tourne encore, garde son journal **avant** de l'arrêter :
+1. Un conteneur tourne-t-il encore (par exemple si l'étape P a été sautée) ? Dans T5 :
+
+   ```bash
+   g1-jetson etat
+   ```
+
+   « aucun conteneur g1-jetson… » : c'est fini pour le conteneur. S'il dit « running » (ou « exited » :
+   un conteneur arrêté tout seul), garde son journal **avant** de l'arrêter :
 
    ```bash
    g1-jetson journal --lignes 100000 > ~/robot-g1/docs/releves/seance-2_conteneur.log 2>&1
@@ -564,33 +593,72 @@ puis **Naviguer › Arrêter**).
 | Ce que tu vois | Que faire |
 |---|---|
 | `robot.sh` : « Câble non détecté » | Rebranche le câble des deux côtés et attends 10 s. |
+| `robot.sh` : le robot ne répond pas | Robot fini de démarrer ? Attends 1 min et recommence. |
+| `robot.sh` : « Impossible d'activer la connexion robot-g1 », ou câble débranché puis rebranché | `nmcli connection up robot-g1`, puis recommence. |
+| `g1-etat` ne dit pas « Connecté » (« Aucune donnée du robot… ») | Robot fini de démarrer ? Câble branché ? Relance `source ~/robot-g1/setup/robot.sh`, puis recommence. |
 | Le pont refuse de démarrer (« … le robot ne ferait aucun pas ») | Un plafond est sous 0,2 m/s : utilise les commandes de ce tutoriel telles quelles. |
 | T3 reste `pas_en_marche` | Lis le message : assis ou pas démarré → « Démarrer » à la télécommande ; course (802) → marche normale. |
 | T3 reste `robot_muet` | Note `ros2 topic info -v /api/sport/request`, puis passe à l'étape D. |
 | `mesure` n'envoie rien | Le pont n'est pas `pret` : regarde T3. |
 | Le robot ne s'arrête pas seul (C4) | Télécommande, amortissement, **fin de la séance**. |
-| `verifier` : pas de ligne caméra, ou USB 480 | Rebranche la See3CAM sur un port USB 3 (bleu) du Jetson, puis relance le conteneur. |
+| `ssh` redemande un mot de passe | Refais `ssh-copy-id unitree@192.168.123.164` (mot de passe 123). |
+| `verifier` : pas de ligne caméra, ou USB 480 | Rebranche la See3CAM sur un port USB 3 (bleu) du Jetson. Si le conteneur tourne déjà, relance-le pour qu'il la reçoive : garde d'abord son journal (`g1-jetson journal --lignes 100000 >> ~/robot-g1/docs/releves/seance-2_relances.log 2>&1`), puis Naviguer › Arrêter, Lancer, robot sur la croix, et Repérer de nouveau. |
 | Vue Caméra : « Pas d'image » | `ros2 topic hz /camera_poitrine/image/compressed` ; `g1-jetson journal 2>&1 \| grep -i cam`. |
 | Image noire | Équipe › Caméra › Réglages avancés : exposition automatique ; note la lumière de la pièce. |
 | « Repérer » échoue | Note le message, `ros2 topic echo --once /slam_info` et `g1-jetson journal 2>&1 \| tail -n 30`. |
 | `carte-unitree` : « aucune carte reçue » | Note-le ; relance-le, puis **Repérer** de nouveau pendant l'attente. |
 | Le robot oscille à la fin d'un trajet | Fais F5. |
+| `g1-jetson demarrer` : « le conteneur g1-jetson tourne déjà » | Fais d'abord le premier point de l'étape P (le journal, puis Naviguer › Arrêter), puis recommence. |
 | Quelque chose bouge sans qu'on l'ait demandé | Télécommande, amortissement, **fin de la séance**. |
 
-**Plan B : la navigation sur le PC, au câble**, si le conteneur ne marche pas. Dans T2, avec `robot.sh` :
+**Plan B : la navigation sur le PC, au câble**, seulement si le conteneur ne marche pas (étape D ou
+E). La navigation tourne alors sur le PC ; la personne du PC suit le robot de près. Les boutons
+« Repérer » et « Y aller » de l'Atelier ne servent qu'à la navigation que l'Atelier a lancée
+lui-même : avec le plan B, on passe par ces commandes.
 
-```bash
-g1-guide navigation --lieu seance --etage rdc --vitesse-max 0.2
-```
+1. Dans T5, vérifie d'abord qu'**aucun conteneur ne tourne** sur le Jetson (sinon, deux ponts
+   commanderaient le robot) :
 
-Puis, dans T5 :
+   ```bash
+   g1-jetson etat
+   ```
 
-```bash
-ros2 topic pub --once /reperage/demander std_msgs/msg/String "{data: '{\"id\": \"seance-2\", \"x\": 0, \"y\": 0, \"theta\": 0}'}"
-ros2 topic echo /reperage/etat --field data       # attendu : "etat": "repere"
-g1-guide aller essai_3m
-g1-guide stop
-```
+   Attendu : « aucun conteneur g1-jetson… » (ou « le Jetson ne répond pas par ssh » : il n'a rien pu
+   démarrer). S'il dit « running », garde son journal, puis arrête-le :
+
+   ```bash
+   g1-jetson journal --lignes 100000 >> ~/robot-g1/docs/releves/seance-2_relances.log 2>&1
+   g1-jetson arreter
+   ```
+
+2. Dans T2 (avec `robot.sh`), la navigation à 0,2 m/s au plus :
+
+   ```bash
+   g1-guide navigation --lieu seance --etage rdc --vitesse-max 0.2
+   ```
+
+3. Dans T5, le robot posé sur la croix, dans le sens de la flèche : le repérage en (0 ; 0 ; 0), puis
+   son état (Ctrl+C pour quitter) :
+
+   ```bash
+   ros2 topic pub --once /reperage/demander std_msgs/msg/String "{data: '{\"id\": \"seance-2\", \"x\": 0, \"y\": 0, \"theta\": 0}'}"
+   ros2 topic echo /reperage/etat --field data       # attendu : "etat": "repere"
+   ```
+
+4. Le trajet court (`essai_3m` est le nom interne de la salle « Essai à 2,5 m ») :
+
+   ```bash
+   g1-guide aller essai_3m
+   ```
+
+   Le robot y va, et la commande affiche son état jusqu'à l'arrivée : **Ctrl+C n'arrête que
+   l'affichage, pas le robot**. **15 s après l'arrivée, le robot revient seul sur la croix**, comme
+   en F2.
+5. Pour arrêter le robot à tout moment (comme ARRÊT), dans T6 :
+
+   ```bash
+   g1-guide stop
+   ```
 
 ---
 
@@ -598,12 +666,17 @@ g1-guide stop
 
 Dis-moi **« séance 2 faite »**, avec :
 
-1. la feuille remplie, `docs/releves/seance-2.md`, avec **les résultats des mesures copiés tels quels** ;
-2. le journal du conteneur, `docs/releves/seance-2_conteneur.log` ;
+1. la feuille remplie, `docs/releves/seance-2.md` (ou la fiche Word `Seance2_A_remplir.docx`
+   enregistrée dans `docs/releves/`), avec **les résultats des mesures copiés tels quels** ;
+2. les journaux du conteneur, dans `docs/releves/` : `seance-2_navigation.log` (étapes E à G),
+   `seance-2_pilotage.log` (étape P) et, s'il y en a, `seance-2_conteneur.log` (un conteneur qui
+   tournait encore à la fin) et `seance-2_relances.log` (un conteneur arrêté en cours de route, pour le
+   relancer ou pour le plan B) ;
 3. les messages d'erreur, copiés mot pour mot.
 
 Je retrouverai seul le nouveau scan (`lieux/seance/scans/`), la carte d'Unitree
-(`lieux/seance/cartes/rdc_unitree.*`) et les journaux de l'Atelier (`journaux/`).
+(`lieux/seance/cartes/rdc_unitree.*`), les journaux de l'Atelier (`journaux/`) et ceux de ROS 2
+restés sur le Jetson (`~/robot-g1/journaux/jetson/ros/log/`).
 
 Avec tes mesures, je réglerai :
 
