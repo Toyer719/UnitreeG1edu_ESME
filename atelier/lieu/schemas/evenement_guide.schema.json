@@ -8,16 +8,17 @@
   "properties": {
     "version": {"description": "Version du format. Toujours 1.", "const": 1},
     "code": {
-      "description": "Ce qui arrive. depart : départ d'une visite ; seul : visite accompagnée, mais personne n'est vu derrière le robot (il part quand même) ; ralentir : le visiteur traîne ; attente_visiteur : arrêt pour l'attendre ; visiteur_retrouve ; visiteur_perdu : abandon, retour au point principal ; passant_gene : une personne bouche le passage ; passage_libre ; detour ; arrivee ; retour : départ du retour automatique ; retour_arrive : de retour au point principal ; perdu : le robot ne sait plus où il est ; retrouve ; echec ; arret : /guide/stop ; pilotage : demande refusée, le robot est piloté à la main (verrou, section 11.5).",
+      "description": "Ce qui arrive. depart : départ d'une visite ; seul : visite accompagnée, mais personne n'est vu derrière le robot (il part quand même) ; ralentir : le visiteur traîne ; attente_visiteur : arrêt pour l'attendre ; visiteur_retrouve ; visiteur_perdu : abandon, retour au point principal ; passant_gene : une personne bouche le passage ; passage_libre ; detour ; arrivee ; retour : départ du retour automatique ; retour_arrive : de retour au point principal ; perdu : le robot ne sait plus où il est ; retrouve ; echec ; arret : /guide/stop ; pilotage : demande refusée, le robot est piloté à la main (verrou, section 11.5) ; immobilise : le robot ne peut pas bouger (champ raison : robot bloqué, pas en mode marche, muet ou qui refuse de marcher), trajet annulé ou « Y aller » refusé (section 12.15).",
       "type": "string",
       "enum": ["depart", "seul", "ralentir", "attente_visiteur", "visiteur_retrouve", "visiteur_perdu", "passant_gene",
                "passage_libre", "detour", "arrivee", "retour", "retour_arrive", "perdu", "retrouve", "echec", "arret",
-               "pilotage"]
+               "pilotage", "immobilise"]
     },
     "texte": {"description": "La phrase à dire, en français.", "type": "string", "minLength": 1, "maxLength": 300},
     "salle": {"description": "Facultatif : id de la salle visée, ou null.", "type": ["string", "null"]},
     "nom": {"description": "Facultatif : nom de la salle visée (salles.yaml).", "type": "string"},
     "mission": {"description": "Facultatif : visite ou retour.", "type": ["string", "null"], "enum": ["visite", "retour", null]},
-    "temps": {"description": "Facultatif : heure ISO 8601 locale avec décalage, à la seconde.", "type": "string"}
+    "temps": {"description": "Facultatif : heure ISO 8601 locale avec décalage, à la seconde.", "type": "string"},
+    "raison": {"description": "Facultatif, avec le code immobilise : verrou, pas_en_marche, robot_muet ou refus (atelier.lieu.comportement.RAISONS_IMMOBILE).", "type": "string", "enum": ["verrou", "pas_en_marche", "robot_muet", "refus"]}
   }
 }

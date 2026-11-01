@@ -596,6 +596,102 @@ def test_arret_joystick_ignore_jusqu_a_ce_qu_il_soit_lache(p, h):
     assert p.ordre_joystick(0.3, 0.0, 0.0).statut == 200
 
 
+# ---------------------------------------------------------------- verrou du pont (section 12.15)
+# Constat du 01/11/2026 : « Bloquer » (/pont/arret) n'arrêtait ni le joystick ni une chorégraphie,
+# qui parlent directement au robot sans passer par le pont.
+
+def test_verrou_du_pont_arrete_le_joystick_et_ne_relance_rien(p, h):
+    prendre(p, h)
+    en_801(p, h)
+    assert envois(p.ordre_joystick(0.3, 0.0, 0.0), 'sport', 7105)
+    h.t += 0.1
+    r = p.sur_verrou(True)
+    assert [json.loads(e.parametre)['velocity'] for e in envois(r, 'sport', 7105)] == \
+        [[0.0, 0.0, 0.0]]
+    assert not any(isinstance(s, ArretGuide) for s in r.sorties)    # le guide écoute le verrou
+    assert p.etat()['verrou'] is True and 'Débloquer' in p.etat()['message']
+    for _ in range(5):                     # manche toujours tenu : refusé, rien n'est envoyé
+        h.t += 0.1
+        r = p.ordre_joystick(0.3, 0.0, 0.0)
+        assert r.statut == 409 and 'bloqué' in r.corps['detail'] and not envois(r)
+    assert not [s for _, s in avancer(p, h, 2.0) if isinstance(s, Envoi) and s.api_id == 7105
+                and json.loads(s.parametre)['velocity'] != [0.0, 0.0, 0.0]]
+    # débloqué, le manche toujours tenu : rien ne repart (il faut le lâcher, puis le reprendre)
+    r = p.sur_verrou(False)
+    assert not envois(r) and p.etat()['verrou'] is False
+    h.t += 0.1
+    r = p.ordre_joystick(0.3, 0.0, 0.0)
+    assert r.statut == 409 and 'Lâchez le joystick' in r.corps['detail'] and not envois(r)
+    h.t += 0.1
+    p.ordre_joystick(0.0, 0.0, 0.0)
+    h.t += 0.1
+    assert envois(p.ordre_joystick(0.3, 0.0, 0.0), 'sport', 7105)
+    # le même verrou deux fois : rien de plus
+    p.sur_verrou(True)
+    assert not envois(p.sur_verrou(True))
+
+
+def test_verrou_du_pont_refuse_les_mouvements(p, h):
+    prendre(p, h)
+    danses_lues(p)
+    en_801(p, h)
+    p.sur_verrou(True)
+    for r in (p.posture(706), p.tache(1), p.geste(26), p.danser(604, zone_libre=True),
+              p.jouer(D.charger_choregraphie('exemple_kpop'), zone_libre=True),
+              p.requete('sport', 7105, {'velocity': [0.3, 0.0, 0.0], 'duration': 0.5})):
+        assert r.statut == 409 and 'Débloquer' in r.corps['detail'] and not envois(r), r.corps
+    # toujours permis : StopMove, relâcher les bras, LED, voix, l'ARRÊT
+    assert envois(p.requete('sport', 7105, {'velocity': [0.0, 0.0, 0.0], 'duration': 1.0}))
+    assert envois(p.geste(99)) and envois(p.led(0, 0, 255)) and envois(p.voix('bonjour'))
+    assert envois(p.arret(), 'sport', 7105)
+    # un geste demandé par l'équipe (robot au repos, guide qui a la main) : refusé aussi
+    q = Pilotage(horloge=h, mur=lambda: 1.7e9 + h.t)
+    q.sur_verrou(True)
+    assert q.geste_auto({'geste': 26, 'source': 'dialogue'}).statut == 409
+    q.sur_verrou(False)
+    assert q.geste_auto({'geste': 26, 'source': 'dialogue'}).statut == 200
+
+
+def test_verrou_du_pont_pendant_une_danse(p, h):
+    """Une danse du robot ne s'interrompt pas : StopMove seulement ; ensuite, rien de nouveau."""
+    prendre(p, h)
+    danses_lues(p)
+    en_801(p, h)
+    repondre(p, p.danser(604, zone_libre=True))
+    assert p.activite() == 'danse'
+    r = p.sur_verrou(True)
+    assert [(s.service, s.api_id) for s in r.sorties] == [('sport', 7105)]
+    assert 'télécommande' in r.corps['detail']
+    debut = p.danse['debut']
+    while p.danse is not None and h.t < debut + 25.0:
+        h.t = round(h.t + 0.05, 6)
+        for s in envois(p.pas(h.t), 'sport', 7001):
+            p.sur_reponse(s.identifiant, 0,
+                          json.dumps({'data': 801 if h.t - debut > 18.2 else 550604}))
+    assert p.danse is None
+    # danse finie, toujours bloqué : aucune autre danse ni marche ; débloqué : rien ne repart
+    assert p.danser(604, zone_libre=True).statut == 409
+    p.sur_verrou(False)
+    assert not [s for _, s in avancer(p, h, 5.0)
+                if isinstance(s, Envoi) and s.api_id in (7101, 7105)]
+
+
+def test_verrou_du_pont_arrete_une_choregraphie_sans_reprise(p, h):
+    d, _ = prete(p, h)
+    avancer(p, h, 3.0)
+    assert p.lecture is not None and p.lecture.poids == pytest.approx(1.0)
+    r = p.sur_verrou(True)
+    assert envois(r, 'sport', 7105) and p.lecture is None
+    bras = [s for _, s in avancer(p, h, 2.0) if isinstance(s, Bras)]
+    assert bras and bras[-1].poids == 0.0                  # poids des bras ramené à 0
+    p.sur_verrou(False)
+    # débloqué : la chorégraphie ne reprend pas
+    apres = avancer(p, h, 10.0)
+    assert not [s for _, s in apres if isinstance(s, (Bras, Dire))
+                or (isinstance(s, Envoi) and s.api_id in (7105, 1010, 7106))]
+    assert p.lecture is None and p.activite() == 'repos'
+
+
 def test_quitter_rend_la_main_au_guide(p, h):
     prendre(p, h)
     sorties = p.quitter()

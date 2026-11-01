@@ -27,7 +27,9 @@ Ce que lance ce fichier :
     proportion, et elle est refusée sous 0,2 m/s (le robot ne marche pas plus lentement) ; avec le
     pont, le guide reçoit tolerance_orientation_rad (TOLERANCE_ORIENTATION_PONT_RAD) et un ralenti
     qui ne descend pas sous la vitesse minimale du pont (pourcentage_min) ;
-  - le guide (g1_nav/guide.py) : /guide/aller, /guide/stop, /guide/etat, /guide/evenement ;
+  - le guide (g1_nav/guide.py) : /guide/aller, /guide/stop, /guide/etat, /guide/evenement ; avec
+    le pont, suivre_pont vrai : il suit /pont/arret et /pont/etat (robot bloqué, pas en mode
+    marche, muet ou qui refuse : trajet annulé, rien ne repart seul, section 12.15) ;
   - personnes:=true (défaut, vague 4, section 11.4) : le détecteur de personnes au LiDAR
     (g1_nav/personnes.py, /points → /personnes/lidar), qui sert au guide pour accompagner le
     visiteur et attendre un passant qui bouche le passage ; personnes:=false : ni l'un ni l'autre.
@@ -519,8 +521,10 @@ def _lancer(context):
                                vitesses)
 
     # Vague 4 (section 11.4) : le détecteur de personnes au LiDAR, pour le guide
+    # Correction du 01/11/2026 (section 12.15) : avec le pont, le guide suit son verrou et son état
+    # (trajet annulé, rien ne repart seul) ; sans pont, un verrou resté posé ne le bloque pas
     parametres_guide = {'lieu': str(dossier), 'etage': etage, 'moteur': moteur,
-                        'use_sim_time': simu}
+                        'use_sim_time': simu, 'suivre_pont': bool(pont)}
     if moteur == 'nav2':     # le ralenti pour le visiteur se calcule sur la vitesse réelle
         parametres_guide['vitesse_max_nav2'] = vitesse_max_nav2(reglages, vitesses)
     if pont:                 # vague 5 : rotation finale et ralenti à travers le pont

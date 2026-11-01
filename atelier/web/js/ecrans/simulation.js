@@ -14,10 +14,15 @@
 // Une seule section repliable ouverte à la fois (Visite guidée, Passants) ; une commande Avancé ouvre la
 // sienne en haut du panneau. Une partie qui s'arrête seule (code de sortie, nœud planté) est signalée,
 // avec « Relancer ».
+//
+// Correction du 01/11/2026 (section 12.15 du plan) : « Bloquer » annule le trajet en cours (le guide l'oublie,
+// rien ne repart au « Débloquer ») ; tant que le robot est bloqué ou pas en mode marche, le panneau le dit
+// (champ immobilise du guide) et « Y aller » est grisé.
 
 import { api, urlLieu } from '../api.js';
 import { contexte } from '../contexte.js';
 import { abonner } from '../direct.js';
+import { verrouVu } from '../coque/arret.js';
 import { preparerEcran, section } from '../coque/ecran.js';
 import { ouvrirPanneau } from '../coque/panneau.js';
 import * as F from '../formulaire.js';
@@ -67,6 +72,24 @@ const ETATS_GUIDE = {
   perdu: 'Perdu : le robot ne sait plus où il est',
 };
 
+// Section 12.15 : ce qui immobilise le robot (champ immobilise de /guide/etat) ; le message du guide dit quoi faire
+export const TITRES_IMMOBILE = {
+  verrou: 'Robot bloqué : il ne bouge pas',
+  pas_en_marche: 'Pas en mode marche : il ne bouge pas',
+  robot_muet: 'Le robot ne répond plus : trajet annulé',
+  refus: 'Le robot refuse de marcher : trajet annulé',
+};
+export const MESSAGE_BLOQUE = 'Robot bloqué : le trajet en cours est annulé. Il reste immobile jusqu\'à « Débloquer », '
+  + 'puis attend un nouveau « Y aller ».';
+export const MESSAGE_DEBLOQUE = 'Robot débloqué : il ne repartira qu\'avec un nouveau « Y aller ».';
+
+// Pourquoi « Y aller » est grisé quand le robot est immobilisé (d : /ws/etat, g : /guide/etat), ou null
+export function raisonImmobile(d, g) {
+  if (verrouVu(d) || (g && g.immobilise === 'verrou')) return 'Robot bloqué : « Débloquer » d\'abord';
+  if (g && g.immobilise === 'pas_en_marche') return 'Le robot n\'est pas en mode marche : remettez-le en marche d\'abord';
+  return null;
+}
+
 const CONFIRMATION_ROBOT = 'La navigation va commander le vrai robot :\n'
   + '- câble Ethernet branché entre le PC et le robot ;\n'
   + '- Atelier lancé après « source ~/robot-g1/setup/robot.sh » ;\n'
@@ -96,6 +119,7 @@ export function ouvrir(racine, options) {
     principal: null,        // point principal de l'étage {salle, nom, etage, x, y, theta}, ou null
     repere: false, reperageEnCours: false, placement: null, choixPosition: false, lancement: false,
     attente: null, ferme: false,
+    immobile: null,         // section 12.15 : pourquoi « Y aller » est impossible (robot bloqué…), ou null
   };
 
   ecran.vue.innerHTML = '<div class="plan" data-role="plan"></div>';
@@ -398,8 +422,8 @@ export function ouvrir(racine, options) {
   async function verrouiller(verrou) {
     try {
       const r = await api.envoyer('/api/robot/arret', { verrou: verrou });
-      coque.message(verrou ? 'Robot bloqué : il reste immobile jusqu\'à « Débloquer ».'
-        : 'Robot débloqué : il repartira à la prochaine consigne.', verrou ? 'avertissement' : 'info');
+      // section 12.15 : « Bloquer » annule le trajet en cours ; « Débloquer » ne relance rien
+      coque.message(r.message || (verrou ? MESSAGE_BLOQUE : MESSAGE_DEBLOQUE), verrou ? 'avertissement' : 'info');
       if (r.avertissement) coque.message(r.avertissement, 'avertissement');
     } catch (e) {
       afficherErreur(e);
@@ -510,6 +534,11 @@ export function ouvrir(racine, options) {
       coque.message('« Y aller » attend : ' + etat.attente, 'avertissement');
       return;
     }
+    if (etat.immobile) {
+      // section 12.15 : le guide refuserait (robot bloqué ou pas en mode marche), la demande n'est pas gardée
+      coque.message('« Y aller » impossible : ' + etat.immobile + '.', 'avertissement');
+      return;
+    }
     const corps = { cible: id };
     if (mode === 'simu') {
       const cases = coque.cases();
@@ -618,6 +647,7 @@ export function ouvrir(racine, options) {
     if (['en_route', 'arrive', 'echec', 'detour', 'bloque', 'retour', 'attente_passage', 'attente_visiteur', 'perdu'].includes(g.etat) && g.cible) {
       titre += (g.etat === 'arrive' ? ' à « ' : ' — vers « ') + nomDe(g.cible) + ' »';
     }
+    if (g.immobilise && TITRES_IMMOBILE[g.immobilise]) titre = TITRES_IMMOBILE[g.immobilise];
     let detail = '';
     if (g.reste_m !== null && g.reste_m !== undefined && g.etat !== 'arrive') detail = 'Encore ' + G.nb(g.reste_m, 1) + ' m.';
     if (g.itineraire && g.itineraire.length) detail += ' Chemin : ' + texteChemin(g.itineraire, etat.salles);
@@ -730,9 +760,16 @@ export function ouvrir(racine, options) {
       etat.attente = 'Nav2 se prépare';
     }
     if (g && g.message && !attendreReperage) t.detail = g.message + (t.detail ? ' ' + t.detail : '');
+    // section 12.15 : robot bloqué (verrou de l'Atelier ou du pont) ou pas en mode marche : le guide refuserait
+    const immobile = navEnCours && avecReperage() ? raisonImmobile(d, g) : null;
+    etat.immobile = immobile;
+    if (immobile && !(g && g.immobilise)) {
+      t.titre = TITRES_IMMOBILE.verrou;
+      t.detail = 'Le trajet en cours est annulé. « Débloquer », puis « Y aller » pour repartir.';
+    }
     // rien ne tourne : pas de guide pour recevoir « Y aller »
     const raisonYAller = !navEnCours ? 'Lancez d\'abord ' + NOM_LANCEMENT + ' (« Lancer »)'
-      : (attendreReperage ? 'Repérez d\'abord le robot' : (attendreNav2 ? 'Nav2 se prépare…' : null));
+      : (attendreReperage ? 'Repérez d\'abord le robot' : (immobile || (attendreNav2 ? 'Nav2 se prépare…' : null)));
     listeSalles.querySelectorAll('button').forEach((b) => {
       b.disabled = !!raisonYAller;
       b.title = raisonYAller || b.dataset.titre || '';

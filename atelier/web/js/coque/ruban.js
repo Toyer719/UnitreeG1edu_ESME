@@ -98,8 +98,8 @@ export const COMMANDES = [
   c('navigation.lancer', R, 'naviguer', 'navigation', 'Lancer', 'lancer', 'Démarre la navigation sur le robot (ou la répétition sans robot).', 'simulation', 'lancer'),
   c('navigation.reperer', R, 'naviguer', 'navigation', 'Repérer', 'reperer', 'Posez le robot sur l\'accueil, tourné comme la flèche, puis cliquez.', 'simulation', 'reperer'),
   c('navigation.y-aller', R, 'naviguer', 'guide', 'Y aller', 'cible', 'Choisissez une salle : le robot y va.', 'simulation', 'y-aller', { menu: 'dynamique' }),
-  c('navigation.bloquer', R, 'naviguer', 'securite', 'Bloquer', 'cadenas', 'Le robot reste immobile jusqu\'à « Débloquer ».', 'simulation', 'bloquer'),
-  c('navigation.debloquer', R, 'naviguer', 'securite', 'Débloquer', 'cadenas-ouvert', 'Le robot peut de nouveau marcher.', 'simulation', 'debloquer'),
+  c('navigation.bloquer', R, 'naviguer', 'securite', 'Bloquer', 'cadenas', 'Arrête le robot et annule le trajet en cours : il reste immobile jusqu\'à « Débloquer ».', 'simulation', 'bloquer'),
+  c('navigation.debloquer', R, 'naviguer', 'securite', 'Débloquer', 'cadenas-ouvert', 'Le robot peut de nouveau marcher, au prochain « Y aller » (rien ne repart seul).', 'simulation', 'debloquer'),
   c('navigation.arreter', R, 'naviguer', 'navigation', 'Arrêter', 'stop', 'Arrête la navigation (et la répétition).', 'simulation', 'arreter'),
   c('navigation.position', R, 'naviguer', 'avance', 'Situer le robot', 'position', 'Le robot n\'est pas sur l\'accueil : cliquez sur la carte où il est, puis glissez vers son avant.', 'simulation', 'position', { avance: true, vue: 'plan' }),
 

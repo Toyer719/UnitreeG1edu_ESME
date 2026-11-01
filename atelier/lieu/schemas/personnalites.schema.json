@@ -71,7 +71,8 @@
           "type": "object",
           "propertyNames": {"enum": ["depart", "seul", "ralentir", "attente_visiteur", "visiteur_retrouve",
                                      "visiteur_perdu", "passant_gene", "passage_libre", "detour", "arrivee", "retour",
-                                     "retour_arrive", "perdu", "retrouve", "echec", "arret", "pilotage"]},
+                                     "retour_arrive", "perdu", "retrouve", "echec", "arret", "pilotage",
+                                     "immobilise"]},
           "additionalProperties": {"$ref": "#/definitions/texte"}
         }
       }

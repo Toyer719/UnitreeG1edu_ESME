@@ -18,7 +18,9 @@
                                     retour selon le lieu), ou, avec accompagner ou retour, le JSON
                                     {cible, accompagner, retour, source: atelier} (vague 4, 11.4) ;
                                     cible « principal » : le point principal ; répétition et robot :
-                                    409 tant que le robot n'est pas repéré
+                                    409 tant que le robot n'est pas repéré ; robot bloqué ou pas en
+                                    mode marche : 200 avec un avertissement et immobilise, le guide
+                                    refuse (section 12.15)
   POST /api/guide/stop              publie sur /guide/stop (à défaut : g1-guide stop)
   POST /api/simulation/teleop {vx, vy, wz}   pilote le robot simulé (flèches du scan simulé) :
         publie /cmd_vel par le pont ROS 2, avec un homme mort (vitesse nulle après 0,5 s sans consigne) ;
@@ -258,6 +260,29 @@ def robot_repere(etat):
     return bool(reperage and reperage.get("repere") and not reperage.get("perime"))
 
 
+AVERTISSEMENTS_IMMOBILE = {
+    "verrou": ("Le robot est bloqué : le guide refusera d'y aller. Cliquez d'abord sur « Débloquer », puis de "
+               "nouveau sur « Y aller »."),
+    "pas_en_marche": ("Le robot n'est pas en mode marche : le guide refusera d'y aller. Remettez-le en marche "
+                      "(télécommande, ou « Démarrer » dans Piloter), puis de nouveau « Y aller »."),
+}
+
+
+def robot_immobilise(etat):
+    """Section 12.15 : « verrou » ou « pas_en_marche » si le guide refusera « Y aller » (répétition et robot :
+    verrou posé par l'Atelier ou vu par le pont, mode du robot qui n'est pas la marche), sinon None. En
+    simulation, il n'y a pas de pont : un verrou resté posé ne compte pas."""
+    if etat.mode_navigation() not in ("repetition", "robot"):
+        return None
+    pont = etat.pont.etat_pont()
+    frais = pont if pont and not pont.get("perime") else None
+    if (getattr(etat, "arret", None) or {}).get("verrou") or (frais and frais.get("verrou")):
+        return "verrou"
+    if frais and frais.get("etat") == "pas_en_marche":
+        return "pas_en_marche"
+    return None
+
+
 @routeur.post("/api/guide/aller")
 def aller(demande: DemandeAller, request: Request):
     etat = _etat(request)
@@ -296,6 +321,12 @@ def aller(demande: DemandeAller, request: Request):
     if maitre and maitre.get("maitre") == "pilotage":
         reponse["avertissement"] = ("Le robot est piloté à la main (Réel › Piloter) : le guide refusera "
                                     "d'y aller. Rendez d'abord la main.")
+    else:
+        # section 12.15 : robot bloqué ou pas en mode marche, le guide refuse (la demande n'est pas gardée)
+        raison = robot_immobilise(etat)
+        if raison is not None:
+            reponse["avertissement"] = AVERTISSEMENTS_IMMOBILE[raison]
+            reponse["immobilise"] = raison
     return reponse
 
 

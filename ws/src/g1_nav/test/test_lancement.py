@@ -370,6 +370,22 @@ def test_reglages_du_guide_avec_le_pont(lancement, dossier):
     assert guide['tolerance_orientation_rad'] == 0.4
 
 
+def test_guide_suit_le_pont_seulement_avec_le_pont(lancement, dossier):
+    """
+    Section 12.15 : avec le pont, le guide suit son verrou et son état (suivre_pont).
+
+    Sans pont (simulation), un verrou resté posé par une répétition ne doit pas le bloquer.
+    """
+    for simu, localisation, pont, attendu in (('true', '', 'auto', False),
+                                              ('true', 'unitree', 'auto', True),
+                                              ('false', '', 'auto', True),
+                                              ('true', 'externe', 'true', True),
+                                              ('true', 'unitree', 'false', False)):
+        guide = parametres(noeuds(actions(lancement, dossier, simu=simu, localisation=localisation,
+                                          pont=pont))['guide'])
+        assert guide['suivre_pont'] is attendu, (simu, localisation, pont)
+
+
 def detecteur(liste):
     """
     Renvoie le détecteur de personnes et ses paramètres en texte, ou (None, None).

@@ -14,7 +14,9 @@ Nœud ROS 2 « pilotage » : passe les messages au cœur (coeur.py) et publie se
            /guide/etat, /pont/etat (std_msgs/String JSON), /lf/bmsstate (unitree_hg/BmsState,
            batterie, à vérifier sur le robot)
            /personnalite/active (std_msgs/String JSON, fiable, transient_local) : LED du mode ;
-           /robot/geste (std_msgs/String JSON) : geste demandé par l'équipe, robot au repos
+           /robot/geste (std_msgs/String JSON) : geste demandé par l'équipe, robot au repos ;
+           /pont/arret (std_msgs/Bool, fiable, transient_local) : le verrou du pont vaut aussi
+           pour le pilotage (section 12.15 : tout s'arrête, mouvements refusés, rien ne repart)
 
 Le pas de la logique (homme mort, lecture du mode, chorégraphie) tourne dans un fil à 50 Hz, à
 échéances absolues sur l'horloge monotone (jamais le temps simulé).
@@ -65,7 +67,7 @@ def creer_noeud(coeur):
     from rclpy.node import Node
     from rclpy.qos import (DurabilityPolicy, HistoryPolicy, qos_profile_sensor_data, QoSProfile,
                            ReliabilityPolicy)
-    from std_msgs.msg import Empty, String
+    from std_msgs.msg import Bool, Empty, String
     from unitree_api.msg import Request, Response
     from unitree_hg.msg import BmsState, LowCmd, LowState
 
@@ -111,6 +113,9 @@ def creer_noeud(coeur):
             self.create_subscription(String, '/personnalite/active',
                                      self._demande('appliquer_personnalite'), verrou)
             self.create_subscription(String, '/robot/geste', self._demande('geste_auto'), 10)
+            # Section 12.15 : le verrou du pont (Bloquer, ARRÊT, ligne de commande), reçu même s'il
+            # a été posé avant le lancement du nœud
+            self.create_subscription(Bool, '/pont/arret', self._sur_verrou, verrou)
             self.commande_bras = LowCmd()
             self.bras_publies = 0
             self.dernier_etat = None
@@ -165,6 +170,12 @@ def creer_noeud(coeur):
             octets = binaire.tobytes() if hasattr(binaire, 'tobytes') else bytes(
                 (v & 0xFF for v in binaire))
             self.coeur.sur_image(identite.id, msg.header.status.code, octets)
+
+        def _sur_verrou(self, msg):
+            resultat = self.coeur.faire('sur_verrou', bool(msg.data))
+            if resultat.corps.get('detail'):
+                self.get_logger().info(resultat.corps['detail'])
+            self.publier_etat(forcer=True)
 
         def _sur_lowstate(self, msg):
             self.coeur.entree('sur_lowstate', [m.q for m in msg.motor_state])

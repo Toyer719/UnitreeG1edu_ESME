@@ -60,6 +60,7 @@ guide reprend la main (`/mouvement/maitre`).
 | `/robot/dire` | std_msgs/String JSON | sortie | paroles des chorégraphies (voix de l'équipe) |
 | `/personnalite/active` | std_msgs/String JSON (fiable, transient_local) | entrée | LED de la personnalité active (voice 1010, toujours permise) ; assemblage de la vague 4 |
 | `/robot/geste` | std_msgs/String JSON (schéma `robot_geste`) | entrée | geste demandé par l'équipe (règle « geste » du chatbot, `geste_salut` de la personnalité) : fait seulement robot au repos (guide maître sans mission, aucune danse, chorégraphie ni prise de main, bras libres), un toutes les 10 s au plus, bras relâchés (99) 5 s après |
+| `/pont/arret` | std_msgs/Bool (fiable, transient_local, profondeur 1) | entrée | verrou du pont (Naviguer › Bloquer, ARRÊT, ligne de commande ; section 12.15) : posé, tout s'arrête comme à l'ARRÊT (sans `/guide/stop`) et joystick, postures, gestes, danses et chorégraphies sont refusés (409) ; LED, voix, lectures, StopMove et 99 restent permis ; levé, rien ne repart (joystick tenu refusé jusqu'à ce qu'il soit lâché) ; champ `verrou` de `/pilotage/etat` |
 
 ## API HTTP et WebSocket du nœud
 

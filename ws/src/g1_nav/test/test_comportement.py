@@ -615,6 +615,305 @@ def test_pilotage_refuse_aller_et_arrete_la_mission(dossier):
     assert banc.guide.retour_prevu is None and banc.guide.etat()['etat'] == 'arrive'
 
 
+# ---------------------------------------------------------------- robot immobilisé (section 12.15)
+# Constat du 01/11/2026 : « Bloquer » ne posait que le verrou du pont ; Nav2 gardait le but, le
+# guide le trajet (bloque, détour, échec puis retour), et le robot repartait seul au « Débloquer ».
+
+def pont(etat, age_reponse_s=0.05, verrou=None):
+    """Un /pont/etat réduit à ce que le guide lit."""
+    return {'version': 1, 'etat': etat, 'verrou': etat == 'arret_verrouille' if verrou is None
+            else verrou, 'age_reponse_s': age_reponse_s}
+
+
+def immobile(banc, duree_s):
+    """Fait tourner le guide duree_s ; renvoie le chemin parcouru par le robot (m)."""
+    depart = banc.moteur.position
+    banc.tourner(duree_s, jusqu_a=())
+    return math.dist(depart[:2], banc.moteur.position[:2])
+
+
+def test_verrou_en_route_annule_le_trajet_sans_reprise(dossier):
+    banc = Banc(dossier, delai_avant_retour_s=1.0)
+    assert banc.guide.aller('b204')
+    banc.tourner(5.0, jusqu_a=())
+    assert banc.guide.etat()['etat'] == 'en_route'
+    banc.guide.verrouiller(True)
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'attente' and etat['immobilise'] == 'verrou' and etat['mission'] is None
+    assert etat['message'] == ('Robot bloqué : le trajet vers « Salle B204 » est annulé. Il ne '
+                               'repartira qu\'avec un nouveau « Y aller », après « Débloquer ».')
+    assert not banc.moteur.etat()['en_cours']
+    e = banc.evenements[-1]
+    assert e['code'] == 'immobilise' and e['raison'] == 'verrou' and e['salle'] == 'b204'
+    assert e['texte'] == 'Je ne peux pas bouger pour le moment.' and e['mission'] == 'visite'
+    # Pendant le verrou : ni bloque, ni détour, ni échec, ni retour ; aucun couloir fermé
+    assert immobile(banc, 30.0) == 0.0
+    assert banc.etats()[-1] == 'attente' and banc.guide.detours == 0
+    assert banc.routeur.couloirs_bloques() == []
+    assert banc.guide.retour_prevu is None
+    # Déblocage : rien ne repart, le message le dit
+    banc.guide.verrouiller(False)
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'attente' and 'immobilise' not in etat and etat['cible'] is None
+    assert etat['message'] == 'Robot débloqué : il attend un nouveau « Y aller ».'
+    assert immobile(banc, 30.0) == 0.0 and not banc.moteur.etat()['en_cours']
+    assert banc.codes() == ['depart', 'immobilise']
+    # Un nouveau « Y aller » marche
+    assert banc.guide.aller('amphi')
+    assert banc.tourner(60.0)['etat'] == 'arrive'
+    banc.conformes()
+
+
+def test_y_aller_refuse_pendant_le_verrou(dossier):
+    banc = Banc(dossier, delai_avant_retour_s=1.0)
+    banc.guide.verrouiller(True)
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'attente' and etat['immobilise'] == 'verrou'
+    assert etat['message'] == ('Robot bloqué : il ne bouge plus. « Débloquer », puis « Y aller » '
+                               'pour repartir.')
+    assert banc.evenements == []           # rien n'était en cours : rien à dire au visiteur
+    assert not banc.guide.aller('b204')
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'echec' and etat['cible'] == 'b204' and etat['immobilise'] == 'verrou'
+    assert 'Débloquer' in etat['message'] and '« Y aller » refusé' in etat['message']
+    assert banc.codes() == ['immobilise'] and banc.evenements[-1]['raison'] == 'verrou'
+    # la demande n'est pas gardée : pas de retour, pas de départ au déblocage
+    assert immobile(banc, 10.0) == 0.0 and banc.guide.retour_prevu is None
+    banc.guide.verrouiller(False)
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'attente' and etat['cible'] is None and 'immobilise' not in etat
+    assert immobile(banc, 20.0) == 0.0 and not banc.moteur.etat()['en_cours']
+    # « principal » aussi est refusé ; le pilotage reste prioritaire dans son refus
+    banc.guide.verrouiller(True)
+    assert not banc.guide.aller('principal') and banc.codes()[-1] == 'immobilise'
+    banc.pilote = 'pilotage'
+    assert not banc.guide.aller('b204') and banc.codes()[-1] == 'pilotage'
+    banc.conformes()
+
+
+def test_verrou_annule_le_retour_automatique(dossier):
+    banc = Banc(dossier, delai_avant_retour_s=5.0)
+    banc.guide.aller('amphi')
+    assert banc.tourner(60.0)['etat'] == 'arrive'
+    assert banc.guide.retour_prevu is not None
+    banc.guide.verrouiller(True)
+    etat = banc.guide.etat()
+    assert banc.guide.retour_prevu is None and 'retour_dans_s' not in etat
+    assert etat['message'].startswith('Robot bloqué : le retour au point principal est annulé.')
+    assert banc.codes()[-1] == 'immobilise'
+    assert immobile(banc, 20.0) == 0.0             # le retour ne part pas pendant le verrou
+    banc.guide.verrouiller(False)
+    assert immobile(banc, 30.0) == 0.0             # ni après
+    assert 'retour' not in banc.codes() and banc.guide.etat()['etat'] == 'attente'
+    banc.conformes()
+
+
+def test_verrou_pendant_le_retour_et_l_orientation(dossier):
+    banc = Banc(dossier, delai_avant_retour_s=1.0)
+    banc.guide.aller('amphi')
+    banc.tourner(60.0)
+    banc.tourner(5.0, jusqu_a=('retour',))
+    assert banc.guide.etat()['etat'] == 'retour'
+    banc.guide.verrouiller(True)
+    assert banc.guide.etat()['message'].startswith('Robot bloqué : le retour au point principal')
+    banc.guide.verrouiller(False)
+    assert immobile(banc, 30.0) == 0.0
+    # la rotation finale au point principal est annulée elle aussi
+    banc2 = Banc(dossier, delai_avant_retour_s=1.0, erreur_cap=0.6)
+    banc2.guide.aller('amphi')
+    banc2.tourner(60.0)
+    banc2.tourner(60.0, jusqu_a=())
+    while not banc2.moteur.rotations:
+        banc2.tourner(PAS_S, jusqu_a=())
+    banc2.guide.verrouiller(True)
+    assert not banc2.moteur.etat()['en_cours'] and banc2.guide.etat()['etat'] == 'attente'
+    cap = banc2.moteur.position[2]
+    banc2.guide.verrouiller(False)
+    banc2.tourner(20.0, jusqu_a=())
+    assert banc2.moteur.position[2] == cap and len(banc2.moteur.rotations) == 1
+
+
+def test_verrou_annule_le_depart_en_attente(dossier):
+    """« Y aller » pendant que Nav2 démarre, puis le verrou : le départ prévu est oublié."""
+    banc = Banc(dossier)
+    pret = {'oui': False}
+    banc.guide.preparation = lambda: None if pret['oui'] else ('attendre', 'Nav2 démarre')
+    assert banc.guide.aller('b204') and banc.guide.en_attente
+    banc.guide.verrouiller(True)
+    assert not banc.guide.en_attente
+    assert banc.guide.etat()['message'].startswith(
+        'Robot bloqué : le départ prévu vers « Salle B204 » est annulé.')
+    pret['oui'] = True
+    banc.guide.verrouiller(False)
+    assert immobile(banc, 20.0) == 0.0 and not banc.moteur.etat()['en_cours']
+
+
+def test_verrou_et_stop_ensemble(dossier):
+    """L'ARRÊT envoie /guide/stop et le verrou : quel que soit l'ordre, le message reste clair."""
+    for ordre in ('stop_puis_verrou', 'verrou_puis_stop'):
+        banc = Banc(dossier)
+        banc.guide.aller('b204')
+        banc.tourner(3.0, jusqu_a=())
+        if ordre == 'stop_puis_verrou':
+            banc.guide.stop()
+            banc.guide.verrouiller(True)
+        else:
+            banc.guide.verrouiller(True)
+            banc.guide.stop()
+        etat = banc.guide.etat()
+        assert etat['etat'] == 'attente' and etat['immobilise'] == 'verrou', ordre
+        assert etat['message'].startswith('Robot bloqué : le trajet vers « Salle B204 » est '
+                                          'annulé.'), ordre
+        assert len([c for c in banc.codes() if c in ('arret', 'immobilise')]) == 1, ordre
+        banc.guide.verrouiller(False)
+        assert immobile(banc, 20.0) == 0.0, ordre
+    # un verrou bien après un stop : rien n'était en cours, le message le dit
+    banc = Banc(dossier)
+    banc.guide.aller('b204')
+    banc.tourner(3.0, jusqu_a=())
+    banc.guide.stop()
+    banc.tourner(3.0, jusqu_a=())
+    banc.guide.verrouiller(True)
+    assert banc.guide.etat()['message'].startswith('Robot bloqué : il ne bouge plus.')
+
+
+def test_verrou_vu_par_l_etat_du_pont(dossier):
+    """
+    Verrou posé avant le lancement du guide, par un éditeur parti depuis.
+
+    Avec ros2 topic pub --once, le guide ne reçoit pas /pont/arret, mais /pont/etat le dit.
+    """
+    banc = Banc(dossier)
+    banc.guide.aller('b204')
+    banc.tourner(3.0, jusqu_a=())
+    banc.guide.etat_pont(pont('arret_verrouille'))
+    assert banc.guide.etat()['immobilise'] == 'verrou' and not banc.moteur.etat()['en_cours']
+    assert not banc.guide.aller('cdi')
+    banc.guide.etat_pont(pont('pret'))
+    assert banc.guide.etat()['message'] == 'Robot débloqué : il attend un nouveau « Y aller ».'
+    assert immobile(banc, 20.0) == 0.0
+    # un /pont/etat de plus de 2 s ne compte plus
+    banc.guide.etat_pont(pont('arret_verrouille'))
+    banc.tourner(2.4, jusqu_a=())
+    assert 'immobilise' not in banc.guide.etat() and banc.guide.aller('cdi')
+
+
+def test_pas_en_marche_annule_et_refuse(dossier):
+    banc = Banc(dossier, delai_avant_retour_s=1.0)
+    banc.guide.etat_pont(pont('pret'))
+    banc.guide.aller('b204')
+    banc.tourner(3.0, jusqu_a=())
+    banc.guide.etat_pont(pont('pas_en_marche'))       # le robot assis à la télécommande
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'attente' and etat['immobilise'] == 'pas_en_marche'
+    assert etat['message'].startswith('Le robot n\'est plus en mode marche : le trajet vers '
+                                      '« Salle B204 » est annulé.')
+    assert banc.evenements[-1]['raison'] == 'pas_en_marche'
+    position = banc.moteur.position
+    for _ in range(10):                                # le pont le redit 2 fois par seconde
+        banc.guide.etat_pont(pont('pas_en_marche'))
+        banc.tourner(0.5, jusqu_a=())
+    assert banc.moteur.position == position and not banc.moteur.etat()['en_cours']
+    assert banc.routeur.couloirs_bloques() == [] and banc.guide.detours == 0
+    assert not banc.guide.aller('cdi') and 'mode marche' in banc.guide.etat()['message']
+    banc.guide.etat_pont(pont('pret'))                 # remis en marche : rien ne repart
+    etat = banc.guide.etat()
+    assert etat['message'] == ('Le robot est de nouveau en mode marche : il attend un nouveau '
+                               '« Y aller ».')
+    assert immobile(banc, 20.0) == 0.0 and banc.moteur.position == position
+    assert banc.guide.aller('cdi') and banc.tourner(80.0)['etat'] == 'arrive'
+    banc.conformes()
+
+
+def test_robot_muet_annule_apres_le_delai(dossier):
+    from g1_nav.guide import DELAI_PONT_PANNE_S
+    banc = Banc(dossier, delai_avant_retour_s=1.0)
+    banc.guide.etat_pont(pont('pret'))
+    banc.guide.aller('b204')
+    banc.guide.etat_pont(pont('en_mouvement'))
+    banc.tourner(3.0, jusqu_a=())
+    debut = banc.horloge.t
+    while banc.horloge.t - debut < DELAI_PONT_PANNE_S - 0.3:     # un ordre perdu : on continue
+        banc.guide.etat_pont(pont('robot_muet'))
+        banc.tourner(0.2, jusqu_a=())
+    assert banc.guide.etat()['etat'] == 'en_route'
+    while banc.guide.etat()['etat'] == 'en_route' and banc.horloge.t - debut < 5.0:
+        banc.guide.etat_pont(pont('robot_muet'))
+        banc.tourner(0.2, jusqu_a=())
+    etat = banc.guide.etat()
+    assert etat['etat'] == 'attente' and etat['immobilise'] == 'robot_muet'
+    assert DELAI_PONT_PANNE_S <= banc.horloge.t - debut <= DELAI_PONT_PANNE_S + 0.5
+    assert etat['message'].startswith('Le robot ne répond plus aux ordres de marche : le trajet')
+    assert banc.codes()[-1] == 'immobilise' and banc.guide.retour_prevu is None
+    # le pont reste muet au repos : le message aussi ; « Y aller » reste permis
+    banc.guide.etat_pont(pont('robot_muet'))
+    banc.tourner(1.0, jusqu_a=())
+    assert banc.guide.etat()['immobilise'] == 'robot_muet'
+    banc.guide.etat_pont(pont('pret'))
+    assert banc.guide.etat()['message'] == ('Le robot répond de nouveau : il attend un nouveau '
+                                            '« Y aller ».')
+    assert immobile(banc, 10.0) == 0.0
+    banc.guide.etat_pont(pont('robot_muet'))
+    assert banc.guide.aller('cdi') and 'immobilise' not in banc.guide.etat()
+    banc.conformes()
+
+
+def test_robot_qui_n_a_jamais_repondu_n_annule_pas(dossier):
+    """Un robot qui ne répond jamais aux 7105 (à vérifier sur le vrai) : comme avant."""
+    banc = Banc(dossier)
+    banc.guide.etat_pont(pont('robot_muet'))
+    banc.guide.aller('b204')
+    for _ in range(40):
+        banc.guide.etat_pont(pont('robot_muet'))
+        banc.tourner(0.25, jusqu_a=())
+    assert banc.guide.etat()['etat'] == 'en_route' and 'immobilise' not in banc.guide.etat()
+
+
+def test_refus_qui_dure_annule_mais_pas_un_vieux_refus(dossier):
+    from g1_nav.guide import DELAI_PONT_PANNE_S
+    banc = Banc(dossier)
+    # au repos, le pont garde le code de la dernière réponse : un vieux refus n'est pas une panne
+    banc.guide.etat_pont(pont('refus', age_reponse_s=30.0))
+    banc.guide.aller('b204')
+    for _ in range(20):
+        banc.guide.etat_pont(pont('refus', age_reponse_s=30.0 + banc.horloge.t))
+        banc.tourner(0.25, jusqu_a=())
+    assert banc.guide.etat()['etat'] == 'en_route'
+    # le robot refuse ce qu'on lui envoie maintenant, plus de 2 s : trajet annulé
+    debut = banc.horloge.t
+    while banc.guide.etat()['etat'] == 'en_route' and banc.horloge.t - debut < 5.0:
+        banc.guide.etat_pont(pont('refus', age_reponse_s=0.1))
+        banc.tourner(0.2, jusqu_a=())
+    etat = banc.guide.etat()
+    assert etat['immobilise'] == 'refus' and banc.horloge.t - debut >= DELAI_PONT_PANNE_S
+    assert etat['message'].startswith('Le robot refuse de marcher : le trajet vers « Salle B204 »')
+    assert immobile(banc, 10.0) == 0.0
+    assert banc.guide.aller('cdi')                    # « Y aller » reste permis
+    banc.conformes()
+
+
+def test_retour_automatique_pas_lance_pendant_une_panne(dossier):
+    banc = Banc(dossier, delai_avant_retour_s=2.0)
+    banc.guide.etat_pont(pont('pret'))
+    banc.guide.aller('amphi')
+    assert banc.tourner(60.0)['etat'] == 'arrive' and banc.guide.retour_prevu is not None
+    for _ in range(12):                                # muet juste avant le départ du retour
+        banc.guide.etat_pont(pont('robot_muet'))
+        banc.tourner(0.25, jusqu_a=())
+    assert banc.guide.retour_prevu is None and 'retour' not in banc.codes()
+    assert immobile(banc, 20.0) == 0.0
+    assert any('immobilis' in m for m in banc.messages)
+
+
+def test_sans_nouvelles_du_pont_le_guide_fait_comme_avant(dossier):
+    """Simulation (pas de pont) : aucun /pont/etat, le guide va et revient comme avant."""
+    banc = Banc(dossier, delai_avant_retour_s=1.0)
+    banc.guide.aller('amphi')
+    assert banc.tourner(60.0)['etat'] == 'arrive'
+    assert banc.tourner(60.0, jusqu_a=('attente',))['etat'] == 'attente'
+    assert banc.codes()[-1] == 'retour_arrive' and 'immobilise' not in banc.codes()
+
+
 # ---------------------------------------------------------------- format, réglages, personnes
 
 def test_etat_et_evenements_conformes(dossier):

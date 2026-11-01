@@ -663,3 +663,28 @@ def test_chemin_du_guide_avec_les_noms(sans_ros, serveur, navigateur, lieux):
       }).catch((e) => fini({ erreur: String(e) }));""")
     assert r == ["Accueil → Hall nord → Amphithéâtre → Couloir nord 1 → Salle B204", "", "X 1"], r
     assert nav.js("return window.erreursAtelier") == []
+
+
+def test_y_aller_grise_quand_le_robot_est_bloque(sans_ros, serveur, navigateur, lieux):
+    """Correction du 01/11/2026 (section 12.15 du plan) : pendant un blocage (verrou de l'Atelier, du pont, ou
+    vu par le guide) ou hors du mode marche, « Y aller » est grisé avec la raison ; une panne (robot muet,
+    refus) le laisse permis ; les messages de « Bloquer » et « Débloquer » disent que le trajet est annulé et
+    que rien ne repart."""
+    _, base = serveur
+    nav = navigateur
+    nav.taille(1366, 768)
+    C.ouvrir_espace(nav, base, "simu")
+    r = nav.js_async("""const fini = arguments[arguments.length - 1];
+      import('/js/ecrans/simulation.js').then((S) => {
+        const R = S.raisonImmobile;
+        fini([R({ arret: { verrou: true } }, null), R({ pont: { verrou: true, perime: false } }, null),
+              R({ pont: { verrou: true, perime: true } }, null), R({}, { immobilise: 'verrou' }),
+              R({}, { immobilise: 'pas_en_marche' }), R({}, { immobilise: 'robot_muet' }), R(null, null),
+              S.TITRES_IMMOBILE.verrou, S.MESSAGE_BLOQUE, S.MESSAGE_DEBLOQUE]);
+      }).catch((e) => fini({ erreur: String(e) }));""")
+    assert r[0] == r[1] == r[3] == "Robot bloqué : « Débloquer » d'abord", r
+    assert r[2] is None and r[5] is None and r[6] is None, r
+    assert "mode marche" in r[4], r
+    assert r[7] == "Robot bloqué : il ne bouge pas"
+    assert "trajet en cours est annulé" in r[8] and "nouveau « Y aller »" in r[9], r
+    assert nav.js("return window.erreursAtelier") == []

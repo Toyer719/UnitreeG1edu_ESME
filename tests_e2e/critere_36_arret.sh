@@ -10,11 +10,17 @@
 #     POST /api/arret {mode: repetition} répond en moins de 1 s (200, parties.guide.ok et parties.verrou.ok
 #     vrais), robot arrêté (moins de 2 cm/s) moins de 1 s après la demande, /guide/etat quitte en_route,
 #     /pont/etat passe à arret_verrouille en moins de 1 s ;
-#   - verrou posé : un nouveau « Y aller » laisse le robot immobile (moins de 5 cm) pendant 5 s ; GET /api/arret
-#     dit verrou vrai ; POST /api/arret/debloquer, puis « Y aller » : le robot repart (0,3 m au moins) ;
+#   - verrou posé : un nouveau « Y aller » laisse le robot immobile (moins de 5 cm) pendant 5 s, et le guide le
+#     refuse ; GET /api/arret dit verrou vrai ; POST /api/arret/debloquer : rien ne repart ; puis « Y aller » : le
+#     robot repart (0,3 m au moins) ;
+#   - un déblocage ne relance jamais l'ancien trajet (correction du 01/11/2026, section 12.15) : en route,
+#     « Bloquer » (qui envoie aussi /guide/stop), robot arrêté, guide en attente « robot bloqué » ; « Débloquer » :
+#     AUCUN mouvement pendant 15 s, guide « Robot débloqué : il attend un nouveau « Y aller » » ; de même avec le
+#     verrou en ligne de commande et avec le faux G1 assis puis remis en marche ; un nouveau « Y aller » repart ;
 #   - dans Firefox, robot en route : le clic sur [data-role=arret] et la touche Échap envoient POST /api/arret ;
 #     le bouton passe à « Débloquer » (data-etat=bloque) ;
-#   - nœud pilotage, main prise, joystick à vx 0,3 par /ws/pilotage : POST /api/arret → StopMove reçu par le
+#   - nœud pilotage, main prise, joystick à vx 0,3 par /ws/pilotage : « Bloquer » l'arrête aussi (refusé pendant
+#     le blocage, pas relancé au « Débloquer » tant qu'il n'est pas lâché) ; POST /api/arret → StopMove reçu par le
 #     faux G1 en moins de 1 s, robot arrêté ; nœud pilotage arrêté : POST /api/arret répond quand même en
 #     moins de 1 s, parties.pilotage.ok faux avec un message, le reste arrêté ;
 #   - jamais d'erreur 500 ; aucun processus restant.
@@ -49,7 +55,7 @@ serveur_pid=$(pgrep -f "uvicorn atelier.serveur.main:app .*--port $PORT" | tr '\
 sleep 3
 "$PY" "$OUTILS18" restes --lieux "$ATELIER_LIEUX" --sauf $serveur_pid || echoue "des processus restent après « Arrêter »"
 case $code in
-  0) reussi "ARRÊT global : simulation sans verrou, répétition (guide, verrou, Débloquer), bouton et Échap, pilotage, nœud arrêté" ;;
+  0) reussi "ARRÊT global : simulation sans verrou, répétition (guide, verrou, Débloquer sans reprise de l'ancien trajet), bouton et Échap, pilotage, nœud arrêté" ;;
   77) en_attente "$(grep 'EN ATTENTE' "$TRAVAIL/journaux/critere_36.log" | tail -n 1)" ;;
   *) echoue "$(grep -E 'ÉCHEC|Error|Traceback' "$TRAVAIL/journaux/critere_36.log" | tail -n 1 | cut -c1-500)" ;;
 esac

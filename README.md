@@ -683,8 +683,10 @@ Sans l'Atelier : `g1-jetson demarrer --lieu L --etage E [--vitesse-max 0.2]`, `g
   dès que le robot bouge ou qu'une navigation tourne) : arrête le guide, la téléopération et le
   pilotage en moins d'une seconde, et bloque le robot jusqu'à **Débloquer** ; sans réponse du serveur
   en 1,5 s, la barre d'état dit de prendre la télécommande ; `g1-guide stop` :
-  arrêt immédiat, puis 1 s sans mouvement. **Naviguer › Bloquer** : il reste immobile, quoi qu'on lui
-  demande, jusqu'à « Débloquer ».
+  arrêt immédiat, puis 1 s sans mouvement. **Naviguer › Bloquer** : le trajet en cours est annulé et
+  le robot reste immobile, quoi qu'on lui demande (guide, pilotage), jusqu'à « Débloquer ». **Un
+  déblocage ne relance jamais l'ancien trajet** : le robot attend un nouveau « Y aller » ; de même
+  quand il est remis en mode marche, ou qu'il répond de nouveau (section 12.15 du plan).
 - Si le robot ne répond plus (`robot_muet`), refuse les ordres (`refus`) ou n'est pas en mode marche
   (`pas_en_marche`), le pont le dit en français (pastille du robot dans la barre d'outils, panneau de
   Naviguer).

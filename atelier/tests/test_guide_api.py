@@ -110,6 +110,36 @@ def test_aller_pendant_le_pilotage_avertit(client):
     assert pont.publies == ["b204"]          # le guide refusera lui-même (echec, événement pilotage)
 
 
+@pytest.mark.parametrize("cas", ["verrou_atelier", "verrou_pont", "pas_en_marche", "simu", "rien"])
+def test_aller_pendant_un_blocage_avertit(client, monkeypatch, cas):
+    """Section 12.15 : robot bloqué (verrou de l'Atelier ou vu par le pont) ou pas en mode marche, en
+    répétition ou avec le robot : 200 avec un avertissement, et le guide refuse lui-même (la demande n'est
+    pas gardée pour le déblocage). En simulation (pas de pont), un verrou resté posé ne compte pas."""
+    from atelier.serveur.routes import simulation as S
+    etat = client.app.state.atelier
+    pont = FauxPont(etat.pont)
+    monkeypatch.setattr(etat, "mode_navigation", lambda: "simu" if cas == "simu" else "repetition")
+    monkeypatch.setattr(S, "robot_repere", lambda e: True)
+    if cas in ("verrou_atelier", "simu"):
+        etat.arret = {"verrou": True, "depuis": None, "mode": "repetition", "par": "bloquer"}
+    pont_etat = {"verrou_pont": {"etat": "arret_verrouille", "verrou": True, "perime": False},
+                 "pas_en_marche": {"etat": "pas_en_marche", "verrou": False, "perime": False}}.get(cas)
+    monkeypatch.setattr(etat.pont, "etat_pont", lambda: pont_etat)
+    r = client.post("/api/guide/aller", json={"cible": "b204"})
+    assert r.status_code == 200, r.text
+    assert pont.publies == ["b204"]
+    if cas in ("simu", "rien"):
+        assert "avertissement" not in r.json() and "immobilise" not in r.json()
+    elif cas == "pas_en_marche":
+        assert r.json()["immobilise"] == "pas_en_marche" and "mode marche" in r.json()["avertissement"]
+    else:
+        assert r.json()["immobilise"] == "verrou" and "Débloquer" in r.json()["avertissement"]
+    # un /pont/etat périmé ne compte pas
+    if cas == "verrou_pont":
+        monkeypatch.setattr(etat.pont, "etat_pont", lambda: dict(pont_etat, perime=True))
+        assert "avertissement" not in client.post("/api/guide/aller", json={"cible": "b204"}).json()
+
+
 def test_evenements_et_faux_visiteur(client):
     assert client.get("/api/guide/evenements").json()["evenements"] == []
     evenements = [{"version": 1, "code": "depart", "texte": "Suivez-moi, je vous emmène à Salle B204."}]

@@ -2,7 +2,8 @@
 
   - /guide/etat : états de la vague 1 (attente, en_route, bloque, detour, arrive, echec) et de la
     vague 4 (retour, attente_passage, attente_visiteur, perdu) ; champs mission, accompagner,
-    visiteur et depuis_s en plus (schéma etat_guide, compatible avec les messages d'avant) ;
+    visiteur et depuis_s en plus (schéma etat_guide, compatible avec les messages d'avant) ; champ
+    facultatif immobilise (RAISONS_IMMOBILE, correction du 01/11/2026, section 12.15 du plan) ;
   - /guide/evenement : messages au visiteur {version, code, texte, salle?, ...} (schéma
     evenement_guide), que la partie voix de l'équipe dit ; codes et textes par défaut :
     CODES_EVENEMENT, et evenement(code, ...) fabrique un message conforme ;
@@ -48,7 +49,14 @@ CODES_EVENEMENT = {
     "echec": "Désolé, je ne peux pas vous y emmener. Demandez de l'aide à l'accueil.",
     "arret": "Je m'arrête.",
     "pilotage": "Je suis piloté à la main pour le moment.",
+    # correction du 01/11/2026 (section 12.15) : robot bloqué, pas en mode marche, muet ou qui refuse
+    # de marcher : le trajet est annulé (ou « Y aller » refusé), champ raison (RAISONS_IMMOBILE)
+    "immobilise": "Je ne peux pas bouger pour le moment.",
 }
+# Ce qui immobilise le robot (événement immobilise, champ raison ; champ immobilise de /guide/etat) :
+# verrou du pont (/pont/arret : Bloquer, ARRÊT, ligne de commande), mode du robot qui n'est pas la marche
+# (pas_en_marche), robot qui ne répond plus (robot_muet) ou qui refuse de marcher (refus)
+RAISONS_IMMOBILE = ("verrou", "pas_en_marche", "robot_muet", "refus")
 
 # Délais et distances par défaut (section guide de lieu.yaml, schéma lieu)
 DELAIS_GUIDE = {
@@ -144,6 +152,6 @@ def evenement(code, salle=None, nom=None, texte=None, mission=None, phrases=None
 __all__ = ["CODES_EVENEMENT", "DELAIS_GUIDE", "DELAI_VISITEUR_DEPART_S", "DELAI_VISITEUR_INVISIBLE_S",
            "DISTANCE_VISITEUR_DEPART_M", "ETATS_EN_MISSION", "ETATS_FINAUX_VISITE", "ETATS_GUIDE", "ETATS_GUIDE_V1",
            "EXEMPLE_DEMANDE_ALLER", "EXEMPLE_ETAT_GUIDE", "EXEMPLE_EVENEMENT", "EXEMPLE_PERSONNES", "MISSIONS",
-           "MODES_FAUX_VISITEUR", "SUJET_EVENEMENT", "SUJET_FAUX_VISITEUR", "SUJET_LIMITE_VITESSE", "SUJET_PERSONNES",
-           "TOLERANCE_RETOUR_M", "TOLERANCE_RETOUR_RAD", "evenement", "lire_demande_aller", "reglages_guide",
-           "texte_evenement"]
+           "MODES_FAUX_VISITEUR", "RAISONS_IMMOBILE", "SUJET_EVENEMENT", "SUJET_FAUX_VISITEUR",
+           "SUJET_LIMITE_VITESSE", "SUJET_PERSONNES", "TOLERANCE_RETOUR_M", "TOLERANCE_RETOUR_RAD", "evenement",
+           "lire_demande_aller", "reglages_guide", "texte_evenement"]

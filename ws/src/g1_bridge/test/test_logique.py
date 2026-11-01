@@ -382,6 +382,31 @@ def test_deverrouillage_reprise_seulement_avec_un_cmd_vel_neuf():
     assert envois and vitesses(envois[0][1]) == (0.2, 0.0, 0.0)
 
 
+def test_flux_qui_continue_pendant_le_verrou_repart_au_deverrouillage():
+    """
+    Constat du 01/11/2026 (section 12.15 du plan), figé ici : le pont seul ne suffit pas.
+
+    Un flux de /cmd_vel qui continue pendant le verrou (Nav2 qui suit encore l'ancien but) est
+    jeté, mais passe de nouveau dès le déverrouillage : c'est au guide d'annuler son trajet (il
+    écoute /pont/arret), et au pilotage d'arrêter ses mouvements. Le pont, lui, ne change pas.
+    """
+    pont, h = pret()
+    faire_tourner(pont, h, 0.5, cmd_vel=(0.3, 0, 0))
+    pont.sur_verrou(True)
+    pendant = faire_tourner(pont, h, 2.0, cmd_vel=(0.3, 0, 0))
+    assert all(vitesses(e) == (0.0, 0.0, 0.0) for _, e in pendant)
+    pont.sur_verrou(False)
+    apres = faire_tourner(pont, h, 0.5, cmd_vel=(0.3, 0, 0))
+    assert apres and vitesses(apres[0][1]) == (0.3, 0.0, 0.0)
+    # le même flux, arrêté pendant le verrou (le guide a annulé son trajet) : rien ne repart
+    pont, h = pret()
+    faire_tourner(pont, h, 0.5, cmd_vel=(0.3, 0, 0))
+    pont.sur_verrou(True)
+    faire_tourner(pont, h, 2.0)
+    pont.sur_verrou(False)
+    assert faire_tourner(pont, h, 2.0) == []
+
+
 def test_verrou_prioritaire_sur_tout():
     pont, h = nouveau()
     pont.demarrer()

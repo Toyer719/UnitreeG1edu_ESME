@@ -138,6 +138,10 @@ def test_arret_en_reel_pose_le_verrou_puis_debloquer(client, sans_pilotage, mode
     r = client.post("/api/arret/debloquer")
     assert r.status_code == 200 and r.json()["verrou"] is False and pont.verrous == [True, False]
     assert "repartira" in r.json()["message"]
+    # section 12.15 : le déblocage ne relance aucun trajet, et l'ARRÊT le dit
+    assert r.json()["message"] == A.MESSAGE_DEBLOQUE and "nouveau « Y aller »" in A.MESSAGE_DEBLOQUE
+    assert "trajet annulé" in d["message"] and "nouveau « Y aller »" in d["message"]
+    assert pont.stops == 1                                                      # « Débloquer » n'envoie rien au guide
     a = client.get("/api/arret").json()
     assert a["verrou"] is False and a["par"] == "debloquer"
 
@@ -238,9 +242,13 @@ def test_bloquer_de_naviguer_met_a_jour_le_meme_etat(client):
     pont = FauxPont(_etat(client).pont)
     r = client.post("/api/robot/arret", json={"verrou": True})
     assert r.status_code == 200 and pont.verrous == [True]
+    # section 12.15 : « Bloquer » envoie aussi /guide/stop (trajet annulé, rien ne repart au déblocage)
+    assert pont.stops == 1 and r.json()["guide"] == 1
+    assert r.json()["message"] == A.MESSAGE_BLOQUE and "trajet en cours est annulé" in A.MESSAGE_BLOQUE
     a = client.get("/api/arret").json()
     assert a["verrou"] is True and a["par"] == "bloquer"
-    client.post("/api/robot/arret", json={"verrou": False})
+    r = client.post("/api/robot/arret", json={"verrou": False})
+    assert pont.stops == 1 and r.json()["guide"] is None and r.json()["message"] == A.MESSAGE_DEBLOQUE
     assert client.get("/api/arret").json() == {**a, "verrou": False, "par": "debloquer",
                                                "depuis": client.get("/api/arret").json()["depuis"]}
 

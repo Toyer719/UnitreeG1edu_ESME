@@ -24,7 +24,7 @@ ou `g1-guide navigation ... --pont oui`.
 | Consigne fraîche (< 0,3 s) | envoyée à 10 Hz, `duration` 0,5 s : si le pont meurt, le robot s'arrête seul |
 | Plus de `/cmd_vel` depuis 0,3 s | un arrêt tout de suite, puis plus rien |
 | `/guide/stop` | arrêt immédiat, `/cmd_vel` ignoré 1 s |
-| `/pont/arret` true / false | arrêt envoyé 3 fois en 0,2 s, verrou ; reprise seulement avec un `/cmd_vel` neuf |
+| `/pont/arret` true / false | arrêt envoyé 3 fois en 0,2 s, verrou ; reprise seulement avec un `/cmd_vel` neuf (le guide et le pilotage écoutent aussi le verrou et annulent leurs mouvements : rien ne repart au déverrouillage, section 12.15 du plan) |
 | Repérage | mouvement permis seulement si `/reperage/etat` (moins de 1 s) dit `repere` |
 | Robot muet | aucune réponse depuis 1 s : état `robot_muet` |
 | Refus | réponse de code non nul : état `refus`, avec le code et un message |

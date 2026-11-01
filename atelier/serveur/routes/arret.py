@@ -22,6 +22,10 @@
 
 L'ARRÊT n'arrête pas un scan (« Fin » le fait) ; en répétition, l'exploration d'un scan passe par le
 pont, que le verrou arrête. POST /api/robot/arret {verrou} (vague 3) reste et met à jour le même état.
+
+Correction du 01/11/2026 (section 12.15 du plan) : le trajet en cours est annulé par l'ARRÊT comme par
+« Bloquer » (/guide/stop, et le guide écoute lui-même le verrou) ; au déblocage, rien ne repart : le
+robot attend un nouveau « Y aller ». Les messages le disent (MESSAGE_BLOQUE, MESSAGE_DEBLOQUE).
 """
 import asyncio
 import json
@@ -42,6 +46,10 @@ DELAI_PARTIE_S = 0.5          # guide, téléopération, verrou : des publicatio
 DELAI_PILOTAGE_S = 0.6        # le nœud pilotage (HTTP) : au-delà, on n'attend plus
 DELAI_TOTAL_S = 0.9           # garde-fou : la réponse part avant 1 s quoi qu'il arrive
 PARTIES = ("guide", "teleop", "pilotage", "verrou")
+# Section 12.15 : « Bloquer » (Naviguer) et « Débloquer » ; le déblocage ne relance aucun trajet
+MESSAGE_BLOQUE = ("Robot bloqué : le trajet en cours est annulé. Il reste immobile jusqu'à « Débloquer », "
+                  "puis attend un nouveau « Y aller ».")
+MESSAGE_DEBLOQUE = "Robot débloqué : il ne repartira qu'avec un nouveau « Y aller »."
 
 
 def maintenant_iso():
@@ -192,7 +200,8 @@ def message_arret(parties, verrou):
         verbe = "n'a pas répondu" if len(fautes) == 1 else "n'ont pas répondu"
         return f"ARRÊT envoyé, mais {sujet} {verbe} : gardez la télécommande en main."
     if verrou:
-        return "ARRÊT : robot arrêté et bloqué. « Débloquer » le laisse repartir."
+        return ("ARRÊT : robot arrêté et bloqué, trajet annulé. Après « Débloquer », il attend un nouveau "
+                "« Y aller ».")
     if all(parties[n]["ok"] is None for n in PARTIES):
         return "ARRÊT : rien ne tournait."
     return "ARRÊT : robot arrêté."
@@ -246,7 +255,7 @@ def debloquer(request: Request):
     mode = etat.arret.get("mode") if isinstance(getattr(etat, "arret", None), dict) else None
     noter_verrou(etat, False, mode, "debloquer")
     return {"verrou": False, "ecoute": ecoute,
-            "message": "Robot débloqué : il repartira à la prochaine consigne." if ecoute
+            "message": MESSAGE_DEBLOQUE if ecoute
             else "Robot débloqué : il pourra marcher dès que la navigation sera lancée."}
 
 

@@ -282,6 +282,119 @@ def test_verrou_du_pilotage(dossier):
     assert 'Traceback' not in erreurs
 
 
+def _qos_verrou():
+    from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
+    return QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                      durability=DurabilityPolicy.TRANSIENT_LOCAL, history=HistoryPolicy.KEEP_LAST)
+
+
+def test_verrou_du_pont(dossier):
+    """
+    /pont/arret (fiable, transient_local), section 12.15 du plan.
+
+    Posé avant le lancement du guide : « Y aller » refusé, rien ne part au déblocage. Posé en
+    route : trajet annulé (événement immobilise), et rien ne repart au déblocage ; un nouveau
+    « Y aller » marche.
+    """
+    from std_msgs.msg import Bool
+    ecoute = Ecoute()
+    pub = ecoute.noeud.create_publisher(Bool, '/pont/arret', _qos_verrou())
+    pub.publish(Bool(data=True))
+    guide = lancer_guide(dossier, vitesse_factice='1.0', delai_avant_retour_s='1.0')
+    try:
+        assert ecoute.attendre(lambda: ecoute.etats and ecoute.pub_aller.get_subscription_count(),
+                               20.0), 'le guide ne publie pas /guide/etat'
+        assert ecoute.attendre(lambda: ecoute.etats[-1].get('immobilise') == 'verrou', 5.0), \
+            f'verrou d\'avant le lancement pas reçu : {ecoute.etats[-1]}'
+        ecoute.pub_aller.publish(String(data='b204'))
+        assert ecoute.attendre(lambda: ecoute.etats[-1]['etat'] == 'echec', 5.0)
+        assert 'Débloquer' in ecoute.etats[-1]['message']
+        # l'événement vient sur un autre sujet que l'état : il peut arriver un peu après
+        assert ecoute.attendre(lambda: ecoute.codes() == ['immobilise'], 3.0), ecoute.codes()
+        pub.publish(Bool(data=False))
+        assert ecoute.attendre(lambda: ecoute.etats[-1]['etat'] == 'attente'
+                               and 'immobilise' not in ecoute.etats[-1], 5.0)
+        assert not ecoute.attendre(lambda: ecoute.etats[-1]['etat'] != 'attente', 3.0)
+        # En route, puis bloqué : trajet annulé ; débloqué : rien ne repart
+        ecoute.pub_aller.publish(String(data='b204'))
+        assert ecoute.attendre(lambda: ecoute.etats[-1]['etat'] == 'en_route'
+                               and (ecoute.etats[-1]['reste_m'] or 99) < 19.0, 10.0)
+        pub.publish(Bool(data=True))
+        assert ecoute.attendre(lambda: ecoute.etats[-1].get('immobilise') == 'verrou', 3.0)
+        reste = [e['reste_m'] for e in ecoute.etats if e['etat'] == 'en_route'][-1]
+        fin = ecoute.etats[-1]
+        assert fin['etat'] == 'attente'
+        assert 'trajet vers « Salle B204 » est annulé' in fin['message']
+        assert ecoute.attendre(lambda: ecoute.codes()[-1:] == ['immobilise'], 3.0)
+        assert ecoute.evenements[-1]['raison'] == 'verrou'
+        pub.publish(Bool(data=False))
+        assert ecoute.attendre(lambda: 'immobilise' not in ecoute.etats[-1], 3.0)
+        assert not ecoute.attendre(lambda: ecoute.etats[-1]['etat'] != 'attente', 4.0), \
+            f'le guide est reparti seul : {ecoute.etats[-1]}'
+        assert reste > 2.0
+        ecoute.pub_aller.publish(String(data='amphi'))
+        assert ecoute.attendre(lambda: ecoute.etats[-1]['etat'] == 'arrive', 20.0)
+    finally:
+        ecoute.fermer()
+        os.killpg(guide.pid, signal.SIGINT)
+        sortie, erreurs = guide.communicate(timeout=10)
+    assert 'Traceback' not in erreurs
+    assert 'verrou et état du pont suivis' in sortie + erreurs
+
+
+def test_verrou_du_pont_ignore_sans_pont(dossier):
+    """suivre_pont:=false (simulation, sans pont) : un verrou resté posé ne bloque pas le guide."""
+    from std_msgs.msg import Bool
+    ecoute = Ecoute()
+    pub = ecoute.noeud.create_publisher(Bool, '/pont/arret', _qos_verrou())
+    pub.publish(Bool(data=True))
+    guide = lancer_guide(dossier, suivre_pont='false')
+    try:
+        assert ecoute.attendre(lambda: ecoute.etats and ecoute.pub_aller.get_subscription_count(),
+                               20.0), 'le guide ne publie pas /guide/etat'
+        time.sleep(1.0)
+        ecoute.pub_aller.publish(String(data='b204'))
+        assert ecoute.attendre(lambda: ecoute.etats[-1]['etat'] == 'arrive', 20.0)
+        assert all('immobilise' not in e for e in ecoute.etats)
+    finally:
+        ecoute.fermer()
+        os.killpg(guide.pid, signal.SIGINT)
+        sortie, erreurs = guide.communicate(timeout=10)
+    assert 'Traceback' not in erreurs
+    assert 'sans pont (verrou ignoré)' in sortie + erreurs
+
+
+def test_pas_en_marche_par_l_etat_du_pont(dossier):
+    """/pont/etat pas_en_marche en route : trajet annulé ; remis en marche : rien ne repart."""
+    guide = lancer_guide(dossier, vitesse_factice='1.0', delai_avant_retour_s='1.0')
+    ecoute = Ecoute()
+    pub = ecoute.noeud.create_publisher(String, '/pont/etat', 10)
+    etat = {'version': 1, 'etat': 'pas_en_marche', 'verrou': False, 'age_reponse_s': 0.1}
+    assis = [False]
+
+    def publier():
+        pub.publish(String(data=json.dumps(dict(etat, etat='pas_en_marche' if assis[0]
+                                                else 'pret'))))
+        return False
+    try:
+        assert ecoute.attendre(lambda: ecoute.etats and ecoute.pub_aller.get_subscription_count(),
+                               20.0), 'le guide ne publie pas /guide/etat'
+        ecoute.pub_aller.publish(String(data='b204'))
+        assert ecoute.attendre(lambda: publier() or ecoute.etats[-1]['etat'] == 'en_route', 5.0)
+        assis[0] = True
+        assert ecoute.attendre(lambda: publier() or ecoute.etats[-1].get('immobilise')
+                               == 'pas_en_marche', 3.0)
+        assert 'mode marche' in ecoute.etats[-1]['message']
+        assis[0] = False
+        assert ecoute.attendre(lambda: publier() or 'immobilise' not in ecoute.etats[-1], 3.0)
+        assert not ecoute.attendre(lambda: publier() or ecoute.etats[-1]['etat'] != 'attente', 3.0)
+    finally:
+        ecoute.fermer()
+        os.killpg(guide.pid, signal.SIGINT)
+        sortie, erreurs = guide.communicate(timeout=10)
+    assert 'Traceback' not in erreurs
+
+
 def test_accompagnement_avec_un_faux_detecteur(dossier):
     """
     Accompagnement avec un faux /personnes/lidar.

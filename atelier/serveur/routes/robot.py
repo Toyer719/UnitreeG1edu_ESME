@@ -16,7 +16,11 @@
         ou étage ; 400 si x, y et cap ne vont pas ensemble ; 503 sans pont ROS 2.
   POST /api/robot/arret {verrou}
         publie /pont/arret (verrou du pont : le robot reste immobile jusqu'au déverrouillage) ;
-        renvoie {verrou, pont, ecoute}. Vague 5 : retenu comme le verrou de l'ARRÊT (GET /api/arret).
+        renvoie {verrou, pont, ecoute, guide, message}. Vague 5 : retenu comme le verrou de l'ARRÊT
+        (GET /api/arret). Correction du 01/11/2026 (section 12.15) : « Bloquer » (verrou vrai)
+        envoie aussi /guide/stop (guide : nombre de guides à l'écoute, ou null) : le trajet en cours
+        et le retour prévu sont annulés, et rien ne repart au déblocage, même avec un guide d'avant
+        cette correction (qui n'écoutait pas le verrou) ; il faut un nouveau « Y aller ».
 
 Le relais odom_vers_tf (paquet g1_nav) envoie lui-même la commande 1804 au service slam_operate
 du robot (ou au faux service de la répétition) : l'Atelier ne parle jamais directement au robot.
@@ -190,11 +194,20 @@ def arret(demande: DemandeArret, request: Request):
         raise ErreurAtelier(503, "Pas de liaison avec ROS 2 : "
                             + (etat.pont.erreur or "le pont ROS 2 du serveur n'est pas démarré") + ".")
     ecoute = etat.pont.bloquer(demande.verrou)
+    guide = None
+    if demande.verrou:
+        # section 12.15 : le verrou d'abord (le pont arrête le robot), puis /guide/stop (le guide oublie
+        # son trajet et le retour prévu : rien ne repartira au déblocage)
+        try:
+            guide = etat.pont.stop()
+        except RuntimeError:
+            guide = None
     # vague 5 (section 12.4) : le même état que l'ARRÊT de la barre d'outils (GET /api/arret, /ws/etat)
-    from .arret import noter_verrou
+    from .arret import MESSAGE_DEBLOQUE, MESSAGE_BLOQUE, noter_verrou
     mode = {"robot": "reel"}.get(etat.mode_navigation(), etat.mode_navigation())
     noter_verrou(etat, demande.verrou, mode, "bloquer" if demande.verrou else "debloquer")
-    reponse = {"verrou": demande.verrou, "pont": etat.pont.etat_pont(), "ecoute": ecoute}
+    reponse = {"verrou": demande.verrou, "pont": etat.pont.etat_pont(), "ecoute": ecoute, "guide": guide,
+               "message": MESSAGE_BLOQUE if demande.verrou else MESSAGE_DEBLOQUE}
     if ecoute == 0:
         reponse["avertissement"] = ("Le robot restera bloqué : le verrou s'appliquera dès que la navigation sera "
                                     "lancée." if demande.verrou else

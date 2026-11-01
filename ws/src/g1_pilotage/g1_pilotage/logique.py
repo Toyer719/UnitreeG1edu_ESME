@@ -173,6 +173,10 @@ class Pilotage:
         # après un ARRÊT, le joystick reste sans effet jusqu'à ce qu'il soit lâché (assemblage
         # de la vague 5 : un pouce resté sur le manche ne relance pas le robot)
         self.joystick_bloque = False
+        # Correction du 01/11/2026 (section 12.15) : le verrou du pont (/pont/arret : Bloquer,
+        # ARRÊT, ligne de commande) vaut aussi pour le pilotage, qui parle directement au robot :
+        # posé, tout s'arrête comme à l'ARRÊT et les mouvements sont refusés ; levé, rien ne repart
+        self.verrou_pont = False
         # danses, gestes, chorégraphies
         self.danses = None                    # {n: {nom, duree_s}} lu dans le robot (7100)
         self.t_danses = None
@@ -273,6 +277,13 @@ class Pilotage:
             return refus(409, f'{quoi} : prenez la main dans l\'onglet Pilotage (le guide a la '
                               'main).',
                          maitre=self.maitre['maitre'])
+        return self._bloque(quoi)
+
+    def _bloque(self, quoi):
+        """Refus 409 tant que le robot est bloqué (verrou du pont, section 12.15)."""
+        if self.verrou_pont:
+            return refus(409, f'{quoi} : robot bloqué (Naviguer › Bloquer, ou ARRÊT) : cliquez '
+                              'sur « Débloquer » d\'abord.', verrou=True)
         return None
 
     def _noter_refus(self, code, message, service=None, api_id=None):
@@ -341,6 +352,7 @@ class Pilotage:
             'danses_lues': self.danses is not None,
             'age_reponse_s': None if self.t_reponse is None else round(t - self.t_reponse, 2),
             'mur': round(self.mur(), 3),
+            'verrou': self.verrou_pont,           # section 12.15 : robot bloqué (/pont/arret)
         }
 
     # ------------------------------------------------------------ entrées venues de ROS
@@ -491,7 +503,7 @@ class Pilotage:
         if not self.a_la_main():
             return refus(409, 'Joystick : prenez la main dans l\'onglet Pilotage (le guide a la '
                               'main).')
-        occupe = self._occupe('Joystick')
+        occupe = self._occupe('Joystick') or self._bloque('Joystick')
         if occupe is None:
             fsm = self.mode_connu(t)
             if fsm is not None and fsm not in D.MODES_MARCHE and fsm not in D.MODES_COURSE:
@@ -710,7 +722,7 @@ class Pilotage:
                               'Pilotage).')
         if self.guide_en_mission(t):
             return refus(409, 'Geste demandé ignoré : le guide est en visite.')
-        occupe = self._occupe('Geste demandé')
+        occupe = self._occupe('Geste demandé') or self._bloque('Geste demandé')
         if occupe is not None:
             return occupe
         if self.prise is not None or self.bras_tenus or self.relacher_geste_a is not None:
@@ -1054,6 +1066,32 @@ class Pilotage:
         self.message = 'ARRÊT : robot arrêté.'
         return Resultat(200, {'detail': self.message}, sorties)
 
+    def sur_verrou(self, actif, par='verrou du pont'):
+        """
+        /pont/arret (section 12.15) : True, le robot est bloqué ; False, il est débloqué.
+
+        Bloqué : comme l'ARRÊT (StopMove, chorégraphie arrêtée, bras relâchés, joystick tenu
+        ignoré jusqu'à ce qu'il soit lâché), sans /guide/stop (le guide écoute le verrou lui-même),
+        puis joystick, postures, gestes, danses et chorégraphies refusés (409) ; LED, voix,
+        lectures et StopMove restent permis. Débloqué : rien ne repart, il faut une nouvelle
+        commande.
+        """
+        actif = bool(actif)
+        if actif == self.verrou_pont:
+            return Resultat(200, {'verrou': actif})
+        self.verrou_pont = actif
+        if not actif:
+            self.message = 'Robot débloqué : il ne bougera qu\'à la prochaine commande.'
+            return Resultat(200, {'detail': self.message, 'verrou': False})
+        r = self.arret(par)
+        sorties = [s for s in r.sorties if not isinstance(s, ArretGuide)]
+        self.message = ('Robot bloqué (Naviguer › Bloquer, ou ARRÊT) : il ne bouge plus jusqu\'à '
+                        '« Débloquer ».')
+        if self.danse is not None:
+            self.message += ' Une danse du robot ne s\'interrompt pas : la télécommande reste ' \
+                            'l\'arrêt d\'urgence.'
+        return Resultat(200, {'detail': self.message, 'verrou': True}, sorties)
+
     # ---------------------------------------------------- requête générale (mode avancé)
 
     def requete(self, service, api_id, donnees=None, portique=False, jeton=None, zone_libre=False):
@@ -1079,6 +1117,9 @@ class Pilotage:
             v = d['velocity']
             if all(abs(x) < 1e-9 for x in v):
                 return Resultat(200, {'detail': 'StopMove envoyé.'}, [self._stop_move('requete')])
+            bloque = self._bloque('Marche')
+            if bloque is not None:
+                return bloque
             self.t_mouvement = self.maintenant()
             envoi = self._envoi('sport', 7105, D.parametre_vitesse(*v, d['duration']), 'requete')
             return Resultat(200, {'detail': 'Ordre de marche '

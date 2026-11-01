@@ -34,6 +34,7 @@
         }
       ]
     },
-    "depuis_s": {"description": "Facultatif : secondes passées dans cet état.", "type": "number", "minimum": 0}
+    "depuis_s": {"description": "Facultatif : secondes passées dans cet état.", "type": "number", "minimum": 0},
+    "immobilise": {"description": "Facultatif (correction du 01/11/2026, section 12.15 du plan) : ce qui empêche le robot de marcher. verrou : robot bloqué (/pont/arret : Bloquer, ARRÊT, ligne de commande) ; pas_en_marche : le mode du robot n'est pas la marche. Pendant ces deux-là, le trajet est annulé et « Y aller » refusé (echec). robot_muet, refus : la panne du pont qui a annulé le dernier trajet, tant qu'elle dure. Absent sinon. Le guide ne reprend jamais seul un trajet annulé.", "type": "string", "enum": ["verrou", "pas_en_marche", "robot_muet", "refus"]}
   }
 }

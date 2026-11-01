@@ -19,7 +19,22 @@ Sujets ROS 2 :
                                      et ne dépasse pas la vitesse_max de la personnalité active
   écoutés : /reperage/etat (relais odom_vers_tf), /personnes/lidar (detecteur_personnes),
             /mouvement/maitre (verrou du pilotage, fiable et transient_local),
-            /personnalite/active (fiable, transient_local ; au démarrage : personnalites.yaml)
+            /personnalite/active (fiable, transient_local ; au démarrage : personnalites.yaml),
+            /pont/arret (std_msgs/Bool, verrou du pont, fiable et transient_local) et /pont/etat
+            (JSON du pont g1_bridge), avec le paramètre suivre_pont (vrai par défaut ;
+            navigation.launch.py le met à faux sans pont, en simulation)
+
+Robot immobilisé (correction du 01/11/2026, section 12.15 du plan) : le pont jette les vitesses
+quand le robot est bloqué (/pont/arret), pas en mode marche, muet ou qu'il refuse de marcher ;
+Nav2, lui, continuerait de suivre l'ancien but, et le robot repartirait seul dès la levée. Le guide
+annule donc lui-même son trajet, le retour automatique prévu et le départ en attente :
+  verrou, pas_en_marche  tout de suite ; « Y aller » est refusé (echec, événement immobilise) tant
+                         que cela dure ;
+  robot_muet, refus      après DELAI_PONT_PANNE_S, pendant une mission (robot_muet : seulement si
+                         le robot a répondu pendant cette mission) ; « Y aller » reste permis.
+L'état passe à attente, avec un message qui dit quoi faire, le champ immobilise de /guide/etat et
+l'événement immobilise (« Je ne peux pas bouger pour le moment. »). À la levée, rien ne repart : le
+robot attend un nouveau « Y aller ».
 
 États (atelier.lieu.comportement.ETATS_GUIDE) :
   attente          au repos ; après un retour, au point principal, tourné selon sa flèche ; aussi
@@ -64,7 +79,7 @@ from pathlib import Path
 
 from atelier.lieu.comportement import (DELAI_VISITEUR_DEPART_S, DELAIS_GUIDE,
                                        DISTANCE_VISITEUR_DEPART_M, ETATS_GUIDE, evenement,
-                                       TOLERANCE_RETOUR_M)
+                                       RAISONS_IMMOBILE, TOLERANCE_RETOUR_M)
 from g1_nav.routeur import CibleInconnue, Routeur
 from g1_nav.visiteur import lire_personnes, personne_devant, SuiviVisiteur
 
@@ -179,6 +194,51 @@ FENETRE_VITESSE_S = 4.0
 VITESSE_MESURABLE_M_S = 0.05
 POURCENTAGE_MIN = 10.0
 
+# Robot immobilisé (correction du 01/11/2026, section 12.15 du plan). /pont/etat plus vieux que
+# DELAI_PONT_PERIME_S est ignoré (le pont le publie 2 fois par seconde et à chaque changement).
+# Bloquants (« Y aller » refusé, trajet annulé tout de suite) : le verrou et le mode du robot.
+# Pannes (trajet annulé après DELAI_PONT_PANNE_S) : le robot muet ou qui refuse. « Y aller » reste
+# permis pendant une panne : au repos, le pont n'envoie rien, et ne verrait donc jamais la fin
+# d'une panne si on attendait qu'elle cesse.
+DELAI_PONT_PERIME_S = 2.0
+DELAI_PONT_PANNE_S = 2.0
+DELAI_REFUS_FRAIS_S = 1.0       # refus : la dernière réponse (refusée) date de moins que cela
+DELAI_STOP_VERROU_S = 2.0       # /guide/stop puis le verrou de peu après : le même arrêt
+BLOCANTS = ('verrou', 'pas_en_marche')
+PANNES_PONT = ('robot_muet', 'refus')
+ETATS_PONT_OK = ('pret', 'en_mouvement')
+assert set(BLOCANTS + PANNES_PONT) == set(RAISONS_IMMOBILE)
+# Ce qui est annulé, puis quoi faire ({quoi} : « Le trajet vers « Salle B204 » », « Le retour au
+# point principal »...), et le message quand l'empêchement cesse
+TEXTES_IMMOBILE = {
+    'verrou': ('Robot bloqué : {quoi} est annulé. Il ne repartira qu\'avec un nouveau '
+               '« Y aller », après « Débloquer ».'),
+    'pas_en_marche': ('Le robot n\'est plus en mode marche : {quoi} est annulé. Remettez-le en '
+                      'marche (télécommande, ou « Démarrer » dans Piloter), puis « Y aller ».'),
+    'robot_muet': ('Le robot ne répond plus aux ordres de marche : {quoi} est annulé. Vérifiez le '
+                   'câble et le robot, puis « Y aller ».'),
+    'refus': ('Le robot refuse de marcher : {quoi} est annulé. Vérifiez son mode à la '
+              'télécommande, puis « Y aller ».'),
+}
+TEXTES_REFUS_IMMOBILE = {
+    'verrou': ('Robot bloqué : « Y aller » refusé. Cliquez sur « Débloquer », puis de nouveau sur '
+               '« Y aller ».'),
+    'pas_en_marche': ('Le robot n\'est pas en mode marche : « Y aller » refusé. Remettez-le en '
+                      'marche (télécommande, ou « Démarrer » dans Piloter), puis de nouveau '
+                      '« Y aller ».'),
+}
+TEXTES_BLOQUE_AU_REPOS = {
+    'verrou': 'Robot bloqué : il ne bouge plus. « Débloquer », puis « Y aller » pour repartir.',
+    'pas_en_marche': ('Le robot n\'est pas en mode marche : il ne bouge pas. Remettez-le en '
+                      'marche (télécommande, ou « Démarrer » dans Piloter) avant « Y aller ».'),
+}
+TEXTES_LEVEE = {
+    'verrou': 'Robot débloqué : il attend un nouveau « Y aller ».',
+    'pas_en_marche': 'Le robot est de nouveau en mode marche : il attend un nouveau « Y aller ».',
+    'robot_muet': 'Le robot répond de nouveau : il attend un nouveau « Y aller ».',
+    'refus': 'Le robot ne refuse plus de marcher : il attend un nouveau « Y aller ».',
+}
+
 
 def distance_segment(p, a, b):
     """Distance du point p au segment [a, b], en mètres."""
@@ -267,6 +327,17 @@ class Guide:
         self._plafond_personnalite = None    # plafond de la personnalité active (%)
         self._suivi = SuiviVisiteur()
         self._accompagner = False
+        # Robot immobilisé (section 12.15) : dernier /pont/arret, dernier /pont/etat (état,
+        # instant, verrou, panne), début d'une panne du pont, et l'empêchement en cours ou la panne
+        # qui a annulé le dernier trajet (champ immobilise de /guide/etat), avec son message
+        self._verrou_sujet = False
+        self._pont = None
+        self._panne_depuis = None
+        self._pont_ok_vu = False
+        self._immobilise = None
+        self._message_immobilise = ''
+        self._annule_par_stop = None     # (ce que le dernier /guide/stop a annulé, instant)
+        self.interruptions = 0
         self._nouvelle_mission(None, None)
         self.detours = 0
         self.arrets = 0
@@ -289,6 +360,14 @@ class Guide:
             self.moteur.annuler()
             self._nouvelle_mission('visite', texte)
             return self._refuser_pilotage()
+        blocage = self._blocage()
+        if blocage is not None:
+            # robot bloqué ou pas en mode marche : la demande n'est pas gardée pour plus tard
+            # (sinon le robot partirait seul à la levée, section 12.15)
+            self.moteur.annuler()
+            self._nouvelle_mission('visite', texte)
+            return self._refuser_immobile(blocage)
+        self._oublier_interruption()
         if texte == 'principal' and self.principal is not None:
             texte = self.principal
         try:
@@ -323,20 +402,64 @@ class Guide:
 
     def stop(self):
         """Arrête le robot tout de suite ; le guide revient en attente (retour prévu annulé)."""
-        actif = (self._etat in ETATS_ACTIFS or self._en_attente is not None
-                 or self._retour_prevu is not None)
+        actif = self._actif()
         mission = self._mission
+        # l'ARRÊT et « Bloquer » envoient /guide/stop et le verrou, dans un ordre quelconque : le
+        # message du verrou qui suit de près dit encore ce que le stop a annulé
+        quoi = self._ce_qui_est_annule() if actif else None
+        self._annule_par_stop = (quoi, self.horloge()) if quoi else None
         self._en_attente = None
         self._retour_prevu = None
         self.moteur.annuler()
         self._nouvelle_mission(None, None)
-        self._changer('attente', 'arrêt demandé')
+        # robot bloqué : le message dit toujours pourquoi il ne bouge pas, et quoi faire
+        self._changer('attente', 'arrêt demandé',
+                      self._message_immobilise if self._immobilise in BLOCANTS else '')
         if actif:
             self._evenement('arret', salle=None, mission=mission)
+
+    def verrouiller(self, actif):
+        """
+        /pont/arret : True, le robot est bloqué ; False, il est débloqué.
+
+        Bloqué : le trajet en cours, le retour prévu et le départ en attente sont annulés tout de
+        suite, et « Y aller » est refusé. Débloqué : rien ne repart (section 12.15 du plan).
+        """
+        self._verrou_sujet = bool(actif)
+        self._revoir_immobile(self.horloge())
+
+    def etat_pont(self, donnees):
+        """
+        Dernier /pont/etat (dict, schéma etat_pont) : verrou, mode du robot, robot muet, refus.
+
+        Le pont jette les vitesses dans ces cas, mais Nav2 continuerait l'ancien but : le guide
+        annule son trajet lui-même (section 12.15 du plan).
+        """
+        if not isinstance(donnees, dict) or not isinstance(donnees.get('etat'), str):
+            return
+        t = self.horloge()
+        etat = donnees['etat']
+        # une panne qui dure : robot muet, ou refus de ce que le pont envoie maintenant (au
+        # repos, le pont n'envoie rien et garde le code de la dernière réponse : ce n'est pas
+        # une panne en cours)
+        age = donnees.get('age_reponse_s')
+        refus_frais = (isinstance(age, (int, float)) and not isinstance(age, bool)
+                       and age <= DELAI_REFUS_FRAIS_S)
+        panne = etat if etat == 'robot_muet' or (etat == 'refus' and refus_frais) else None
+        if panne is None:
+            self._panne_depuis = None
+        elif self._pont is None or self._pont[3] != panne or self._panne_depuis is None:
+            self._panne_depuis = t
+        if etat in ETATS_PONT_OK:
+            self._pont_ok_vu = True
+        self._pont = (etat, t, donnees.get('verrou') is True or etat == 'arret_verrouille', panne)
+        self._revoir_immobile(t)
 
     def pas(self):
         """Lit l'état du moteur et fait avancer la machine à états. Renvoie etat()."""
         maintenant = self.horloge()
+        if self._revoir_immobile(maintenant):
+            return self.etat()
         if self._en_attente is not None:
             if self._pilote():
                 self._en_attente = None
@@ -404,7 +527,16 @@ class Guide:
             etat['message'] = self._message
         if self._retour_prevu is not None:
             etat['retour_dans_s'] = round(max(0.0, self._retour_prevu - maintenant), 1)
+        if self._immobilise is not None:
+            # section 12.15 : pourquoi le robot ne bouge pas (verrou, pas_en_marche), ou la panne
+            # qui a annulé le dernier trajet (robot_muet, refus), tant qu'elle dure
+            etat['immobilise'] = self._immobilise
         return etat
+
+    @property
+    def immobilise(self):
+        """Raison qui empêche le robot de marcher (RAISONS_IMMOBILE), ou None."""
+        return self._immobilise
 
     @property
     def en_attente(self):
@@ -448,6 +580,12 @@ class Guide:
         self._ralenti = False
         self._suivi.oublier()
         self._accompagner = bool(accompagner)
+        # robot muet : une panne n'annule le trajet que si le robot a répondu pendant ce trajet
+        # (un robot qui ne répond jamais aux 7105 marche peut-être quand même : à vérifier) ; la
+        # durée d'une panne se compte pendant le trajet
+        self._pont_ok_vu = self._pont is not None and self._pont[0] in ETATS_PONT_OK
+        if mission is not None and self._panne_depuis is not None:
+            self._panne_depuis = self.horloge()
         self._lever_limite()
 
     def _commencer_visite(self, but):
@@ -482,6 +620,10 @@ class Guide:
             return
         if self._pilote():
             return
+        empeche = self._blocage() or self._panne_pont(self.horloge(), en_mission=False)
+        if empeche is not None:
+            self.journal(f'pas de retour automatique : robot immobilisé ({empeche})')
+            return
         delai = float(self.reglages['delai_avant_retour_s'])
         self._retour_prevu = self.horloge() + delai
         self.journal(f'retour au point principal « {self.principal} » dans {delai:.0f} s')
@@ -492,6 +634,10 @@ class Guide:
         pose = self.position()
         if pose is None or (self.suspension and self.suspension()):
             self.journal('retour annulé : la position du robot est inconnue')
+            return
+        empeche = self._blocage() or self._panne_pont(self.horloge(), en_mission=False)
+        if empeche is not None:
+            self.journal(f'retour annulé : robot immobilisé ({empeche})')
             return
         cible = self.principal
         px, py, ptheta = self.routeur.pose_arrivee(cible)
@@ -716,6 +862,141 @@ class Guide:
         self._changer('attente', 'le pilotage a pris la main',
                       'Piloté à la main : le guide s\'est arrêté.')
         self._evenement('pilotage', salle=None, mission=mission)
+
+    # ------------------------------------------------------------ robot immobilisé (12.15)
+
+    def _actif(self):
+        """Vrai si le robot peut bouger d'un instant à l'autre : mission, départ, retour prévu."""
+        return (self._etat in ETATS_ACTIFS or self._en_attente is not None
+                or self._retour_prevu is not None)
+
+    def _pont_frais(self, maintenant):
+        """(état, instant, verrou, panne) du dernier /pont/etat s'il a moins de 2 s, sinon None."""
+        if self._pont is None or maintenant - self._pont[1] > DELAI_PONT_PERIME_S:
+            return None
+        return self._pont
+
+    def _blocage(self, maintenant=None):
+        """Renvoie verrou ou pas_en_marche si le robot ne peut pas marcher maintenant, ou None."""
+        maintenant = self.horloge() if maintenant is None else maintenant
+        pont = self._pont_frais(maintenant)
+        if self._verrou_sujet or (pont is not None and pont[2]):
+            return 'verrou'
+        if pont is not None and pont[0] == 'pas_en_marche':
+            return 'pas_en_marche'
+        return None
+
+    def _panne_pont(self, maintenant, en_mission=True):
+        """
+        robot_muet ou refus si le pont est en panne, sinon None.
+
+        en_mission : il faut que la panne dure depuis DELAI_PONT_PANNE_S (un ordre perdu n'annule
+        pas une visite), et, pour robot_muet, que le robot ait répondu pendant ce trajet. Sinon
+        (départ d'un retour automatique) : la panne en cours, tout de suite.
+        """
+        pont = self._pont_frais(maintenant)
+        if pont is None or pont[3] is None:
+            return None
+        if not en_mission:
+            return pont[3]
+        if self._panne_depuis is None or maintenant - self._panne_depuis < DELAI_PONT_PANNE_S:
+            return None
+        if pont[3] == 'robot_muet' and not self._pont_ok_vu:
+            return None
+        return pont[3]
+
+    def _revoir_immobile(self, maintenant):
+        """
+        Verrou, mode et pannes du pont : annule ce qui bougerait, ou dit que l'empêchement cesse.
+
+        Renvoie True si quelque chose vient d'être annulé (le pas s'arrête là).
+        """
+        blocage = self._blocage(maintenant)
+        if blocage is not None:
+            if self._actif() or self._immobilise != blocage:
+                self._interrompre(blocage)
+                return True
+            return False
+        panne = self._panne_pont(maintenant) if self._actif() else None
+        if panne is not None:
+            self._interrompre(panne)
+            return True
+        if self._immobilise is not None:
+            # une panne reste dite tant que le pont est dans cet état (au repos, il le garde
+            # jusqu'au prochain ordre : la nouvelle demande l'efface, _oublier_interruption)
+            pont = self._pont_frais(maintenant)
+            if self._immobilise in BLOCANTS or pont is None or pont[0] != self._immobilise:
+                self._lever_immobile(pont)
+        return False
+
+    def _ce_qui_est_annule(self):
+        """« Le trajet vers « Salle B204 » », « Le retour au point principal »..., ou None."""
+        if self._en_attente is not None:
+            return f'le départ prévu vers « {self._nom(self._en_attente[0])} »'
+        if self._retour_prevu is not None or self._mission == 'retour':
+            return 'le retour au point principal'
+        if self._etat in ETATS_ACTIFS and self._cible:
+            return f'le trajet vers « {self._nom(self._cible)} »'
+        return None
+
+    def _interrompre(self, raison):
+        """
+        Le robot ne peut plus marcher : trajet, retour prévu et départ en attente annulés.
+
+        Rien ne reprend de soi-même : il faudra un nouveau « Y aller ». Événement immobilise si
+        quelque chose était en cours.
+        """
+        actif = self._actif()
+        quoi = self._ce_qui_est_annule()
+        recent = self._annule_par_stop
+        if quoi is None and recent is not None \
+                and self.horloge() - recent[1] <= DELAI_STOP_VERROU_S:
+            quoi = recent[0]
+        self._annule_par_stop = None
+        mission = self._mission
+        salle = self._en_attente[0] if self._en_attente is not None else self._cible
+        self._en_attente = None
+        self._retour_prevu = None
+        self.moteur.annuler()
+        self._nouvelle_mission(None, None)
+        self._immobilise = raison
+        if quoi:
+            texte = TEXTES_IMMOBILE[raison].replace('{quoi}', quoi)
+        else:
+            texte = TEXTES_BLOQUE_AU_REPOS.get(raison) or TEXTES_IMMOBILE[raison].replace(
+                '{quoi}', 'le trajet')
+        self._message_immobilise = texte
+        if actif:
+            self.interruptions += 1
+        self._changer('attente', f'robot immobilisé ({raison}) : '
+                      + (f'{quoi} annulé' if quoi else 'rien en cours'), texte)
+        if actif:
+            self._evenement('immobilise', salle=salle, mission=mission, champs={'raison': raison})
+
+    def _refuser_immobile(self, raison):
+        """« Y aller » pendant un blocage : echec avec le message, événement immobilise."""
+        self._immobilise = raison
+        self._message_immobilise = TEXTES_REFUS_IMMOBILE[raison]
+        self._evenement('immobilise', champs={'raison': raison})
+        return self._echouer(TEXTES_REFUS_IMMOBILE[raison], retour=False, annoncer=False)
+
+    def _lever_immobile(self, pont):
+        """L'empêchement cesse : au repos, le message le dit ; rien ne repart de lui-même."""
+        raison, self._immobilise = self._immobilise, None
+        self._message_immobilise = ''
+        if self._actif() or self._etat not in ('attente', 'echec'):
+            return
+        sans_nouvelles = pont is None and raison in PANNES_PONT
+        message = ('Le guide attend un nouveau « Y aller ».' if sans_nouvelles
+                   else TEXTES_LEVEE[raison])
+        self._nouvelle_mission(None, None)
+        self._changer('attente', f'fin de l\'immobilisation ({raison})', message)
+
+    def _oublier_interruption(self):
+        """Nouvelle demande acceptée : la panne qui avait annulé le trajet d'avant est oubliée."""
+        if self._immobilise in PANNES_PONT:
+            self._immobilise = None
+            self._message_immobilise = ''
 
     # ------------------------------------------------------------ progrès, passants, détours
 
@@ -1077,8 +1358,13 @@ class Guide:
         salle = self.routeur.salles.get(cible) if cible else None
         return (salle or {}).get('nom') or cible
 
-    def _evenement(self, code, texte=None, salle='cible', nom=None, mission='mission'):
-        """Publie un message au visiteur (/guide/evenement) ; salle et mission : ceux du trajet."""
+    def _evenement(self, code, texte=None, salle='cible', nom=None, mission='mission',
+                   champs=None):
+        """
+        Publie un message au visiteur (/guide/evenement) ; salle et mission : ceux du trajet.
+
+        champs : champs en plus du message (ex. raison de l'événement immobilise).
+        """
         if self.au_evenement is None:
             return
         salle = self._cible if salle == 'cible' else salle
@@ -1089,6 +1375,7 @@ class Guide:
         except KeyError as e:
             self.journal(f'événement inconnu : {e}')
             return
+        message.update(champs or {})
         self.au_evenement(message)
 
     def _changer(self, etat, raison='', message=''):
@@ -1165,6 +1452,10 @@ class NoeudGuide(Node):
         self.repere_robot = self.declare_parameter('repere_robot', 'base_link').value
         vitesse_factice = float(self.declare_parameter('vitesse_factice', 0.5).value)
         sujet_personnes = self.declare_parameter('sujet_personnes', SUJET_PERSONNES).value
+        # Section 12.15 : le verrou et l'état du pont (/pont/arret, /pont/etat). Sans pont (la
+        # simulation : Gazebo reçoit /cmd_vel), navigation.launch.py le met à faux : un verrou
+        # resté posé par une répétition n'y bloque pas le guide
+        suivre_pont = bool(self.declare_parameter('suivre_pont', True).value)
         if not lieu or not etage:
             raise ErreurMoteur('paramètres lieu et etage obligatoires '
                                '(ex. --ros-args -p lieu:=demo -p etage:=rdc)')
@@ -1231,6 +1522,12 @@ class NoeudGuide(Node):
         self.lieu = lieu
         self._personnalite_du_fichier(chemin_lieu(lieu))
         self.create_subscription(String, '/personnalite/active', self._sur_personnalite, verrou)
+        if suivre_pont:
+            # Le verrou du pont : fiable et transient_local, comme le pont et chaque éditeur (un
+            # verrou posé avant le lancement du guide est reçu tout de suite)
+            from std_msgs.msg import Bool
+            self.create_subscription(Bool, '/pont/arret', self._sur_verrou_pont, verrou)
+            self.create_subscription(String, '/pont/etat', self._sur_etat_pont, 10)
         # Vague 5 : tolérance de cap, anticipation et ralenti minimal réglables en marche
         self.add_on_set_parameters_callback(self._sur_parametres)
         # Horloge murale : le guide continue de répondre même si la simulation est en pause
@@ -1239,8 +1536,9 @@ class NoeudGuide(Node):
         options = ', '.join(f'{k} {v}' for k, v in reglages.items())
         self.get_logger().info(
             f'guide prêt : lieu {lieu}, étage {etage}, moteur {nom_moteur}, '
-            f'{len(routeur.noeuds)} nœuds, point principal {self.id_principal or "aucun"}. '
-            f'Réglages : {options}. En attente sur /guide/aller.')
+            f'{len(routeur.noeuds)} nœuds, point principal {self.id_principal or "aucun"}, '
+            + ('verrou et état du pont suivis' if suivre_pont else 'sans pont (verrou ignoré)')
+            + f'. Réglages : {options}. En attente sur /guide/aller.')
 
     def _sur_parametres(self, parametres):
         """« ros2 param set /guide … » : les REGLAGES_EN_MARCHE changent tout de suite."""
@@ -1417,6 +1715,19 @@ class NoeudGuide(Node):
     def _sur_stop(self, _msg):
         self.guide.stop()
         self.publier()
+
+    def _sur_verrou_pont(self, msg):
+        avant = self.guide.immobilise
+        self.guide.verrouiller(bool(msg.data))
+        if (avant == 'verrou') != (self.guide.immobilise == 'verrou'):
+            self.get_logger().info('verrou du pont ' + ('posé : trajet annulé, « Y aller » refusé'
+                                                        if msg.data else 'levé : rien ne repart'))
+        self.publier()
+
+    def _sur_etat_pont(self, msg):
+        donnees = self._lire(msg.data)
+        if donnees is not None:
+            self.guide.etat_pont(donnees)
 
     def _sur_minuterie(self):
         self.guide.pas()
