@@ -1606,13 +1606,13 @@ def etape_f(f):
            "revient…). Note l'écart final à la flèche, en degrés (à l'œil ou au rapporteur).", feuille="F2")
     f.case("**F3. ARRÊT.** **Y aller** « Essai à 2,5 m » de nouveau, puis clique sur **ARRÊT** (barre d'outils, en "
            "haut à droite) à mi-chemin.", feuille="F3")
-    f.attendu("arrêt net ; le bouton devient « **Débloquer** ». Un **Y aller** ne fait plus bouger le robot : "
-              "essaie-le (Y aller « Essai à 2,5 m »).")
-    f.case("Puis appuie sur la touche **Échap** (une seconde fois si un menu est encore ouvert) : l'ARRÊT annule "
-           "ce trajet, et le robot reste bloqué. **Sans cela, dès « Débloquer », le robot reprendrait ce trajet "
-           "tout seul.**")
-    f.case("Clique sur **Débloquer** (l'Atelier demande de confirmer : « Débloquer ») : rien ne bouge. Puis "
-           "**Y aller** « Accueil ».")
+    f.attendu("arrêt net ; le bouton devient « **Débloquer** » ; le panneau dit « Robot bloqué : le trajet vers "
+              "« Essai à 2,5 m » est annulé… ». **Y aller** est grisé (« Robot bloqué : « Débloquer » d'abord ») ; "
+              "demandé quand même (par le chatbot, par exemple), il est refusé : le robot ne garde aucune demande "
+              "pour plus tard.")
+    f.case("Clique sur **Débloquer** (l'Atelier demande de confirmer : « Débloquer ») : **rien ne bouge**, le robot "
+           "ne reprend pas l'ancien trajet (correction du 01/11), et le panneau dit « Robot débloqué : il attend un "
+           "nouveau « Y aller » ». Puis **Y aller** « Accueil ».")
     f.case("**F4.** À l'arrivée, l'écart entre le robot et la croix.", feuille="F4")
     f.attendu("**moins de 30 cm**.")
     f.case("**F5. La rotation finale, seulement si le robot a oscillé en F2** (10 min ; 1 m libre autour du "
@@ -2152,8 +2152,8 @@ def fiche_a_remplir():
     tableau_points(f, [
         ("F1", "Y aller « Essai à 2,5 m » à 0,2 m/s", "« Arrivé » ; durée ; écart"),
         ("F2", "Retour seul à l'accueil, rotation finale", "une seule rotation ; écart à la flèche (°)"),
-        ("F3", "ARRÊT à mi-chemin, puis Y aller, Échap, puis Débloquer", "arrêt net ; « Débloquer » ; immobile "
-                                                                         "tant que bloqué, et après Débloquer"),
+        ("F3", "ARRÊT à mi-chemin, Y aller grisé, puis Débloquer", "arrêt net ; « Débloquer » ; immobile tant "
+                                                                  "que bloqué, et après Débloquer (rien ne repart)"),
         ("F4", "Écart à l'arrivée sur la croix", "moins de 30 cm"),
         ("F5", "Spin de 90° (si F2 oscille)", "dépassement (°) ; réglages du guide ; une seule rotation ensuite "
                                               "(tableau F5)"),

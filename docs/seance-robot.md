@@ -272,7 +272,9 @@ La navigation tourne dans le conteneur du Jetson, plafonnée à 0,2 m/s (`G1_VIT
    le robot s'arrête net. Puis **Y aller** « Accueil » de nouveau.
 4. À l'arrivée, mesurez au mètre ruban l'écart entre le robot et le but (la croix pour
    l'accueil). Attendu : moins de 30 cm.
-5. Une fois : **Bloquer le robot**, puis **Y aller** : il ne doit pas bouger. **Débloquer**.
+5. Une fois, pendant un trajet : **Bloquer** : le robot s'arrête et le trajet est annulé ; **Y aller**
+   est grisé (demandé quand même, il est refusé). **Débloquer** : le robot ne bouge toujours pas, il
+   attend un nouveau **Y aller** (section 12.15 du plan).
 
 ## 5. Fin (1 h 25 → 1 h 30)
 

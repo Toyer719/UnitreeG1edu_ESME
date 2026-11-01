@@ -19,10 +19,14 @@
   Jetson à jour, avertissement de la salle « 3 » de `seance`, pastille « À repérer », couleurs des cadres de
   la caméra).
 
+**Fiches de la séance 2 refaites le 01/11 au soir, après la correction du verrou** (section 12.15 du plan) :
+à F3, « Débloquer » ne relance plus l'ancien trajet du guide ; la précaution de la touche Échap avant
+« Débloquer » n'est plus utile et a été retirée ; F3 dit maintenant ce qu'on doit voir (trajet annulé, « Y aller »
+grisé pendant le blocage, rien ne bouge au « Débloquer »). Le document du logiciel n'a pas été refait.
+
 **Relus le 01/11 au soir** (relecture critique : chaque affirmation confrontée au dépôt, toutes les pages lues) :
 
-- la fiche « à faire » ajoute des précautions au tutoriel, et dit de la suivre en cas d'écart : à F3, la touche
-  Échap avant « Débloquer » (sinon le robot reprend tout seul le trajet demandé pendant le blocage) ; à C5,
+- la fiche « à faire » ajoute des précautions au tutoriel, et dit de la suivre en cas d'écart : à C5,
   Ctrl+C de la marche de 10 s ; le journal gardé avant chaque arrêt du conteneur (`seance-2_relances.log` pour
   un arrêt en cours de route) ; au plan B, vérifier d'abord qu'aucun conteneur ne tourne (un seul pont), et le
   retour automatique annoncé ; la confirmation « Lancer sur le robot » ; le diagnostic de `g1-etat` ;

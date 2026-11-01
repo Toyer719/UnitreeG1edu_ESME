@@ -413,8 +413,12 @@ La carte est celle du 27/10, retraitée : l'accueil (le point principal) est sur
    le sens de la flèche**. Regarde s'il tourne **une seule fois** ou s'il oscille (il tourne, dépasse,
    revient…). Note l'écart final à la flèche (en degrés, à l'œil ou au rapporteur).
 4. **F3. ARRÊT.** **Y aller** « Essai à 2,5 m » de nouveau, puis clique sur **ARRÊT** (barre d'outils,
-   en haut à droite) à mi-chemin. Attendu : arrêt net ; le bouton devient **« Débloquer »**. Un **Y
-   aller** ne fait plus bouger le robot. Clique sur **Débloquer**, puis **Y aller** « Accueil ».
+   en haut à droite) à mi-chemin. Attendu : arrêt net ; le bouton devient **« Débloquer »** ; le panneau
+   dit « Robot bloqué : le trajet vers « Essai à 2,5 m » est annulé… ». **Y aller** est grisé
+   (« Robot bloqué : « Débloquer » d'abord ») ; demandé quand même (par le chatbot, par exemple), il est
+   refusé et ne fait pas bouger le robot. Clique sur **Débloquer** : le robot **reste immobile** (il ne
+   reprend pas l'ancien trajet ; correction du 01/11, section 12.15 du plan) et le panneau dit « Robot
+   débloqué : il attend un nouveau « Y aller » ». Puis **Y aller** « Accueil ».
 5. **F4.** À l'arrivée, l'écart entre le robot et la croix. Attendu : **moins de 30 cm**.
 6. **F5. La rotation finale, si le robot a oscillé en F2** (10 min). Dans T5 :
 
