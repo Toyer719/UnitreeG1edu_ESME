@@ -439,11 +439,11 @@ Les formats exacts sont dans `atelier/lieu/schemas/` et dans la section 4 du pla
 ### Tester
 
 ```bash
-cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q --ignore=atelier/tests/test_robot_reperage_ros.py   # bibliothèques, scan, serveur, interface : 10 min environ
+cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q --ignore=atelier/tests/test_robot_reperage_ros.py   # bibliothèques, scan, serveur, interface : 11 min environ
 cd ~/robot-g1 && ROS_LOCALHOST_ONLY=0 .venv-projet/bin/python -m pytest atelier/tests/test_robot_reperage_ros.py -q   # ce fichier à part (ses programmes l'imposent)
 cd ~/robot-g1 && .venv-projet/bin/python -m pytest docker/tests -q    # conteneur du Jetson : 1 min
 cd ~/robot-g1/ws && colcon test --executor sequential --packages-select g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe && colcon test-result --all   # paquets ROS 2
-~/robot-g1/tests_e2e/tout.sh            # les 36 critères de recette, sans fenêtre : « N / 36 » (3 h environ)
+~/robot-g1/tests_e2e/tout.sh            # les 36 critères de recette, sans fenêtre : « N / 36 » (2 h 10 environ)
 ~/robot-g1/tests_e2e/tout.sh 1 2 3 4    # seulement certains (11 à 15 : le scan ; 16 à 20 : le vrai robot en répétition ;
                                         # 21 à 30 : point principal, passants, guide, pilotage, équipe ;
                                         # 31 à 36 : coque, carte 3D, scan corrigé, pont, caméra, ARRÊT)
