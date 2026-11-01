@@ -19,6 +19,18 @@
   Jetson à jour, avertissement de la salle « 3 » de `seance`, pastille « À repérer », couleurs des cadres de
   la caméra).
 
+**Relus le 01/11 au soir** (relecture critique : chaque affirmation confrontée au dépôt, toutes les pages lues) :
+
+- la fiche « à faire » ajoute des précautions au tutoriel, et dit de la suivre en cas d'écart : à F3, la touche
+  Échap avant « Débloquer » (sinon le robot reprend tout seul le trajet demandé pendant le blocage) ; à C5,
+  Ctrl+C de la marche de 10 s ; le journal gardé avant chaque arrêt du conteneur (`seance-2_relances.log` pour
+  un arrêt en cours de route) ; au plan B, vérifier d'abord qu'aucun conteneur ne tourne (un seul pont), et le
+  retour automatique annoncé ; la confirmation « Lancer sur le robot » ; le diagnostic de `g1-etat` ;
+- le document du logiciel corrige la marge du critère 25 (limite de 300 s, pas 180), la procédure pour tout
+  retirer du Jetson (`g1-jetson arreter` d'abord), ce qui n'est pas dans Git (`third_party/`, FAST-LIO2, pilote
+  du LiDAR), les schémas du repérage et du pilotage, et le nombre de lignes de code (sans les générateurs de ces
+  documents).
+
 Le nombre de pages est celui du PDF de contrôle (LibreOffice, Lato à la place de Calibri) : dans Word, il peut
 y en avoir une ou deux de moins. À l'ouverture du document du logiciel, Word propose de mettre à jour les
 champs : répondre **Oui** (table des matières et numéros de page).

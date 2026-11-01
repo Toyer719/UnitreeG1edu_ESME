@@ -101,10 +101,10 @@ BLOCS = [
           "passent par `atelier.lieu.conversions`, et nulle part ailleurs."),
     ("p", "Une **carte des coûts** (__costmap__) est la grille de travail de Nav2 : la carte, plus les obstacles "
           "vus par le LiDAR, plus une « inflation » (un coût qui décroît en s'éloignant des obstacles, pour "
-          "garder ses distances), plus le masque des zones interdites. Il y en a deux : la **globale**, sur "
-          "tout l'étage, pour tracer le chemin ; la **locale**, 7 × 7 m autour du robot, pour les vitesses. "
-          "Chez nous, la locale voit les obstacles de 0,15 à 1,9 m de haut (assez bas pour une valise) et "
-          "garde 0,9 m d'inflation autour des personnes."),
+          "garder ses distances). Il y en a deux : la **globale**, sur tout l'étage, pour tracer le chemin, avec "
+          "le masque des zones interdites ; la **locale**, 7 × 7 m autour du robot, pour les vitesses. Chez nous, "
+          "la locale voit les obstacles de 0,15 à 1,9 m de haut (assez bas pour une valise) et garde 0,9 m "
+          "d'inflation autour de chacun, passants compris."),
     ("encadre", "À retenir",
      ["- Un nœud = un programme ; un sujet = un canal ; un message = des données typées.",
       "- Les « services » d'Unitree sont des paires de sujets `/api/<service>/request` et `/response`.",

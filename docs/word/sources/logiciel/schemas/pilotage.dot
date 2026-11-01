@@ -7,11 +7,11 @@ digraph pilotage {
   page [label="Navigateur : Réel › Piloter\njoysticks, postures, gestes, voix,\nlumière, danses, chorégraphies"];
   atelier [label="Serveur de l'Atelier (PC)\n/api/pilotage/* et /ws/pilotage :\nil relaie, il n'invente aucun ordre"];
   noeud [label="nœud pilotage (g1_pilotage)\ndans le conteneur du Jetson,\nport 8010, jeton « X-Jeton »", fillcolor="#E2F0D9", color="#548235"];
-  regles [label="ses règles : permis et interdits,\nconfirmations (portique, zone libre),\nhomme mort 0,5 s, plafonds,\nvitesse minimale, verrou", fillcolor="#FBE3E1", color="#C0392B"];
+  regles [label="ses règles : permis et interdits,\nconfirmations (portique, zone libre),\nhomme mort 0,5 s, plafonds,\nvitesse minimale, un seul maître", fillcolor="#FBE3E1", color="#C0392B"];
   sujets [label="/api/sport/request, /api/arm/request,\n/api/voice/request, /arm_sdk", style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
   robot [label="PC1 d'Unitree : postures, marche,\nbras, voix, LED, danses", fillcolor="#FDEBD9", color="#C55A11"];
   maitre [label="/mouvement/maitre\n« guide » ou « pilotage »", style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
-  autres [label="guide et pont :\nils obéissent au verrou"];
+  autres [label="guide et pont : le pilotage a la main,\nle pont ignore Nav2, le guide attend"];
 
   page -> atelier [label=" HTTP + WebSocket", dir=both];
   atelier -> noeud [label=" HTTP + WebSocket (Wi-Fi ou câble)\n G1_PILOTAGE_URL", dir=both];

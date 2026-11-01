@@ -80,6 +80,9 @@ BLOCS = [
      ["Le PC1 d'Unitree n'est jamais modifié. Sur le Jetson, on ajoute seulement une image Docker "
       "(environ 2 Go une fois chargée) et un dossier `~/robot-g1`. Rien n'est installé ni remplacé dans "
       "Ubuntu, ROS ou les programmes d'Unitree, et notre conteneur ne redémarre jamais tout seul.",
-      "Pour tout retirer : `ssh unitree@192.168.123.164 'docker rmi g1-jetson:arm64; rm -rf ~/robot-g1'`."],
+      "Pour tout retirer : d'abord arrêter le conteneur (sinon Docker refuse d'effacer l'image), puis effacer "
+      "l'image et le dossier, depuis le PC relié au robot :"],
      "info"),
+    ("code", "g1-jetson arreter\n"
+             "ssh unitree@192.168.123.164 'docker rmi g1-jetson:arm64; rm -rf ~/robot-g1'"),
 ]

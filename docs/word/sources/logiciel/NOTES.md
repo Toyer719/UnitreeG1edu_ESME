@@ -2,7 +2,7 @@
 
 Dossier : `~/robot-g1-donnees/vague5/documents/logiciel/` (hors de `/tmp` : il survit à un redémarrage).
 Le document : `Atelier_G1_documentation_logiciel.docx` (15 chapitres, 14 schémas, 9 captures, 64 pages dans le
-PDF de contrôle). Version finale de la vague 5 : 01/11/2026, après la recette (36 / 36).
+PDF de contrôle). Version finale de la vague 5 : 01/11/2026, après la recette (36 / 36), relue le soir même (point 16).
 
 ## Regénérer
 
@@ -134,3 +134,18 @@ Essai avec d'autres captures, sans toucher au document :
     recette ; seul le temps passé est recalculé au 01/11 (jour 12 sur 59).
 15. **Symbole ⚠** : absent de Lato, il ne s'affichait pas dans le PDF de contrôle ; le texte dit « triangle
     d'alerte ».
+16. **Relecture critique du 01/11 (soir)** : le texte a été confronté au dépôt (code, journaux de la recette)
+    et toutes les pages relues. Corrigé : la marge du critère 25 (la limite du groupe qui reste est de 300 s,
+    pas 180 : `tests_e2e/critere_25_groupe.sh`, `--duree-max 300`, et le journal du critère dit « au plus
+    300 s » ; `docs/journal-atelier.md`, entrée « Recette finale », dit encore « 174 s pour 180 s ») ; la
+    procédure pour tout retirer du Jetson (`g1-jetson arreter` d'abord) ; `third_party/`, `FAST_LIO/` et
+    `livox_ros_driver2/` hors Git ; les schémas du repérage (flèche « non » qui barrait la case « oui ») et du
+    pilotage (« verrou » pris au sens de « maître des mouvements ») ; la carte des coûts locale (sans masque des
+    zones interdites) ; la colonne « Durée (01/11) » des critères (2 h 08).
+17. **Lignes de code** (`[[lignes_python_code]]`) : `docs/` n'est plus compté. Depuis cd7b0ac, les générateurs de
+    ces documents (`docs/word/sources/`, environ 5 700 lignes) gonflaient le chiffre d'environ 14 %.
+18. **Fiche « à faire » et tutoriel** : la fiche ajoute des précautions que `docs/tutoriel-seance-2.md` n'a pas
+    encore (F3 : Échap avant « Débloquer », sinon le robot reprend le trajet demandé pendant le blocage ; C5 :
+    Ctrl+C de la marche de 10 s ; journal gardé avant chaque arrêt du conteneur, `seance-2_relances.log` ; plan B :
+    vérifier qu'aucun conteneur ne tourne, retour automatique annoncé ; diagnostic de `g1-etat`). La fiche dit
+    de la suivre en cas d'écart ; le tutoriel est à mettre à jour de la même façon.

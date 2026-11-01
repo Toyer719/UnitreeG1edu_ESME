@@ -21,7 +21,7 @@ digraph liaisons {
            fillcolor="#F3F4F6", color="#8A8A8A"];
       cam [label=<<b>Caméra See3CAM</b><br/>sur la poitrine>, fillcolor="#FFFFFF"];
     }
-    jetson [label=<<b>Jetson (PC2)</b><br/>notre conteneur Docker :<br/>navigation (Nav2), guide, pont,<br/>caméra, pilotage<br/>(à partir de l'étape D)>];
+    jetson [label=<<b>Jetson (PC2)</b><br/>notre conteneur Docker :<br/>navigation (Nav2), guide, pont,<br/>caméra, pilotage<br/>(à partir de l'étape E)>];
   }
 
   pc [label=<<b>PC portable</b> (personne 2)<br align="left"/>T1 : l'Atelier (la page web)<br align="left"/>T2 : le pont (étapes M et C)<br align="left"/>T3 : l'état du pont<br align="left"/>T4 : les réponses du robot<br align="left"/>T5 : mesures et commandes<br align="left"/>T6 : urgence (tuer le pont)<br align="left"/>>,

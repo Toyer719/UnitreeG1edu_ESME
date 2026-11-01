@@ -17,12 +17,13 @@ digraph reperage {
     slam [label="SLAM d'Unitree (PC1) :\nse repère sur sa carte .pcd", fillcolor="#FDEBD9", color="#C55A11"];
     reloc [label="/unitree/slam_relocation/odom\n+ /state_estimator/odom_pelvis", style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
     controle [label="contrôle : à moins de 1 m\net 0,5 rad de la pose annoncée ?"];
-    ok [label="oui : TF map → odom, état\n« repere » ; le pont permet\nle mouvement", fillcolor="#E2F0D9", color="#548235"];
+    ok [label="oui : TF map → odom,\nétat « repere » ;\nle pont permet\nle mouvement", fillcolor="#E2F0D9", color="#548235", width=1.9];
     echec [label="non : « echec » avec\nun message qui dit quoi faire", fillcolor="#FBE3E1", color="#C0392B"];
   }
   pose -> bouton -> demande -> relais -> ordre;
-  slam -> reloc -> controle -> ok;
-  controle -> echec;
+  slam -> reloc -> controle;
+  controle -> ok [xlabel="oui ", fontcolor="#548235"];
+  controle:e -> echec:e [xlabel="non ", fontcolor="#C0392B"];
   ok -> echec [style=invis];
   ordre:e -> slam:w [constraint=false];
   {rank=same; pose; slam}

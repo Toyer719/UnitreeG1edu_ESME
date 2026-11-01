@@ -125,7 +125,7 @@ BLOCS = [
     ("p", "**Pourquoi pas ROS 2 par le Wi-Fi ?** La découverte automatique de DDS par le Wi-Fi est lourde et "
           "fragile (une trentaine de participants avec Nav2, multicast souvent bloqué). Une simple connexion "
           "HTTP vers un port connu (8010) suffit, et surtout **les sécurités sont au plus près du robot** : "
-          "plafonds, refus, homme mort et verrou sont dans le nœud du conteneur. Si le Wi-Fi ou la page se "
+          "plafonds, refus, homme mort et maître des mouvements sont dans le nœud du conteneur. Si le Wi-Fi ou la page se "
           "coupent, le nœud arrête le robot de lui-même en 0,5 s, sans dépendre du PC."),
     ("puces", [
         "Le joystick envoie son ordre toutes les 0,1 s par `/ws/pilotage` ; le nœud envoie un 7105 de 0,5 s à "

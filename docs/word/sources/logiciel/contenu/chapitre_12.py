@@ -22,7 +22,7 @@ BLOCS = [
             ["Tests dans le navigateur", "`atelier/tests/test_*_navigateur.py`", "Firefox sans fenêtre, geckodriver",
              "12 fichiers", "compris ci-dessus"],
             ["Critères de recette", "`tests_e2e/critere_NN_*.sh`", "bash et outils Python ; Gazebo, Nav2, Atelier",
-             "[[criteres]] critères", "2 h 10"],
+             "[[criteres]] critères", "2 h 08"],
         ],
     }),
     ("p", "Les tests dans le navigateur pilotent un vrai Firefox, sans fenêtre, par geckodriver (un petit client "
@@ -40,7 +40,7 @@ BLOCS = [
              "cd ws && colcon test --executor sequential --packages-select \\\n"
              "    g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe\n"
              "colcon test-result --all\n"
-             "~/robot-g1/tests_e2e/tout.sh            # les 36 critères, « N / 36 » (2 h 10)\n"
+             "~/robot-g1/tests_e2e/tout.sh            # les 36 critères, « N / 36 », en 2 h 10\n"
              "~/robot-g1/tests_e2e/tout.sh 31 32 33   # seulement certains critères"),
     ("p", "Le fichier `test_robot_reperage_ros.py` se lance à part, avec `ROS_LOCALHOST_ONLY=0`, car ses programmes "
           "l'imposent. La carte 3D a besoin de WebGL : lancez `tout.sh` depuis un terminal de la session "
@@ -120,11 +120,11 @@ BLOCS = [
           "coupent la route (24) ; aucune faute dans les 165 mesures de la mise en page (31) ; la carte 3D avec "
           "WebGL et 305 820 points (32) ; l'ARRÊT en 0,06 à 0,19 s (36)."),
     ("encadre", "Les marges à surveiller",
-     ["Tous les critères passent, mais quatre passent de peu :",
+     ["Tous les critères passent, mais trois passent de peu (le critère 25, lui, a de la marge : le groupe qui "
+      "reste est passé en 174 et 171 s, pour une limite de 300 s par trajet) :",
       "- **critère 26** (accompagnement) : le robot ralentit à 57 % de sa vitesse, pour un seuil de 60 % ;",
-      "- **critère 6** (foule) : 19 trajets sur 20 ; un trajet bloqué par la foule a dépassé 180 s ;",
-      "- **critère 25** (groupe qui bouche) : le groupe qui reste est passé en 174 et 171 s, pour une limite "
-      "de 180 s par trajet ;",
+      "- **critère 6** (foule) : 19 trajets sur 20, pour 18 au moins (90 %) ; le trajet manqué, bloqué par la "
+      "foule, a dépassé 180 s ;",
       "- **critère 24** (passants croisés) : avec des passants qui s'écartent, un échec sur 5 (bloqué, détour, "
       "puis bloqué à nouveau), que le critère ne compte pas : il ne compte que les contacts."], "attention"),
 

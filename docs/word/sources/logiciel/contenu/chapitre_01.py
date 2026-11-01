@@ -80,11 +80,11 @@ BLOCS = [
              "caméra et détection prêtes sur le PC ; pas encore sur le robot ; parties de l'équipe en attente"],
             ["Démo finale, réglages sur place, documentation finale", "5 %", "30 %",
              "documentation déjà riche ; démo à préparer"],
-            ["**Total pondéré**", "**100 %**", "**≈ 52 %**", "**soit « environ 50 % »**"],
+            ["**Total pondéré**", "**100 %**", "**52,5 %**", "**soit « environ 50 % »**"],
         ],
     }),
     ("p", "Le calcul : 0,25 × 95 + 0,10 × 85 + 0,10 × 70 + 0,25 × 25 + 0,15 × 10 + 0,10 × 40 + 0,05 × 30 "
-          "≈ 52 %. Le 01/11, on est au **jour 12 sur 59**, soit 20 % du temps : le logiciel est en avance. "
+          "= 52,5 %. Le 01/11, on est au **jour 12 sur 59**, soit 20 % du temps : le logiciel est en avance. "
           "Ce qui reste est surtout **l'essai sur le vrai robot** : conteneur sur le Jetson, repérage, premier "
           "trajet, puis le guide au milieu de vraies personnes."),
     ("encadre", "À retenir",

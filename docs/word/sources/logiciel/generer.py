@@ -105,7 +105,8 @@ def chiffres():
     fichiers = [f for f in _sortie(["git", "ls-files"]).splitlines() if f]
     if fichiers:
         c["fichiers"] = _milliers(len(fichiers))
-        exclus = re.compile(r"^(third_party/|atelier/web/vendor/|ws/src/(FAST_LIO|livox_ros_driver2)/)")
+        # docs/ : les générateurs de ces documents Word (docs/word/sources/) ne sont pas le logiciel du robot
+        exclus = re.compile(r"^(third_party/|atelier/web/vendor/|ws/src/(FAST_LIO|livox_ros_driver2)/|docs/)")
         test = re.compile(r"(^|/)(test_[^/]*|critere[^/]*|outils[^/]*)\.py$|/test/|atelier/tests/|tests_e2e/|docker/tests/")
 
         def lignes(filtre):

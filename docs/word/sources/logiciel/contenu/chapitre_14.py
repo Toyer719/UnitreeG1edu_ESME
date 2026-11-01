@@ -3,7 +3,7 @@ import re
 import unicodedata
 
 TERMES = [
-    ("1804, 1801, 1802", "Numéros d'ordres du service de cartographie d'Unitree : 1801 commence un scan, 1802 le "
+    ("1801, 1802, 1804", "Numéros d'ordres du service de cartographie d'Unitree : 1801 commence un scan, 1802 le "
      "termine et enregistre la carte, 1804 repère le robot sur une carte enregistrée (annexe F)."),
     ("7105 (SetVelocity)", "L'ordre de marche du robot : vitesses vx, vy, wz et une durée (0,5 s chez nous)."),
     ("Accueil", "Le point principal du lieu : là où le robot attend les visiteurs et revient après chaque visite."),

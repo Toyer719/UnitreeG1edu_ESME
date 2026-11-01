@@ -23,7 +23,7 @@ BLOCS = [
      "│   ├── g1_jumeau/         le faux G1 de la répétition\n"
      "│   ├── g1_pilotage/       le pilotage depuis l'Atelier (conteneur)\n"
      "│   ├── g1_equipe/         chatbot, relais, caméra de poitrine\n"
-     "│   └── livox_ros_driver2/, FAST_LIO/    LiDAR et SLAM de secours (tiers)\n"
+     "│   └── livox_ros_driver2/, FAST_LIO/    LiDAR et SLAM de secours (tiers, hors Git)\n"
      "├── docker/                le conteneur du Jetson et g1-jetson\n"
      "├── bin/                   les commandes g1-* et leurs alias gl-*\n"
      "├── tests_e2e/             les 36 critères de recette et tout.sh\n"
@@ -32,7 +32,7 @@ BLOCS = [
      "├── choregraphies/         chorégraphies du G1 (musique/ : hors Git)\n"
      "├── setup/                 installation, env.sh, robot.sh\n"
      "├── outils/, sim/, robot/  première semaine (manette, MuJoCo…), g1-visiteurs\n"
-     "└── third_party/           dépôts d'Unitree et de Livox (VERSIONS.txt)"),
+     "└── third_party/           dépôts d'Unitree et de Livox (hors Git, VERSIONS.txt)"),
 
     ("h2", "Ce qui n'est pas dans Git"),
     ("p", "Certains dossiers sont trop gros, personnels ou recréés à la demande. Ils sont listés dans "
@@ -53,6 +53,9 @@ BLOCS = [
              "copié toutes les 20 min dans `~/robot-g1-donnees/lieu_seance_courant/`"],
             ["`choregraphies/musique/`", "les musiques de l'utilisateur", "jamais de musique protégée dans le dépôt"],
             ["`ws/build`, `ws/install`, `ws/log`", "résultats de la compilation", "`colcon build --symlink-install`"],
+            ["`third_party/` ; dans `ws/src/` : `FAST_LIO/` et `livox_ros_driver2/`", "le code d'Unitree (SDK, messages "
+             "ROS 2, MuJoCo, politique de marche), le SDK de Livox, le pilote du LiDAR et FAST-LIO2 ; leurs versions "
+             "dans `third_party/VERSIONS.txt`", "clonés par `setup/installer_utilisateur.sh`"],
         ],
     }),
     ("p", "En dehors du dépôt, `~/robot-g1-donnees/` garde ce qui ne doit pas se perdre : les copies du scan "
