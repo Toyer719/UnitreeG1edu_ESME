@@ -11,6 +11,6 @@ digraph interface_coque {
       <TD BGCOLOR="#1E1E1E" WIDTH="300" VALIGN="TOP"><FONT COLOR="#FFFFFF">Vue centrale<BR/>[ 3D │ Plan 2D │ Caméra ]  Dessus · Iso · Face · Recadrer<BR/><BR/>nuage de points coloré par la hauteur,<BR/>monde, accueil ★, salles, itinéraires,<BR/>zones, robot et piétons en direct</FONT></TD>
       <TD BGCOLOR="#201F2D" WIDTH="130" VALIGN="TOP" ALIGN="LEFT"><FONT COLOR="#FFFFFF">Panneau de tâches<BR ALIGN="LEFT"/>propriétés de l'élément,<BR ALIGN="LEFT"/>ou formulaire<BR ALIGN="LEFT"/>de la commande<BR ALIGN="LEFT"/><BR ALIGN="LEFT"/>✓ Enregistrer   ✗ Annuler<BR ALIGN="LEFT"/></FONT></TD>
     </TR>
-    <TR><TD COLSPAN="3" BGCOLOR="#2E2E3D" ALIGN="LEFT"><FONT COLOR="#FFFFFF">Barre d'état : consigne de l'outil · dernier message · x, y sous le pointeur · liaison</FONT></TD></TR>
+    <TR><TD COLSPAN="3" BGCOLOR="#2E2E3D" ALIGN="LEFT"><FONT COLOR="#FFFFFF">Barre d'état : consigne de l'outil · dernier message · x, y sous le pointeur · Ce qui tourne</FONT></TD></TR>
   </TABLE>>];
 }

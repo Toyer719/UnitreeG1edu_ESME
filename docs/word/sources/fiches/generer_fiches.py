@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fiches Word de la séance robot n° 2 (Atelier G1, vague 5, 31/10/2026).
+Fiches Word de la séance robot n° 2 (Atelier G1, vague 5 : 31/10/2026, mises à jour le 01/11 après la recette).
 
     /home/joonho/robot-g1-donnees/venv-docx/bin/python \
         /home/joonho/robot-g1-donnees/vague5/documents/fiches/generer_fiches.py
@@ -917,9 +917,9 @@ def fabriquer_schemas():
 AVANCEMENT = [
     ("Logiciel en simulation (lieux, monde, carte, salles, itinéraires, zones, Gazebo + Nav2, foule, guide, "
      "point principal, retour, accompagnement)", 25, 95,
-     "fait et vérifié sans robot (36 critères de recette)"),
+     "fait et vérifié sans robot (36 / 36 à la recette du 01/11)"),
     ("Interface (accueil Simulation / Réel, espace à la SolidWorks, carte 3D)", 10, 85,
-     "faite le 31/10 ; à essayer par toi, puis à ajuster"),
+     "faite le 31/10, revue et corrigée (30 défauts) ; à essayer par toi, puis à ajuster"),
     ("Scan réel → carte", 10, 70,
      "chaîne corrigée, vrai scan du 27/10 retraité ; à valider par un nouveau scan ; carte d'Unitree à récupérer"),
     ("Liaison avec le vrai robot (pont, conteneur du Jetson, repérage, premier trajet)", 25, 25,
@@ -943,14 +943,16 @@ def encadre_avancement(f, avec_avis=False):
     q = f.p("", cellule, apres=0)
     police_run(q.add_run("Avancement du projet : "), POLICE, 15, True, couleur=C["bleu_fonce"])
     police_run(q.add_run("environ 50\u00a0%"), POLICE, 22, True, couleur=C["bleu_fonce"])
-    f.p(f"Estimation de l'intégrateur (Claude) au 31/10/2026. Calcul exact : **{nombre(total)} %**, "
+    f.p(f"Estimation de l'intégrateur (Claude) du 31/10/2026, inchangée après la recette du 01/11 (36 / 36). "
+        f"Calcul exact : **{nombre(total)} %**, "
         "arrondi à « environ 50 % ».", cellule, taille=10, couleur=C["texte2"], apres=6)
     largeur_jauge = LARGEUR - 0.6
     f.p("**Travail fait** : 52,5 % du projet", cellule, taille=10, apres=1, garder=True)
     f.jauge(cellule, total / 100, C["bleu_vif"], C["bleu_clair"], largeur_jauge)
-    f.p("**Temps passé** : 19 % (jour 11 sur 59, du 21/10 au 18/12/2026)", cellule, taille=10, avant=5, apres=1,
+    f.p("**Temps passé** : 20 % (jour 12 sur 59 le 01/11, du 21/10 au 18/12/2026)", cellule, taille=10, avant=5,
+        apres=1,
         garder=True)
-    f.jauge(cellule, 11 / 59, C["gris_temps"], C["gris_temps_pale"], largeur_jauge)
+    f.jauge(cellule, 12 / 59, C["gris_temps"], C["gris_temps_pale"], largeur_jauge)
     f.p("Chaque partie du projet a un **poids** (sa part du travail total) et une part **faite**. "
         "Points = poids × fait. Le total des points donne l'avancement.", cellule, taille=10, avant=6, apres=4)
     largeurs = [4.85, 1.6, 1.3, 1.6]
@@ -961,7 +963,7 @@ def encadre_avancement(f, avec_avis=False):
         f.ligne(t, (partie, f"{poids} %", f"{fait} %", nombre(poids * fait / 100), pourquoi), taille=9.5)
     f.ligne(t, ("**Total pondéré**", "**100 %**", "", f"**{nombre(total)}**",
                 "**≈ 52 %, soit « environ 50 % »**"), taille=9.5, fond=C["bleu_clair"])
-    f.p("**Ce que ça veut dire.** Au 31/10, on est au jour 11 sur 59 (19 % du temps) : le logiciel est **en avance**. "
+    f.p("**Ce que ça veut dire.** Au 01/11, on est au jour 12 sur 59 (20 % du temps) : le logiciel est **en avance**. "
         "Ce qui reste est surtout **l'essai sur le vrai robot** (la liaison, le repérage, les trajets, le guide avec "
         "des visiteurs) : c'est le but des séances avec le robot, à commencer par celle-ci.", cellule, taille=10,
         avant=6, apres=2)
@@ -995,7 +997,7 @@ def mots_avancement(f, conteneur=None):
 # =====================================================================================================
 
 def fiche_a_faire(schemas):
-    f = Fiche("Atelier G1 · Séance robot n° 2 · Ce qu'il faut faire", "document du 31/10/2026",
+    f = Fiche("Atelier G1 · Séance robot n° 2 · Ce qu'il faut faire", "document du 01/11/2026",
               "Séance robot n° 2 : ce qu'il faut faire", "Déroulé pas à pas de la séance robot n° 2")
     page_titre_a_faire(f)
     partie_avancement(f)
@@ -1041,9 +1043,10 @@ def page_titre_a_faire(f):
         "**« Ce qu'on doit voir »** (vert), **« Si ça ne marche pas »** (orange), **STOP** (rouge).",
         "**Les résultats** se notent sur l'autre document, **« Feuille de résultats à remplir »** "
         "(`Seance2_A_remplir.docx`) : la flèche « → feuille : M1 » dit quelle ligne remplir.",
-        "Préparé le 31/10/2026 (vague 5) **sans robot** : les commandes ont été vérifiées dans le dépôt et essayées "
-        "contre le faux G1 (la simulation), pas encore sur le vrai robot. Une surprise n'est donc pas une faute de "
-        "ta part : note-la.",
+        "Préparé le 31/10/2026 (vague 5) et mis à jour le 01/11, après la recette (36 / 36), **sans robot** : les "
+        "commandes ont été vérifiées dans le dépôt et essayées contre le faux G1 (la simulation), pas encore sur le "
+        "vrai robot. Il suit `docs/tutoriel-seance-2.md`. Une surprise n'est donc pas une faute de ta part : "
+        "note-la.",
     ], cellule, taille=10)
     f.saut_page()
 
@@ -1109,8 +1112,8 @@ def partie_regles(f):
         "**Vitesses : 0,2 m/s au plus**, au portique comme au sol (`G1_VITESSE_MAX=0.2`). Les mesures de l'étape M "
         "vont jusqu'à 0,2 m/s et 0,4 rad/s (radians par seconde : 0,4 rad/s, c'est environ 23° par seconde), "
         "pendant 3 s au plus.",
-        "**Le bouton ARRÊT de l'Atelier** (ou la touche **Échap**) arrête le guide, le pilotage et bloque le "
-        "robot. **Il ne remplace pas la télécommande.**",
+        "**Le bouton ARRÊT de l'Atelier** (ou la touche **Échap**, dès qu'une navigation ou le pilotage tourne) "
+        "arrête le guide, le pilotage et bloque le robot. **Il ne remplace pas la télécommande.**",
         "**Danses : jamais 401, 402 ni 403** (401 et 402 couchent le robot par terre, 403 est inconnue). La "
         "danse 604 d'abord **au portique, robot tenu**, 3 m libres autour.",
         "**On note tout** sur la feuille de résultats. Un point qui échoue : on note ce qu'on a vu, puis on passe "
@@ -1154,7 +1157,7 @@ def partie_veille(f, schemas):
     f.image(schemas["sol"], 16.5, "Schéma 1. Le sol, vu de dessus : la croix et la flèche du 27/10, les repères à "
                                   "1, 2, 3 et 4 m (étape G) et le but « Essai à 2,5 m » (étape F).")
 
-    f.titre("Sur le PC (environ 25 min)", 2)
+    f.titre("Sur le PC (environ 15 min)", 2)
     f.p("Ouvre un terminal (**Ctrl+Alt+T** : la fenêtre où l'on tape des commandes) et tape les commandes une par "
         "une, en attendant la fin de chacune.")
     f.case("Va dans le dossier du projet.")
@@ -1163,18 +1166,23 @@ def partie_veille(f, schemas):
     f.cmd("PC", ['pgrep -af "ign gazebo|ros2 launch|uvicorn"'])
     f.attendu("**aucune ligne**. Sinon : dans l'Atelier ouvert, « Arrêter », puis Ctrl+C dans son terminal, et "
               "recommence.")
-    f.case("La répétition sans robot (environ 15 min) : elle vérifie le conteneur, le pont, le repérage, le trajet, "
-           "la sécurité, la vitesse minimale et les modes, la caméra et l'ARRÊT, contre le faux G1.")
+    f.case("La répétition sans robot (environ 10 min, mesuré à la recette du 01/11) : elle vérifie le conteneur, le "
+           "pont, le repérage, le trajet, la sécurité, la vitesse minimale et les modes, la caméra et l'ARRÊT, contre "
+           "le faux G1.")
     f.cmd("PC", ["tests_e2e/tout.sh 16 17 18 19 20 34 35 36"])
     f.attendu("à la fin, « **8 / 8** (critères 16 17 18 19 20 34 35 36) ». Sinon, envoie-moi la fin de l'affichage "
               "avant la séance.")
     f.case("L'image du Jetson (avec la caméra, le nouveau pont et le pilotage).")
     f.cmd("PC", ["g1-jetson construire"])
-    f.attendu("déjà à jour : quelques secondes ; sinon, 5 à 10 min.")
+    f.attendu("déjà à jour (elle a été refaite à la recette du 01/11) : quelques secondes ; sinon, environ 1 min "
+              "avec le cache de Docker, 5 à 10 min sans.")
     f.case("Le lieu de la séance : la carte retraitée du 27/10.")
     f.cmd("PC", ["g1-lieu valider --lieu seance"])
-    f.attendu("« **Aucune erreur.** », puis 3 avertissements : les nœuds « 1 », « 2 » et « 3 » ne sont reliés à "
-              "aucun couloir. C'est normal.")
+    f.attendu("« **Aucune erreur.** », puis 4 avertissements : les nœuds « 1 », « 2 » et « 3 » ne sont reliés à "
+              "aucun couloir, et le nœud « 3 » (sa salle) est « à 0.28 m d'un obstacle […], moins que le rayon du "
+              "robot (0.35 m) ». C'est connu, et sans effet aujourd'hui : le trajet de la séance va vers « Essai à "
+              "2,5 m ». Plus tard, tu pourras écarter la salle « 3 » d'environ 0,2 m (Réel › Placer) et relier les "
+              "nœuds (Placer › Relier).")
     f.case("Voir à blanc ce que fera l'envoi au Jetson : rien n'est envoyé (`G1_SLAM_FAUX=1` interdit tout envoi "
            "vers le robot, `--dry-run` montre les commandes sans les lancer).")
     f.cmd("PC", ["G1_SLAM_FAUX=1 g1-jetson envoyer --dry-run"])
@@ -1345,15 +1353,18 @@ def etape_m(f):
     cellule = f.encadre("attention", "Prudence")
     f.puces([
         "Pendant cette étape, le pont n'a **pas de vitesse minimale** : tape les vitesses **exactement** comme "
-        "écrit (la mesure refuse plus de 0,3 m/s, 0,6 rad/s et 5 s).",
+        "écrit (la mesure refuse plus de 0,3 m/s, 0,6 rad/s et 5 s ; le pont, lui, plafonne à 0,2 m/s et "
+        "0,4 rad/s).",
         "Attends la fin de chaque mesure (environ 6 s) avant la suivante.",
         "Si le robot s'éloigne du centre du portique, ramène-le à la télécommande entre deux mesures : la sangle "
         "ne doit jamais se tendre pendant une marche.",
     ], cellule, taille=10.5)
     f.apres_tableau(4)
-    f.case("**T2, le pont en consignes brutes** (sans vitesse minimale ni zone morte) :")
+    f.case("**T2, le pont en consignes brutes** (sans vitesse minimale ni zone morte), avec des plafonds de "
+           "0,2 m/s et 0,4 rad/s :")
     f.cmd("T2", ["ros2 run g1_bridge pont --ros-args -p exiger_reperage:=false -p vitesse_min_lin:=0.0 -p "
-                 "vitesse_min_rot:=0.0 -p zone_morte_lin:=0.0 -p zone_morte_rot:=0.0"])
+                 "vitesse_min_rot:=0.0 -p zone_morte_lin:=0.0 -p zone_morte_rot:=0.0 -p vx_max:=0.2 -p "
+                 "vy_max:=0.2 -p wz_max:=0.4"])
     f.attendu("le pont démarre. Deux avertissements jaunes sont normaux ici : « exiger_reperage est faux… » et "
               "« vitesse minimale désactivée… ».")
     f.case("**M0. T3, l'état du pont :**", feuille="M0")
@@ -1442,9 +1453,9 @@ def etape_c(f):
     f.cmd("T6", ["pkill -9 -f lib/g1_bridge/pont"])
     f.attendu("le robot s'arrête en **moins d'une seconde**.")
     f.stop("**s'il continue : télécommande, amortissement, fin de la séance.**")
-    f.case("**Attends la fin de la marche de 10 s dans T5** (ou fais Ctrl+C dans T5), puis relance le pont dans T2 "
-           "(la même commande qu'au début de l'étape : flèche ↑ pour la retrouver). Sinon, le nouveau pont "
-           "recevrait la fin de la marche et le robot repartirait.")
+    f.case("**Avant de relancer le pont, arrête la marche dans T5 (Ctrl+C)**, ou attends qu'elle soit finie : "
+           "sinon le nouveau pont reprend ces ordres et **le robot repart tout seul**. Relance ensuite le pont dans "
+           "T2 (la même commande qu'au début de l'étape : flèche ↑ pour la retrouver).")
     f.case("**C5. La télécommande reste-t-elle prioritaire ?** C'est **la condition pour continuer**. Relance la "
            "marche de 10 s dans T5 (la même commande, flèche ↑) ; pendant ce temps, la personne 1 arrête le robot "
            "avec la télécommande.", feuille="C5")
@@ -1540,7 +1551,7 @@ def etape_e(f):
            "du robot branché », « PC1 et Jetson répondent » ; coche « **Télécommande en main** ». Puis **Ouvrir**.")
     f.case("Ruban **Naviguer › Lancer** (le ruban : la barre d'onglets en haut de l'Atelier). L'Atelier copie le "
            "lieu sur le Jetson et démarre notre conteneur, avec la caméra.")
-    f.attendu("« Non repéré », et la pastille du robot « Robot : à repérer ».")
+    f.attendu("« Non repéré », et la pastille du robot, en haut à droite, « À repérer ».")
     f.case("T4, les réponses du robot au repérage :")
     f.cmd("T4", ["ros2 topic echo /api/slam_operate/response"])
     f.case("**E4. La carte d'Unitree.** Dans T5, lance l'attente (90 s au plus) **juste avant** de repérer :",
@@ -1557,11 +1568,10 @@ def etape_e(f):
                  "ros2 topic hz /unitree/slam_relocation/points"])
     f.attendu("une fréquence (« average rate », en messages par seconde) pour chacun. Note-les.", mot="À noter :")
     f.case("**E3. La précision, à la télécommande** (notre logiciel n'envoie rien tant qu'on ne lui demande pas de "
-           "trajet) : avance le robot d'environ 2 m, puis tourne-le d'un quart de tour. Compare la position montrée "
-           "par l'Atelier (le robot sur le nuage, vue 3D) avec le mètre ruban, depuis la croix. Trois mesures.",
-           feuille="tableau E3")
-    f.note("dans T5, cette commande donne la position exacte : champ `\"pose\"`, avec x (le long de la flèche) et "
-           "y (vers la gauche) en mètres, et theta en radians.", mot="Pour lire la position :", couleur=C["texte"])
+           "trajet) : avance le robot d'environ 2 m, puis tourne-le d'un quart de tour. Compare la position du robot "
+           "avec le mètre ruban, depuis la croix. Trois mesures.", feuille="tableau E3")
+    f.note("les chiffres exacts sont dans le champ `\"pose\"` de cette commande (T5) : x (le long de la flèche) "
+           "et y (vers la gauche) en mètres, theta en radians.", mot="Pour lire la position :", couleur=C["texte"])
     f.cmd("T5", ["ros2 topic echo --once /reperage/etat --field data"])
     f.attendu("**moins de 10 cm** d'écart.")
     bloc_probleme(f, [
@@ -1638,7 +1648,8 @@ def etape_g(f):
            "le haut = −12°). **✓ Enregistrer.**", feuille="G3")
     f.case("**G4. Les visiteurs.** Dans T5 :", feuille="G4")
     f.cmd("T5", ["g1-visiteurs --lieu seance --source robot --image"])
-    f.attendu("une personne debout devant le robot : un cadre apparaît sur l'image de l'Atelier (vue Caméra).")
+    f.attendu("une personne debout devant le robot : un cadre apparaît sur l'image de l'Atelier (vue Caméra), avec son "
+              "numéro et sa distance (« n° 1 · 3,4 m ») ; vert si elle regarde le robot, orange sinon.")
     f.case("**G5. Les distances.** La personne se tient sur les repères à **1, 2, 3 et 4 m**. Dans T6, les distances "
            "estimées par la caméra :", feuille="tableau G5")
     f.cmd("T6", ["ros2 topic echo /visiteurs/detectes --field data | grep --line-buffered -o '\"distance_m\": "
@@ -1670,10 +1681,10 @@ def etape_h(f):
     f.titre_etape("H", "un nouveau scan, plus lent", "20 min, si le temps le permet")
     bloc_but(f, "comparer la carte de notre nouvelle chaîne à celle d'Unitree Explore.",
              "l'étape G est finie. Si le temps manque, saute H et va à l'étape P (son premier point le prévoit).")
-    f.case("**Garde le journal du conteneur** : il est effacé quand le conteneur s'arrête. Dans T5 :", feuille="Fin")
-    f.cmd("T5", ["cd ~/robot-g1/docs/releves",
-                 "g1-jetson journal --lignes 100000 > seance-2_conteneur.log 2>&1"])
-    f.case("Ruban **Naviguer › Arrêter** (la navigation et le conteneur s'arrêtent).")
+    f.case("**Garde d'abord le journal de la navigation**, dans T5 (le conteneur l'emporte avec lui quand il "
+           "s'arrête) :", feuille="Fin")
+    f.cmd("T5", ["g1-jetson journal --lignes 100000 > ~/robot-g1/docs/releves/seance-2_navigation.log 2>&1"])
+    f.case("Puis ruban **Naviguer › Arrêter** (la navigation et le conteneur s'arrêtent).")
     f.case("**Robot sur la croix**, dans le sens de la flèche, en mode marche.")
     f.case("Ruban **Scanner › Scan** (confirme si l'Atelier le demande). L'écran passe en plein écran : le nuage se "
            "remplit en direct.")
@@ -1696,11 +1707,10 @@ def etape_p(f):
     bloc_but(f, "vérifier le pilotage (prendre la main, postures, joysticks, ARRÊT) depuis le mode 501, puis une "
                 "danse sûre (604), robot tenu au portique.",
              "le conteneur de navigation est arrêté (étape H, ou le premier point ci-dessous).")
-    f.case("**Seulement si tu as sauté l'étape H** : garde le journal du conteneur, puis ruban **Naviguer › "
-           "Arrêter** (sinon, le démarrage ci-dessous refuse : « le conteneur g1-jetson tourne déjà »).",
-           feuille="Fin")
-    f.cmd("T5", ["cd ~/robot-g1/docs/releves",
-                 "g1-jetson journal --lignes 100000 > seance-2_conteneur.log 2>&1"])
+    f.case("**Seulement si tu as sauté l'étape H** : le conteneur de la navigation tourne encore, et le démarrage "
+           "ci-dessous refuserait (« le conteneur g1-jetson tourne déjà »). Fais d'abord le premier point de "
+           "l'étape H : le journal de la navigation, puis ruban **Naviguer › Arrêter**.", feuille="Fin")
+    f.cmd("T5", ["g1-jetson journal --lignes 100000 > ~/robot-g1/docs/releves/seance-2_navigation.log 2>&1"])
     f.case("**Robot raccroché au portique**, pieds au sol, en mode marche.")
     f.case("Le nœud pilotage seul, sur le Jetson (un nœud : un programme ROS). Dans T5, l'une après l'autre :")
     f.cmd("T5", ["G1_VITESSE_MAX=0.2 g1-jetson demarrer --veille",
@@ -1726,9 +1736,9 @@ def etape_p(f):
            "801 ?) :", mot="Ou bien,", couleur=C["texte"])
     f.cmd("T5", ["g1-pilotage danse 604 --zone-libre", "g1-pilotage etat"])
     f.attendu("la durée de la danse et le mode à la fin.", mot="À noter :")
-    f.case("**P5. Rendre la main.** Puis, dans T5, garde le journal du conteneur, et arrête-le :", feuille="Fin")
-    f.cmd("T5", ["cd ~/robot-g1/docs/releves",
-                 "g1-jetson journal --lignes 100000 > seance-2_conteneur_pilotage.log 2>&1",
+    f.case("**P5. Rendre la main.** Puis, dans T5, garde le journal du pilotage **avant** d'arrêter le "
+           "conteneur :", feuille="Fin")
+    f.cmd("T5", ["g1-jetson journal --lignes 100000 > ~/robot-g1/docs/releves/seance-2_pilotage.log 2>&1",
                  "g1-jetson arreter"])
     f.attendu("« conteneur g1-jetson arrêté et retiré en … s ».")
     bloc_probleme(f, [
@@ -1746,8 +1756,7 @@ def etape_fin(f):
     f.cmd("T5", ["g1-jetson etat"])
     f.attendu("« aucun conteneur g1-jetson… » : c'est fini pour le conteneur. S'il dit « running », garde son "
               "journal, puis arrête-le :")
-    f.cmd("T5", ["cd ~/robot-g1/docs/releves",
-                 "g1-jetson journal --lignes 100000 > seance-2_conteneur_fin.log 2>&1",
+    f.cmd("T5", ["g1-jetson journal --lignes 100000 > ~/robot-g1/docs/releves/seance-2_conteneur.log 2>&1",
                  "g1-jetson arreter"])
     f.case("Robot en amortissement (sangle tendue), puis éteint. Débranche le câble. Ctrl+C dans T1 (l'Atelier).")
     f.case("Complète la feuille de résultats, et enregistre-la (voir la section 8).")
@@ -1798,7 +1807,7 @@ def partie_depannage(f):
     f.cmd("T2", ["g1-guide navigation --lieu seance --etage rdc --vitesse-max 0.2"])
     f.case("Dans T5, le robot posé sur la croix, dans le sens de la flèche : le repérage en (0 ; 0 ; 0), puis son "
            "état.")
-    f.cmd("T5", ['ros2 topic pub --once /reperage/demander std_msgs/msg/String "{data: \'{\\"id\\": \\"seance2\\", '
+    f.cmd("T5", ['ros2 topic pub --once /reperage/demander std_msgs/msg/String "{data: \'{\\"id\\": \\"seance-2\\", '
                  '\\"x\\": 0, \\"y\\": 0, \\"theta\\": 0}\'}"',
                  "ros2 topic echo /reperage/etat --field data"])
     f.attendu("`\"etat\": \"repere\"`. Ctrl+C pour quitter.")
@@ -1813,8 +1822,8 @@ def partie_rapport(f):
         "**la feuille remplie** : le fichier Word `Seance2_A_remplir.docx` enregistré dans `~/robot-g1/docs/releves/` "
         "(par exemple sous le nom `seance-2_resultats.docx`), ou `docs/releves/seance-2.md`, avec **les résultats "
         "des mesures copiés tels quels** ;",
-        "**le journal du conteneur** : `docs/releves/seance-2_conteneur.log` (et "
-        "`seance-2_conteneur_pilotage.log` si l'étape P a été faite) ;",
+        "**les journaux du conteneur**, dans `docs/releves/` : `seance-2_navigation.log` (étapes E à G), "
+        "`seance-2_pilotage.log` (étape P) et, si un conteneur tournait encore à la fin, `seance-2_conteneur.log` ;",
         "**les messages d'erreur**, copiés mot pour mot.",
     ])
     f.p("Je retrouverai seul le nouveau scan (`lieux/seance/scans/`), la carte d'Unitree "
@@ -2193,9 +2202,9 @@ def fiche_a_remplir():
                       "copiés tels quels ;", 11)
     ligne_a_cocher(f, "**les journaux du conteneur**, dans `~/robot-g1/docs/releves/` (coche ceux qui existent) :",
                    11).paragraph_format.keep_with_next = True
-    for nom, quand in (("seance-2_conteneur.log", "navigation, étapes E à G"),
-                       ("seance-2_conteneur_pilotage.log", "étape P"),
-                       ("seance-2_conteneur_fin.log", "seulement si un conteneur tournait encore")):
+    for nom, quand in (("seance-2_navigation.log", "navigation, étapes E à G"),
+                       ("seance-2_pilotage.log", "étape P"),
+                       ("seance-2_conteneur.log", "seulement si un conteneur tournait encore à la fin")):
         q = ligne_a_cocher(f, f"`{nom}` ({quand})", 10.5)
         q.paragraph_format.left_indent = Cm(1.8)
         q.paragraph_format.tab_stops.add_tab_stop(Cm(1.8))

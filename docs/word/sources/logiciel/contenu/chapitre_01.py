@@ -3,7 +3,7 @@
 BLOCS = [
     ("h1", "Le projet et le logiciel en une page"),
     ("chapeau", "Ce que doit faire le robot, ce que fait le logiciel, quelques chiffres, et où en est le "
-                "projet le 31/10/2026."),
+                "projet le 01/11/2026, après la recette de la vague 5."),
 
     ("h2", "Le but du projet"),
     ("p", "Le **Unitree G1 EDU** est un robot humanoïde d'environ 1,3 m. Le projet en fait un **robot "
@@ -49,12 +49,14 @@ BLOCS = [
             ["Tests automatiques", "[[tests_atelier]] tests dans `atelier/tests`, [[tests_docker]] pour le conteneur, "
                                    "[[fonctions_test_ros]] fonctions de test dans les paquets ROS 2"],
             ["Critères de recette", "[[criteres]] scénarios complets, tous joués sans robot ni écran"],
-            ["Historique", "[[commits]] commits Git, en 5 vagues de construction, du 25 au 31/10"],
+            ["Historique", "[[commits]] commits Git, en 5 vagues de construction, du 25/10 au 01/11"],
         ],
     }),
 
-    ("h2", "Où en est le projet (31/10/2026)"),
-    ("p", "L'intégrateur (Claude, qui coordonne la construction) estime l'avancement à **environ 50 %**. "
+    ("h2", "Où en est le projet (01/11/2026)"),
+    ("p", "L'intégrateur (Claude, qui coordonne la construction) estime l'avancement à **environ 50 %** "
+          "(estimation du 31/10, inchangée après la recette du 01/11 : elle a confirmé, sans robot, ce qui était "
+          "compté comme fait). "
           "Chaque partie a un **poids** (sa part du travail total) et une **part faite** ; l'avancement est "
           "la somme des poids multipliés par les parts faites :"),
     ("table", {
@@ -65,9 +67,9 @@ BLOCS = [
         "lignes": [
             ["Logiciel en simulation (lieux, monde, carte, salles, itinéraires, zones, Gazebo + Nav2, foule, "
              "guide, point principal, retour, accompagnement)", "25 %", "95 %",
-             "fait et vérifié sans robot (36 critères de recette)"],
+             "fait et vérifié sans robot (36 / 36 à la recette du 01/11)"],
             ["Interface (accueil Simulation / Réel, espace à la SolidWorks, carte 3D)", "10 %", "85 %",
-             "faite le 31/10 ; à essayer par l'utilisateur et à ajuster"],
+             "faite le 31/10, revue et corrigée (30 défauts) ; à essayer par l'utilisateur et à ajuster"],
             ["Scan réel → carte", "10 %", "70 %",
              "chaîne corrigée, vrai scan du 27/10 retraité ; à valider par un nouveau scan ; carte d'Unitree à récupérer"],
             ["Liaison avec le vrai robot (pont, conteneur du Jetson, repérage, premier trajet)", "25 %", "25 %",
@@ -82,7 +84,7 @@ BLOCS = [
         ],
     }),
     ("p", "Le calcul : 0,25 × 95 + 0,10 × 85 + 0,10 × 70 + 0,25 × 25 + 0,15 × 10 + 0,10 × 40 + 0,05 × 30 "
-          "≈ 52 %. Le 31/10, on est au **jour 11 sur 59**, soit 19 % du temps : le logiciel est en avance. "
+          "≈ 52 %. Le 01/11, on est au **jour 12 sur 59**, soit 20 % du temps : le logiciel est en avance. "
           "Ce qui reste est surtout **l'essai sur le vrai robot** : conteneur sur le Jetson, repérage, premier "
           "trajet, puis le guide au milieu de vraies personnes."),
     ("encadre", "À retenir",

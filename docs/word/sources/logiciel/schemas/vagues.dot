@@ -10,6 +10,6 @@ digraph vagues {
   v3 [label="Vague 3 (25-26/10, nuit) : le vrai robot en répétition\nconteneur du Jetson, pont 7105, faux G1, repérage 1804 : 20 / 20"];
   v4 [label="Vague 4 (26/10) : point principal, passants, guide, pilotage, équipe\n(coupée par la limite d'utilisation, puis reprise) : 30 / 30"];
   s1 [label="Séance robot n° 1 (27/10) : scan réel validé, ordre 7105 accepté ;\nrien à 0,1 m/s, marche à 0,2 m/s ; modes 0, 3, 501, 802", fillcolor="#FDEBD9", color="#C55A11"];
-  v5 [label="Vague 5 (31/10) : interface à la SolidWorks, carte 3D, scan corrigé,\npont (vitesse minimale, mode), caméra : 36 critères, vérification finale", fillcolor="#E2F0D9", color="#548235"];
+  v5 [label="Vague 5 (31/10 - 01/11) : interface à la SolidWorks, carte 3D, scan corrigé,\npont (vitesse minimale, mode), caméra ; revue (30 défauts), recette : 36 / 36", fillcolor="#E2F0D9", color="#548235"];
   d0 -> v1 -> v2 -> v3 -> v4 -> s1 -> v5;
 }

@@ -1,8 +1,8 @@
 # Document Word « Atelier G1 : le logiciel, de A à Z » : notes
 
 Dossier : `~/robot-g1-donnees/vague5/documents/logiciel/` (hors de `/tmp` : il survit à un redémarrage).
-Le document : `Atelier_G1_documentation_logiciel.docx` (15 chapitres, 14 schémas, 56 pages dans le PDF de
-contrôle sans les captures, environ 59 avec les 7 captures prévues).
+Le document : `Atelier_G1_documentation_logiciel.docx` (15 chapitres, 14 schémas, 9 captures, 64 pages dans le
+PDF de contrôle). Version finale de la vague 5 : 01/11/2026, après la recette (36 / 36).
 
 ## Regénérer
 
@@ -36,27 +36,31 @@ Dernier passage : « All validations PASSED! ».
 ## Où mettre les captures
 
 Mettre les PNG dans `~/robot-g1-donnees/vague5/captures/` (sous-dossiers permis), puis regénérer. Le
-chapitre 11 (`contenu/chapitre_11.py`) a 7 emplacements ; chacun essaie des motifs de noms, dans l'ordre,
+chapitre 11 (`contenu/chapitre_11.py`) a 9 emplacements ; chacun essaie des motifs de noms, dans l'ordre,
 et prend le premier fichier trouvé (jamais deux fois le même). Sans fichier, l'emplacement est omis : ni
-trou, ni mention. Le seul texte qui dépend des captures est une phrase d'introduction (bloc `si_captures`).
+trou, ni mention. Le seul texte qui dépend des captures est une phrase d'introduction (bloc `si_captures`) ;
+les légendes, elles, décrivent les captures finales de la recette du 01/11 : une autre capture demande de
+relire sa légende.
 
-| Emplacement | Motifs essayés (le premier trouvé gagne) |
-|---|---|
-| Accueil | `accueil_reel_sombre*.png`, `accueil_reel*.png`, `accueil_simulation_sombre*.png`, `accueil*.png` |
-| Espace en Simulation | `simulation_sombre_dessiner*.png`, `simulation_*dessiner*.png`, `simulation_sombre_placer*.png` |
-| Carte 3D | `*carte3d_iso_sombre*1366*.png`, `*carte3d_iso_sombre*.png`, `*carte3d_iso*.png`, `*carte3d*.png`, `reel_sombre_placer*.png`, `*placer*.png` |
-| Scan | `*pendant_le_scan*1366*.png`, `*pendant_le_scan*.png`, `*scan*en_cours*.png`, `reel_sombre_scanner*.png`, `*scanner*.png` |
-| Naviguer | `reel_sombre_naviguer*.png`, `reel_naviguer*.png`, `*naviguer*.png` |
-| Piloter | `reel_sombre_piloter*.png`, `*piloter*.png` |
-| Caméra | `*vue_camera_sombre*1366*.png`, `*vue_camera_sombre*.png`, `*vue_camera*.png`, `*equipe_camera_sombre*1366*.png`, `*camera*.png` |
+| Emplacement | Capture finale (01/11, 1600 × 900) | Motifs de repli (anciens noms) |
+|---|---|---|
+| Accueil | `01_accueil*.png` | `accueil_reel_sombre*.png`, `accueil_reel*.png`, `accueil_simulation_sombre*.png`, `accueil*.png` |
+| Espace en Simulation (Placer) | `02_simulation_placer*.png` | `simulation_sombre_dessiner*.png`, `simulation_*dessiner*.png`, `simulation_sombre_placer*.png` |
+| Simuler | `03_simulation_simuler*.png` | `simulation_sombre_simuler*.png`, `*simuler*.png` |
+| Carte 3D (Réel › Placer) | `05_reel_placer*.png` | `*carte3d_iso_sombre*1366*.png`, `*carte3d_iso_sombre*.png`, `*carte3d_iso*.png`, `*carte3d*.png`, `reel_sombre_placer*.png`, `*placer*.png` |
+| Scan | `04_reel_scanner*.png` | `*pendant_le_scan*1366*.png`, `*pendant_le_scan*.png`, `*scan*en_cours*.png`, `reel_sombre_scanner*.png`, `*scanner*.png` |
+| Naviguer | `06_reel_naviguer*.png` | `reel_sombre_naviguer*.png`, `reel_naviguer*.png`, `*naviguer*.png` |
+| Piloter | `07_reel_piloter*.png` | `reel_sombre_piloter*.png`, `*piloter*.png` |
+| Caméra (Équipe) | `08_equipe_camera*.png` | `*vue_camera_sombre*1366*.png`, `*vue_camera_sombre*.png`, `*vue_camera*.png`, `*equipe_camera_sombre*1366*.png`, `*camera*.png` |
+| Thème clair | `09_theme_clair*.png` | `*clair*.png` |
 
-Les noms suivent ceux de `tests_e2e/outils_coque_e2e.py captures` et des captures de l'assemblage
-(`~/robot-g1-donnees/vague5/assemblage/captures/`). Si la vérification nomme ses captures autrement,
-changer les motifs dans `contenu/chapitre_11.py`. Les PNG sont convertis en JPEG (qualité 88, 1 600 px de
+Les captures finales ont été prises par la recette (`~/robot-g1-donnees/vague5/recette/captures_finales.py` et
+`capture_simulation.py`) ; les noms de repli suivent ceux de `tests_e2e/outils_coque_e2e.py captures` et des
+captures de l'assemblage (`~/robot-g1-donnees/vague5/assemblage/captures/`). Les PNG sont convertis en JPEG (qualité 88, 1 600 px de
 large au plus) par le Pillow du système dans `controle/captures_jpeg/`, pour un `.docx` plus léger.
-Essai avec les captures de l'assemblage, sans toucher au document :
+Essai avec d'autres captures, sans toucher au document :
 `generer.py --captures ~/robot-g1-donnees/vague5/assemblage/captures --sortie controle/essai_captures.docx`
-(fait le 31/10 : 7 captures trouvées, 59 pages, mise en page relue).
+(fait le 31/10 avec les captures de l'assemblage : 7 captures trouvées, 59 pages).
 
 ## Comment le contenu est rangé
 
@@ -87,13 +91,14 @@ Essai avec les captures de l'assemblage, sans toucher au document :
 
 ## Points incertains, à faire vérifier
 
-1. **La vague 5 n'est pas finie** : sa vérification finale tournait pendant la rédaction (31/10, 20 h). Les
-   chiffres « vivants » (commits, lignes, tests collectés, routes) se mettent à jour en regénérant ; le
-   résultat « N / 36 » et le nombre de tests réussis de la vague 5 finie ne sont **pas** dans le document
-   (section 12.4 : « vérification finale en cours ») : à ajouter dans `contenu/chapitre_12.py` (tableau
-   « Les chiffres, vague après vague ») et dans `chapitre_10.py` (tableau des vagues, ligne 5).
-2. **Le chapitre 11 décrit l'interface de l'assemblage de la vague 5** (17 h, 31/10) ; la vérification peut
-   changer des libellés ou des comportements : relire le chapitre 11 avec les captures finales.
+1. **État décrit : la vague 5 finie** (recette du 01/11 : 36 / 36, 2 281 tests réussis, 0 échec). Les
+   chiffres « vivants » (commits, lignes, tests collectés, routes) se mettent à jour en regénérant ; ceux de
+   la recette (chapitres 10 et 12 : suites, durées, critères, revue) sont écrits à la main, d'après le journal
+   de l'Atelier (entrée « Recette finale ») et `~/robot-g1-donnees/vague5/recette/` (`ETAT.md`,
+   `durees_criteres.txt`, journaux) ; la somme des 36 durées fait bien 7 662 s.
+2. **Le chapitre 11 décrit l'interface des captures finales** (01/11), vérifiée dans le code (`js/coque/`,
+   `js/ecrans/`, `js/carte3d/`, `js/camera/`) : libellés du ruban, pastilles, Échap, couleurs du nuage et des
+   cadres. Ses légendes sont propres à ces captures.
 3. **Les zones lentes** : d'après le code (`ws/src/g1_nav`), Nav2 n'applique que le masque des zones
    interdites ; les zones lentes sont décrites et dessinées, sans effet sur la vitesse (écrit en 6.1 et
    dans le glossaire, chapitre 14). À confirmer.
@@ -111,13 +116,21 @@ Essai avec les captures de l'assemblage, sans toucher au document :
    L4T R35.3.1, Docker 24.0.7, 15 Go) viennent du relevé du 22/10. Le modèle exact du Jetson n'est écrit
    nulle part : le document dit seulement « Jetson (PC2) ».
 8. **Ordres de grandeur repris des documents** : image Docker « environ 2 Go » sur le Jetson (tutoriels),
-   recette complète « environ 3 h » (README), G1 « d'environ 1,3 m » (taille du robot proxy).
+   G1 « d'environ 1,3 m » (taille du robot proxy). La recette complète est mesurée : 2 h 08 le 01/11
+   (README : « 2 h 10 environ »).
 9. **`lieux/seance` n'est pas dans Git** au moment de la rédaction (`git status` : non suivi) ; si
    l'intégrateur l'ajoute, corriger le chapitre 5 (tableau « Ce qui n'est pas dans Git ») et la recette 13.8.
 10. **L'avancement (≈ 52 %, « environ 50 % »)** est l'estimation de l'intégrateur, avec ses poids ; il est
     repris tel quel (section 1.4).
 11. **Annexe B** (routes) et **annexe C** (sujets) sont écrites à la main d'après le code du 31/10 (100 routes
-    des modules + `/api/etat` et `/ws/etat` ; sujets relevés dans le code) : à revoir si la vérification
-    ajoute ou retire des routes ou des sujets.
+    des modules + `/api/etat` et `/ws/etat` ; sujets relevés dans le code) ; le nombre de routes mesuré n'a
+    pas changé après les corrections (102) : à revoir si des routes ou des sujets changent.
 12. **Numéros de page de la table des matières** : ceux du PDF de contrôle (LibreOffice, Lato) ; Word les
     recalcule à l'ouverture (répondre Oui).
+13. **Critère 31** : le plan (12.13) parle de 186 mesures ; la recette du 01/11 en a fait 165 (21 en
+    Simulation, 17 en Réel, 17 en répétition, à trois tailles de fenêtre ; 7 428 éléments cliquables) : le
+    document cite 165.
+14. **L'avancement** (section 1.4 et fiches) : l'estimation du 31/10 est reprise sans changement après la
+    recette ; seul le temps passé est recalculé au 01/11 (jour 12 sur 59).
+15. **Symbole ⚠** : absent de Lato, il ne s'affichait pas dans le PDF de contrôle ; le texte dit « triangle
+    d'alerte ».

@@ -47,7 +47,10 @@ BLOCS = [
              "à 403) refusés sans rien envoyer ; « robot au portique » pour amortir ou couper le couple ; « zone "
              "libre » pour danser.", "`atelier/lieu/pilotage.py`", "critères 28, 29"],
             ["Collision Monitor", "Nav2 ralentit de moitié près d'un obstacle (1 m devant, 0,7 m autour) et "
-             "arrête à 0,4 m ; pas de marche arrière avec le vrai robot.", "`nav2_g1_reel.yaml`", "critères 23 à 25"],
+             "arrête à 0,4 m. Avec le vrai robot : pas de marche arrière ; et, sous 0,4 m/s, le ralenti n'a plus "
+             "d'effet (le pont remonte la consigne à 0,2 m/s) : seul l'arrêt à 0,4 m protège (le lancement le "
+             "signale ; à mesurer à la séance n° 2).", "`nav2_g1_reel.yaml`, `navigation.launch.py`",
+             "critères 23 à 25"],
             ["Conteneur", "Il ne redémarre jamais seul : on ne relance pas une navigation sans un humain.",
              "`docker/jetson.py` (`--restart no`)", "critère 16"],
         ],

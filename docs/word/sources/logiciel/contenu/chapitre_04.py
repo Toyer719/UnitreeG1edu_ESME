@@ -65,7 +65,8 @@ BLOCS = [
         "Le **domaine** (`ROS_DOMAIN_ID`) est un numéro qui sépare des groupes de nœuds : deux nœuds de "
         "domaines différents ne se voient pas. Le robot publie sur le **domaine 0**. Les tests et les agents "
         "travaillent sur d'autres numéros (36 pour la recette, puis un numéro par agent : 50 à 54, 60 à 63, "
-        "70 à 75, 100 à 106) pour ne jamais se gêner, et souvent avec `ROS_LOCALHOST_ONLY=1` (rien ne sort du PC).",
+        "70 à 75, 100 à 106, puis 112 et 113 pour la revue et la recette de la vague 5) pour ne jamais se gêner, "
+        "et souvent avec `ROS_LOCALHOST_ONLY=1` (rien ne sort du PC).",
         "Conséquence pratique, et règle des séances : **aucune simulation ne doit tourner sur le PC quand le "
         "robot est branché**, car un faux G1 sur le domaine 0 pourrait répondre à la place du vrai. Le plus "
         "sûr est de redémarrer le PC avant la séance.",

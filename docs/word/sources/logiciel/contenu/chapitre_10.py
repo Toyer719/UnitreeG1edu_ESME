@@ -4,8 +4,8 @@ BLOCS = [
     ("h1", "Comment le logiciel a été construit"),
     ("chapeau", "Le logiciel n'a pas été écrit ligne par ligne par une seule personne : Claude, une IA, l'a "
                 "construit avec une équipe d'autres instances de Claude (les « agents »), en cinq vagues, du "
-                "25 au 31/10/2026. Ce chapitre explique la méthode, la chronologie, les décisions et les "
-                "problèmes rencontrés."),
+                "25/10 au 01/11/2026. Ce chapitre explique la méthode, la chronologie, la revue et la recette de la "
+                "vague 5, les décisions et les problèmes rencontrés."),
 
     ("h2", "La méthode : un plan, des contrats, des agents, une recette"),
     ("schema", "methode", "Le déroulé d'une vague", 10.5, 13.0),
@@ -23,11 +23,16 @@ BLOCS = [
         "**L'intégrateur** (Claude, dans la session de l'utilisateur) écrit le plan et les contrats, puis "
         "**assemble** : il compile tout, corrige les écarts entre les modules, relance tous les tests, écrit le "
         "journal (`docs/journal-atelier.md`) et le README ; lui seul fait les commits.",
+        "**La revue** (depuis la vague 5) : après l'assemblage, deux relecteurs (d'autres instances de Claude) "
+        "relisent, l'un l'interface, dans Firefox, l'autre le code ; un correcteur reproduit chaque défaut, le "
+        "corrige et ajoute un test qui l'aurait vu.",
         "**La recette** : des critères mesurables, tous joués sans robot ni écran (« le robot arrive à moins de "
         "0,3 m en moins de 180 s », « zéro contact causé par le robot »). `tests_e2e/tout.sh` les lance tous et "
-        "affiche « N / 36 ». Une vague n'est finie que quand tous passent.",
+        "affiche « N / 36 ». Avant, toutes les suites de tests tournent, et chaque défaut de la revue est vérifié. "
+        "Une vague n'est finie que quand tout passe.",
         "**Les précisions de l'assemblage** : les écarts acceptés à l'assemblage sont écrits dans le plan "
-        "(sections 10.12, 11.12, 12.13) et font foi comme les contrats.",
+        "(sections 10.12, 11.12, 12.13), ainsi que les corrections après la revue (12.14) ; ils font foi comme "
+        "les contrats.",
     ]),
 
     ("h2", "La chronologie"),
@@ -54,14 +59,66 @@ BLOCS = [
              "du robot "
              "dans Pilotage et le tutoriel de la séance n° 1", "30 / 30", "ac1c59b → 5ac563c, ac255ad, 4e5fb73"],
             ["Séance 1", "27/10", "Premier essai sur le robot : scan réel, ordre de marche 7105 (chapitre 9)", "—", "a5d0f05"],
-            ["5", "31/10", "Interface à la SolidWorks, carte 3D, scan corrigé sans reconnaissance, vitesse minimale et "
-             "mode du pont, caméra de poitrine ; phase « comprendre » (5 lecteurs), 5 agents, assemblage ; "
-             "vérification finale en cours le 31/10 au soir", "36 critères", "5bb9e95 → d0730c1"],
+            ["5", "31/10, nuit → 01/11, 19 h 50", "Interface à la SolidWorks, carte 3D, scan corrigé sans "
+             "reconnaissance, vitesse minimale et mode du pont, caméra de poitrine ; phase « comprendre » "
+             "(5 lecteurs), 5 agents, assemblage ; revue (30 défauts : 28 corrigés, 2 écartés), puis recette "
+             "le 01/11", "36 / 36 en un passage", "5bb9e95 → 31c4350 (21 commits)"],
         ],
     }),
     ("p", "Le nombre de tests de `atelier/tests` montre la croissance : 408 à la vague 1, 609 à la vague 2, 694 "
-          "à la vague 3, 1 131 à la vague 4, 1 265 avec les contrats de la vague 5, et [[tests_atelier]] au moment "
-          "de la génération de ce document."),
+          "à la vague 3, 1 131 à la vague 4, 1 265 avec les contrats de la vague 5, 1 466 réussis à la recette "
+          "du 01/11 (plus 3 sautés, et les 4 du repérage ROS, lancés à part), et [[tests_atelier]] au moment de "
+          "la génération de ce document."),
+
+    ("h2", "La revue et la recette de la vague 5"),
+    ("p", "Le 31/10 au soir, après l'assemblage, deux relecteurs ont relu la vague 5 : l'un dans Firefox, avec la "
+          "3D (22 défauts d'interface, dont 3 graves), l'autre dans le code (8 défauts, dont 1 grave). Le "
+          "correcteur (l'intégrateur) a reproduit chaque défaut avant de le corriger : aucun n'était faux. Ses "
+          "corrections sont dans 7 commits (d6d3b26 → 8e1c1d1), et ses choix dans la section 12.14 du plan."),
+    ("table", {
+        "legende": "Les quatre défauts graves de la revue, et leur correction",
+        "entetes": ["Défaut", "Correction"],
+        "largeurs": [7.6, 9.0],
+        "taille": 8.5,
+        "lignes": [
+            ["**L'arbre du lieu**, une fois replié, ne se rouvrait plus (au-dessus de 1 100 pixels de large), et "
+             "c'était mémorisé", "une languette « ▸ Le lieu » au bord gauche de la vue, et une entrée du menu des "
+             "réglages"],
+            ["**Le premier clic sur ✓ Enregistrer** était perdu quand un champ avait le curseur : le champ quitté "
+             "redessinait le panneau entre l'appui et le relâchement", "les mêmes boutons d'un dessin à l'autre, "
+             "✓ actif dès la frappe, les champs validés après le clic ; le panneau redessiné garde le défilement et "
+             "la saisie ; Ctrl+S marche pendant une saisie"],
+            ["**Le Plan 2D restait vide** quand Placer s'était ouvert en 3D : le cadrage était calculé sur une vue "
+             "de taille nulle", "le cadrage attend que la vue ait une taille ; « Recadrer » et la touche F en Plan 2D"],
+            ["**L'ARRÊT se taisait** si sa première demande au serveur ne revenait pas", "chaque appui envoie sa "
+             "demande ; sans réponse en 1,5 s : « arrêtez le robot avec la télécommande »"],
+        ],
+    }),
+    ("p", "Les 26 autres (15 moyens, 11 mineurs) touchaient surtout l'interface : Échap envoyait l'ARRÊT, et le "
+          "verrou du robot, pour fermer un simple menu ; du jargon ROS à l'écran ; des panneaux qui doublaient le "
+          "ruban ; « Y aller » actif quand rien ne tournait ; une répétition annoncée lancée alors que des parties "
+          "avaient planté ; un sol du nuage trop vert. Côté robot : avec la vitesse minimale, une zone morte à 0 "
+          "faisait d'un bruit de calcul une marche à 0,2 m/s ; `camera_usb` tuait le `v4l2-ctl` qu'il venait de "
+          "relancer ; un scan court donnait un sol penché de 6,8°."),
+    ("p", "**28 défauts sont corrigés, chacun avec un test. 2 sont écartés, avec leur raison écrite** (section "
+          "12.14) : les zones « ralentir » du Collision Monitor de Nav2, que la vitesse minimale du pont rend sans "
+          "effet sous 0,4 m/s (des zones « stop » arrêteraient le robot devant les murs des couloirs étroits et "
+          "des portes ; le lancement de la navigation le signale ; la conduite près des personnes est à mesurer à "
+          "la séance n° 2), et la salle « 3 » du lieu `seance`, à 0,28 m d'un objet bas : c'est le lieu de "
+          "l'utilisateur, il n'a pas été modifié, mais « Vérifier le lieu » la signale maintenant (un triangle d'alerte dans l'arbre)."),
+    ("p", "**La recette** a eu lieu le 01/11. Elle a d'abord relu les 30 défauts, un à un, dans le code et dans "
+          "les commits ; puis elle a corrigé ce qui restait, chaque fois avec un test : des messages du pilotage "
+          "parlaient encore de « nœud » et de « StopMove » à l'écran ; deux corrections de la revue n'avaient pas "
+          "de test (la bulle d'aide et la couleur du sol de la carte 3D, les compteurs de l'écran de scan) ; un "
+          "scan déjà utilisé disait encore « puis Utiliser cette carte » ; le chemin du guide s'affichait en "
+          "identifiants (`hall_nord`, `couloir_nord_1`) au lieu des noms ; le README plaçait l'image de la caméra "
+          "de poitrine dans Piloter (commits 6f71145 → 31c4350)."),
+    ("p", "Puis tout a été relancé sur le code final : la compilation (8 paquets en 3 s), les images du Jetson, "
+          "refaites parce que le code avait changé depuis leur construction (amd64 en 26 s, arm64 en 45 s), "
+          "toutes les suites de tests (**2 281 tests réussis, 13 sautés, 0 échec**, en 20 min environ ; détail au "
+          "chapitre 12), et les 36 critères en un seul passage, sans en rejouer aucun : **36 / 36**, en 2 h 08 "
+          "(7 662 s, de 17 h 25 à 19 h 33). Les captures du chapitre 11 ont été prises à la fin. Rien de la "
+          "vague 5 n'a encore tourné sur le vrai G1 : c'est le but de la séance n° 2."),
 
     ("h2", "Les décisions et leurs raisons"),
     ("table", {
@@ -115,9 +172,10 @@ BLOCS = [
             ["Scan de l'Atelier moins bon que celui d'Unitree Explore (31/10)", "Trois bogues du traitement : horloge "
              "(138 s d'écart), passants retirés depuis de fausses positions, sol penché", "Chaîne corrigée, scan du 27/10 "
              "retraité et adopté (chapitre 8)"],
-            ["Agents coupés par la limite d'utilisation (26/10 vers 9 h ; 31/10 à 19 h)", "Les longues sessions de travail "
+            ["Agents coupés par la limite d'utilisation (26/10 vers 9 h ; 31/10 à 19 h ; vérification arrêtée le 31/10 à "
+             "22 h 40)", "Les longues sessions de travail "
              "dépassent la limite de la session", "Sauvegarde intermédiaire (commit b9d1639), reprise automatique "
-             "planifiée, agents finis repris depuis leur résultat"],
+             "planifiée, agents finis repris depuis leur résultat ; recette reprise le 01/11"],
             ["PC éteint le matin du 31/10, redémarré à 14 h 54 : dossier temporaire vidé", "Le dossier de travail "
              "`/tmp` est effacé à "
              "chaque démarrage", "Rapports de la phase « comprendre » et première version de ce document (58 pages) "
@@ -132,7 +190,11 @@ BLOCS = [
              "qui réagissent au robot (vague 4)"],
             ["Panneaux écrasés à 24 px, page qui ne défile pas (interface de la vague 4)", "Mise en page CSS mal "
              "contrainte", "Nouvelle "
-             "coque : page fixe, colonnes qui défilent seules ; 186 mesures au critère 31"],
+             "coque : page fixe, colonnes qui défilent seules ; 165 mesures au critère 31"],
+            ["Nav2 et la répétition plantent avec `ROS_LOCALHOST_ONLY=1` (vague 5)", "Nav2 lance trop de participants "
+             "DDS pour la seule interface locale (« Failed to find a free participant index »)", "Les critères tournent "
+             "avec `ROS_LOCALHOST_ONLY=0` (exception écrite en 12.11) ; l'Atelier signale une partie plantée et "
+             "propose « Relancer »"],
             ["Pas de WebGL dans Firefox sans fenêtre", "Pas d'accès à la carte graphique sans affichage", "Lancer les tests "
              "depuis la session graphique (`DISPLAY=:1`)"],
             ["Docker 29 prenait l'image amd64 au lieu de l'arm64", "Le nom de l'image désigne les deux architectures",
@@ -152,8 +214,9 @@ BLOCS = [
         "grâce aux contrats ; tout est testé et retesté à chaque vague ; tout est essayé sans robot avant chaque "
         "séance ; le journal et le plan gardent la trace de chaque décision.",
         "**Ses limites** : rien n'est sûr tant que le vrai robot ne l'a pas confirmé (plusieurs formats d'Unitree "
-        "viennent d'une documentation non officielle) ; les sessions longues sont coupées par la limite "
-        "d'utilisation ; ce que l'IA garde dans un dossier temporaire peut se perdre ; et l'utilisateur doit "
+        "viennent d'une documentation non officielle) ; les tests ne voient pas tout (la revue de la vague 5 a "
+        "trouvé 30 défauts qu'ils n'avaient pas vus) ; les sessions longues sont coupées par la limite d'utilisation ; ce que l'IA garde dans un dossier temporaire peut se perdre ; et "
+        "l'utilisateur doit "
         "relire, essayer et dire ce qui ne lui convient pas : c'est ainsi que sont nées la vague 4 (le point "
         "principal), la vague 5 (l'interface, le scan) et ce document.",
     ]),
