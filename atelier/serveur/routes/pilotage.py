@@ -109,11 +109,11 @@ async def appeler_noeud(methode, chemin, corps=None, delai=DELAI_HTTP_S, params=
     try:
         donnees = r.json()
     except ValueError:
-        donnees = {"detail": f"Réponse illisible du nœud pilotage (HTTP {r.status_code})."}
+        donnees = {"detail": f"Réponse illisible du pilotage (HTTP {r.status_code})."}
     if not isinstance(donnees, dict):
-        donnees = {"detail": "Réponse inattendue du nœud pilotage.", "valeur": donnees}
+        donnees = {"detail": "Réponse inattendue du pilotage.", "valeur": donnees}
     if r.status_code == 401:
-        donnees["detail"] = ("Le nœud pilotage refuse le jeton de l'Atelier : donnez le même G1_PILOTAGE_JETON "
+        donnees["detail"] = ("Le pilotage refuse le jeton de l'Atelier : donnez le même G1_PILOTAGE_JETON "
                              "au serveur de l'Atelier et au conteneur.")
     return r.status_code, donnees
 
@@ -200,15 +200,16 @@ async def demarrer(request: Request):
     """Lance le nœud pilotage sur le PC (simulation, répétition) ; 409 avec le robot ou un nœud distant."""
     etat = _etat(request)
     if etat.mode_navigation() == "robot":
-        raise ErreurAtelier(409, "Avec le robot, le nœud pilotage tourne dans le conteneur du Jetson "
-                                 "(G1_PILOTAGE=1, lancé par g1-jetson demarrer) : rien à démarrer ici.")
+        raise ErreurAtelier(409, "Avec le robot, le pilotage démarre avec le conteneur du Jetson : rien à "
+                                 "démarrer ici.", sortie="G1_PILOTAGE=1, lancé par g1-jetson demarrer")
     if not noeud_local():
-        raise ErreurAtelier(409, f"Le nœud pilotage est attendu à {url_noeud()} (G1_PILOTAGE_URL), pas sur "
-                                 "ce PC : l'Atelier ne peut pas le lancer.")
+        raise ErreurAtelier(409, "Le pilotage est attendu sur un autre ordinateur, pas sur ce PC : l'Atelier "
+                                 "ne peut pas le lancer.",
+                            sortie=f"adresse du pilotage : {url_noeud()} (G1_PILOTAGE_URL)")
     try:
         statut, donnees = await appeler_noeud("GET", "/etat", delai=1.0)
         if statut == 200:
-            return {"deja": True, "detail": "Le nœud pilotage tourne déjà.", "etat": donnees}
+            return {"deja": True, "detail": "Le pilotage tourne déjà.", "etat": donnees}
     except ErreurAtelier:
         pass
     from ..processus import CommandeAbsente
@@ -223,12 +224,12 @@ async def demarrer(request: Request):
     while time.monotonic() < fin:
         if not etat.gestionnaire.en_cours("pilotage"):
             lignes = etat.gestionnaire.etat().get("pilotage", {}).get("dernieres_lignes", [])
-            raise ErreurAtelier(502, "Le nœud pilotage s'est arrêté au démarrage : voir son message.",
+            raise ErreurAtelier(502, "Le pilotage s'est arrêté au démarrage : voir le détail.",
                                 sortie="\n".join(lignes))
         try:
             statut, donnees = await appeler_noeud("GET", "/etat", delai=1.0)
             if statut == 200:
-                return {"deja": False, "detail": "Nœud pilotage démarré.", "etat": donnees}
+                return {"deja": False, "detail": "Pilotage démarré.", "etat": donnees}
             derniere = donnees.get("detail")
         except ErreurAtelier as e:
             derniere = e.detail
@@ -241,9 +242,9 @@ async def demarrer(request: Request):
 async def arreter(request: Request):
     etat = _etat(request)
     if not etat.gestionnaire.en_cours("pilotage"):
-        return {"arrete": False, "detail": "Le nœud pilotage n'a pas été lancé par l'Atelier."}
+        return {"arrete": False, "detail": "Le pilotage n'a pas été lancé par l'Atelier."}
     await run_in_threadpool(etat.gestionnaire.arreter, "pilotage")
-    return {"arrete": True, "detail": "Nœud pilotage arrêté : StopMove envoyé, le guide a la main."}
+    return {"arrete": True, "detail": "Pilotage arrêté : le robot s'est arrêté, le guide a la main."}
 
 
 # ---------------------------------------------------------------- commandes relayées
@@ -296,7 +297,7 @@ async def gestes(lire: int = 0):
     except ErreurAtelier:
         return {"gestes": [{"id": n, "nom": nom} for n, nom in D.GESTES_BRAS.items()],
                 "taches": [{"id": n, "nom": nom} for n, nom in D.TACHES_LOCO.items()], "robot": None,
-                "detail": "Nœud pilotage injoignable : liste du contrat."}
+                "detail": "Le pilotage ne répond pas : liste des gestes connue de l'Atelier."}
 
 
 # ---------------------------------------------------------------- chorégraphies
@@ -585,8 +586,8 @@ async def _demander_image():
         erreur = _injoignable(e)
         return 503, json.dumps({"detail": erreur.detail}).encode(), "application/json", {}
     if r.status_code == 404:
-        detail = ("Le nœud pilotage ne connaît pas encore la caméra : arrêtez-le et redémarrez-le "
-                  "(« Démarrer le pilotage », ou avec le robot : g1-jetson demarrer après la nouvelle image).")
+        detail = ("Le pilotage ne connaît pas encore la caméra : arrêtez-le, puis « Démarrer » au début du "
+                  "ruban de Piloter (avec le robot : g1-jetson demarrer après la nouvelle image).")
         return 503, json.dumps({"detail": detail}).encode(), "application/json", {}
     entetes = {k: v for k, v in r.headers.items() if k.lower() in ("x-image-age-s", "x-image-numero")}
     return r.status_code, r.content, r.headers.get("content-type", "application/octet-stream"), entetes
@@ -635,7 +636,7 @@ async def ws_pilotage(ws: WebSocket):
                 await ws.send_text(message if isinstance(message, str) else message.decode("utf-8", "replace"))
         except Exception:       # noqa: BLE001 : le nœud a coupé
             pass
-        await _envoyer(ws, {"type": "refus", "detail": "Liaison avec le nœud pilotage coupée : robot arrêté."})
+        await _envoyer(ws, {"type": "refus", "detail": "Liaison avec le pilotage coupée : robot arrêté."})
 
     taches = [asyncio.ensure_future(vers_noeud()), asyncio.ensure_future(vers_page())]
     try:

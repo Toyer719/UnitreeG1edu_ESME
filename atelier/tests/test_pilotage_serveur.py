@@ -347,3 +347,36 @@ def test_camera_sans_noeud_ou_sans_image(client, noeud, monkeypatch):
     time.sleep(0.2)
     r = client.get("/api/pilotage/camera")
     assert r.status_code == 503 and "code 3104" in r.json()["detail"]
+
+
+def test_messages_du_pilotage_sans_jargon():
+    """Recette de la vague 5 (défaut « jargon à l'écran », décision I10) : les phrases que l'Atelier montre
+    (detail d'une ErreurAtelier ou d'une réponse) ne parlent ni de « nœud » ni de StopMove ; l'adresse et les
+    variables d'environnement vont dans « sortie » (le détail du journal)."""
+    import ast
+
+    source = (atelier.RACINE / "atelier" / "serveur" / "routes" / "pilotage.py").read_text(encoding="utf-8")
+    phrases = []
+
+    def textes(noeud):
+        if isinstance(noeud, ast.Constant) and isinstance(noeud.value, str):
+            return [noeud.value]
+        if isinstance(noeud, (ast.JoinedStr, ast.BinOp, ast.IfExp, ast.BoolOp)):
+            return [t for enfant in ast.iter_child_nodes(noeud) for t in textes(enfant)]
+        return []
+
+    for n in ast.walk(ast.parse(source)):
+        if isinstance(n, ast.Call) and getattr(n.func, "id", None) == "ErreurAtelier" and len(n.args) >= 2:
+            phrases += textes(n.args[1])
+        elif isinstance(n, ast.Dict):
+            for cle, valeur in zip(n.keys, n.values):
+                if isinstance(cle, ast.Constant) and cle.value == "detail":
+                    phrases += textes(valeur)
+        elif isinstance(n, ast.Assign) and any(isinstance(c, ast.Subscript) and getattr(c.slice, "value", None)
+                                               == "detail" for c in n.targets):
+            phrases += textes(n.value)
+        elif isinstance(n, ast.Assign) and any(getattr(c, "id", None) == "detail" for c in n.targets):
+            phrases += textes(n.value)
+    assert len(phrases) >= 12, phrases
+    fautes = [p for p in phrases if "nœud" in p.lower() or "noeud" in p.lower() or "StopMove" in p]
+    assert fautes == [], fautes

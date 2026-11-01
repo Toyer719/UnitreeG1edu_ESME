@@ -821,3 +821,51 @@ def test_glisser_un_noeud_ses_couloirs_suivent(atelier_carte3d, firefox):
     assert firefox.js("return window.carte3d.positionRepere('noeud', 'couloir_sud_1')") == pytest.approx(
         firefox.js("return window.carte3d.versEcran(11, 8, 0)"), abs=0.5)
     _sans_erreur(firefox)
+
+
+def test_apercu_bulle_de_consigne_et_couleur_du_sol(atelier_carte3d, firefox):
+    """Recette de la vague 5 (revue de l'interface : « le sol vert domine, placer et orienter un point peu
+    évident ») : avec l'outil Salle, un repère d'aperçu et une bulle de consigne suivent le pointeur ; un simple
+    clic pose la salle sans l'orienter (oriente faux) ; sans outil de pose, plus de bulle ; le sol a sa couleur à
+    lui (jeton --nuage-sol, pastille de la légende), distincte du vert du dégradé."""
+    from .test_carte3d_communs import actions, origine_toile
+    a = atelier_carte3d
+    _ouvrir(firefox, a)
+    firefox.js("window.poses = []; window.carte3d.surPose((e) => window.poses.push(e));")
+    _cadrer(firefox, {"xmin": 0, "ymin": 2, "xmax": 14, "ymax": 12})
+
+    def survoler(x, y):
+        ox, oy = origine_toile(firefox)
+        px, py = vers_ecran(firefox, x, y)
+        pas = [{"type": "pointerMove", "duration": 0, "x": int(round(ox + px)) - 3, "y": int(round(oy + py)),
+                "origin": "viewport"},
+               {"type": "pointerMove", "duration": 60, "x": int(round(ox + px)), "y": int(round(oy + py)),
+                "origin": "viewport"}]
+        actions(firefox, [{"type": "pointer", "id": "souris", "parameters": {"pointerType": "mouse"}, "actions": pas}])
+        time.sleep(0.15)
+
+    bulle = "const b = document.querySelector('[data-role=carte3d-bulle]'); return b ? [b.hidden, b.textContent] : null"
+    assert firefox.js(bulle)[0] is True                        # outil Naviguer : pas de bulle
+    _outil(firefox, "salle")
+    survoler(12.0, 4.0)
+    cache, texte = firefox.js(bulle)
+    assert cache is False and "Cliquez sur le sol" in texte, texte
+    assert firefox.js("return document.querySelectorAll('.carte3d-etiquette.fantome').length") >= 1   # l'aperçu
+    # un simple clic : la salle est posée, tournée vers 0°, sans orientation choisie
+    cliquer(firefox, vers_ecran(firefox, 12.0, 4.0))
+    time.sleep(0.15)
+    poses = firefox.js("return window.poses")
+    assert poses and poses[-1]["fini"] is True and poses[-1]["geste"] == "poser", poses
+    assert poses[-1]["oriente"] is False and poses[-1]["theta"] == 0, poses[-1]
+    # revenu à Naviguer (comme le plan 2D) : plus de bulle, même au survol
+    assert firefox.js("return window.carte3d.etat().outil") == "naviguer"
+    survoler(6.0, 7.0)
+    assert firefox.js(bulle)[0] is True
+    # le sol a sa couleur (gris bleuté), différente du vert du bas du dégradé
+    sol, bas = firefox.js("const s = getComputedStyle(document.documentElement);"
+                          "return [s.getPropertyValue('--nuage-sol').trim(), s.getPropertyValue('--nuage-bas').trim()]")
+    assert sol and bas and sol.lower() != bas.lower(), (sol, bas)
+    pastille = firefox.js("const p = document.querySelector('[data-role=carte3d-legende] .carte3d-sol');"
+                          "return p ? getComputedStyle(p).backgroundColor : null")
+    assert pastille and pastille not in ("rgba(0, 0, 0, 0)", "transparent"), pastille
+    _sans_erreur(firefox)

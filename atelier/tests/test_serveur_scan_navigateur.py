@@ -158,6 +158,13 @@ def test_ecran_de_scan_dans_le_navigateur(sans_ros, scan_lent, serveur, navigate
                  "return i && i.complete && i.naturalWidth > 0", delai=15, message="carte 2D")
     nav.attendre("return document.querySelector('[data-role=scan-resume-texte]').textContent.includes('nuages assemblés')",
                  delai=15, message="résumé du traitement")
+    # recette de la vague 5 (revue de l'interface) : « Points mesurés » pendant le scan, le résumé parle des
+    # points gardés dans la carte 3D et du sol, et le compteur des nuages dit le même nombre que le résumé
+    assert "Points mesurés" in nav.js("return document.querySelector('[data-compteur=points]').textContent")
+    resume = nav.js("return document.querySelector('[data-role=scan-resume-texte]').textContent")
+    assert "points gardés dans la carte 3D" in resume and ("Sol trouvé" in resume or "Sol peu vu" in resume), resume
+    nuages = nav.js("return document.querySelector('[data-compteur=nuages] .scan-compteur-valeur').textContent")
+    assert nuages != "—" and f"sur {nuages}" in resume, (nuages, resume)
     texte_panneau = nav.js("return document.querySelector('#essai-scan').textContent")
     for retire in ("Ouvrir dans l'éditeur du monde", "confiance", "Reconnaissance des murs"):
         assert retire not in texte_panneau, retire
