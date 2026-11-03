@@ -1,0 +1,40 @@
+diff --git a/setup.sh b/setup.sh
+index 819b055..45b5d24 100755
+--- a/setup.sh
++++ b/setup.sh
+@@ -1,7 +1,7 @@
+ #!/bin/bash
+ echo "Setup unitree ros2 environment"
+-source /opt/ros/foxy/setup.bash
+-source $HOME/unitree_ros2/cyclonedds_ws/install/setup.bash
++source /opt/ros/humble/setup.bash
++source $HOME/unitree/unitree_ros2/cyclonedds_ws/install/setup.bash
+ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+ export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces>
+                             <NetworkInterface name="enp3s0" priority="default" multicast="default" />
+diff --git a/setup_default.sh b/setup_default.sh
+index fd3eae7..a09daeb 100755
+--- a/setup_default.sh
++++ b/setup_default.sh
+@@ -1,5 +1,5 @@
+ #!/bin/bash
+ echo "Setup unitree ros2 environment with default interface"
+-source /opt/ros/foxy/setup.bash
+-source $HOME/unitree_ros2/cyclonedds_ws/install/setup.bash
++source /opt/ros/humble/setup.bash
++source $HOME/unitree/unitree_ros2/cyclonedds_ws/install/setup.bash
+ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+diff --git a/setup_local.sh b/setup_local.sh
+index 6f1fbe8..dd78905 100755
+--- a/setup_local.sh
++++ b/setup_local.sh
+@@ -1,7 +1,7 @@
+ #!/bin/bash
+ echo "Setup unitree ros2 simulation environment"
+-source /opt/ros/foxy/setup.bash
+-source $HOME/unitree_ros2/cyclonedds_ws/install/setup.bash
++source /opt/ros/humble/setup.bash
++source $HOME/unitree/unitree_ros2/cyclonedds_ws/install/setup.bash
+ export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+ export CYCLONEDDS_URI='<CycloneDDS><Domain><General><Interfaces>
+                             <NetworkInterface name="lo" priority="default" multicast="default" />

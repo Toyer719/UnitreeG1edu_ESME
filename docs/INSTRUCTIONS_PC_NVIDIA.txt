@@ -1,0 +1,152 @@
+===========================================================================
+ LE PROJET - G1 EDU - Entrainement "monter les escaliers" sur le PC NVIDIA
+ (PC prevu : carte RTX 4060 Ti)
+===========================================================================
+
+Ce fichier voyage avec le dossier unitree_rl_gym. Toutes les commandes sont
+a taper dans un terminal du PC NVIDIA, dans l'ordre.
+
+---------------------------------------------------------------------------
+ 0. AVANT DE PARTIR (sur le portable, PAS sur le PC NVIDIA)
+---------------------------------------------------------------------------
+    cd ~/unitree
+    tar czf g1_stairs_pack.tar.gz --exclude=unitree_rl_gym/logs unitree_rl_gym
+
+  -> copier g1_stairs_pack.tar.gz sur une cle USB (environ 150 Mo).
+
+---------------------------------------------------------------------------
+ 1. VERIFIER LE PC NVIDIA
+---------------------------------------------------------------------------
+  Systeme conseille : Ubuntu 20.04 ou 22.04 (Isaac Gym ne marche pas sous Windows).
+
+    nvidia-smi
+
+  -> doit afficher "NVIDIA GeForce RTX 4060 Ti" et la memoire :
+       "8188MiB"  = version 8 Go   -> utiliser --num_envs=2048 (voir etape 5)
+       "16380MiB" = version 16 Go  -> on peut garder 4096 robots (valeur par defaut)
+  -> si "nvidia-smi" n'existe pas : installer le pilote NVIDIA
+       sudo ubuntu-drivers autoinstall   puis redemarrer.
+
+  Noter la version 8 Go / 16 Go : ____________
+
+---------------------------------------------------------------------------
+ 2. INSTALLER CONDA (si "conda --version" ne repond pas)
+---------------------------------------------------------------------------
+    mkdir -p ~/miniconda3
+    wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+    bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+    rm ~/miniconda3/miniconda.sh
+    ~/miniconda3/bin/conda init bash
+
+  -> FERMER et ROUVRIR le terminal.
+
+---------------------------------------------------------------------------
+ 3. INSTALLER L'ENVIRONNEMENT (une seule fois, ~20 min)
+---------------------------------------------------------------------------
+  3a. Python 3.8 + PyTorch avec CUDA
+    conda create -n unitree-rl python=3.8 -y
+    conda activate unitree-rl
+    conda install pytorch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 pytorch-cuda=12.1 -c pytorch -c nvidia -y
+    python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+      -> doit afficher : True NVIDIA GeForce RTX 4060 Ti
+
+  3b. Isaac Gym Preview 4
+    Telecharger "IsaacGym_Preview_4_Package.tar.gz" sur
+       https://developer.nvidia.com/isaac-gym   (compte NVIDIA gratuit)
+    puis, dans le dossier du telechargement :
+    mkdir -p ~/rl && mv IsaacGym_Preview_4_Package.tar.gz ~/rl/ && cd ~/rl
+    tar xzf IsaacGym_Preview_4_Package.tar.gz
+    cd isaacgym/python && pip install -e . && cd ~/rl
+
+  3c. rsl_rl (version 1.0.2 OBLIGATOIRE)
+    cd ~/rl
+    git clone https://github.com/leggedrobotics/rsl_rl.git
+    cd rsl_rl && git checkout v1.0.2 && pip install -e . && cd ~/rl
+
+  3d. Le projet (copier d'abord g1_stairs_pack.tar.gz dans ~/rl)
+    cd ~/rl
+    tar xzf g1_stairs_pack.tar.gz
+    cd unitree_rl_gym && pip install -e .
+    pip install "numpy<1.24" tensorboard
+
+  3e. Verification d'Isaac Gym
+    cd ~/rl/isaacgym/python/examples && python 1080_balls_of_solitude.py
+      -> une fenetre avec des balles qui tombent. La fermer.
+
+  Probleme frequent : "ImportError: libpython3.8.so.1.0" ->
+    export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+    (a ajouter aussi a la fin de ~/.bashrc pour ne plus y penser)
+
+---------------------------------------------------------------------------
+ 4. TEST RAPIDE (5 min, avec affichage)
+---------------------------------------------------------------------------
+    conda activate unitree-rl
+    cd ~/rl/unitree_rl_gym
+    python legged_gym/scripts/train.py --task=g1_stairs --num_envs=64 --max_iterations=10
+
+  -> on doit voir des pyramides d'escaliers et des robots G1 dessus.
+  -> si erreur : prendre une photo / copier le message d'erreur COMPLET
+     pour le corriger ensuite avec Claude.
+
+---------------------------------------------------------------------------
+ 5. ENTRAINEMENT COMPLET (sans affichage, plusieurs heures)
+---------------------------------------------------------------------------
+  RTX 4060 Ti 8 Go :
+    python legged_gym/scripts/train.py --task=g1_stairs --headless --num_envs=2048
+
+  RTX 4060 Ti 16 Go :
+    python legged_gym/scripts/train.py --task=g1_stairs --headless
+
+  - Duree estimee : une a deux nuits (15 000 iterations). Le terminal affiche
+    le temps par iteration au debut : duree totale ~ temps x 15000.
+  - Si "out of memory" / "CUDA error" au demarrage : relancer avec
+    --num_envs=1024
+  - Modeles sauvegardes toutes les 500 iterations dans
+       logs/g1_stairs/<date_heure>/model_XXXX.pt
+  - Interrompu (coupure, Ctrl+C) ? Reprendre la ou on en etait :
+       meme commande + --resume
+  - Pour ne pas bloquer le PC / pouvoir fermer le terminal :
+       sudo apt install tmux ; tmux        (puis lancer l'entrainement dedans)
+       detacher : Ctrl+B puis D   |   revenir : tmux attach
+
+---------------------------------------------------------------------------
+ 6. SUIVRE L'ENTRAINEMENT (autre terminal)
+---------------------------------------------------------------------------
+    conda activate unitree-rl
+    cd ~/rl/unitree_rl_gym
+    tensorboard --logdir logs/g1_stairs
+  -> ouvrir http://localhost:6006 dans le navigateur
+
+  Courbes importantes :
+    Episode/terrain_level  : doit monter. >= 6-7 = gere les marches de 15 cm
+    Train/mean_reward      : doit augmenter
+  Si terrain_level reste < 2 apres ~3000 iterations : arreter, noter les
+  valeurs, et en reparler avec Claude (reglages a ajuster).
+
+---------------------------------------------------------------------------
+ 7. VOIR LE RESULTAT ET EXPORTER LA POLITIQUE
+---------------------------------------------------------------------------
+    python legged_gym/scripts/play.py --task=g1_stairs
+
+  -> affiche les robots ET cree le fichier :
+       logs/g1_stairs/exported/policies/policy_lstm_1.pt
+
+---------------------------------------------------------------------------
+ 8. RAMENER SUR LE PORTABLE
+---------------------------------------------------------------------------
+  Copier sur la cle USB :
+    - logs/g1_stairs/exported/policies/policy_lstm_1.pt   (indispensable)
+    - le dossier logs/g1_stairs/<date_heure>/              (pour reprendre/analyser)
+
+  Sur le portable :
+    mkdir -p ~/unitree/unitree_rl_gym/logs/g1_stairs/exported/policies
+    cp policy_lstm_1.pt ~/unitree/unitree_rl_gym/logs/g1_stairs/exported/policies/
+    source ~/unitree/env.sh
+    g1_stairs_eval      # resultat chiffre : le robot monte-t-il les 1,5 m ?
+    g1_stairs_view      # visualisation dans le decor Unitree
+
+  Rappel : AVANT le vrai robot -> tester en MuJoCo, puis G1 suspendu au
+  portique/harnais sur sol plat. Jamais d'escalier reel en premier essai.
+
+Details techniques : ENTRAINEMENT_ESCALIERS.md (meme dossier).
+===========================================================================

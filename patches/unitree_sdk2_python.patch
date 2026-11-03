@@ -1,0 +1,13 @@
+diff --git a/example/g1/low_level/g1_low_level_example.py b/example/g1/low_level/g1_low_level_example.py
+index 382e863..6421366 100644
+--- a/example/g1/low_level/g1_low_level_example.py
++++ b/example/g1/low_level/g1_low_level_example.py
+@@ -92,7 +92,7 @@ class Custom:
+         self.msc.Init()
+ 
+         status, result = self.msc.CheckMode()
+-        while result['name']:
++        while result and result['name']:  # result is None in MuJoCo (no MotionSwitcher)
+             self.msc.ReleaseMode()
+             status, result = self.msc.CheckMode()
+             time.sleep(1)

@@ -1,0 +1,16 @@
+# Dépôts Unitree / cyclonedds clonés : NON suivis ici.
+# Nos modifications y sont enregistrées dans patches/ (scripts/export_patches.sh).
+cyclonedds/
+unitree_mujoco/
+unitree_rl_gym/
+unitree_ros/
+unitree_ros2/
+unitree_sdk2/
+unitree_sdk2_python/
+
+# Fichiers générés
+*.log
+*.tar.gz
+__pycache__/
+*.pyc
+MUJOCO_LOG.TXT

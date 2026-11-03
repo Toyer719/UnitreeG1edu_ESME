@@ -1,0 +1,155 @@
+LE PROJET — G1 EDU — SIMULATION MUJOCO + TÉLÉCOMMANDE VIRTUELLE
+=================================================================
+Mis à jour le 03/11/2026.
+
+La télécommande virtuelle s'inspire du "Virtual Gamepad" d'EngineAI ; elle a été
+réécrite en tkinter.
+Elle envoie le format de la télécommande Unitree sur le topic DDS
+"rt/virtual_remote". Le simulateur PYTHON le recopie dans
+lowstate.wireless_remote, comme le ferait une vraie manette.
+Le simulateur C++ (./unitree_mujoco) ne gère PAS la télécommande virtuelle.
+
+
+1. AVANT DE COMMENCER
+---------------------
+  - Si une fenêtre MuJoCo d'une session précédente est encore ouverte, la
+    fermer : elle utilise l'ancien code et prend 100 % d'un cœur du processeur.
+  - Raccourcis (facultatif) : taper "source ~/unitree/env.sh" dans chaque
+    terminal. Ce fichier n'est PAS encore chargé dans ~/.bashrc.
+
+
+2. LANCEMENT — 3 TERMINAUX, DANS CET ORDRE
+-------------------------------------------
+  Terminal 1 — simulateur Python (G1 29 DDL, décor Unitree)
+    cd ~/unitree/unitree_mujoco/simulate_python && python3 unitree_mujoco.py
+    -> attendre ce message : Télécommande virtuelle : écoute du topic 'rt/virtual_remote'
+
+  Terminal 2 — télécommande virtuelle
+    python3 ~/unitree/virtual_remote/virtual_remote.py
+
+  Terminal 3 — contrôleur de marche Unitree, avec la config SIMULATION
+    cd ~/unitree/unitree_rl_gym/deploy/deploy_real
+    PYTHONPATH=$HOME/unitree/unitree_rl_gym python3 deploy_real.py lo g1_sim.yaml
+    -> doit afficher : Successfully connected to the robot.
+                       Waiting for the start signal...
+
+  Avec les raccourcis : g1_mujoco_py  |  g1_remote  |  g1_deploy_sim
+
+
+3. SÉQUENCE DE PILOTAGE
+-----------------------
+  1. Télécommande : cliquer sur "Connecter" (lo, domaine 0), puis F5
+     -> le voyant vert clignote.
+  2. F2 (START) -> le robot rejoint sa posture de départ.
+     Le terminal 3 affiche ensuite : Waiting for the Button A signal...
+  3. j (A) -> la politique de marche démarre (le robot est encore suspendu).
+  4. Fenêtre MuJoCo : appuyer environ 15 fois sur 8 pour allonger l'élastique,
+     jusqu'à ce que les pieds touchent le sol, PUIS sur 9 pour le décrocher.
+     (7 = raccourcir l'élastique.)
+     Si on appuie directement sur 9, le robot est lâché en l'air et tombe.
+  5. Recliquer sur la télécommande et piloter.
+     ATTENTION : une grosse boîte du décor se trouve 1 m DEVANT le robot.
+     Commencer par tourner (Maj + flèche) ou faire un pas de côté.
+  6. F1 (SELECT) -> arrêt : le robot passe en mode amorti.
+
+
+4. CLAVIER (la fenêtre de la télécommande doit avoir le focus)
+--------------------------------------------------------------
+  Flèches              stick gauche : avancer / reculer / pas de côté (maintenir)
+  Maj + flèches G/D    stick droit  : tourner
+  Espace               sticks au centre
+  F5                   envoi activé / coupé
+  F1 / F2              SELECT / START
+  j k u i              A B X Y
+  a / e                L1 / R1
+  w / c                L2 / R2
+  z q s d              croix ↑ ← ↓ →   (clavier AZERTY)
+  Curseur "Vitesse clavier" : amplitude des flèches (de 0.1 à 1.0).
+  Souris : glisser dans les ronds pour un contrôle fin des sticks.
+
+
+5. JOURNAL DES CORRECTIONS (03/11/2026)
+---------------------------------------
+  Symptômes de départ : la télécommande ne faisait rien, puis le robot
+  « partait en vrille » avec ce message :
+     WARNING: Nan, Inf or huge value in QACC ... The simulation is unstable.
+
+  [C1] deploy_real.py plantait au démarrage
+       Erreur : "numpy.dtype size changed" dans SciPy.
+       Cause  : le SciPy d'Ubuntu (apt) est trop vieux pour NumPy 2.2.6
+                (installé dans ~/.local).
+       Fix    : pip install --user scipy  -> SciPy 1.15.3.
+                Le SciPy du système n'est pas touché.
+
+  [C2] deploy_real.py ne se « connectait » jamais (télécommande sans effet)
+       Cause  : deploy_real attend lowstate.tick != 0, mais le simulateur
+                Python ne remplissait jamais ce compteur.
+       Fix    : unitree_sdk2py_bridge.py remplit le compteur
+                (tick = temps de simulation en ms + 1).
+
+  [C3] Simulation instable ("Nan ... QACC")
+       Cause 1 : pas de simulation de 5 ms (le G1 est prévu pour 2 ms, comme
+                 dans le simulateur C++).
+       Cause 2 : le couple des moteurs n'était recalculé qu'à l'arrivée d'une
+                 commande (50 Hz) et restait figé 20 ms entre deux commandes.
+                 Avec les gains raides de la taille (kp = 300), ça diverge.
+       Fix     : config.py : SIMULATE_DT = 0.002.
+                 Couple recalculé à CHAQUE pas de simulation
+                 (ApplyLowCmd() appelée avant chaque mj_step).
+
+  [C4] Le robot tombait même avec une simulation stable
+       Cause  : la politique motion.pt a été entraînée avec les bras et la
+                taille SOUDÉS (modèle 12 DDL). Sur le modèle MuJoCo 29 DDL,
+                les gains de g1.yaml laissent les bras ballotter -> chute
+                vers 5 s, même dans un test synchrone sans DDS.
+       Fix    : configs/g1_sim.yaml = copie de g1.yaml avec les gains
+                bras + taille x2 -> marche stable et droite (6,8 m en 12 s).
+                RÉSERVÉ À LA SIMULATION. Sur le vrai robot : g1.yaml.
+
+  [C5] Mode d'emploi corrigé (erreur de Claude)
+       L'élastique tient le robot 50 cm au-dessus du sol : il faut l'allonger
+       avec 8 AVANT de le décrocher avec 9. Penser aussi à la boîte du décor,
+       1 m devant le robot.
+
+  Vérifications faites (sans affichage, sur le domaine DDS 7) : le simulateur,
+  deploy_real (g1_sim.yaml) et la télécommande ont été lancés ensemble.
+  START, A, tourner et reculer sont reçus ; la boucle de la politique tourne
+  à environ 43 Hz ; le robot tient debout, tourne et recule.
+  Pas encore fait : un essai complet AVEC les fenêtres, par l'utilisateur.
+
+
+6. LIMITES CONNUES / À FAIRE
+----------------------------
+  - Le simulateur Python tourne à environ 0,85 fois le temps réel sur ce
+    portable, alors que la politique est cadencée sur l'horloge réelle :
+    léger décalage entre les deux.
+  - En marche arrière, le robot suit la consigne moins bien (environ
+    0,2 m/s pour 0,4 demandé).
+  - Simulateur C++ : pas de télécommande virtuelle (une manette USB y
+    fonctionne).
+  - ~/unitree/env.sh n'est pas encore chargé automatiquement (~/.bashrc).
+  - Option : déplacer le point de départ du robot (ou la boîte) dans le
+    décor.
+
+
+7. SÉCURITÉ
+-----------
+  - Envoi coupé ou fenêtre fermée -> le simulateur remet tout à zéro en 0,3 s.
+  - Conçue pour la simulation (interface lo). Le vrai robot ne lit pas
+    "rt/virtual_remote" : sur le vrai G1, utiliser la vraie télécommande.
+  - g1_sim.yaml ne doit JAMAIS être utilisé sur le vrai robot.
+
+
+8. FICHIERS MODIFIÉS OU AJOUTÉS
+-------------------------------
+  ~/unitree/virtual_remote/virtual_remote.py      la télécommande (nouveau)
+  unitree_mujoco/simulate_python/
+    config.py                 USE_VIRTUAL_REMOTE, VIRTUAL_REMOTE_TOPIC ;
+                              SIMULATE_DT 0.005 -> 0.002
+    unitree_mujoco.py         SetupVirtualRemote() si pas de manette ;
+                              ApplyLowCmd() à chaque pas
+    unitree_sdk2py_bridge.py  télécommande virtuelle ; lowstate.tick ;
+                              couple PD recalculé à chaque pas
+  unitree_rl_gym/deploy/deploy_real/configs/g1_sim.yaml   (nouveau, simulation)
+  ~/unitree/env.sh            raccourcis g1_mujoco_py, g1_remote, g1_deploy_sim
+  ~/.local : scipy 1.15.3     (pip --user)

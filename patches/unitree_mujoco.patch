@@ -1,0 +1,361 @@
+diff --git a/simulate/config.yaml b/simulate/config.yaml
+index ba10638..aca06a3 100644
+--- a/simulate/config.yaml
++++ b/simulate/config.yaml
+@@ -1,7 +1,7 @@
+-robot: "go2"  # Robot name, "go2", "b2", "b2w", "h1", "go2w", "g1", "h2", "as2"
++robot: "g1"  # Robot name, "go2", "b2", "b2w", "h1", "go2w", "g1", "h2", "as2"
+ robot_scene: "scene.xml" # Robot scene, /unitree_robots/[robot]/scene.xml 
+ 
+-domain_id: 1  # Domain id
++domain_id: 0  # Domain id
+ interface: "lo" # Interface 
+ # DDS IDL type: -1 auto, 0 unitree_go, 1 unitree_hg. Auto selects unitree_hg for as2.
+ idl_type: -1
+@@ -13,4 +13,4 @@ joystick_bits: 16 # Some game controllers may only have 8-bit accuracy
+ 
+ print_scene_information: 1 # Print link, joint and sensors information of robot
+ 
+-enable_elastic_band: 0 # Virtual spring band, used for lifting h1
++enable_elastic_band: 1 # Virtual spring band, used for lifting h1
+diff --git a/simulate_python/config.py b/simulate_python/config.py
+index 55ed043..930fcc0 100644
+--- a/simulate_python/config.py
++++ b/simulate_python/config.py
+@@ -1,14 +1,19 @@
+-ROBOT = "go2" # Robot name, "go2", "b2", "b2w", "h1", "go2w", "g1" 
++ROBOT = "g1" # Robot name, "go2", "b2", "b2w", "h1", "go2w", "g1" 
+ ROBOT_SCENE = "../unitree_robots/" + ROBOT + "/scene.xml" # Robot scene
+-DOMAIN_ID = 1 # Domain id
++DOMAIN_ID = 0 # Domain id
+ INTERFACE = "lo" # Interface 
+ 
+-USE_JOYSTICK = 1 # Simulate Unitree WirelessController using a gamepad
++USE_JOYSTICK = 0 # Simulate Unitree WirelessController using a gamepad
+ JOYSTICK_TYPE = "xbox" # support "xbox" and "switch" gamepad layout
+ JOYSTICK_DEVICE = 0 # Joystick number
+ 
++# LE PROJET : télécommande virtuelle (python3 ~/unitree/virtual_remote/virtual_remote.py)
++# Utilisée seulement si USE_JOYSTICK = 0.
++USE_VIRTUAL_REMOTE = True
++VIRTUAL_REMOTE_TOPIC = "rt/virtual_remote"
++
+ PRINT_SCENE_INFORMATION = True # Print link, joint and sensors information of robot
+-ENABLE_ELASTIC_BAND = False # Virtual spring band, used for lifting h1
++ENABLE_ELASTIC_BAND = True # Virtual spring band, used for lifting h1
+ 
+-SIMULATE_DT = 0.005  # Need to be larger than the runtime of viewer.sync()
++SIMULATE_DT = 0.002  # LE PROJET : 2 ms comme le simulateur C++ (0.005 rendait le G1 instable)
+ VIEWER_DT = 0.02  # 50 fps for viewer
+diff --git a/simulate_python/unitree_mujoco.py b/simulate_python/unitree_mujoco.py
+index 95b934f..6c80388 100755
+--- a/simulate_python/unitree_mujoco.py
++++ b/simulate_python/unitree_mujoco.py
+@@ -1,83 +1,86 @@
+-import time
+-import mujoco
+-import mujoco.viewer
+-from threading import Thread
+-import threading
+-
+-from unitree_sdk2py.core.channel import ChannelFactoryInitialize
+-from unitree_sdk2py_bridge import UnitreeSdk2Bridge, ElasticBand
+-
+-import config
+-
+-
+-locker = threading.Lock()
+-
+-mj_model = mujoco.MjModel.from_xml_path(config.ROBOT_SCENE)
+-mj_data = mujoco.MjData(mj_model)
+-
+-
+-if config.ENABLE_ELASTIC_BAND:
+-    elastic_band = ElasticBand()
+-    if config.ROBOT == "h1" or config.ROBOT == "g1":
+-        band_attached_link = mj_model.body("torso_link").id
+-    else:
+-        band_attached_link = mj_model.body("base_link").id
+-    viewer = mujoco.viewer.launch_passive(
+-        mj_model, mj_data, key_callback=elastic_band.MujuocoKeyCallback
+-    )
+-else:
+-    viewer = mujoco.viewer.launch_passive(mj_model, mj_data)
+-
+-mj_model.opt.timestep = config.SIMULATE_DT
+-num_motor_ = mj_model.nu
+-dim_motor_sensor_ = 3 * num_motor_
+-
+-time.sleep(0.2)
+-
+-
+-def SimulationThread():
+-    global mj_data, mj_model
+-
+-    ChannelFactoryInitialize(config.DOMAIN_ID, config.INTERFACE)
+-    unitree = UnitreeSdk2Bridge(mj_model, mj_data)
+-
+-    if config.USE_JOYSTICK:
+-        unitree.SetupJoystick(device_id=0, js_type=config.JOYSTICK_TYPE)
+-    if config.PRINT_SCENE_INFORMATION:
+-        unitree.PrintSceneInformation()
+-
+-    while viewer.is_running():
+-        step_start = time.perf_counter()
+-
+-        locker.acquire()
+-
+-        if config.ENABLE_ELASTIC_BAND:
+-            if elastic_band.enable:
+-                mj_data.xfrc_applied[band_attached_link, :3] = elastic_band.Advance(
+-                    mj_data.qpos[:3], mj_data.qvel[:3]
+-                )
+-        mujoco.mj_step(mj_model, mj_data)
+-
+-        locker.release()
+-
+-        time_until_next_step = mj_model.opt.timestep - (
+-            time.perf_counter() - step_start
+-        )
+-        if time_until_next_step > 0:
+-            time.sleep(time_until_next_step)
+-
+-
+-def PhysicsViewerThread():
+-    while viewer.is_running():
+-        locker.acquire()
+-        viewer.sync()
+-        locker.release()
+-        time.sleep(config.VIEWER_DT)
+-
+-
+-if __name__ == "__main__":
+-    viewer_thread = Thread(target=PhysicsViewerThread)
+-    sim_thread = Thread(target=SimulationThread)
+-
+-    viewer_thread.start()
+-    sim_thread.start()
++import time
++import mujoco
++import mujoco.viewer
++from threading import Thread
++import threading
++
++from unitree_sdk2py.core.channel import ChannelFactoryInitialize
++from unitree_sdk2py_bridge import UnitreeSdk2Bridge, ElasticBand
++
++import config
++
++
++locker = threading.Lock()
++
++mj_model = mujoco.MjModel.from_xml_path(config.ROBOT_SCENE)
++mj_data = mujoco.MjData(mj_model)
++
++
++if config.ENABLE_ELASTIC_BAND:
++    elastic_band = ElasticBand()
++    if config.ROBOT == "h1" or config.ROBOT == "g1":
++        band_attached_link = mj_model.body("torso_link").id
++    else:
++        band_attached_link = mj_model.body("base_link").id
++    viewer = mujoco.viewer.launch_passive(
++        mj_model, mj_data, key_callback=elastic_band.MujuocoKeyCallback
++    )
++else:
++    viewer = mujoco.viewer.launch_passive(mj_model, mj_data)
++
++mj_model.opt.timestep = config.SIMULATE_DT
++num_motor_ = mj_model.nu
++dim_motor_sensor_ = 3 * num_motor_
++
++time.sleep(0.2)
++
++
++def SimulationThread():
++    global mj_data, mj_model
++
++    ChannelFactoryInitialize(config.DOMAIN_ID, config.INTERFACE)
++    unitree = UnitreeSdk2Bridge(mj_model, mj_data)
++
++    if config.USE_JOYSTICK:
++        unitree.SetupJoystick(device_id=0, js_type=config.JOYSTICK_TYPE)
++    elif getattr(config, "USE_VIRTUAL_REMOTE", False):
++        unitree.SetupVirtualRemote(config.VIRTUAL_REMOTE_TOPIC)
++    if config.PRINT_SCENE_INFORMATION:
++        unitree.PrintSceneInformation()
++
++    while viewer.is_running():
++        step_start = time.perf_counter()
++
++        locker.acquire()
++
++        if config.ENABLE_ELASTIC_BAND:
++            if elastic_band.enable:
++                mj_data.xfrc_applied[band_attached_link, :3] = elastic_band.Advance(
++                    mj_data.qpos[:3], mj_data.qvel[:3]
++                )
++        unitree.ApplyLowCmd()  # LE PROJET : PD recalculé à chaque pas
++        mujoco.mj_step(mj_model, mj_data)
++
++        locker.release()
++
++        time_until_next_step = mj_model.opt.timestep - (
++            time.perf_counter() - step_start
++        )
++        if time_until_next_step > 0:
++            time.sleep(time_until_next_step)
++
++
++def PhysicsViewerThread():
++    while viewer.is_running():
++        locker.acquire()
++        viewer.sync()
++        locker.release()
++        time.sleep(config.VIEWER_DT)
++
++
++if __name__ == "__main__":
++    viewer_thread = Thread(target=PhysicsViewerThread)
++    sim_thread = Thread(target=SimulationThread)
++
++    viewer_thread.start()
++    sim_thread.start()
+diff --git a/simulate_python/unitree_sdk2py_bridge.py b/simulate_python/unitree_sdk2py_bridge.py
+index a9ca97a..21f685d 100644
+--- a/simulate_python/unitree_sdk2py_bridge.py
++++ b/simulate_python/unitree_sdk2py_bridge.py
+@@ -3,6 +3,8 @@ import numpy as np
+ import pygame
+ import sys
+ import struct
++import threading
++import time
+ 
+ from unitree_sdk2py.core.channel import ChannelSubscriber, ChannelPublisher
+ 
+@@ -45,6 +47,7 @@ class UnitreeSdk2Bridge:
+         self.idl_type = (self.num_motor > NUM_MOTOR_IDL_GO) # 0: unitree_go, 1: unitree_hg
+ 
+         self.joystick = None
++        self.virtual_remote = None  # LE PROJET : télécommande virtuelle (voir SetupVirtualRemote)
+ 
+         # Check sensor
+         for i in range(self.dim_motor_sensor, self.mj_model.nsensor):
+@@ -109,18 +112,23 @@ class UnitreeSdk2Bridge:
+         }
+ 
+     def LowCmdHandler(self, msg: LowCmd_):
+-        if self.mj_data != None:
+-            for i in range(self.num_motor):
+-                self.mj_data.ctrl[i] = (
+-                    msg.motor_cmd[i].tau
+-                    + msg.motor_cmd[i].kp
+-                    * (msg.motor_cmd[i].q - self.mj_data.sensordata[i])
+-                    + msg.motor_cmd[i].kd
+-                    * (
+-                        msg.motor_cmd[i].dq
+-                        - self.mj_data.sensordata[i + self.num_motor]
+-                    )
+-                )
++        # LE PROJET : on mémorise la consigne ; le couple PD est recalculé à
++        # CHAQUE pas de simulation dans ApplyLowCmd() (comme le simulateur C++).
++        # Avant, il n'était calculé qu'à l'arrivée d'un message (50 Hz) et restait
++        # figé entre deux messages -> instabilité ("QACC Nan") avec kp élevés.
++        n = self.num_motor
++        cmd = np.array([[msg.motor_cmd[i].tau, msg.motor_cmd[i].q, msg.motor_cmd[i].dq,
++                         msg.motor_cmd[i].kp, msg.motor_cmd[i].kd] for i in range(n)], dtype=np.float64)
++        self.low_cmd_array = cmd
++
++    def ApplyLowCmd(self):
++        cmd = getattr(self, "low_cmd_array", None)
++        if cmd is None or self.mj_data is None:
++            return
++        n = self.num_motor
++        q = self.mj_data.sensordata[:n]
++        dq = self.mj_data.sensordata[n:2 * n]
++        self.mj_data.ctrl[:n] = cmd[:, 0] + cmd[:, 3] * (cmd[:, 1] - q) + cmd[:, 4] * (cmd[:, 2] - dq)
+ 
+     def PublishLowState(self):
+         if self.mj_data != None:
+@@ -220,6 +228,12 @@ class UnitreeSdk2Bridge:
+                 self.low_state.wireless_remote[12:16] = packs[2]
+                 self.low_state.wireless_remote[20:24] = packs[3]
+ 
++            elif self.virtual_remote is not None:
++                self._FillWirelessRemoteFromVirtual()
++
++            # LE PROJET : compteur en ms comme sur le vrai robot (deploy_real.py attend tick != 0)
++            self.low_state.tick = int(self.mj_data.time * 1000) + 1
++
+             self.low_state_puber.Write(self.low_state)
+ 
+     def PublishHighState(self):
+@@ -248,6 +262,15 @@ class UnitreeSdk2Bridge:
+         self.high_state_puber.Write(self.high_state)
+ 
+     def PublishWirelessController(self):
++        if self.joystick is None and self.virtual_remote is not None:
++            keys, lx, ly, rx, ry = self._VirtualRemoteState()
++            self.wireless_controller.keys = keys
++            self.wireless_controller.lx = lx
++            self.wireless_controller.ly = ly
++            self.wireless_controller.rx = rx
++            self.wireless_controller.ry = ry
++            self.wireless_controller_puber.Write(self.wireless_controller)
++            return
+         if self.joystick != None:
+             pygame.event.get()
+             key_state = [0] * 16
+@@ -292,6 +315,51 @@ class UnitreeSdk2Bridge:
+ 
+             self.wireless_controller_puber.Write(self.wireless_controller)
+ 
++    # ------------------------------------------------------------------
++    # LE PROJET : télécommande virtuelle (~/unitree/virtual_remote)
++    # La fenêtre publie un WirelessController_ sur un topic dédié ; on le
++    # recopie dans lowstate.wireless_remote avec le même format qu'une vraie
++    # télécommande Unitree. Sécurité : sans message depuis
++    # VIRTUAL_REMOTE_TIMEOUT s, sticks et boutons retombent à zéro.
++    # ------------------------------------------------------------------
++    VIRTUAL_REMOTE_TIMEOUT = 0.3
++
++    def SetupVirtualRemote(self, topic):
++        self.virtual_remote = {"msg": None, "stamp": 0.0, "lock": threading.Lock(), "active": False}
++        self.virtual_remote_suber = ChannelSubscriber(topic, WirelessController_)
++        self.virtual_remote_suber.Init(self._VirtualRemoteHandler, 10)
++        print(f"Télécommande virtuelle : écoute du topic '{topic}'")
++
++    def _VirtualRemoteHandler(self, msg: WirelessController_):
++        vr = self.virtual_remote
++        with vr["lock"]:
++            vr["msg"] = msg
++            vr["stamp"] = time.monotonic()
++        if not vr["active"]:
++            vr["active"] = True
++            print("Télécommande virtuelle : connectée")
++
++    def _VirtualRemoteState(self):
++        vr = self.virtual_remote
++        with vr["lock"]:
++            msg, stamp = vr["msg"], vr["stamp"]
++        if msg is None or time.monotonic() - stamp > self.VIRTUAL_REMOTE_TIMEOUT:
++            if vr["active"]:
++                vr["active"] = False
++                print("Télécommande virtuelle : plus de signal -> sticks et boutons à zéro")
++            return 0, 0.0, 0.0, 0.0, 0.0
++        return int(msg.keys) & 0xFFFF, float(msg.lx), float(msg.ly), float(msg.rx), float(msg.ry)
++
++    def _FillWirelessRemoteFromVirtual(self):
++        keys, lx, ly, rx, ry = self._VirtualRemoteState()
++        wr = self.low_state.wireless_remote
++        wr[2] = keys & 0xFF          # R1 L1 start select R2 L2 F1 F2
++        wr[3] = (keys >> 8) & 0xFF   # A B X Y up right down left
++        wr[4:8] = struct.pack("f", lx)
++        wr[8:12] = struct.pack("f", rx)
++        wr[12:16] = struct.pack("f", ry)
++        wr[20:24] = struct.pack("f", ly)
++
+     def SetupJoystick(self, device_id=0, js_type="xbox"):
+         pygame.init()
+         pygame.joystick.init()
