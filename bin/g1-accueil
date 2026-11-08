@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# La démo d'accueil (vague 6, section 13.4 du plan) : le nœud ROS 2 « accueil » (paquet g1_accueil), lancé par
+# l'Atelier (Équipe › Démo › Lancer la démo) :
+#   g1-accueil --lieu L [--etage E] [-- --ros-args -p delai_choix_s:=30 …]
+# Commande de l'agent Borne et orchestrateur (squelette livré par l'agent Contrats).
+# Pas de set -u : les scripts de ROS 2 ne le supportent pas.
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+source "$HOME/robot-g1/setup/env.sh"
+# g1_accueil compilé avec les autres paquets (ws/install), sinon dans son propre dossier
+if [ ! -d "$RACINE/ws/install/g1_accueil" ] && [ -f "$RACINE/ws/install_g1_accueil/local_setup.bash" ]; then
+  source "$RACINE/ws/install_g1_accueil/local_setup.bash"
+fi
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+LIEU=""
+ETAGE=""
+PLUS=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --lieu) LIEU="$2"; shift 2 ;;
+    --etage) ETAGE="$2"; shift 2 ;;
+    --) shift; PLUS=("$@"); break ;;
+    -h|--help) sed -n '2,5p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "erreur : option inconnue « $1 »" >&2; exit 2 ;;
+  esac
+done
+[ -n "$LIEU" ] || { echo "erreur : il manque --lieu (ex. g1-accueil --lieu demo)" >&2; exit 2; }
+ros2 pkg prefix g1_accueil > /dev/null 2>&1 || {
+  echo "erreur : le paquet ROS 2 g1_accueil n'est pas compilé : cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_accueil" >&2
+  exit 1
+}
+ARGS=(--ros-args -p "lieu:=$LIEU")
+[ -n "$ETAGE" ] && ARGS+=(-p "etage:=$ETAGE")
+if [ ${#PLUS[@]} -gt 0 ] && [ "${PLUS[0]}" = "--ros-args" ]; then PLUS=("${PLUS[@]:1}"); fi
+exec ros2 run g1_accueil accueil "${ARGS[@]}" "${PLUS[@]}"

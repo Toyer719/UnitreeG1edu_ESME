@@ -19,7 +19,11 @@ FauxG1 répond comme le vrai robot (réponses (code, data)) :
   - arm : gestes 7106 {"action_id"} (7402 inconnu, 7404 hors de 500/501/801, 7400 si rt/arm_sdk
     pilote les bras, 7401 pour un autre geste pendant que les bras tiennent le précédent ; 99, ou
     le même geste, les relâche ; un geste tient au plus 20 s), liste 7107, gestes appris 7108 ;
-  - voice : TTS 1001, volume 1005 et 1006, LED 1010 (dernières valeurs et historique gardés).
+  - voice : TTS 1001, volume 1005 et 1006, LED 1010 (dernières valeurs et historique gardés) ;
+    vague 6 : le service voice est dans audio.py (FausseVoix, agent Voix), qui reçoit aussi le
+    binary (PCM de 1003) ;
+  - vague 6 (section 13.2) : robot_state (ServiceList 1003, ServiceSwitch 1001) dans
+    etat_robot.py (FauxRobotState, agent Diagnostic).
 VerificationArmSdk contrôle chaque LowCmd reçu sur /arm_sdk avec les limites du contrat
 (atelier.lieu.pilotage) : poids, rampes, angles, vitesses, taille tenue, jambes jamais écrites ;
 tout écart est compté. BrasSimules donne les angles mesurés de /lowstate : les bras suivent les
@@ -30,6 +34,8 @@ import math
 from pathlib import Path
 import sys
 
+from .audio import FausseVoix
+from .etat_robot import FauxRobotState
 from .logique import lire_set_velocity
 
 # Mode de marche après « Démarrer » (500 puis 501) et après une posture qui relève le robot (702) :
@@ -108,7 +114,7 @@ class FauxG1:
     """Services sport (modes, danses, tâches), arm et voice du faux G1 ; 7105 par FauxSport."""
 
     def __init__(self, sport, horloge=None, fsm=FSM_MARCHE, danses=None, echelle_danses=1.0,
-                 hors_marche='ignorer'):
+                 hors_marche='ignorer', services_arretes=()):
         # FauxSport : 7105, pannes, échéance de la consigne
         self.sport = sport
         self.horloge = horloge or sport.horloge
@@ -128,16 +134,29 @@ class FauxG1:
         self.taches = []
         self.postures = []                       # [(instant, mode demandé, code)]
         self.interdits_recus = []                # [(service, api_id, parameter)]
-        self.requetes = {'sport': 0, 'arm': 0, 'voice': 0}
-        self.tts = None
-        self.tts_historique = []
-        self.volume = 70
-        self.led = None
-        self.led_historique = []
+        self.requetes = {'sport': 0, 'arm': 0, 'voice': 0, 'robot_state': 0}
+        # vague 6 : services voice (audio.py, agent Voix) et robot_state (etat_robot.py,
+        # agent Diagnostic)
+        self.voix = FausseVoix(self.horloge)
+        self.etat_robot = FauxRobotState(self.horloge, arretes=services_arretes)
         self.arm_sdk = VerificationArmSdk(self.horloge)
         self.dernier_code = {}
 
     # ------------------------------------------------------------ état
+
+    @property
+    def led(self):
+        """Dernière couleur de la LED (service voice, 1010), ou None."""
+        return self.voix.led
+
+    @property
+    def tts(self):
+        """Dernière phrase de la synthèse du robot (service voice, 1001), ou None."""
+        return self.voix.tts
+
+    @property
+    def volume(self):
+        return self.voix.volume
 
     def maintenant(self):
         return float(self.horloge())
@@ -185,16 +204,16 @@ class FauxG1:
             'marche_possible': self.marche_possible(), 'hors_marche': self.hors_marche,
             'ignores_hors_marche': self.ignores_hors_marche,
             'requetes_services': dict(self.requetes),
-            'voix': {'tts': self.tts, 'tts_nombre': len(self.tts_historique),
-                     'volume': self.volume,
-                     'led': self.led, 'led_historique': list(self.led_historique[-50:])},
+            'voix': self.voix.etat(),
+            'services': self.etat_robot.etat(),
             'arm_sdk': self.arm_sdk.etat(t),
         }
 
     # ------------------------------------------------------------ requêtes
 
-    def traiter(self, service, api_id, parametre):
+    def traiter(self, service, api_id, parametre, binaire=b''):
         """(code, data) de la réponse, ou None si le faux G1 ne répond pas (panne muet)."""
+        # binaire : le champ binary de la requête (le PCM de voice 1003, vague 6)
         self.requetes[service] = self.requetes.get(service, 0) + 1
         if service == 'sport' and api_id == 7105:
             return self._marche(parametre)
@@ -207,7 +226,9 @@ class FauxG1:
         elif service == 'arm':
             reponse = self._arm(int(api_id), parametre, t)
         elif service == 'voice':
-            reponse = self._voice(int(api_id), parametre, t)
+            reponse = self.voix.traiter(int(api_id), parametre, binaire, t)
+        elif service == 'robot_state':
+            reponse = self.etat_robot.traiter(int(api_id), parametre, t)
         else:
             reponse = (CODE_API, '')
         self.dernier_code[service] = reponse[0]
@@ -341,38 +362,6 @@ class FauxG1:
             self.tenu = (action, t)
         self.gestes_joues.append(action)
         return (CODE_OK, '')
-
-    def _voice(self, api, parametre, t):
-        d = lire_json(parametre)
-        if api == 1005:
-            return (CODE_OK, json.dumps({'volume': self.volume}))
-        if api in (1003, 1004):
-            return (CODE_OK, '')
-        if d is None:
-            return (CODE_PARAMETRES, '')
-        if api == 1001:
-            texte = d.get('text')
-            if not isinstance(texte, str) or not texte:
-                return (CODE_PARAMETRES, '')
-            self.tts = {'text': texte, 'index': d.get('index'), 'speaker_id': d.get('speaker_id'),
-                        't': round(t, 3)}
-            self.tts_historique.append(self.tts)
-            return (CODE_OK, '')
-        if api == 1006:
-            v = d.get('volume')
-            if not entier(v) or not 0 <= v <= 100:
-                return (CODE_PARAMETRES, '')
-            self.volume = v
-            return (CODE_OK, '')
-        if api == 1010:
-            couleur = [d.get(c) for c in 'RGB']
-            if not all(entier(c) and 0 <= c <= 255 for c in couleur):
-                return (CODE_PARAMETRES, '')
-            self.led = dict(zip('RGB', couleur))
-            self.led_historique.append({'t': round(t, 3), 'R': couleur[0], 'G': couleur[1],
-                                        'B': couleur[2]})
-            return (CODE_OK, '')
-        return (CODE_API, '')
 
 
 class VerificationArmSdk:

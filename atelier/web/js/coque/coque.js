@@ -7,6 +7,11 @@
 // peutRefaire?(), recadrer?()} : racine est la vue Plan 2D de la vue centrale ; options : {panneau, mode,
 // commande, valeur, vue, carte3d, coque}. Un écran d'avant, ouvrir(racine) seul, marche encore : il dessine
 // tout dans la racine.
+//
+// Vague 6 (section 13.7 du plan) : l'écran Démo (Équipe › Démo) ; les commandes du ruban qui ont un « module »
+// (robot.verifier, seance.*) vont à executer(nom, valeur, outils) de js/coque/diagnostic.js ou seance.js ; la barre
+// d'outils a deux zones pour ces modules ([data-role=zone-diagnostic], [data-role=zone-seance]) ; à chaque
+// ouverture de l'espace, seance.js reçoit surEspace(outils) (la séance s'ouvre seule en Réel).
 
 import { api, urlEtage, urlLieu } from '../api.js';
 import { choisirEtage, choisirLieu, contexte, ecouter } from '../contexte.js';
@@ -24,6 +29,9 @@ import { icone } from './icones.js';
 import { construireEntete, ouvrirPanneau } from './panneau.js';
 import { commande as commandeParId, commandesDe, construireRuban, ONGLETS_RUBAN } from './ruban.js';
 import { construireVue } from './vue.js';
+// vague 6 (section 13.7) : modules du diagnostic (agent Diagnostic) et de la boîte noire (agent Boîte noire)
+import { executer as executerDiagnostic, monterDiagnosticBarre } from './diagnostic.js';
+import { executer as executerSeance, monterSeanceBarre, surEspace as seanceSurEspace } from './seance.js';
 
 export const MODES = ['simu', 'reel', 'repetition'];
 
@@ -62,7 +70,15 @@ const ECRANS = {
   personnalites: { id: 'personnalites', titre: 'Personnalités', charger: () => import('../ecrans/personnalites.js'), vues: [] },
   dialogues: { id: 'dialogues', titre: 'Dialogues', charger: () => import('../ecrans/dialogues.js'), vues: [] },
   camera: { id: 'camera', titre: 'Caméra', charger: () => import('../ecrans/camera.js'), vues: [] },
+  // vague 6 (section 13.4) : la démo d'accueil (agent Borne et orchestrateur)
+  demo: { id: 'demo', titre: 'Démo', charger: () => import('../ecrans/demo.js'), vues: ['3d', 'plan', 'camera'], vue: '3d' },
 };
+// Vague 6 (section 13.7) : modules de la coque qui exécutent des commandes du ruban (champ module du registre)
+const MODULES_COQUE = {
+  diagnostic: { fichier: 'diagnostic.js', titre: 'Vérifier le robot' },
+  seance: { fichier: 'seance.js', titre: 'Séance' },
+};
+const EXECUTANTS = { diagnostic: executerDiagnostic, seance: executerSeance };
 // Écran ouvert par chaque onglet du ruban, quand on clique sur l'onglet lui-même
 const ECRAN_DE_L_ONGLET = {
   dessiner: { ecran: 'monde', commande: 'choisir' }, placer: { ecran: 'salles' }, simuler: { ecran: 'simulation' },
@@ -100,6 +116,7 @@ const etat = {
   ignorerLieu: false,
   pointeurPlan: null,
   connecte: false,       // la liaison /ws/etat est ouverte (sinon : on ne sait pas ce qui tourne)
+  modulesBarre: [],      // vague 6 : {detruire} des modules montés dans la barre d'outils
 };
 
 function el(balise, classe, texte) {
@@ -305,6 +322,11 @@ export async function ouvrirEspace(choix) {
     etat.accueil = null;
   }
   construireEspace();
+  try {
+    seanceSurEspace(outilsCoque());       // vague 6 (13.3) : en Réel, la séance de la boîte noire s'ouvre seule
+  } catch (e) {
+    console.error(e);
+  }
   await preparerCarte3D();
   if (numero !== etat.ouverture) return null;
   if (choix.ecran) {
@@ -395,6 +417,13 @@ function construireEspace() {
   pastilles.robot.hidden = etat.mode !== 'reel';
   pastilles.batterie.hidden = true;
   gauche.appendChild(etats);
+  // vague 6 (section 13.7) : le badge de la séance et « Vérifier le robot », dessinés par seance.js et diagnostic.js
+  const zoneSeance = el('span', 'zone-barre zone-seance');
+  zoneSeance.setAttribute('data-role', 'zone-seance');
+  gauche.appendChild(zoneSeance);
+  const zoneDiagnostic = el('span', 'zone-barre zone-diagnostic');
+  zoneDiagnostic.setAttribute('data-role', 'zone-diagnostic');
+  gauche.appendChild(zoneDiagnostic);
   const theme = boutonIcone('theme', 'Thème clair ou sombre', 'theme');
   theme.addEventListener('click', basculerTheme);
   gauche.appendChild(theme);
@@ -522,6 +551,56 @@ function construireEspace() {
     lireBatterie();
     etat.minuteries.push(setInterval(lireBatterie, PERIODE_BATTERIE_MS));
   }
+  monterModulesBarre(zoneSeance, zoneDiagnostic);
+}
+
+// ---------------------------------------------------------------- vague 6 : modules de la coque (section 13.7)
+
+// Les outils de la coque donnés aux modules diagnostic.js et seance.js
+export function outilsCoque() {
+  return {
+    mode: modeCourant(), repetition: etat.repetition, lieu: contexte.lieu, etage: contexte.etage, api: api,
+    message: (texte, genre, details) => {
+      if (etat.barreEtat) etat.barreEtat.message(texte, genre, details);
+    },
+    confirmer: (texte, options) => demanderConfirmation(texte, options),
+    ouvrirCommande: (id, valeur) => ouvrirCommande(id, valeur),
+  };
+}
+
+function monterModulesBarre(zoneSeance, zoneDiagnostic) {
+  [[monterSeanceBarre, zoneSeance], [monterDiagnosticBarre, zoneDiagnostic]].forEach((d) => {
+    try {
+      const module = d[0](d[1], outilsCoque());
+      if (module) etat.modulesBarre.push(module);
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+function detruireModulesBarre() {
+  etat.modulesBarre.forEach((m) => {
+    try {
+      if (m.detruire) m.detruire();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+  etat.modulesBarre = [];
+}
+
+// Une commande du ruban qui n'ouvre pas d'écran : elle va au module qui la traite (champ module du registre)
+function executerModule(cmd, valeur) {
+  const executant = EXECUTANTS[cmd.module];
+  if (!MODULES_COQUE[cmd.module] || !executant) return;
+  if (etat.barreEtat) etat.barreEtat.outil(cmd.aide);
+  try {
+    const r = executant(cmd.commande, valeur, outilsCoque());
+    if (r && typeof r.catch === 'function') r.catch((e) => afficherErreur(e));
+  } catch (e) {
+    afficherErreur(e);
+  }
 }
 
 const COMMANDES_A_COCHER = ['simulation.accompagner', 'simulation.retour', 'pilotage.joysticks'];
@@ -606,6 +685,7 @@ function menuReglages(bouton) {
 }
 
 function fermerEspace() {
+  detruireModulesBarre();
   fermerEcran();
   detruireCarte3D();
   if (etat.cameraVue) {
@@ -706,7 +786,8 @@ function griserSansLieu() {
   if (!etat.ruban) return;
   commandesDe(modeCourant()).forEach((cmd) => {
     const ecran = ECRANS[cmd.ecran];
-    etat.ruban.griser(cmd.id, !contexte.lieu && !(ecran && ecran.sansLieu)
+    // les commandes des modules (vérifier le robot, la séance) n'ont pas besoin d'un lieu
+    etat.ruban.griser(cmd.id, !contexte.lieu && !cmd.module && !(ecran && ecran.sansLieu)
       ? 'Ouvrez d\'abord un lieu (⌂ Accueil)' : null);
   });
 }
@@ -751,6 +832,10 @@ export function ouvrirCommande(id, valeur) {
 }
 
 async function executerCommande(cmd, valeur) {
+  if (cmd.module) {          // vague 6 : diagnostic, séance (pas d'écran)
+    executerModule(cmd, valeur);
+    return;
+  }
   if (cmd.case) {
     etat.cases[cmd.commande] = !!valeur;
     ecrire(CLE_CASES, JSON.stringify(etat.cases));

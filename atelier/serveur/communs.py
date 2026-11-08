@@ -126,9 +126,12 @@ def png_gris(image):
             + _bloc_png(b"IDAT", zlib.compress(lignes.tobytes(), 6)) + _bloc_png(b"IEND", b""))
 
 
-# ---------------------------------------------------------------- squelettes (vague 5)
+# ---------------------------------------------------------------- squelettes (vagues 5 et 6)
 
-def pas_encore_fait(quoi, agent, section):
-    """ErreurAtelier 501 d'une route livrée vide par l'agent Contrats (vague 5), tant que son agent
-    ne l'a pas écrite : pas_encore_fait("le nuage 3D d'un étage", "Scan", "12.4")."""
-    return ErreurAtelier(501, f"Pas encore fait : {quoi} (vague 5, agent {agent}, section {section} du plan).")
+def pas_encore_fait(quoi, agent, section, vague=None):
+    """ErreurAtelier 501 d'une route livrée vide par l'agent Contrats, tant que son agent ne l'a pas écrite :
+    pas_encore_fait("le nuage 3D d'un étage", "Scan", "12.4"). vague : déduite de la section (12 : vague 5,
+    13 : vague 6) si elle n'est pas donnée."""
+    if vague is None:
+        vague = 6 if str(section).split(".")[0] == "13" else 5
+    return ErreurAtelier(501, f"Pas encore fait : {quoi} (vague {vague}, agent {agent}, section {section} du plan).")

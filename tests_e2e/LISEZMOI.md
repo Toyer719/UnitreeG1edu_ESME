@@ -1,15 +1,16 @@
 # Tests de bout en bout de l'Atelier G1
 
-Scripts sans fenêtre qui reprennent les critères de recette (sections 7, 9.10, 10, 11 et 12 du plan),
+Scripts sans fenêtre qui reprennent les critères de recette (sections 7, 9.10, 10, 11, 12 et 13 du plan),
 et `tout.sh` qui les lance tous et affiche un bilan (agents Intégrateur et Testeur).
 
 ```bash
-~/robot-g1/tests_e2e/tout.sh            # les 36 critères, puis « N / 36 »
+~/robot-g1/tests_e2e/tout.sh            # les 42 critères, puis « N / 42 »
 ~/robot-g1/tests_e2e/tout.sh 7 8        # seulement les critères 7 et 8
 ~/robot-g1/tests_e2e/tout.sh 11 12 13   # le scan intégré (le 11 garde sa session pour le 12 et le 13)
 ~/robot-g1/tests_e2e/tout.sh 16 17 18 19 20   # le vrai robot en répétition (vague 3, section 10 du plan)
 ~/robot-g1/tests_e2e/tout.sh 21 22 23 24 25 26 27 28 29 30   # la vague 4 (section 11 du plan)
 ~/robot-g1/tests_e2e/tout.sh 31 32 33 34 35 36   # la vague 5 (section 12.10 du plan)
+~/robot-g1/tests_e2e/tout.sh 37 38 39 40 41 42   # la vague 6 (section 13.9 du plan)
 ~/robot-g1/tests_e2e/critere_08_service_robot.sh    # un critère seul, sortie à l'écran
 ```
 
@@ -50,6 +51,12 @@ et `tout.sh` qui les lance tous et affiche un bilan (agents Intégrateur et Test
 | `critere_33_scan_corrige.sh` | scan simulé sans reconnaissance : étapes `carte_3d`, `carte_2d`, `nuage`, carte propre (précision 0,98, recouvrement 0,90), même avec un sol incliné de 0,6°, des horodatages nuls et l'odométrie décalée de −138 s (`--refaire`) ; adoption : nuage de l'étage et monde maillé, Gazebo à 0,9 fois le temps réel au moins, contact avec le mur ; `g1-scan carte-unitree` en répétition | 5 min |
 | `critere_34_pont_modes.sh` | pont et faux G1 : vitesse minimale (0,1 demandé → 0,2 envoyé), zones mortes, faux G1 assis → `pas_en_marche` et aucun pas, retour à `pret` en 501, course refusée, 7001 à 1 Hz ; `vitesse_max` sous 0,2 refusée, transmise à Nav2 | 1 min |
 | `critere_35_camera.sh` | fausse source d'images → `camera_usb` → `/camera_poitrine/image/compressed` → flux MJPEG de l'Atelier → `g1-visiteurs` (YOLO) → `/visiteurs/detectes` avec les cadres ; vue Caméra dans Firefox ; caméra dans le conteneur, à blanc ; sans le modèle YOLO : « en attente » | 30 s |
+| `critere_37_diagnostic.sh` | vague 6, agent Diagnostic : « Vérifier le robot » contre le faux G1 et des vérifications système simulées (`ATELIER_DIAGNOSTIC_FAUX`) : services arrêtés vus, « Démarrer les services » (1001 seulement pour lidar_driver et unitree_slam, après confirmation), câble, connexion, `g1-diagnostic --json` et son code, fenêtre du diagnostic dans Firefox ; jamais de ssh ni de ping vers le robot (à écrire) | 3 min |
+| `critere_38_boite_noire.sh` | vague 6, agent Boîte noire : séance ouverte en répétition, actions notées, bag des sujets légers (fréquences, ni nuages ni images), « Terminer la séance », rapport (trajets, ARRÊT, batterie, anomalie « mouvement sans demande »), place libre trop faible, reprise après un plantage, export (à écrire) | 10 min |
+| `critere_39_borne.sh` | vague 6, agent Borne et orchestrateur : la borne dans Firefox à 390 × 844 et 1024 × 768 (salles, confirmation, anti-rebond, suivez-moi, occupé, pause, code opérateur), garde de la borne depuis le réseau (à écrire) | 5 min |
+| `critere_40_voix.sh` | vague 6, agent Voix : `/robot/dire` → requêtes 1003 bien formées au faux G1 (morceaux de PCM 16 kHz, même stream_id), file et priorités (1004 avant une phrase haute ou de sécurité), volume, sortie robot_tts et borne (à écrire) | 3 min |
+| `critere_41_demo.sh` | vague 6, agent Borne et orchestrateur : démo complète en simulation, trois visiteurs de suite (salutation, choix à la borne, accompagnement, arrivée, retour à l'accueil), statistiques (à écrire) | 15 min |
+| `critere_42_securite_demo.sh` | vague 6, agent Borne et orchestrateur : en répétition, ARRÊT, « Bloquer », faux G1 assis, pont tué, pilotage pendant une visite : la démo se met en pause et rien ne repart seul (15 s sans mouvement) ; « Reprendre » et « Ramener à l'accueil » (à écrire) | 10 min |
 | `critere_36_arret.sh` | ARRÊT global : guide en route (répétition), téléopération (simulation) et joystick du pilotage arrêtés en moins de 1 s ; verrou posé en répétition puis « Débloquer » ; un déblocage ne relance jamais l'ancien trajet (section 12.15 : « Bloquer » en route puis « Débloquer », aucun mouvement pendant 15 s ; verrou en ligne de commande ; faux G1 assis puis remis en marche ; joystick tenu) ; nœud pilotage injoignable ; bouton et touche Échap dans Firefox, « Y aller » grisé pendant le blocage, Échap avec un menu ouvert pendant l'attente du retour automatique (relecture du 01/11/2026) (`critere_36_outils.py`) | 3 min |
 
 Critères 16 à 20 (vague 3, le vrai robot en répétition, section 10 du plan) : en répétition, la vérité terrain
@@ -81,6 +88,14 @@ réutilise `outils_scan_e2e.py`. **Lancez `tout.sh` depuis un terminal de la ses
 le critère 32 a besoin de WebGL, que Firefox sans fenêtre n'a qu'avec l'affichage X (aucune fenêtre ne s'ouvre ;
 `commun.sh` retire `DISPLAY` pour Gazebo et RViz, et le critère 32 le rend à Firefox seul). Captures de la coque :
 `.venv-projet/bin/python tests_e2e/outils_coque_e2e.py captures --api http://127.0.0.1:<port> --sortie <dossier>`.
+
+Critères 37 à 42 (vague 6, section 13.9 du plan) : chacun est écrit par l'agent nommé, sur des copies du demo ;
+tant que la pièce d'un autre agent manque, il répond « en attente » (77). Un agent essaie ses paquets ROS compilés à
+part avec `E2E_OVERLAY=~/robot-g1/ws/install_v6_<agent>`, dans son domaine :
+`E2E_DOMAINE=<domaine> E2E_PARTITION=v6_<agent> tests_e2e/tout.sh N` (section 13.11). Outils, un par agent :
+`outils_diagnostic_e2e.py`, `outils_seance_e2e.py`, `outils_borne_e2e.py` et `outils_demo_e2e.py`,
+`outils_voix_e2e.py`. Le critère 39 mesure la borne dans Firefox sans fenêtre ; aucun critère n'envoie de son ni de
+commande au vrai robot (faux G1, simulation).
 
 Codes de sortie : 0 réussi, 1 échoué, 77 pas encore possible (une commande, une route ou un module manque).
 

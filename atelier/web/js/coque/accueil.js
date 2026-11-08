@@ -17,6 +17,8 @@ import { api } from '../api.js';
 import { abonner } from '../direct.js';
 import { idDepuisNom, verifierId } from '../geometrie.js';
 import { etatMouvement, monterArret } from './arret.js';
+import { demanderConfirmation } from './confirmation.js';
+import { monterDiagnosticAccueil } from './diagnostic.js';
 import { icone, ILLUSTRATIONS } from './icones.js';
 
 const PERIODE_LIAISON_MS = 4000;
@@ -85,6 +87,7 @@ export function afficherAccueil(racine, options) {
   let lieuChoisi = options.lieu || lireMemoire('atelier.lieu');
   let etageChoisi = options.etage || lireMemoire('atelier.etage');
   let liaison = null;
+  let diagnosticAccueil = null;     // vague 6 : {rafraichir, detruire} de diagnostic.js
   let lieuxCharges = false;
   let telecommande = false;
   let minuterie = null;
@@ -271,6 +274,7 @@ export function afficherAccueil(racine, options) {
 
   function dessinerOptions() {
     blocMode.textContent = '';
+    detruireDiagnostic();
     if (mode === 'simu') {
       const titre = el('div', 'accueil-section-titre');
       titre.appendChild(el('h2', '', 'En simulation'));
@@ -345,7 +349,33 @@ export function afficherAccueil(racine, options) {
     const note = el('p', 'verification-message panneau-note');
     note.setAttribute('data-role', 'message-liaison');
     blocMode.appendChild(note);
+    // vague 6 (section 13.7) : « Vérifier le robot » (module diagnostic.js de l'agent Diagnostic)
+    const zoneDiagnostic = el('div', 'zone-diagnostic-accueil');
+    zoneDiagnostic.setAttribute('data-role', 'zone-diagnostic-accueil');
+    blocMode.appendChild(zoneDiagnostic);
+    monterDiagnostic(zoneDiagnostic);
     majVerifications();
+  }
+
+  function detruireDiagnostic() {
+    if (!diagnosticAccueil) return;
+    try {
+      diagnosticAccueil.detruire();
+    } catch (e) {
+      console.error(e);
+    }
+    diagnosticAccueil = null;
+  }
+
+  function monterDiagnostic(zone) {
+    detruireDiagnostic();
+    try {
+      diagnosticAccueil = monterDiagnosticAccueil(zone, { mode: 'reel', repetition: repetition, lieu: lieuChoisi,
+        etage: etageChoisi, api: api, message: (texte, genre) => dire(texte, genre),
+        confirmer: (texte, o) => demanderConfirmation(texte, o), ouvrirCommande: () => false });
+    } catch (e) {
+      console.error(e);
+    }
   }
 
   function majVerifications() {
@@ -558,6 +588,7 @@ export function afficherAccueil(racine, options) {
   return {
     fermer: () => {
       ferme = true;
+      detruireDiagnostic();
       if (minuterie) clearInterval(minuterie);
       document.removeEventListener('keydown', clavier);
       desabonner();

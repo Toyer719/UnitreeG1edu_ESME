@@ -1,0 +1,193 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Requête au service voice du G1",
+  "description": "Une requête du nœud voix au service voice du robot (unitree_api/Request sur /api/voice/request), décrite par {api_id, parametre (le JSON de parameter, déjà lu), octets (taille de binary)} (vague 6, section 13.6 du plan ; SDK d'Unitree, g1_audio_client). Règle en plus : pour 1003, un nombre pair d'octets (PCM 16 bits).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "api_id",
+    "parametre",
+    "octets"
+  ],
+  "properties": {
+    "api_id": {
+      "enum": [
+        1001,
+        1003,
+        1004,
+        1005,
+        1006
+      ]
+    },
+    "parametre": {
+      "type": "object"
+    },
+    "octets": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 96000
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "api_id": {
+            "const": 1003
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parametre": {
+            "type": "object",
+            "required": [
+              "app_name",
+              "stream_id"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "app_name": {
+                "type": "string",
+                "pattern": "^[a-z0-9_]{1,40}$"
+              },
+              "stream_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              }
+            }
+          },
+          "octets": {
+            "type": "integer",
+            "minimum": 2
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "api_id": {
+            "const": 1004
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parametre": {
+            "type": "object",
+            "required": [
+              "app_name"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "app_name": {
+                "type": "string",
+                "pattern": "^[a-z0-9_]{1,40}$"
+              }
+            }
+          },
+          "octets": {
+            "type": "integer",
+            "maximum": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "api_id": {
+            "const": 1001
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parametre": {
+            "type": "object",
+            "required": [
+              "index",
+              "speaker_id",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "index": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "speaker_id": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10
+              },
+              "text": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            }
+          },
+          "octets": {
+            "type": "integer",
+            "maximum": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "api_id": {
+            "const": 1005
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parametre": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {}
+          },
+          "octets": {
+            "type": "integer",
+            "maximum": 0
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "api_id": {
+            "const": 1006
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "parametre": {
+            "type": "object",
+            "required": [
+              "volume"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "volume": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              }
+            }
+          },
+          "octets": {
+            "type": "integer",
+            "maximum": 0
+          }
+        }
+      }
+    }
+  ]
+}

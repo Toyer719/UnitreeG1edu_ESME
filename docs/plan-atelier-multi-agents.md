@@ -12,6 +12,8 @@ Vague 4 (point principal, passants, comportement du guide, pilotage et danses, e
 
 Vague 5 (interface à la SolidWorks, carte 3D, scan corrigé sans reconnaissance, vitesse minimale et mode du pont, caméra See3CAM) : chaque agent lit aussi la section 12 en entier. Ses contrats font foi au même titre que ceux des sections 4 et 9 à 11.
 
+Vague 6 (diagnostic « Vérifier le robot », boîte noire et rapport de séance, borne visiteur, démo d'accueil, voix du robot) : chaque agent lit aussi la section 13 en entier. Ses contrats font foi au même titre que ceux des sections 4 et 9 à 12.
+
 ---
 
 ## 1. Le but
@@ -122,6 +124,7 @@ Principe : le serveur ne contient aucune logique robotique. Il appelle les bibli
 │   │   ├── index.html
 │   │   ├── js/  css/
 │   │   ├── js/coque/, js/carte3d/, js/camera/, css/theme.css   # vague 5 : coque, carte 3D, caméra (section 12)
+│   │   ├── borne.html, js/borne/, js/ecrans/demo.js           # vague 6 : borne visiteur, écran Démo (section 13)
 │   │   └── vendor/                # leaflet, three.js copiés en local (fonctionne sans Internet)
 │   └── tests/                     # tests unitaires (chaque agent dans ses fichiers)
 ├── ws/src/
@@ -137,7 +140,9 @@ Principe : le serveur ne contient aucune logique robotique. Il appelle les bibli
 │   ├── g1_bridge/                 # vague 3 : pont /cmd_vel → /api/sport/request (section 10.3)
 │   ├── g1_jumeau/                 # vague 3 : faux service sport du G1 pour Gazebo (section 10.4)
 │   ├── g1_pilotage/               # vague 4 : pilotage depuis l'Atelier, dans le conteneur (section 11.5)
-│   └── g1_equipe/                 # vague 4 : chatbot, personnalités, caméra de l'équipe (section 11.6)
+│   ├── g1_equipe/                 # vague 4 : chatbot, personnalités, caméra de l'équipe (section 11.6)
+│   └── g1_accueil/                # vague 6 : nœud accueil, la démo d'accueil (section 13.4)
+├── atelier/diagnostic/, atelier/seance/, atelier/voix/   # vague 6 : diagnostic, boîte noire, voix (section 13)
 ├── docker/                        # vague 3 : conteneur Humble du Jetson (section 10.2)
 ├── choregraphies/                 # vague 4 : chorégraphies du G1 ; musique/ ignoré par Git (section 11.5)
 ├── lieux/demo/                    # lieu d'exemple fourni par l'agent Données
@@ -169,6 +174,7 @@ lieux/<id>/
 ├── salles.yaml
 ├── itineraires.yaml
 ├── zones.yaml
+├── demo.yaml                      # vague 6 : réglages de la démo d'accueil, facultatif (section 13.4)
 └── modes/*.yaml                   # hors périmètre de ce plan (autre piste)
 ```
 
@@ -273,6 +279,8 @@ Vague 4 (section 11) : nouveaux états et champs de `/guide/etat`, `/guide/aller
 
 Vague 5 (section 12) : requêtes 7001 du pont sur `/api/sport/request`, état `pas_en_marche` et champ `mode_robot` de `/pont/etat`, `/g1_jumeau/mode` (12.6) ; `/camera_poitrine/image/compressed`, `/camera_poitrine/etat`, `/visiteurs/image/compressed`, champs `boite` et `image` de `/visiteurs/detectes` (12.7) ; `/unitree/slam_relocation/global_map` (12.5).
 
+Vague 6 (section 13) : `/api/robot_state/*` et `/g1_jumeau/services` (13.2) ; `/accueil/etat`, `/accueil/evenement`, `/accueil/choix`, `/accueil/commande` (13.4) ; `/voix/etat`, `/voix/son`, `/voix/commande`, les 1003 et 1004 de `/api/voice/request` (13.6) ; source `accueil`, priorité `securite` et champ `id` de `/robot/dire`.
+
 ### 4.3 Commandes
 
 | Commande | Rôle | Agent |
@@ -296,6 +304,8 @@ Vague 3 (section 10) : `g1-jetson construire|envoyer|lieu|demarrer|arreter|etat|
 Vague 4 (section 11) : `g1-lieu migrer --lieu L [--depuis-depart] [--a-blanc]` (agent Point principal) ; `g1-banc … --scene ID` (agent Passants) ; `g1-pilotage` (agent Pilotage et danses, facultatif : les commandes de l'onglet Pilotage en ligne de commande).
 
 Vague 5 (section 12) : `g1-scan traiter --refaire` et `g1-scan carte-unitree --lieu L [--etage E]` (agent Scan) ; `g1-visiteurs` et l'exécutable `camera_usb` de `g1_equipe` (agent Caméra) ; `--vitesse-max` refusée sous 0,2 m/s.
+
+Vague 6 (section 13) : `g1-diagnostic` (13.2), `g1-seance` (13.3), `g1-accueil` (13.4), `g1-voix` (13.6), et l'exécutable `accueil` de `g1_accueil` ; `g1-atelier --distant-complet` (13.5).
 
 Ajouts de la phase 1, acceptés à l'assemblage : `g1-lieu liste` ; `g1-monde simuler … [--monde F.sdf] [--afficher]` ; `g1-guide etat` et `g1-guide aller ID --sans-suivre` ; `g1-banc … [--simu] [--lancer] [--graine N] [--seuil P] [--csv F]` ; `g1-slam etat` et `g1-slam faux-service [--gazebo] [--relocalise]`, `scan-fin --lieu L` (note `carte_unitree`) ; `g1-atelier [--sans-navigateur] [--hote H]`.
 
@@ -324,6 +334,8 @@ Vague 3 (section 10.8) : champ `mode` (`simu`, `repetition`, `robot`) de `POST /
 Vague 4 (section 11) : `GET/PUT /api/lieux/{id}/principal` (11.2) ; `/api/pilotage/*` et `/ws/pilotage` (11.5) ; `GET/PUT /api/lieux/{id}/personnalites`, `…/dialogues`, `…/camera` (11.6) ; `evenements`, `maitre`, `personnes` et `visiteurs` dans `/ws/etat`, et `pietons` tiré de `/pietons/etat` quand il est publié.
 
 Vague 5 (section 12.4) : `POST /api/arret`, `POST /api/arret/debloquer`, `GET /api/arret`, `GET /api/robot/liaison`, `GET …/etages/{e}/nuage` et `…/nuage/info`, `GET …/etages/{e}/monde/maillage`, `GET /api/scan/nuage` et `…/info`, `GET /api/camera/image`, `…/flux` et `…/etat` ; champ `arret` dans `/ws/etat` ; retirées : `GET/PUT /api/scan/sessions/{s}/reconnaissance`, `GET /api/scan/sessions/{s}/monde`.
+
+Vague 6 (section 13.8) : `/api/robot/diagnostic*`, `/api/seance*` et `/api/seances*`, `/borne`, `/api/borne/*` et `/ws/borne`, `/api/demo/*`, `GET/PUT /api/lieux/{id}/demo`, `/api/voix/*` ; champs `seance`, `demo` et `voix` dans `/ws/etat` ; garde de la borne depuis le réseau (13.5).
 
 ### 4.5 Lancements ROS 2
 
@@ -383,7 +395,7 @@ Sept agents. Chacun possède ses dossiers, et personne n'écrit dans les dossier
 | 6. Interface | `atelier/serveur/`, `atelier/web/`, `bin/g1-atelier` | Données, Monde ; Simulation et Navigation pour l'intégration |
 | 7. Scan et Testeur | `atelier/scan/`, `ws/src/g1_nav/g1_nav/moteur_unitree.py`, `bin/g1-slam`, `g1-carte-*`, `g1-salle`, `tests_e2e/` | Données, Simulation, Navigation (guide) |
 
-Vague 2 : agents et fichiers en 9.9. Vague 3 : agents Jetson, Pont et faux G1, Repérage, en 10.10. Vague 4 : agents Point principal, Passants, Comportement du guide, Pilotage et danses, Équipe, en 11.7. Vague 5 : agents Coquille, Carte 3D, Scan, Robot, Caméra, en 12.8.
+Vague 2 : agents et fichiers en 9.9. Vague 3 : agents Jetson, Pont et faux G1, Repérage, en 10.10. Vague 4 : agents Point principal, Passants, Comportement du guide, Pilotage et danses, Équipe, en 11.7. Vague 5 : agents Coquille, Carte 3D, Scan, Robot, Caméra, en 12.8. Vague 6 : agents Diagnostic, Boîte noire, Borne et orchestrateur, Voix, en 13.11.
 
 ### Phases
 
@@ -641,7 +653,7 @@ Critères 11 à 15 (vague 2, scan intégré) : section 9.10. Critères 16 à 20 
     - consignes absurdes (NaN, 1e9) : jamais au-delà des plafonds ;
     - messages en français, jamais d'erreur 500.
 
-Critères 21 à 30 (vague 4 : point principal, passants, comportement du guide, pilotage, équipe ; section 11), ci-dessous ; `tests_e2e/tout.sh` lance les trente et affiche « N / 30 » (« N / 36 » depuis la vague 5 : critères 31 à 36 en 12.10). Un critère dont la pièce d'un autre agent manque répond « en attente » (77). Mesures dans le lieu `demo` (couloirs nord et sud de 2,85 m libres), sur des copies ; vérité terrain : `/odom` en simulation, `/g1_jumeau/odom` en répétition.
+Critères 21 à 30 (vague 4 : point principal, passants, comportement du guide, pilotage, équipe ; section 11), ci-dessous ; `tests_e2e/tout.sh` lance les trente et affiche « N / 30 » (« N / 36 » depuis la vague 5 : critères 31 à 36 en 12.10 ; « N / 42 » depuis la vague 6 : critères 37 à 42 en 13.9). Un critère dont la pièce d'un autre agent manque répond « en attente » (77). Mesures dans le lieu `demo` (couloirs nord et sud de 2,85 m libres), sur des copies ; vérité terrain : `/odom` en simulation, `/g1_jumeau/odom` en répétition.
 
 21. **Point principal** (`critere_21_point_principal.sh`, agent Point principal). Sur des copies du demo :
     - un lieu sans principal (ni étiquette ni salle `accueil`) : `g1-lieu valider` en erreur (« pas de point principal ») et `POST /api/simulation/demarrer` répond 409 ; deux principaux : `PUT …/salles` répond 422 ; un lieu migré dont `PUT …/salles` perdrait le principal : 422 ;
@@ -2248,3 +2260,305 @@ Constat de la relecture des documents (étape F3 de la séance 2) : « Bloquer �
 **Relecture du 01/11/2026** (deux relecteurs, en répétition et sur le code ; le finisseur a vérifié chaque défaut) : corrigés, voir ci-dessus : le pont tué puis relancé (le robot reprenait l'ancien trajet : 4,2 m et 4,9 m en 15 s ; ou le retour automatique lancé pendant que le pont était mort : 5,2 m), un `/pont/etat` trop vieux lu comme « rien n'empêche » (faux « Robot débloqué »), un `robot_muet` resté au repos (réponse perdue) qui annulait le retour automatique et l'attente d'un passant (régression), le joystick tenu après « assis », l'amortissement ou une coupure du lien (1,5 à 1,8 m), le joystick lâché puis repris pendant le blocage, la chorégraphie qui continuait sous l'assise (0,74 rad, 40 ordres de marche), Échap avec un menu ouvert pendant l'attente du retour (le robot partait 13 s plus tard : 2,5 m), et deux vérifications qui ne prouvaient rien (le champ `guide`, qui comptait le pont ; « Y aller » grisé, qui n'était testé que par une fonction pure). **Écartée, avec la raison** : la suggestion de faire ignorer au pont, à son lancement, un flux de `/cmd_vel` déjà en cours. Le pont ne peut pas distinguer un flux qui courait avant lui d'un flux qui commence juste après : la découverte DDS retarde le premier message reçu (parfois plus d'une seconde), si bien qu'une fenêtre de temps, ou bien laisserait passer le flux d'avant, ou bien refuserait la première consigne légitime (critères 17 et 20) ; le guide, lui, annule son trajet dès que le pont se tait. **Limites qui restent** : un but de Nav2 envoyé par un autre programme que le guide (RViz, ligne de commande), ou un `/cmd_vel` envoyé à la main, n'est pas annulé et repartirait au déblocage ou à la relance du pont (tutoriel, étape C4 : Ctrl+C avant de relancer le pont) ; un pont relancé en moins de 2 s (aucun lancement ne le relance seul : pas de `respawn`) n'est pas vu absent, et le robot continue la visite en cours, comme après un ordre perdu.
 
 **À vérifier sur le robot** (séance 2) : F3 de `docs/tutoriel-seance-2.md` (ARRÊT à mi-chemin, « Y aller » refusé, « Débloquer » : le robot ne bouge pas, le panneau dit « Robot débloqué : il attend un nouveau « Y aller » ») ; le robot assis à la télécommande pendant un trajet (trajet annulé, rien ne repart quand il se relève) ; le code de réponse de 7105 (le robot répond-il toujours ?), dont dépend l'annulation sur `robot_muet` ; relecture du 01/11/2026 : la télécommande en amortissement pendant une chorégraphie (ce que fait `rt/arm_sdk` pendant la descente du poids), et le joystick tenu pendant une mise en position assise (il doit rester refusé à la remise en marche).
+
+## 13. Diagnostic, boîte noire et démo d'accueil (vague 6)
+
+Contrats figés par l'agent Contrats le 08/11/2026, avant le travail en parallèle de quatre agents (13.11). Comme les sections 4 et 9 à 12, cette section fait foi pour les interfaces ; on ne la modifie qu'en passant par l'assemblage. Les choix viennent des décisions de l'intégrateur (`~/robot-g1-donnees/vague6/DECISIONS.md`, qui font foi pour les choix) : l'utilisateur a demandé « ok go 1 puis 2 » le 08/11 au soir, c'est-à-dire **1. une séance avec le robot efficace** (diagnostic en un clic, boîte noire et rapport de séance) et **2. une démo d'accueil complète, testable dès maintenant en simulation** (borne visiteur, orchestrateur, voix du robot). Il n'a pas le robot en ce moment ; la séance 2 n'a pas encore eu lieu. Fin du projet : 18/12/2026.
+
+**Règle de sécurité, partout** (vague 5, 12.15) : aucune levée d'un empêchement (ARRÊT, verrou, mode du robot, panne du pont, pilotage) ne relance un mouvement ; la démo se met en **pause** et ne repart jamais seule ; le diagnostic n'agit que sur un clic confirmé et ne fait jamais bouger le robot.
+
+Code partagé déjà livré et testé (`atelier/tests/test_contrats_vague6.py`) :
+- les schémas : `diagnostic`, `seance` (manifeste), `action_seance` (une ligne du journal des actions), `demo` (fichier facultatif du lieu `demo.yaml`), `etat_borne`, `requete_voix` (une requête au service voice du G1), et les messages `etat_demo`, `evenement_demo`, `choix_accueil`, `commande_accueil`, `etat_voix`, `son_voix`, `commande_voix` ; `robot_dire` reçoit la source `accueil`, la priorité `securite` et le champ facultatif `id` ; leurs règles dans `validation.py` ; `verifier_lieu` vérifie `demo.yaml` ;
+- les modules de contrat `atelier.lieu.diagnostic`, `atelier.lieu.seance`, `atelier.lieu.accueil` et `atelier.lieu.voix` (valeurs, formats, fonctions pures et exemples, ci-dessous) ; les sujets de la démo et de la voix dans `atelier.lieu.equipe.SUJETS_EQUIPE` (le chatbot de l'équipe s'y branchera) ;
+- le serveur : les routes `atelier/serveur/routes/{diagnostic,seance,borne,demo,voix}.py` enregistrées (501 « Pas encore fait », `GET /borne` sert déjà la page) ; l'accroche du journal des actions (`JournalDesActions`) et la garde de la borne (`GardeBorne`) dans `main.py` ; `etat.seance` (`atelier.seance.GestionnaireSeance`, squelette) appelé au démarrage, à l'arrêt et avant chaque `g1-jetson arreter` ; les champs `seance`, `demo` et `voix` de `/ws/etat` ; dans `pont_ros.py` : les sujets JSON de la démo et de la voix, `sujets()`, `infos_sujet()`, `attendre_message()` et `appeler_unitree()` (liste blanche) ; `g1-atelier` exporte `ATELIER_HOTE` et `ATELIER_PORT` et connaît `--distant-complet` ;
+- les squelettes : paquets Python `atelier/diagnostic/`, `atelier/seance/`, `atelier/voix/` (contrats en tête) ; paquet ROS 2 `ws/src/g1_accueil` (nœud `accueil` déclaré, qui sort avec le code 1) ; commandes `g1-diagnostic`, `g1-seance`, `g1-voix`, `g1-accueil` (et `gl-`) ; dans le faux G1, `g1_jumeau/audio.py` (le service voice d'avant, déplacé tel quel) et `g1_jumeau/etat_robot.py` (robot_state, 3203 en attendant), reliés par `robot.py` et `jumeau.py` (sujets `/api/robot_state/*`, binary du PCM, paramètre `services_arretes`, sujet d'essai `/g1_jumeau/services`) ; l'interface : commandes du ruban (13.7), écran `demo` dans la table des écrans, modules `js/coque/diagnostic.js` et `js/coque/seance.js` et leurs points d'accroche (accueil, barre d'outils, ouverture de l'espace), page `borne.html` et `js/borne/borne.js`, feuilles `css/{diagnostic,seance,demo,borne}.css` ;
+- `tests_e2e/tout.sh` compte 42 critères (« N / 42 ») ; `commun.sh` connaît `g1_accueil` ; les tests qui figeaient 36 critères, le registre du ruban et les titres des groupes acceptent la vague 6.
+
+### 13.1 Les décisions et qui les réalise
+
+| Décisions (DECISIONS.md) | Ce qui change | Agent |
+|---|---|---|
+| D. Diagnostic en un clic | `atelier/diagnostic/`, `GET /api/robot/diagnostic` et ses actions, `g1-diagnostic`, `js/coque/diagnostic.js`, robot_state du faux G1 | Diagnostic |
+| B. Boîte noire et rapport de séance | `atelier/seance/`, `/api/seance*`, `g1-seance`, `js/coque/seance.js`, journal des actions (accroche livrée), journal du Jetson (accroche livrée) | Boîte noire |
+| K. Borne visiteur, O. orchestrateur | `ws/src/g1_accueil` (nœud `accueil`), `g1-accueil`, `/borne`, `/api/borne/*`, `/api/demo/*`, `borne.html`, `js/borne/`, `js/ecrans/demo.js` | Borne et orchestrateur |
+| V. Voix du robot | `atelier/voix/` (nœud `voix`), `g1-voix`, `/api/voix/*`, service voice du faux G1 | Voix |
+
+### 13.2 Le diagnostic (agent Diagnostic)
+
+**Où il apparaît** : sur l'accueil, carte « Robot réel », sous la liste des vérifications de la vague 5 (zone `[data-role=zone-diagnostic-accueil]`) : le bouton « Vérifier le robot » et le résumé du dernier diagnostic ; dans la barre d'outils, en Réel et en répétition (zone `[data-role=zone-diagnostic]`) ; dans le ruban, Réel › Naviguer › « Vérifier le robot » (`robot.verifier`, 13.7) ; en ligne de commande, `g1-diagnostic`. Tous passent par le même code : `atelier.diagnostic.diagnostiquer(mode, pont, contexte, source, rapide)` (contrat en tête de `atelier/diagnostic/__init__.py`). La fenêtre du diagnostic est dans la page (`[data-role=diagnostic]`), jamais une boîte du navigateur.
+
+**Les vérifications** (`atelier.lieu.diagnostic.VERIFICATIONS` ; l'agent peut en ajouter, même forme d'id) :
+
+| id | Ce qui est vérifié | Comment | Répétition |
+|---|---|---|---|
+| `cable` | câble branché | `/sys/class/net/<interface>/carrier` (`ATELIER_INTERFACE_ROBOT`, eno2) | sans objet |
+| `adresse` | 192.168.123.99 sur l'interface | ioctl SIOCGIFADDR (comme `routes/liaison.py`) | sans objet |
+| `profil` | connexion NetworkManager `robot-g1` active, et rallumée seule au branchement | `nmcli -t -f NAME,DEVICE,STATE connection show --active`, `nmcli -g connection.autoconnect connection show robot-g1` | sans objet |
+| `ros` | domaine 0, `CYCLONEDDS_URI` sur l'interface du câble, pont ROS 2 du serveur actif | variables du serveur (comme `verifier_terminal_robot`) ; en répétition : pont ROS 2 actif seulement | oui |
+| `pc1`, `jetson`, `lidar` | .161, .164, .120 répondent | `ping -c 1 -W 1`, en parallèle, seulement si le câble est là | sans objet |
+| `sujets` | le robot parle au PC : `SUJETS_ROBOT`, puis `SUJETS_SLAM` | `PontRos.infos_sujet` : publiés ou écoutés par un autre nœud que le serveur | oui |
+| `services` | `lidar_driver` et `unitree_slam` actifs | robot_state 1003 (ci-dessous) ; action `demarrer-services` | oui (faux G1) |
+| `mode` | le robot en mode marche (lecture seule) | `/pont/etat.mode_robot` s'il a moins de 3 s, sinon 7001 par `appeler_unitree` ; `nom_mode`, `message_pas_en_marche` | oui |
+| `batterie` | charge (`BATTERIE_ATTENTION` 30 %, `BATTERIE_PROBLEME` 15 %) | `PontRos.attendre_message("/lf/bmsstate", "unitree_hg/msg/BmsState")`, champ `soc` | oui |
+| `jetson_ssh`, `jetson_docker`, `jetson_image`, `jetson_place`, `jetson_horloge` | clé SSH, Docker utilisable, empreinte de `g1-jetson:arm64` sur le Jetson = celle du PC (sinon « faites g1-jetson envoyer »), place libre (`PLACE_JETSON_MIN_GO`), écart d'horloge (`ECART_HORLOGE_MAX_S`) | UN ssh (`-o BatchMode=yes -o ConnectTimeout=3`, hôte `G1_JETSON` ou `unitree@192.168.123.164`) qui lance un petit script ; empreinte du PC : `docker image inspect` (étiquette `fr.robot-g1.empreinte` de `docker/jetson.py`) ; jamais avec `rapide` | sans objet |
+| `camera` | See3CAM vue | `/camera_poitrine/etat` s'il est publié, sinon le même ssh (`/dev/v4l/by-id/*See3CAM*`) | sans objet |
+
+Chaque vérification dit **ok**, **attention**, **probleme** ou **inconnu** (rien pu vérifier : pas de réponse, pas pendant les essais) ; `detail` est UNE phrase (ce qui a été vu), `conseil` UNE phrase qui dit quoi faire (obligatoire si l'état n'est pas ok), `action` l'action possible ou null, `technique` le détail pour l'infobulle et le rapport. L'état global est le pire (`GRAVITE` : ok < inconnu < attention < probleme) ; `message` est le conseil le plus important (`message_global`). En répétition, les vérifications sans objet vont dans `ignorees` avec leur raison. Tout le diagnostic tient en 15 s (`DELAI_DIAGNOSTIC_S`), vérifications en parallèle, chacune avec son délai. Code de sortie de `g1-diagnostic` : 0 si rien n'est en Attention ni en Problème (`code_de_sortie`), 1 sinon ; `--json` : le résultat brut. Exemple (schéma `diagnostic`, `atelier.lieu.diagnostic.EXEMPLE_DIAGNOSTIC` en plus complet) :
+
+```json
+{"version": 1, "date": "2026-11-12T14:03:05+01:00", "mode": "repetition", "duree_s": 1.8, "etat": "probleme",
+ "resume": {"ok": 2, "attention": 0, "probleme": 1, "inconnu": 0},
+ "message": "Un point à régler : Services de cartographie. Cliquez sur « Démarrer les services de cartographie ».",
+ "verifications": [
+  {"id": "ros", "groupe": "reseau", "titre": "Réglages ROS de l'Atelier", "etat": "ok",
+   "detail": "L'Atelier voit ROS 2.", "conseil": null, "action": null},
+  {"id": "sujets", "groupe": "robot", "titre": "Le robot parle au PC", "etat": "ok",
+   "detail": "Le PC voit les sujets du faux G1.", "conseil": null, "action": null},
+  {"id": "services", "groupe": "robot", "titre": "Services de cartographie", "etat": "probleme",
+   "detail": "lidar_driver et unitree_slam sont arrêtés.",
+   "conseil": "Cliquez sur « Démarrer les services de cartographie » : sans eux, ni scan ni repérage.",
+   "action": "demarrer-services", "technique": "robot_state 1003 : lidar_driver 1, unitree_slam 1"}],
+ "ignorees": [{"id": "cable", "raison": "sans objet en répétition"}], "actions": ["demarrer-services"],
+ "source": "atelier"}
+```
+
+**Les actions** (`ACTIONS_DIAGNOSTIC`, liste blanche ; seulement sur un clic, après la confirmation dans la page, jamais automatiques) : `POST /api/robot/diagnostic/<action> {confirme: true}` ; sans `confirme` : 409 et rien ne part.
+- `demarrer-services` « Démarrer les services de cartographie » : pour chaque service arrêté de `SERVICES_CARTOGRAPHIE` (`lidar_driver`, `unitree_slam`), 1001 `parametre_service_switch(nom)` = `{"name": nom, "switch": 1}` ; puis 1003 toutes les secondes jusqu'à ce qu'ils soient actifs (20 s au plus, `DELAI_SERVICES_S`). Jamais un autre service (`services` de la demande : un sous-ensemble de la liste blanche, sinon 403), jamais `switch: 0`, jamais `ai_sport` ni `motion_switcher`. En simulation (pas de robot) : 409 ;
+- `retablir-cable` « Rétablir la connexion du câble » : `nmcli connection up robot-g1` (15 s au plus) ;
+- `cable-automatique` « La rétablir seule à chaque branchement » : `nmcli connection modify robot-g1 connection.autoconnect yes`, avec la phrase qui explique (le Wi-Fi garde Internet ; robot.sh crée le profil avec `autoconnect no`).
+Réponse : `{action, ok, message, diagnostic?}` (le diagnostic refait après l'action). Pas de sudo (robot.sh fait déjà `nmcli` sans sudo).
+
+**robot_state** (SDK d'Unitree `unitree_sdk2py/go2/robot_state/` ; sujets `/api/robot_state/request` et `/response`, `unitree_api/Request` et `Response`, comme les autres services) :
+- 1003 ServiceList : `parameter` `"{}"` ; réponse `data` = la liste JSON `[{"name": "lidar_driver", "status": 1, "protect": 0}, …]` (`ServiceStateData` du SDK C++ : `status` et `protect` entiers ; le SDK Python lit les mêmes clés) ; sur ce G1, **status 0 = actif, 1 = arrêté** (`STATUT_ACTIF`, `STATUT_ARRETE`) ; `lire_liste_services(data)` (protect lu en booléen) ;
+- 1001 ServiceSwitch : `parameter` `{"name": n, "switch": 1}` ; réponse `data` `{"name": n, "status": s}` (`ServiceSwitchData`) : 0 ou 1 réussi, 5 protégé (erreur 5202 du SDK), autre valeur échec (5201) : `lire_reponse_switch(data)`. Le statut rendu par le vrai robot juste après 1001 n'est pas connu : l'action relit la liste ;
+- les requêtes partent par `PontRos.appeler_unitree(service, api_id, parametre, delai)` (le serveur) ; `g1-diagnostic` démarre son propre `PontRos(nom_noeud="g1_diagnostic")`. `appeler_unitree` refuse tout ce qui n'est pas dans `APPELS_UNITREE_PERMIS` (robot_state 1003 et 1001, sport 7001), attend un abonné (2 s), garde seulement les réponses à SES requêtes (même `identity.id` : le pont et le pilotage ne sont pas gênés), et lève `TimeoutError` en français.
+
+**Le faux G1** (`ws/src/g1_jumeau/g1_jumeau/etat_robot.py`, `FauxRobotState`, sans ROS, à horloge injectable ; branché par `robot.py` et `jumeau.py`, livrés) : services `SERVICES_FAUX_G1` (`ai_sport` et `motion_switcher` protégés, `lidar_driver`, `unitree_slam`, `voice`, `video_hub`), tous actifs au départ sauf ceux de `services_arretes` (paramètre du nœud, texte « lidar_driver,unitree_slam », défaut : la variable `G1_JUMEAU_SERVICES_ARRETES`, utile quand le faux G1 est lancé par `g1-monde simuler --jumeau`) ; 1003 rend la liste (entiers, comme le SDK C++) ; 1001 d'un service non protégé : `{"name": n, "status": 1}` tout de suite, puis actif au bout de `delai_demarrage_s` (2 s) ; protégé : status 5 ; inconnu : status 2 ; tout `switch: 0` et tout service hors de la liste blanche de l'Atelier sont **comptés** (`interdits`, comme `interdits_recus` du sport) ; 1002 : code 0 ; autre api : 3203 ; parameter illisible : 3204 ; panne `muet` : aucune réponse. Sujet d'essai `/g1_jumeau/services` (std_msgs/String JSON `{"lidar_driver": 1}`) : `changer(statuts)` ; champ `services` de `/g1_jumeau/etat` : `{services, interdits, appels}`. Tests : `ws/src/g1_jumeau/test/test_etat_robot.py`.
+
+**Les vérifications système dans les tests** : chaque vérification reçoit un contexte qui fournit ses primitives (lire un fichier, lancer une commande avec un délai, ping, ssh, variables d'environnement, heure) ; le vrai contexte lance les commandes. Avec `ATELIER_DIAGNOSTIC_FAUX=<fichier.json>` (serveur et `g1-diagnostic`), le **faux contexte** répond à la place, sans rien lancer ni rien envoyer : `{"fichiers": {chemin: texte}, "commandes": {"nmcli -t -f NAME,DEVICE,STATE connection show --active": {"code": 0, "sortie": "robot-g1:eno2:activated\n"}}, "ping": {adresse: ms ou null}, "ssh": {"code": 0, "sortie": "…"}, "env": {nom: valeur}}` (une commande est la liste de ses mots joints par des espaces ; ce qui manque : fichier absent, `{"code": 127}`, pas de réponse) ; chaque commande « lancée » est ajoutée à `<fichier>.journal` (une ligne JSON), pour que le test vérifie ce que l'action aurait fait. Le ROS reste réel : le faux G1 répond à robot_state, 7001 et `/lf/bmsstate`. Sans ce fichier mais avec `G1_SLAM_FAUX=1` (tous les tests de bout en bout), les vérifications qui touchent le réseau du robot (ping, ssh, `nmcli … up`) ne partent pas : `inconnu`, « pas pendant les essais ». Jamais de ssh ni de ping vers 192.168.123.x pendant un test (12.11).
+
+**Ce que garde l'Atelier** : le dernier diagnostic (`GET /api/robot/diagnostic/dernier`) ; la séance ouverte en garde une copie à son ouverture (`diagnostic_debut.json`, 13.3).
+
+### 13.3 La boîte noire et le rapport de séance (agent Boîte noire)
+
+**Le cycle de vie** (`etat.seance`, `atelier.seance.GestionnaireSeance`, contrat en tête de `atelier/seance/__init__.py`) :
+- **ouverture** : à chaque ouverture de l'espace de travail, la coque appelle `surEspace(outils)` de `js/coque/seance.js` ; en Réel (vrai robot ou répétition), il fait `POST /api/seance/demarrer {mode, lieu, etage, ouverture: "auto"}` ; une séance déjà ouverte est rendue telle quelle (une seule à la fois, par serveur) ; à la main : `g1-seance demarrer` ou le menu du badge ; jamais en Simulation (409) ;
+- à l'ouverture : le dossier, `seance.json` (`ouverte`), la copie du lieu ouvert (`lieu/`), le diagnostic (en arrière-plan : `atelier.diagnostic.diagnostiquer(mode, pont, source="seance")` → `diagnostic_debut.json` ; s'il n'est pas encore écrit : rien), le journal du serveur (un `logging.FileHandler` sur `journaux/serveur.log` du dossier, retiré à la fermeture), puis l'enregistreur (`g1-seance enregistrer --dossier D`, rôle `seance` de `etat.gestionnaire`, avec `os.nice(10)`) ;
+- **fermeture** : « Terminer la séance » (`POST /api/seance/arreter`, ribbon `seance.terminer`, menu du badge), `g1-seance arreter`, ou l'arrêt de l'Atelier (`etat.arreter()` appelle `fermer("arret_atelier")` avant d'arrêter les processus, 10 s au plus) : le journal du conteneur du Jetson si le robot tournait (raison `fin`), l'enregistreur arrêté par SIGINT (le bag se ferme proprement), la fin des journaux des commandes lancées pendant la séance copiée dans `journaux/` (`journal_max_mo`, 20 Mo chacun au plus), le manifeste (`fermee`, `fin`, `duree_s`), puis le rapport, en arrière-plan (`g1-seance rapport D`, détaché : il survit à l'arrêt de l'Atelier) ;
+- **reprise après un plantage** : au démarrage du serveur (`demarrage_serveur()`), une séance restée `ouverte` dont l'enregistreur ne vit plus devient `interrompue` (fin : l'heure du dernier fichier écrit, fermeture `plantage`), son bag est réindexé (`ros2 bag reindex` si `metadata.yaml` manque) et son rapport est fait ; aucune séance ne s'ouvre seule à ce moment (la prochaine ouverture de l'espace en Réel en ouvre une nouvelle).
+
+**Le dossier** : `atelier.lieu.seance.dossier_seances()/<AAAA-MM-JJ_HHhMM>/` (`ATELIER_SEANCES`, défaut `journaux/seances/`, jamais dans Git ; `id_seance` ajoute -2, -3… si la minute est prise) ; arborescence et noms : `FICHIERS_SEANCE` (en tête de `atelier/lieu/seance.py`). Le manifeste `seance.json` suit le schéma `seance` (exemple : `EXEMPLE_SEANCE`), réécrit de façon atomique (`ecrire_atomique`) à chaque changement (`actions` compte les lignes du journal, `enregistrement.octets` la taille du bag, `jetson` les journaux du conteneur récupérés, `rapport.etat` absent → en_cours → pret ou echec).
+
+**Le journal des actions** (`actions.jsonl`, une ligne JSON par action, schéma `action_seance`, exemple `EXEMPLE_ACTION`) : l'accroche est livrée dans `main.py` (`JournalDesActions`, ASGI pur) : après la réponse à chaque demande POST, PUT, PATCH ou DELETE sous `/api/` (`action_journalisee` : sauf `CHEMINS_IGNORES`, les flèches de la téléopération), elle appelle `etat.seance.noter_action(action)` avec `action = {t, methode, chemin, requete, statut, reponse, duree_ms, client}` (`t` à la milliseconde ; `requete` et `reponse` : le JSON lu, ou le texte, coupés à `LIMITE_CORPS_OCTETS` ; `client` : `local`, `borne` ou `distant`). Une demande dont la route ne lit pas le corps arrive avec `requete` null. `noter_action` ne doit jamais bloquer (file et fil d'écriture) ; sans séance ouverte, rien. L'agent ajoute `version`, `depuis_s`, `mode`, `source`, le `genre` (`GENRES_ACTION`) et le `texte` en français : `/api/arret` → `arret` « ARRÊT » ; `/api/robot/arret` → `bloquer` « Bloquer » ; `/api/arret/debloquer` → `debloquer` ; `/api/guide/aller` → `y_aller` « Y aller : Salle B204 » (nom tiré du lieu) ; `/api/guide/stop` → `stop` ; `/api/robot/reperer` → `reperer` ; `/api/simulation/demarrer` et `arreter` → `lancer`, `arreter` ; `/api/scan/*` → `scan` ; `/api/pilotage/*` → `pilotage` (`texte` : « Posture : s'asseoir », « Danse 604 »…) ou `choregraphie` ; `/api/robot/diagnostic/*` → `diagnostic` ; `/api/seance*` → `seance` ; `/api/demo/*` → `demo` ; `/api/borne/*` → `borne` ; `/api/voix/*` → `voix` ; `/api/lieux/*` → `lieu` ; `/api/equipe/*` et les fichiers de l'équipe → `equipe` ; sinon `autre`. Le joystick passe par le WebSocket `/ws/pilotage` : pas dans le journal (il est dans le bag : `/pilotage/etat`).
+
+**L'enregistrement ROS 2** (`bag/`, rosbag2, stockage sqlite3 par défaut de Humble, lisible par `ros2 bag info`) : seulement les sujets de `SUJETS_SEANCE`, chacun au plus à sa fréquence (`None` : tout ; `/lf/sportmodestate`, `/state_estimator/odom_pelvis`, `/unitree/slam_relocation/odom`, `/odom`, `/g1_jumeau/odom` : 10 Hz ; `/lf/bmsstate` : 1 Hz ; `/rosout` : 50 Hz…) ; jamais les types de `TYPES_JAMAIS` (nuages de points, images) ni `SUJETS_JAMAIS` (`/api/voice/request` : les morceaux de son) ; types lus sur le graphe ; un sujet qui apparaît en cours de séance est pris (relecture du graphe toutes les 2 s). La réduction de fréquence exige un enregistreur à soi (`rosbag2_py.SequentialWriter` et des abonnements bruts `raw=True`, Python du système ou `.venv-projet` : les deux ont `rosbag2_py`) ; `ros2 bag record` seul ne la fait pas. **Garde-fous** (`REGLAGES_SEANCE`, `reglage(nom)` : variables `ATELIER_SEANCE_TAILLE_MAX_MO`, `ATELIER_SEANCE_PLACE_MIN_GO`) : toutes les 5 s, si le bag dépasse `taille_max_mo` (1 024 Mo) ou si la place libre du disque descend sous `place_libre_min_go` (2 Go), l'enregistrement s'arrête proprement (`enregistrement.etat: coupe`, `message` en français) ; la séance reste ouverte (actions et rapport continuent). **Coût** : l'enregistreur ne prend pas plus de `cpu_max` (15 %) d'un cœur en moyenne pendant un trajet, et `POST /api/arret` répond toujours en moins de 1 s (mesuré par le critère 38).
+
+**Le journal du conteneur du Jetson** : `routes/simulation.py` appelle `etat.seance.avant_arret_jetson(local=False)` juste avant chaque `g1-jetson arreter` lancé par l'Atelier (accroche livrée) : `g1-jetson journal --lignes 100000` dans `journaux/jetson/conteneur_<AAAA-MM-JJ_HHhMMmSSs>_avant_arret.log`, 30 s au plus, sans jamais empêcher l'arrêt ; de même à la fermeture si le robot tourne (raison `fin`) ; noté dans `jetson` du manifeste. Sans séance : rien. Avec `G1_SLAM_FAUX=1`, `g1-jetson` refuse le Jetson : les tests passent un faux `g1-jetson` dans `ATELIER_BIN`.
+
+**Le rapport** (`g1-seance rapport D`, à la fermeture et sur demande ; `rapport.md`, `rapport.html` (le même, avec le graphique ; ouvert dans un onglet par `GET /api/seances/<id>/rapport`), `rapport.json` (le résumé, lisible par une machine), `trajets.png` (la carte de l'étage de `lieu/` et le trajet du robot, d'après `/reperage/etat` en Réel et en répétition, ou `/odom`) ; en français simple, sans sujet ROS dans les titres :
+- durée, lieu, mode, batterie au début et à la fin (`/lf/bmsstate`), version de l'Atelier ;
+- la chronologie : actions, événements du guide et de la démo, états du pont, modes du robot, pannes ;
+- chaque trajet (de `/guide/etat` et `/guide/evenement`) : départ, but (nom de la salle), résultat (`arrive`, `echec`, `interrompu` par un ARRÊT, un blocage ou une panne), durée, distance, arrêts et leurs causes ;
+- le temps passé dans chaque état du pont (`pas_en_marche`, `robot_muet`, `arret_verrouille`…), les modes du robot vus, les erreurs (réponses 4xx et 5xx du journal des actions, lignes d'erreur de `/rosout` et des journaux), la précision du repérage (`precision_m` de `/reperage/etat` : moyenne et pire) ;
+- les **anomalies détectées toutes seules** : mouvement sans demande (le robot avance de plus de 5 cm/s sans mission du guide, sans joystick ni pilotage depuis 2 s), robot qui ne répond plus (`robot_muet`), arrêts d'urgence (ARRÊT, `/pont/arret` vrai), séance interrompue, enregistrement coupé ;
+- `rapport.json` : `{version, seance, mode, lieu, debut, fin, duree_s, batterie: {debut, fin}, actions, trajets: [{depart, cible, nom, resultat, duree_s, distance_m, arrets: [{t, cause}]}], etats_pont: {etat: secondes}, modes: [...], erreurs: [...], reperage: {precision_moyenne_m, precision_max_m}, anomalies: [{t, genre, texte}], fichiers}`.
+
+**`g1-seance`** (`python -m atelier.seance`, Python du projet avec ROS 2) : `demarrer [--mode reel|repetition] [--lieu L] [--etage E] [--api URL]`, `arreter`, `etat [--json]` parlent à l'Atelier qui tourne (`--api`, défaut `http://127.0.0.1:$ATELIER_PORT`, sinon 8000 ; sans Atelier : code 1, « lancez g1-atelier, ou g1-seance enregistrer --dossier … ») ; `enregistrer --dossier D` (l'enregistreur seul, jusqu'à SIGINT) ; `rapport D` ; `exporter D [--sortie F.zip] [--sans-bag]` (un .zip à donner à Claude) ; `liste`.
+
+**Dans l'Atelier** : le badge « ● Enregistrement » de la barre d'outils (`[data-role=seance]`, `data-etat` `enregistrement`, `coupe` ou `arrete`, tant qu'une séance est ouverte : champ `seance` de `/ws/etat`, que `etat()` rend sans calcul lourd) ; son menu : Terminer la séance, Rapport de séance ; Réel › Naviguer › ⚙ : `seance.terminer`, `seance.rapport` ; après « Terminer », le lien du rapport `[data-role=rapport-seance]`.
+
+### 13.4 La démo d'accueil : le nœud accueil (agent Borne et orchestrateur)
+
+**Le nœud** `accueil` (paquet `ws/src/g1_accueil`, exécutable `accueil`, Python du système avec `atelier` sur son chemin comme le nœud `dialogue`), lancé par `g1-accueil --lieu L [--etage E] [-- --ros-args …]` ; l'Atelier le lance (rôle `demo`) avec le nœud voix (rôle `voix`, 13.6) sur « Lancer la démo » (`POST /api/demo/lancer {lieu, etage}`), sur le PC, en Simulation comme en Réel ; il faut que le guide tourne (simulation ou navigation lancée ; en Réel et en répétition, le robot repéré), sinon 409 avec la phrase qui dit quoi faire. « Arrêter la démo » arrête les deux nœuds (le robot n'est pas arrêté par cela : c'est le rôle de l'ARRÊT ; le nœud qui s'arrête pendant une visite laisse le guide la finir et revenir, comme une visite de la vague 4).
+
+**Paramètres** : `lieu` (obligatoire), `etage` (défaut : celui du point principal), puis `REGLAGES_DEMO` de `atelier.lieu.accueil` (défauts lus dans `demo.yaml`, ci-dessous) : `source_visiteurs` (`auto` : la caméra si `/visiteurs/detectes` est publié, sinon le LiDAR ; `camera`, `lidar`, ou `borne` : seulement les appuis), `distance_visiteur_m` (1,5), `presence_s` (1,0 : présent depuis ce temps), `delai_choix_s` (45), `delai_depart_s` (10 : le guide doit avoir quitté `attente` après la demande), `delai_entre_visiteurs_s` (8), `accompagner` (vrai), `retour` (vrai : le retour automatique du guide, vague 4), `relayer_evenements` (vrai : les événements du guide vers `/robot/dire` avec les phrases de la personnalité, par `atelier.equipe.relais.Relais`, comme le nœud `dialogue`), `saluer_geste` (vrai : `geste_salut` de la personnalité sur `/robot/geste`, fait par le nœud pilotage s'il tourne), `suivre_pont` (vrai : pause sur un problème vu par `/pont/etat` ; sans pont en simulation, rien), `distance_principal_m` (0,5 : le robot est « au principal »).
+
+**Sujets** (`SUJETS_ACCUEIL`, `SUJETS_EQUIPE`) :
+
+| Sujet | Sens | Rôle |
+|---|---|---|
+| `/visiteurs/detectes` (caméra), `/personnes/lidar` (LiDAR) | entrée | un visiteur : distance au plus `distance_visiteur_m`, devant le robot (\|angle\| < 45°), `regarde_robot` vrai quand le champ existe, depuis `presence_s` |
+| `/guide/etat`, `/guide/evenement` | entrée | la visite en cours (états, `mission`, `immobilise`, `actif`) ; `arrivee`, `retour_arrive`, `visiteur_perdu`, `arret`, `pilotage`, `immobilise`, `echec` |
+| `/pont/etat`, `/pont/arret` (fiable, transient_local) | entrée | verrou, `pas_en_marche`, robot muet, pont absent (le guide les voit aussi : `immobilise`) |
+| `/mouvement/maitre` (transient_local), `/personnalite/active` (transient_local) | entrée | pilotage qui a la main ; la personnalité (salutation, phrases) |
+| `/accueil/choix` | entrée | la salle choisie (schéma `choix_accueil`) : la borne (par le serveur), plus tard le chatbot (`source: dialogue`) |
+| `/accueil/commande` | entrée | `appui`, `annuler`, `pause`, `reprendre`, `ramener`, `remise_a_zero` (schéma `commande_accueil`) |
+| `/guide/aller` | sortie | `{"cible": "b204", "accompagner": true, "retour": true, "source": "accueil", "id": "<id de la visite>"}` (schéma `demande_guide`) ; `{"cible": "principal", "accompagner": false, "retour": false, "source": "accueil"}` pour « ramener » ; **jamais pendant une pause** |
+| `/guide/stop` | sortie | une pause demandée (opérateur, Atelier) pendant une visite |
+| `/robot/dire` | sortie | les phrases (schéma `robot_dire`, `source: accueil`, `id`) : salutation de la personnalité, « Je vous accompagne à … », « Je suis occupé… », « Je fais une petite pause » (priorité `securite`) ; l'arrivée et le retour : les événements du guide relayés |
+| `/robot/geste` | sortie | la salutation (facultatif) |
+| `/accueil/etat` | sortie | schéma `etat_demo`, 2 fois par seconde et à chaque changement (exemple `EXEMPLE_ETAT_DEMO`) ; plus vieux que 3 s (`DELAI_ETAT_PERIME_S`) : la démo est tenue pour arrêtée |
+| `/accueil/evenement` | sortie | schéma `evenement_demo` ; chaque choix et chaque commande qui ont un `id` reçoivent leur réponse avec ce même `id` en moins de 2 s (`DELAI_REPONSE_S`) : `choix_accepte`, `choix_refuse` (`raison` de `RAISONS_REFUS`), `commande_acceptee`, `commande_refusee` |
+
+**La machine d'états** (`ETATS_DEMO` ; logique sans ROS conseillée dans `g1_accueil/logique.py`, `Orchestrateur.entrer(sujet, donnees, t)` et `pas(t)` rendent les messages à publier, testés à fausse horloge) :
+
+| État | On y entre | On en sort |
+|---|---|---|
+| `demarrage` | lancement | `/guide/etat` reçu et robot au principal (ou plus de 3 s : `pause`, raison `guide_absent`) → `attente` |
+| `attente` | robot au principal, guide en `attente` sans mission ni `immobilise` | visiteur vu, ou `appui` → `salutation` ; un choix → `depart` directement |
+| `salutation` | la salutation de la personnalité est dite (et le geste) | aussitôt → `choix` |
+| `choix` | la borne montre les salles | un choix accepté → `depart` ; `delai_choix_s` sans choix, ou `annuler` → `attente` (événement `delai_choix`) |
+| `depart` | `/guide/aller` envoyé | le guide part (`en_route`, mission visite) → `accompagnement` ; `delai_depart_s` → `pause` (`echec`) |
+| `accompagnement` | le guide conduit (`en_route`, `bloque`, `detour`, `attente_passage`, `attente_visiteur`, `perdu`) | `arrive` → `arrivee` ; `visiteur_perdu` puis retour du guide → `retour` (visite abandonnée) |
+| `arrivee` | le guide est arrivé | le guide part pour son retour automatique → `retour` |
+| `retour` | le guide revient au principal | `retour_arrive` et guide en `attente` → `attente` (après `delai_entre_visiteurs_s` pour la détection) |
+| `occupe` | le guide fait une mission que la démo n'a pas demandée (Atelier, chatbot par `/guide/aller`) | le guide revient au repos → `attente` |
+| `pause` | voir ci-dessous | seulement `reprendre`, quand plus rien n'empêche et que le robot est au principal → `attente` ; sinon `ramener` (explicite) → `retour` |
+
+**Règles de pause** (rien ne repart seul) : la démo passe en `pause`, avec `raison` (`RAISONS_PAUSE`), dès : ARRÊT ou `/guide/stop` pendant une visite (événement `arret` du guide : `arret`), verrou (`/pont/arret`, ou `immobilise: verrou` : `verrou`), `pas_en_marche`, `robot_muet`, `refus`, `pont_absent` (les raisons `immobilise` du guide et `/pont/etat`), `echec` du guide pendant une visite de la démo (`echec`), robot perdu qui finit en échec (`perdu`), pilotage qui a la main (`/mouvement/maitre` pilotage, ou événement `pilotage` : `pilotage`), `/guide/etat` muet depuis 3 s (`guide_absent`), commande `pause` (`operateur`). En pause : aucun `/guide/aller`, la borne montre « Je fais une petite pause », un choix est refusé (`pause`) ; la phrase de pause est dite une fois (priorité `securite`). La levée de l'empêchement (« Débloquer », robot remis en marche, pont relancé, main rendue) **ne fait rien d'autre que rendre `reprendre` possible** (`reprise_possible`) : il faut `reprendre` (Atelier, ou mode opérateur de la borne) ; si le robot n'est pas au principal, `reprendre` est refusé avec « Ramenez d'abord le robot à l'accueil » et `ramener` envoie le guide au principal (une demande explicite). Ne sont pas des pauses : le délai de choix (retour à `attente`, sans mouvement), le visiteur perdu (le guide revient seul, vague 4 : `retour`, statistique `visites_abandonnees`), la borne touchée pendant une visite (`refus_occupe`, « Je suis occupé, je reviens dans un instant ! »).
+
+**Statistiques** (`statistiques` de `/accueil/etat`, depuis le lancement ou `remise_a_zero`) : `visiteurs` (salutations), `demandes` (choix acceptés), `visites_reussies` (arrivées), `visites_abandonnees`, `echecs`, `pauses`, `refus_occupe`, `duree_moyenne_s` (départ → arrivée), `depuis`.
+
+**Le chatbot de l'équipe, plus tard** (contrat, `docs/integration-equipe.md`) : il publie `/accueil/choix {"version": 1, "id": "…", "salle": "b204", "source": "dialogue", "texte": "je cherche la salle b204"}` au lieu de `/guide/aller` quand la démo tourne (`/accueil/etat` frais), écoute la réponse sur `/accueil/evenement` (même `id`) pour répondre au visiteur, et se lance avec `saluer:=false relayer_evenements:=false` (la démo salue et relaie). La démo accepte un choix en `attente`, `salutation` ou `choix` (`ETATS_CHOIX_POSSIBLE`).
+
+**En simulation** : le faux visiteur de la vague 4 joue le visiteur (scène `accompagnement`, `/faux_visiteur/mode suivre`) ; il n'y a pas de caméra : `source_visiteurs` `auto` prend le LiDAR (`/personnes/lidar` voit le piéton). La voix y passe par la sortie `borne`.
+
+**`demo.yaml`** (fichier facultatif du lieu, schéma `demo`, `atelier.lieu.accueil` : `charger_demo`, `enregistrer_demo`, `reglages_demo` qui complète par `DEMO_DEFAUT` ; écrit par Équipe › Démo › ⚙ Réglages de la démo, `GET`/`PUT /api/lieux/{id}/demo`) : `personnalite` (absente : l'active), `voix` (`sortie`, `volume`, `nom`, `vitesse`), `visiteurs` (`source`, `distance_m`, `presence_s`), `delais` (`choix_s`, `depart_s`, `entre_visiteurs_s`), `accompagner`, `retour`, `borne` (`code_operateur` de 4 à 8 chiffres : absent, pas de mode opérateur ; `langue` ; `titre`). Une salle se cache de la borne par l'étiquette `hors_borne` de `salles.yaml` (`ETIQUETTE_HORS_BORNE`) ; le point principal n'est jamais proposé.
+
+### 13.5 La borne visiteur (agent Borne et orchestrateur)
+
+**La page** `GET /borne` (`atelier/web/borne.html`, `js/borne/`, `css/borne.css` ; livrée vide), pour une tablette ou un téléphone du même réseau (`g1-atelier --hote 0.0.0.0`) ; pensée d'abord pour le tactile et un public : téléphone 390 × 844 et tablette 1024 × 768, cibles de 64 px au moins, la page ne défile jamais (la liste des salles défile seule), français (anglais si simple : `borne.langue`), aucun jargon, aucune donnée insérée en HTML, `window.erreursBorne` (erreurs de la page, pour les tests). Elle ne charge que ce que la garde permet (ci-dessous) : `/css/theme.css`, `/css/borne.css`, `/js/borne/…` ; ses modules n'importent rien hors de `js/borne/`.
+
+**Les écrans** (`ECRANS_BORNE`, `ecran_borne(etat_demo)`, phrase par défaut `TEXTES_BORNE`) : `hors_service` (la démo ne tourne pas : « Le robot se prépare… ») ; `salles` (états `attente`, `salutation`, `choix` : « Bonjour ! Où voulez-vous aller ? », les grandes cartes des salles de `salles_de_la_borne` : nom, étage, pictogramme d'après les étiquettes `PICTOGRAMMES_BORNE` ; une salle d'un autre étage est montrée grisée) ; une salle touchée → confirmation dans la page « Je vous accompagne à … ? » Oui / Non (`[data-role=confirmer-salle]`) → `POST /api/borne/choisir {salle}` ; `suivez_moi` (« Suivez-moi ! », la distance restante) ; `arrivee` ; `retour` (« Je retourne à l'accueil ») ; `occupe` (message d'attente) ; `pause`. Le premier appui sur l'écran envoie aussi `POST /api/borne/appui` (et débloque le son du navigateur). Anti-rebond : deux appuis à moins de 0,6 s comptent pour un (`ANTI_REBOND_S`), dans la page et au serveur.
+
+**L'état** : `GET /api/borne/etat` et `WS /ws/borne` (4 fois par seconde et à chaque changement ; la page se rabat sur `GET` toutes les 0,5 s), schéma `etat_borne` (exemple `EXEMPLE_ETAT_BORNE`), calculé par le serveur depuis `/accueil/etat` (frais), `/voix/son`, `salles.yaml` et `demo.yaml`. Le son de la sortie borne : `son` (`/voix/son`) → `<audio data-role=borne-son>` joue `GET /api/voix/son/<id>` une seule fois.
+
+**Le mode opérateur** : un bouton discret ouvre la saisie du code (`demo.yaml` `borne.code_operateur`) → `POST /api/borne/operateur {code}` → `{jeton, expire_s}` (300 s, `DUREE_JETON_OPERATEUR_S`) ; mauvais code : 403 ; 5 mauvais codes en 5 min : 429 (`ESSAIS_CODE_MAX`, `DUREE_BLOCAGE_CODE_S`) ; pas de code réglé : 409. Avec le jeton (en-tête `X-Jeton-Borne`), seulement `POST /api/borne/operateur/{pause|reprendre|ramener}` (`ACTIONS_OPERATEUR_BORNE`) → `/accueil/commande` (source `operateur`).
+
+**Ce qui est interdit depuis la borne** : tout le reste. Quand l'Atelier écoute le réseau (`ATELIER_HOTE` qui n'est pas la boucle locale, mis par `g1-atelier --hote`), la **garde** de `main.py` (`GardeBorne`, livrée et testée) ne laisse à un client qui n'est pas ce PC que `chemin_permis_borne` : `/borne`, `/borne.html`, `/css/theme.css`, `/css/borne.css`, `/favicon.ico`, `/js/borne/…`, `/api/borne/…`, `/ws/borne`, `/api/voix/son/…` ; tout le reste répond 403 en français (un WebSocket est fermé, code 4403) : ni l'Atelier, ni « Débloquer », ni « Y aller », ni les réglages, ni le pilotage. `g1-atelier --distant-complet` (`ATELIER_DISTANT=complet`) rend tout l'Atelier au réseau (une autre machine de l'équipe). Une demande refusée est notée dans le journal des actions (client `distant`).
+
+**L'adresse de la borne dans l'Atelier** : Équipe › Démo › Borne montre en grand `GET /api/borne/adresse` (`{adresses: ["http://192.168.0.12:8000/borne"], ecoute_reseau, port, message}` ; sans `--hote 0.0.0.0` : « relancez l'Atelier avec g1-atelier --hote 0.0.0.0 ») dans `[data-role=adresse-borne]` ; un QR code seulement si une petite bibliothèque libre en un seul fichier tient dans `vendor/` (ou `segno`, pur Python, dans `.venv-projet`, pour `GET /api/borne/qr.svg`) ; sinon l'adresse seule. Jamais d'adresse Internet.
+
+### 13.6 La voix du robot (agent Voix)
+
+**Le nœud** `voix` (`atelier/voix/`, `python -m atelier.voix`, commande `g1-voix --lieu L [--sortie robot|borne|robot_tts] [--volume N] [--voix fr_FR-siwis-medium]`, Python du projet avec ROS 2 : Piper est dans `.venv-projet`), sur le PC (le câble porte DDS jusqu'au robot ; en répétition, le faux G1 répond) ; lancé par l'Atelier avec la démo (rôle `voix`, sortie de `demo.yaml`) ou seul (`POST /api/voix/demarrer`). Il écoute `/robot/dire` (schéma `robot_dire` : guide relayé, démo, chatbot, personnalités), `/voix/commande` (schéma `commande_voix` : `taire`, `volume`, `sortie`, `voix`) et `/personnalite/active` (réglages `voix` de la personnalité : `nom`, `vitesse`, `volume` ; un message de `/robot/dire` peut porter les siens, champ `voix`) ; il publie `/api/voice/request`, `/voix/etat` (schéma `etat_voix`, 1 fois par seconde et à chaque changement) et `/voix/son` (schéma `son_voix`).
+
+**Les sorties** (`SORTIES_VOIX`) :
+- `robot` : Piper (`modeles/piper/fr_FR-siwis-medium.onnx`, 22 050 Hz, ou `fr_FR-tom-medium.onnx`, 44 100 Hz) → PCM **16 000 Hz mono 16 bits petit-boutiste** (rééchantillonné : `scipy.signal.resample_poly` est dans `.venv-projet`) → requêtes 1003 START_PLAY : `parameter` = `parametre_lecture(stream_id)` = `{"app_name": "atelier", "stream_id": "<id de la phrase>"}`, `binary` = un morceau de `morceaux_pcm(pcm)` (96 000 octets, 3 s, au plus ; nombre pair), tous les morceaux d'une phrase avec le même `stream_id`, dans l'ordre, un par seconde au plus (`ECART_MORCEAUX_S`, comme les exemples du SDK) ; la fin de la phrase est estimée par `duree_pcm_s` ; couper : 1004 STOP_PLAY `parametre_arret()` = `{"app_name": "atelier"}` ;
+- `borne` : le même son en WAV dans `dossier_sons()` (`ATELIER_VOIX_SONS`, défaut `journaux/voix/sons/`, nom `<id>.wav`, `MOTIF_ID_SON`), annoncé sur `/voix/son` et servi par `GET /api/voix/son/<id>` (permis depuis la borne) ; le nœud garde les 200 derniers ;
+- `robot_tts` : 1001 `parametre_tts(texte, index, locuteur)` = `{"index": i, "speaker_id": n, "text": "…"}` (`LOCUTEURS_TTS` : 0 chinois, 1 anglais d'après le SDK ; le français est à mesurer à la séance 2).
+**Volume** : 1006 `{"volume": n}` (0 à 100), 1005 `{}` → `{"volume": n}`. Le nœud n'envoie que `APIS_NOEUD_VOIX` (1001, 1003, 1004, 1005, 1006) : jamais 1002 (micro), jamais 1010 (la lumière : le pilotage). Chaque requête suit `erreurs_requete_voix(api_id, parametre, binaire) == []` (schéma `requete_voix`).
+
+**La file** : une phrase à la fois ; `normale` attend son tour ; `haute` coupe la phrase en cours (1004, puis la nouvelle) ; `securite` coupe et **vide la file** (`RANG_PRIORITE`) ; `taire` : 1004 et file vide ; « interruption propre » : jamais deux flux en même temps, 1004 avant la phrase suivante. Une phrase est identifiée par son `id` (celui de `/robot/dire`, sinon un id neuf de `MOTIF_ID_SON`), repris par `/voix/etat` (`en_cours`) et `/voix/son`. Robot muet (pas d'abonné à `/api/voice/request`, ou plus de réponse) : `robot.abonne` / `robot.repond` faux, `erreurs` compte, jamais de plantage. Ctrl+C ou SIGTERM : 1004, puis arrêt.
+
+**Le faux G1** (`ws/src/g1_jumeau/g1_jumeau/audio.py`, `FausseVoix` ; le comportement d'avant y est déjà, déplacé de `robot.py` : TTS, volume, LED, et l'état `voix` de `/g1_jumeau/etat` que lisent le critère 28 et les tests du pilotage) : `traiter(api, parametre, binaire, t)` reçoit le `binary` (livré) ; l'agent y ajoute : la vérification de chaque requête (`erreurs_requete_voix` : sinon 3204 et l'écart compté), le suivi des flux (`stream_id`, morceaux, octets, durée estimée, interruption par 1004, flux mêlés), et, dans `voix` : `flux` (les 20 derniers), `en_cours`, `octets_recus`, `morceaux_recus`, `ecarts` (en plus des champs d'avant) ; panne `muet` : aucune réponse (déjà). Tests : `ws/src/g1_jumeau/test/test_audio.py`.
+
+### 13.7 L'interface : ruban, accueil, barre d'outils et écran Démo
+
+**Le registre** `COMMANDES` de `js/coque/ruban.js` (livré) reçoit :
+
+| id | Mode, onglet, groupe | Libellé | Qui l'exécute |
+|---|---|---|---|
+| `robot.verifier` | Réel, Naviguer, `robot` (au début de l'onglet) | Vérifier le robot | `executer('verifier', …)` de `js/coque/diagnostic.js` (champ `module: 'diagnostic'`) |
+| `seance.terminer`, `seance.rapport` | Réel, Naviguer › ⚙ Avancé | Terminer la séance, Rapport de séance | `executer('terminer' \| 'rapport', …)` de `js/coque/seance.js` (`module: 'seance'`) |
+| `demo.lancer`, `demo.arreter`, `demo.borne` | les deux modes, Équipe, groupe `demo` (titre « Démo ») | Lancer la démo, Arrêter la démo, Borne | l'écran `demo` (`js/ecrans/demo.js`), commandes `lancer`, `arreter`, `borne` |
+| `demo.reglages` | les deux modes, Équipe › ⚙ Avancé | Réglages de la démo | l'écran `demo`, commande `reglages` |
+
+Nouveau champ du registre : `module` (`diagnostic` ou `seance`) : la commande n'ouvre pas d'écran (`ecran` null) ; la coque la passe à `executer(nom, valeur, outils)` du module (table `MODULES_COQUE` de `coque.js`) ; elle n'est jamais grisée faute de lieu. L'écran `demo` est dans la table `ECRANS` de `coque.js` (vues 3D, Plan 2D, Caméra ; vue 3D par défaut). Les onglets restent 4 et 5 (I3) ; Naviguer a 7 commandes visibles, Équipe 6.
+
+**Les points d'accroche** (livrés) : les outils donnés aux modules, `outilsCoque()` de `coque.js` = `{mode, repetition, lieu, etage, api, message(texte, genre, details), confirmer(texte, options), ouvrirCommande(id, valeur)}` ; sur l'accueil, `monterDiagnosticAccueil(zone, outils)` dans `[data-role=zone-diagnostic-accueil]` (refait à chaque changement de la case « Répétition », détruit à la fermeture) ; dans la barre d'outils, après les pastilles d'état, `[data-role=zone-seance]` (`monterSeanceBarre`) puis `[data-role=zone-diagnostic]` (`monterDiagnosticBarre`), détruits à la fermeture de l'espace ; à chaque ouverture de l'espace, `surEspace(outils)` de `seance.js`. Les modules ne touchent ni à `coque.js` ni à `accueil.js` : un besoin va dans `ecarts_contrats`. La fenêtre du diagnostic et le menu de la séance ne recouvrent jamais l'ARRÊT, se ferment par Échap et par ✗ ; pour la mesure du critère 31, `verifier`, `terminer` et `rapport` sont des actions (sautées comme « Lancer », `ACTIONS` de `test_coque_communs.py`). Ils ont leur feuille (`css/diagnostic.css`, `css/seance.css`, `css/demo.css`, reliées par `index.html`), avec les seuls jetons de `theme.css`, et le badge et le bouton tiennent dans la barre d'outils à 1366 px (critère 31 relancé).
+
+**Les repères des tests** (en plus de 12.2) : `[data-role=verifier-robot]` (accueil et barre d'outils), `[data-role=diagnostic-resume]`, `[data-role=diagnostic]` avec `[data-verification=<id>][data-etat=…]` et `[data-action=<id>]`, `[data-role=reverifier]` ; `[data-role=seance]` (`data-etat`), `[data-role=rapport-seance]` ; écran Démo : `[data-ecran=demo]`, `[data-role=demo-etat]` (`data-etat`), `[data-role=demo-statistiques]`, `[data-role=adresse-borne]` ; borne : `[data-role=borne]` (`data-ecran`), `[data-salle=<id>]`, `[data-role=confirmer-salle]`, `[data-role=borne-son]`, `[data-role=borne-operateur]`. Textes simples et ludiques, aucun nom de sujet ROS à l'écran (seulement dans les infobulles, le détail technique et la documentation).
+
+### 13.8 Les routes nouvelles
+
+| Route | Agent | Réponse |
+|---|---|---|
+| `GET /api/robot/diagnostic?mode=&rapide=` | Diagnostic | schéma `diagnostic`, 15 s au plus ; `mode` absent : celui de la navigation qui tourne, sinon `reel` |
+| `GET /api/robot/diagnostic/dernier` | Diagnostic | le dernier résultat, 404 sinon |
+| `POST /api/robot/diagnostic/{action}` | Diagnostic | `{action, ok, message, diagnostic?}` ; 409 sans `confirme` ou en simulation, 404 action inconnue, 403 service interdit |
+| `GET /api/seance`, `POST /api/seance/demarrer`, `POST /api/seance/arreter` | Boîte noire | `{seance, derniere}` ; `{seance}` (409 en simulation) ; `{seance}` (404 sans séance) |
+| `GET /api/seances`, `GET /api/seances/{id}`, `GET`/`POST …/{id}/rapport`, `GET …/{id}/fichiers/{nom}`, `GET …/{id}/export` | Boîte noire | la liste ; `seance.json` ; `rapport.html` (`?format=md\|json`), refaire ; un fichier de la liste blanche ; le .zip |
+| `GET /borne`, `GET /api/borne/etat`, `WS /ws/borne` | Borne et orchestrateur | la page ; schéma `etat_borne` |
+| `POST /api/borne/appui`, `…/choisir {salle}`, `…/annuler` | Borne et orchestrateur | `/accueil/commande` ou `/accueil/choix`, puis la réponse de la démo (2 s) : 200 `{accepte, visite}`, 409 occupé, en pause ou démo arrêtée, 404 salle inconnue, 422 salle cachée ou d'un autre étage |
+| `POST /api/borne/operateur {code}`, `POST /api/borne/operateur/{action}` | Borne et orchestrateur | `{jeton, expire_s}` (403, 409, 429) ; avec `X-Jeton-Borne` : `{accepte}` (401 sans jeton) |
+| `GET /api/borne/adresse` | Borne et orchestrateur | `{adresses, ecoute_reseau, port, message}` |
+| `GET /api/demo/etat`, `POST /api/demo/lancer {lieu, etage}`, `POST /api/demo/arreter`, `POST /api/demo/commande {action}` | Borne et orchestrateur | `{lancee, etat, voix, processus, borne}` ; rôles `demo` et `voix` ; `/accueil/commande` (source `atelier`) |
+| `GET`/`PUT /api/lieux/{id}/demo` | Borne et orchestrateur | `demo.yaml` complété par les défauts ; `{enregistre, rapport}` comme les autres PUT (4.4) |
+| `GET /api/voix/etat`, `POST /api/voix/demarrer`, `…/arreter`, `…/essayer {texte, priorite?}`, `…/commande` | Voix | `{lancee, etat, voix, sorties}` ; rôle `voix` ; `/robot/dire` (source `atelier` ; 409 sans nœud voix) ; `/voix/commande` |
+| `GET /api/voix/son/{id}` | Voix | `audio/wav` (404 sinon ; id de `MOTIF_ID_SON`, jamais un chemin) |
+
+Les squelettes sont enregistrés dans `main.py` : l'agent remplit ses fonctions sans toucher à `main.py`. Erreurs en français, `{detail, …}` (4.4), jamais d'erreur 500. Champs nouveaux de `/ws/etat` : `seance` (`etat.seance.etat()`), `demo` (dernier `/accueil/etat`, avec `age_recu_s`), `voix` (dernier `/voix/etat`). Le serveur publie `/accueil/choix`, `/accueil/commande` et `/voix/commande` par `PontRos.publier_json` et lit les réponses dans `PontRos.historique("/accueil/evenement")`.
+
+### 13.9 Critères de recette 37 à 42
+
+Tous sans robot et sans fenêtre (Firefox sans fenêtre ; WebGL avec l'affichage X de la session si besoin, comme le critère 32), sur des copies du demo ; `tests_e2e/tout.sh` lance les quarante-deux et affiche « N / 42 ». Un critère dont une pièce d'un autre agent manque répond « en attente » (77) en disant laquelle. Jamais de son, de ssh, de ping ni de commande vers le vrai robot ; aucun processus restant ; jamais d'erreur 500.
+
+37. **Diagnostic** (`critere_37_diagnostic.sh`, agent Diagnostic). Le faux G1 seul (`ros2 run g1_jumeau jumeau`, `services_arretes:=lidar_driver,unitree_slam`), l'Atelier, et des vérifications système simulées (`ATELIER_DIAGNOSTIC_FAUX`, un fichier par cas) :
+    - `GET /api/robot/diagnostic?mode=repetition` en moins de 15 s, conforme au schéma (et à ses règles) ; `services` en `probleme` avec l'action `demarrer-services` ; le faux G1 a reçu 1003 avec `{}` ; les vérifications du réseau et du Jetson sont dans `ignorees` ;
+    - l'action sans `confirme` : 409 et aucun 1001 ; avec : exactement deux 1001, `{"name": "lidar_driver", "switch": 1}` et `{"name": "unitree_slam", "switch": 1}`, aucun `switch: 0` ni autre service (`interdits` vide), services actifs en moins de 20 s, `services` ok au diagnostic suivant ;
+    - mode `reel` avec le faux contexte : câble absent → `cable` en `probleme` avec un conseil ; profil inactif → `profil` avec l'action `retablir-cable`, puis l'action confirmée « lance » `nmcli connection up robot-g1` (noté dans `<fichier>.journal`, rien de réel) ; tout bon (et services actifs) → état `ok` ;
+    - `g1-diagnostic --json` (même faux contexte) : mêmes ids et mêmes états que la route ; code 1 avec un problème, 0 quand tout va bien ;
+    - Firefox : accueil Réel avec « Répétition », clic sur `[data-role=verifier-robot]` → `[data-role=diagnostic]` montre `services` en `probleme`, le bouton `[data-action=demarrer-services]` demande confirmation dans la page, puis les services démarrent ; le même bouton de la barre d'outils marche ; `window.erreursAtelier` vide.
+38. **Boîte noire et rapport** (`critere_38_boite_noire.sh`, agent Boîte noire). Répétition par l'Atelier (Gazebo `--jumeau`, faux slam_operate, navigation), `ATELIER_SEANCES` dans le dossier du test :
+    - `POST /api/seance/demarrer {mode: repetition, ouverture: auto}` : dossier, `seance.json` conforme (`ouverte`), `lieu/`, l'enregistreur en route ; `/ws/etat` a `seance` ; Firefox : le badge `[data-role=seance]` en Réel ;
+    - repérage, « Y aller » b204 (arrivée), puis un second « Y aller », ARRÊT en route, « Débloquer », « Y aller » accueil : chaque demande est une ligne de `actions.jsonl` conforme (genres `reperer`, `y_aller`, `arret`, `debloquer`…) ; pendant le trajet, `POST /api/arret` répond en moins de 1 s et l'enregistreur prend moins de 15 % d'un cœur ;
+    - un `/cmd_vel` publié par le test hors de toute demande (5 s, le pont débloqué) ;
+    - `POST /api/seance/arreter` : `fermee` ; le bag (`ros2 bag info`) a `/guide/etat`, `/pont/etat`, `/reperage/etat`, `/api/sport/request`, `/cmd_vel`, aucun nuage ni image, `/state_estimator/odom_pelvis` à 10 Hz au plus ; en moins de 60 s, `rapport.json`, `rapport.md`, `rapport.html` et `trajets.png` : au moins deux trajets (`arrive`, et `interrompu` par l'ARRÊT), une distance non nulle, un arrêt d'urgence, la batterie de début et de fin, l'anomalie « mouvement sans demande » ;
+    - garde-fou : `ATELIER_SEANCE_PLACE_MIN_GO` énorme : l'enregistrement s'arrête proprement (`coupe`, message), la séance reste ouverte et les actions continuent ;
+    - plantage : l'Atelier tué (SIGKILL) pendant une séance, puis relancé : la séance est `interrompue`, son bag se lit, son rapport existe ; aucune séance nouvelle sans ouverture de l'espace ;
+    - faux `g1-jetson` (`ATELIER_BIN`) : l'arrêt de la navigation du robot appelle `journal` avant `arreter`, le fichier est dans `journaux/jetson/` et dans le manifeste ;
+    - `g1-seance exporter` : un .zip avec `seance.json`, `actions.jsonl`, `rapport.*`, `bag/` ; `g1-seance liste` la montre.
+39. **Borne** (`critere_39_borne.sh`, agent Borne et orchestrateur). L'Atelier, une démo jouée par l'outil du test (un faux `/accueil/etat` qui passe par les états) ou le vrai nœud, Firefox sans fenêtre à 390 × 844 puis 1024 × 768 :
+    - `/borne` : la page ne défile pas, chaque carte de salle fait au moins 64 px de haut et est entière à l'écran (ou dans la liste qui défile), les salles du demo y sont sauf le point principal et une salle étiquetée `hors_borne` dans la copie ; textes en français, sans nom de sujet ROS ; `window.erreursBorne` vide ;
+    - une salle touchée → confirmation → `/accueil/choix {salle, source: borne}` reçu ; cinq appuis rapides → un seul choix ; puis `suivez_moi` avec la distance, `arrivee`, `retour`, `salles` d'après `/accueil/etat` ; `occupe` et `pause` : cartes inactives, le message ;
+    - un `/voix/son` → `[data-role=borne-son]` charge `GET /api/voix/son/<id>` ;
+    - le code opérateur : faux → refusé ; cinq faux → 429 ; bon → `pause`, `reprendre`, `ramener` envoient `/accueil/commande` (source `operateur`), rien d'autre n'est proposé ;
+    - la garde : depuis une adresse du réseau du PC (`ATELIER_HOTE=0.0.0.0`, client sur l'adresse non locale du PC, sinon par `TestClient(client=…)`), `/borne` et `/api/borne/etat` répondent, `/`, `/api/lieux`, `/api/arret/debloquer`, `/api/guide/aller` et `/ws/etat` sont refusés (403 en français, WebSocket fermé) ; l'Atelier, Équipe › Démo › Borne, montre `[data-role=adresse-borne]`.
+40. **Voix** (`critere_40_voix.sh`, agent Voix). Le faux G1 seul et `g1-voix` (sortie `robot`) dans le domaine du test :
+    - `/robot/dire` « Bonjour, suivez-moi ! » : le faux G1 reçoit des 1003 conformes (`erreurs_requete_voix`), même `stream_id`, morceaux de 96 000 octets au plus et pairs, une durée totale à 5 % près de celle du WAV de Piper de la même phrase rééchantillonné à 16 kHz ; aucune requête hors de 1001, 1003, 1004, 1005, 1006 ;
+    - trois phrases de suite : dites dans l'ordre, jamais deux flux en même temps ; une phrase `haute` : 1004 puis la nouvelle ; une phrase `securite` : 1004, puis elle seule (file vidée) ;
+    - `/voix/commande` volume 60 → 1006 `{"volume": 60}` ; `taire` → 1004 ;
+    - sortie `robot_tts` → 1001 `{"index", "speaker_id", "text"}` ; sortie `borne` → un WAV dans `ATELIER_VOIX_SONS`, `/voix/son` conforme, `GET /api/voix/son/<id>` en `audio/wav` ;
+    - le faux G1 compte un 1003 de 3 octets reçu du test comme écart (3204) ; panne `muet` : `/voix/etat` dit le robot muet, rien ne plante ; `/voix/etat` conforme tout du long.
+41. **Démo complète en simulation** (`critere_41_demo.sh`, agent Borne et orchestrateur). Copie du demo (`guide: {delai_avant_retour_s: 5}`, `demo.yaml` sortie `borne`), simulation avec la scène `accompagnement` (faux visiteur), `POST /api/demo/lancer` : `/accueil/etat` en `attente` en moins de 30 s ;
+    - **trois visiteurs de suite** (b204, puis deux autres salles) : le faux visiteur suit ; visiteur vu au LiDAR (ou `appui`) → `salutation` (la salutation de la personnalité sur `/robot/dire`) → `POST /api/borne/choisir` → `accompagnement` (`/guide/aller` avec `accompagner: true` et `source: accueil`) → `arrivee` à moins de 0,3 m → `retour` → `attente` au principal (0,3 m) ; la borne suit (`GET /api/borne/etat`) ;
+    - statistiques : `visiteurs` 3, `visites_reussies` 3 ; `/accueil/etat` et `/accueil/evenement` conformes tout du long ; moins de 15 min ; `POST /api/demo/arreter` : plus de nœud accueil ni voix.
+42. **Sécurité de la démo** (`critere_42_securite_demo.sh`, agent Borne et orchestrateur). Répétition (pont et faux G1) avec la démo, une visite à chaque cas :
+    - ARRÊT (`POST /api/arret {mode: repetition}`) en route : `pause` (raison `arret`) en moins de 2 s ; « Débloquer » : **aucun mouvement pendant 15 s** (vérité à moins de 5 cm, aucun 7105 non nul), toujours `pause` ; un choix à la borne : refusé ; la borne dit « pause » ;
+    - « Reprendre » loin du principal : refusé (« Ramenez… ») ; « Ramener à l'accueil » : le robot revient (demande explicite), puis `attente` ;
+    - « Bloquer » en route (raison `verrou`), faux G1 assis puis remis en marche (`pas_en_marche`), pont tué (`pont_absent`, en moins de 6 s), pilotage qui prend la main (`pilotage`) : chaque fois `pause`, et 15 s sans mouvement après la levée ;
+    - jamais de `/guide/aller` de la source `accueil` pendant une pause (compté par un observateur) ; jamais d'erreur 500 ; aucun processus restant.
+
+Critères existants à relancer par chaque agent (ceux qu'il peut casser) : Diagnostic 9, 10, 28, 31 ; Boîte noire 19, 20, 31, 36 ; Borne et orchestrateur 22, 26, 30, 31, 36 ; Voix 28, 30. Les critères 1 à 36 doivent toujours passer.
+
+### 13.10 Ce qui reste à vérifier sur le robot (séance 2)
+
+En plus de 12.12 : la réponse exacte de 1003 ServiceList (noms des services, `protect`, et 0 = actif sur ce G1) et de 1001 ServiceSwitch (statut rendu, temps de démarrage de `unitree_slam`) ; `nmcli connection up robot-g1` sans sudo ; la batterie sur `/lf/bmsstate` ; la lecture de PCM 16 kHz par 1003 (son net, latence entre deux phrases, 1004 qui coupe tout de suite, deux flux de suite) et le volume (1005, 1006) ; 1001 en français (sans doute non : `speaker_id` 0 et 1) ; la borne sur une vraie tablette par le Wi-Fi (adresse, son) ; une démo complète avec un visiteur, la caméra et l'accompagnement ; le coût de l'enregistrement de la boîte noire pendant une vraie navigation.
+
+### 13.11 Les agents de la vague 6, leurs fichiers et leurs règles
+
+Aucun fichier n'a deux propriétaires. Un agent n'écrit que dans ses fichiers ; s'il a besoin d'un changement ailleurs, il ne le fait pas : il le note dans `ecarts_contrats` de son rapport (l'assemblage tranche) et fait sans, avec un bouchon. Un fichier qui n'est dans aucune ligne appartient à l'assemblage. Tous les agents travaillent dans le même arbre : aucun commit sauf ceux des contrats et de l'assemblage (puis corrections, recette, documents), jamais `git checkout`, `reset`, `stash`, `clean` ni `git add -A`. Un nouveau fichier de test ou d'outil porte le préfixe de son agent.
+
+| Agent | Domaine, partition, port | Possède (seul à y écrire) |
+|---|---|---|
+| Contrats, puis Assemblage | 140, `v6_contrats`, 8140 ; assemblage : 145, `v6_assemblage`, 8145 | `docs/plan-atelier-multi-agents.md`, `docs/journal-atelier.md`, `docs/seance-robot.md`, `docs/tutoriel-seance-2.md`, `docs/integration-equipe.md`, `docs/word/`, `README.md`, `.gitignore`, `setup.py`, `pytest.ini` ; `atelier/lieu/` ; `atelier/serveur/main.py`, `atelier/serveur/communs.py`, `atelier/serveur/etat.py`, `atelier/serveur/pont_ros.py`, `atelier/serveur/processus.py`, `atelier/serveur/routes/__init__.py`, `atelier/serveur/routes/simulation.py` ; `atelier/web/index.html`, `atelier/web/js/coque/coque.js`, `atelier/web/js/coque/accueil.js`, `atelier/web/js/coque/ruban.js`, `atelier/web/js/coque/icones.js`, `atelier/web/css/theme.css`, `atelier/web/css/atelier.css` ; `bin/g1-atelier` ; `ws/src/g1_jumeau/g1_jumeau/jumeau.py`, `ws/src/g1_jumeau/g1_jumeau/robot.py`, `ws/src/g1_jumeau/setup.py`, `ws/src/g1_jumeau/package.xml`, `ws/src/g1_jumeau/LISEZMOI.md` ; `atelier/tests/test_contrats*.py`, `atelier/tests/test_coque.py`, `atelier/tests/test_lieu_validation.py` ; `tests_e2e/tout.sh`, `tests_e2e/LISEZMOI.md`, `tests_e2e/commun.sh` ; `lieux/demo/` |
+| Diagnostic | 141, `v6_diagnostic`, 8141 | `atelier/diagnostic/`, `atelier/serveur/routes/diagnostic.py`, `bin/g1-diagnostic`, `bin/gl-diagnostic`, `atelier/web/js/coque/diagnostic.js`, `atelier/web/css/diagnostic.css`, `ws/src/g1_jumeau/g1_jumeau/etat_robot.py`, `ws/src/g1_jumeau/test/test_etat_robot.py` ; tests `atelier/tests/test_diagnostic*.py` ; `tests_e2e/critere_37_*`, `tests_e2e/outils_diagnostic_e2e.py` |
+| Boîte noire | 142, `v6_seance`, 8142 | `atelier/seance/`, `atelier/serveur/routes/seance.py`, `bin/g1-seance`, `bin/gl-seance`, `atelier/web/js/coque/seance.js`, `atelier/web/css/seance.css` ; tests `atelier/tests/test_seance*.py` ; `tests_e2e/critere_38_*`, `tests_e2e/outils_seance_e2e.py` |
+| Borne et orchestrateur | 143, `v6_borne`, 8143 | `ws/src/g1_accueil/`, `bin/g1-accueil`, `bin/gl-accueil`, `atelier/web/borne.html`, `atelier/web/js/borne/`, `atelier/web/css/borne.css`, `atelier/web/js/ecrans/demo.js`, `atelier/web/css/demo.css`, `atelier/serveur/routes/borne.py`, `atelier/serveur/routes/demo.py` ; tests `atelier/tests/test_borne*.py`, `atelier/tests/test_demo*.py` ; `tests_e2e/critere_39_*`, `tests_e2e/critere_41_*`, `tests_e2e/critere_42_*`, `tests_e2e/outils_borne_e2e.py`, `tests_e2e/outils_demo_e2e.py` |
+| Voix | 144, `v6_voix`, 8144 | `atelier/voix/`, `atelier/serveur/routes/voix.py`, `bin/g1-voix`, `bin/gl-voix`, `ws/src/g1_jumeau/g1_jumeau/audio.py`, `ws/src/g1_jumeau/test/test_audio.py` ; tests `atelier/tests/test_voix*.py` ; `tests_e2e/critere_40_*`, `tests_e2e/outils_voix_e2e.py` |
+
+Fichiers que personne ne touche dans cette vague (tous s'en servent ; un besoin va dans `ecarts_contrats`) : `ws/src/g1_nav/`, `ws/src/g1_bridge/`, `ws/src/g1_pilotage/`, `ws/src/g1_equipe/`, `ws/src/g1_sim/`, `docker/` et `bin/g1-jetson`, `atelier/scan/`, `atelier/monde/`, `atelier/equipe/`, les autres routes du serveur, les autres écrans et modules de `atelier/web/` (dont `js/coque/{arret,arbre,vue,panneau,barre_etat,confirmation,ecran,anciens_hash}.js`, `js/carte3d/`, `js/camera/`, `vendor/`), les autres commandes de `bin/` et de `setup/`, les autres critères et outils de `tests_e2e/`, les autres tests de `atelier/tests/` et des paquets.
+
+**Règles communes** (celles de 12.11, plus) :
+- dans chaque terminal : `export ROS_DOMAIN_ID=<domaine> ROS_LOCALHOST_ONLY=1 IGN_PARTITION=v6_<agent>` ; l'Atelier sur son port seulement (jamais 8000) ; les critères : `E2E_DOMAINE=<domaine> E2E_PARTITION=v6_<agent> tests_e2e/tout.sh N` (`commun.sh` met `ROS_LOCALHOST_ONLY=0`, exception de 12.11) ;
+- compilation : `cd ~/robot-g1/ws && colcon --log-base log_v6_<agent> build --symlink-install --packages-select <paquets> --build-base build_v6_<agent> --install-base install_v6_<agent>`, puis `source ~/robot-g1/ws/install_v6_<agent>/local_setup.bash` ; les critères avec `E2E_OVERLAY=~/robot-g1/ws/install_v6_<agent>` ; jamais `ws/build` ni `ws/install` (assemblage) ; le Diagnostic et la Voix recompilent `g1_jumeau` dans leur dossier (leur fichier seulement change ; `--symlink-install` : un fichier Python modifié est vu tout de suite) ;
+- tests : `~/robot-g1/.venv-projet/bin/python -m pytest` avec `PYTHONDONTWRITEBYTECODE=1 -p no:cacheprovider` ; chaque agent lance ses tests, ceux qui en dépendent, `atelier/tests/test_contrats_vague6.py`, `test_coque.py` et `test_serveur_web.py` (syntaxe et imports des modules JS), et les tests de `g1_jumeau` pour le Diagnostic et la Voix (`test_robot.py`, `test_noeud_jumeau.py`, leur fichier) ; les paquets ROS : `flake8` et `pep257` à 99 colonnes ;
+- JavaScript ES2017 lisible par esprima, sans compilation ; aucune donnée insérée en HTML ; aucune fenêtre du navigateur ; aucune adresse Internet ; textes et noms en français ; chaque fonction nouvelle a ses tests ;
+- `lieux/demo` est la référence des tests ; `lieux/seance` et `lieux/bomboclat` sont à l'utilisateur (lecture seule, copies) ;
+- jamais rien vers le vrai robot (ni son, ni service, ni ssh, ni ping vers 192.168.123.x) ; fichiers de travail dans `~/robot-g1-donnees/vague6/travail/<agent>/` (persistant) ; à la fin, tous les processus et conteneurs arrêtés (`pgrep`, `docker ps -a`) ; le rapport dit honnêtement ce qui marche, ce qui a échoué et ce qui n'a pas pu être essayé.
+
+### 13.12 Dépendances entre agents : contrats et bouchons
+
+| Qui a besoin | De quoi | Chez qui | Contrat | En attendant |
+|---|---|---|---|---|
+| Boîte noire | le diagnostic de l'ouverture | Diagnostic | `atelier.diagnostic.diagnostiquer(mode, pont, source="seance")` | `NotImplementedError` du squelette : pas de `diagnostic_debut.json` (`diagnostic_debut: null`) ; les tests utilisent `EXEMPLE_DIAGNOSTIC` |
+| Boîte noire | les sujets de la démo et de la voix dans le bag | Borne, Voix | `SUJETS_SEANCE` (livré) | des messages publiés par l'outil du test |
+| Borne et orchestrateur | les phrases dites, la sortie borne | Voix | `/robot/dire` (schéma), `/voix/son`, `GET /api/voix/son/{id}` | sans nœud voix, la démo marche en silence ; un faux `/voix/son` et un WAV écrits par le test |
+| Borne et orchestrateur | lancer la voix avec la démo | Voix | `g1-voix --lieu L --sortie S` (rôle `voix`) | `CommandeAbsente` ou code 1 du squelette : la démo tourne sans voix, avec un avertissement |
+| Voix | des phrases de la démo | Borne | `/robot/dire` source `accueil` | phrases publiées par le test |
+| Diagnostic, Boîte noire | leur place dans l'accueil et la barre d'outils | Contrats (livré) | zones `[data-role=zone-diagnostic-accueil]`, `zone-diagnostic`, `zone-seance`, `outilsCoque()`, `surEspace` | — |
+| Tous | l'ARRÊT, le verrou, le guide, le pont | vagues 4 et 5 | 11.4, 12.4, 12.15 (inchangés) | — |
+| Boîte noire (critère 38), Borne (41, 42) | la répétition et la simulation de l'Atelier | vagues 3 à 5 | `POST /api/simulation/demarrer` (inchangé) | — |
+
+**Ce qui part en assemblage** : compiler `g1_accueil` et `g1_jumeau` dans `ws/install` ; refaire les images du Jetson (`atelier/lieu` y est : modules nouveaux) ; ajouter au README et à `docs/tutoriel-seance-2.md` le diagnostic au début de la séance, la boîte noire automatique et la démo en option ; documents Word (fiches de la séance 2, chapitre « vague 6 »).

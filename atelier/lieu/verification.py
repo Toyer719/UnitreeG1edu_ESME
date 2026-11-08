@@ -445,7 +445,7 @@ def verifier_lieu(lieu):
     Avertissements : pas de salle accueil, nœud isolé, salle inaccessible, passage étroit,
     monde ou carte pas encore faits, carte plus ancienne que le monde, id lu comme un booléen.
     Vague 4 : les fichiers facultatifs de l'équipe (personnalites.yaml, dialogues.yaml, camera.yaml),
-    par atelier.lieu.equipe.verifier_equipe, quand le lieu a un dossier.
+    par atelier.lieu.equipe.verifier_equipe, quand le lieu a un dossier. Vague 6 : demo.yaml (réglages de la démo).
     """
     r = Rapport(lieu=lieu)
     for e in lieu.etages:
@@ -457,7 +457,33 @@ def verifier_lieu(lieu):
     if lieu.dossier is not None:
         _verifier_cartes(lieu, r)
         _verifier_equipe(lieu, r)
+        _verifier_demo(lieu, r)
     return r
+
+
+def _verifier_demo(lieu, r):
+    """demo.yaml (vague 6, section 13.4) : absent, rien à dire ; faux : ses erreurs ; une personnalité inconnue,
+    un code opérateur absent : un avertissement."""
+    from .accueil import charger_demo          # ici : accueil importe les modules que ce module importe aussi
+    from .equipe import charger_equipe
+    try:
+        demo = charger_demo(lieu.dossier)
+    except ErreurLieu as e:
+        for m in e.erreurs:
+            r.erreur(m)
+        return
+    if demo is None:
+        return
+    ident = demo.get("personnalite")
+    if ident:
+        try:
+            personnalites = charger_equipe(lieu.dossier, "personnalites")
+        except ErreurLieu:
+            personnalites = None          # déjà signalé par _verifier_equipe
+        ids = [p["id"] for p in (personnalites or {}).get("personnalites", [])]
+        if personnalites is not None and ident not in ids:
+            r.avertir(f"demo.yaml : la personnalité « {ident} » n'existe pas dans personnalites.yaml "
+                      f"({', '.join(ids)}) ; la démo prendra la personnalité active")
 
 
 def _verifier_equipe(lieu, r):

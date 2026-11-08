@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# « Vérifier le robot » en ligne de commande (vague 6, section 13.2 du plan) : le même code que le bouton
+# de l'Atelier, sortie en français ; code de sortie 0 si tout est bon, 1 sinon :
+#   g1-diagnostic [--mode reel|repetition] [--json] [--rapide]
+# Python du projet (.venv-projet) avec ROS 2 chargé. Commande de l'agent Diagnostic.
+# Pas de set -u : les scripts de ROS 2 ne le supportent pas.
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+source "$HOME/robot-g1/setup/env.sh"
+PY="$RACINE/.venv-projet/bin/python"
+[ -x "$PY" ] || PY="$HOME/robot-g1/.venv-projet/bin/python"
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PY" -m atelier.diagnostic "$@"

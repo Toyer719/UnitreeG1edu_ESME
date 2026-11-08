@@ -634,7 +634,9 @@ def _section_12():
     plan = PLAN.read_text(encoding="utf-8")
     titre = "## 12. Interface à la SolidWorks, carte 3D, scan corrigé, robot et caméra (vague 5)"
     assert titre in plan
-    return plan, plan[plan.index(titre):]
+    s12 = plan[plan.index(titre):]
+    fin = s12.find("\n## 13.")                # vague 6 : la section 13 suit (test_contrats_vague6.py)
+    return plan, s12 if fin < 0 else s12[:fin]
 
 
 def test_plan_section_12():
@@ -671,8 +673,9 @@ def test_exemples_du_plan_conformes():
 
 def test_tout_sh_compte_36_criteres():
     tout = TOUT.read_text(encoding="utf-8")
-    assert re.search(r"^TOUS=\(" + " ".join(str(n) for n in range(1, 37)) + r"\)$", tout, re.M)
-    assert "N / 36" in tout
+    # les 36 premiers critères restent (la vague 6 en ajoute six : test_contrats_vague6.py)
+    assert re.search(r"^TOUS=\(" + " ".join(str(n) for n in range(1, 37)) + r"( \d+)*\)$", tout, re.M)
+    assert re.search(r"N / (36|4[0-9])", tout)
     for n in range(31, 37):
         assert re.search(rf"\[{n}\]=\d+", tout), f"délai du critère {n}"
     assert "E2E_OVERLAY" in (RACINE / "tests_e2e" / "commun.sh").read_text(encoding="utf-8")

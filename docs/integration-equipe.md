@@ -394,6 +394,16 @@ ros2 run g1_equipe voix_journal --ros-args -p commande:=g1-parler   # et dit les
 
 La voix intégrée du G1 (service `voice`, TTS 1001) ne parle pas français : c'est pourquoi la voix de l'équipe passe par `/robot/dire`.
 
+### La démo d'accueil (vague 6, section 13 du plan)
+
+L'Atelier a maintenant une **démo d'accueil complète** (Équipe › Démo) : le nœud `accueil` (paquet `g1_accueil`) mène la visite, la **borne** (page `/borne` sur une tablette) laisse le visiteur choisir sa salle, et le nœud `voix` (`g1-voix`) dit les phrases de `/robot/dire` par le haut-parleur du robot (Piper sur le PC, PCM 16 kHz, api 1003), par la borne, ou par la synthèse d'Unitree. Vos parties s'y branchent ainsi :
+
+- **le chatbot** choisit la salle à la place de la borne : quand la démo tourne (`/accueil/etat` reçu depuis moins de 3 s), publiez sur `/accueil/choix` `{"version": 1, "id": "d-12", "salle": "b204", "source": "dialogue", "texte": "je cherche la salle b204"}` au lieu de `/guide/aller` ; la réponse arrive sur `/accueil/evenement` avec le même `id` (`choix_accepte`, ou `choix_refuse` et sa `raison` : `occupe`, `pause`, `salle_inconnue`…), pour répondre au visiteur. Lancez alors le nœud d'exemple avec `-p saluer:=false -p relayer_evenements:=false` : la démo salue et relaie elle-même ;
+- **la voix** : le nœud `voix` remplace la voix du journal ; il prend les phrases `priorite` `normale`, `haute` (coupe la phrase en cours) et `securite` (coupe et vide la file) ; un nœud de l'équipe qui préfère sa propre voix écoute `/robot/dire` de la même façon (et l'Atelier ne lance pas `g1-voix`) ;
+- **la caméra** : la démo salue un visiteur de `/visiteurs/detectes` proche (1,5 m) et tourné vers le robot (`regarde_robot`) ; sans caméra, elle prend le LiDAR ou les appuis sur la borne.
+
+Formats : schémas `choix_accueil`, `evenement_demo`, `etat_demo`, `robot_dire` (`atelier/lieu/schemas/`) ; règles : la démo se met en pause après un arrêt, un blocage ou une panne, et ne repart jamais seule (section 13.4 du plan).
+
 ---
 
 ## 6. Essayer sans robot

@@ -92,6 +92,12 @@ export const DESSINS = {
   liaison: '<path d="M2 9a14 14 0 0 1 20 0"/><path d="M5.5 12.5a9 9 0 0 1 13 0"/><path d="M9 16a4 4 0 0 1 6 0"/><circle cx="12" cy="19.5" r=".8" fill="currentColor"/>',
   cable: '<path d="M7 3v5M11 3v5"/><rect x="5" y="8" width="8" height="5" rx="1"/><path d="M9 13v2a4 4 0 0 0 4 4h7"/>',
   telecommande: '<rect x="2.5" y="8" width="19" height="10" rx="5"/><circle cx="7.5" cy="13" r="2"/><circle cx="16.5" cy="13" r="2"/><path d="M8 4v4M16 4v4"/>',
+  // vague 6 (section 13) : diagnostic, séance de la boîte noire, rapport, démo d'accueil, borne
+  diagnostic: '<path d="M3 12h4l2.5-6 4 12 2.5-6H21"/>',
+  seance: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/>',
+  rapport: '<path d="M6 3h9l3 3v15H6z"/><path d="M15 3v3h3"/><path d="M9 11h6M9 14h6M9 17h4"/>',
+  demo: '<circle cx="8" cy="6" r="2.5"/><path d="M4 20v-5a4 4 0 0 1 8 0v5"/><path d="M14 12h7M18 9l3 3-3 3"/>',
+  borne: '<rect x="6" y="3" width="12" height="12" rx="1.5"/><path d="M12 15v5M8 21h8"/><path d="M9.5 8h5M9.5 11h3"/>',
 };
 
 // Élément <svg> d'une icône (classe « icone » et « icone-<nom> ») ; une icône inconnue donne un carré

@@ -165,6 +165,23 @@ Vague 5 (section 12 du plan) : interface, carte 3D, scan corrigé, robot et cam�
     equipe.py      SUJETS_IMAGES (/camera_poitrine/image/compressed…), /camera_poitrine/etat (schéma
                    etat_camera) ; champs facultatifs boite et image de /visiteurs/detectes (schéma personnes)
 
+Vague 6 (section 13 du plan) : diagnostic, boîte noire, démo d'accueil, borne et voix
+-------------------------------------------------------------------------------------
+Modules de contrat (from atelier.lieu import diagnostic, seance, accueil, voix) :
+    diagnostic.py  VERIFICATIONS, ETATS_VERIFICATION, ACTIONS_DIAGNOSTIC, SERVICES_CARTOGRAPHIE (liste blanche),
+                   API_ROBOT_STATE, APPELS_UNITREE_PERMIS, parametre_service_switch, lire_liste_services,
+                   lire_reponse_switch, verification, diagnostic, code_de_sortie ; schéma diagnostic
+    seance.py      dossier d'une séance (FICHIERS_SEANCE), SUJETS_SEANCE et leurs fréquences, REGLAGES_SEANCE,
+                   dossier_seances, id_seance, action_journalisee ; schémas seance et action_seance
+    accueil.py     ETATS_DEMO, RAISONS_PAUSE, SUJETS_ACCUEIL, ecran_borne, salles_de_la_borne, refus_choix,
+                   message_choix, message_commande, chemin_permis_borne ; demo.yaml : charger_demo,
+                   enregistrer_demo, reglages_demo ; schémas etat_demo, evenement_demo, choix_accueil,
+                   commande_accueil, etat_borne et demo
+    voix.py        SORTIES_VOIX, PRIORITES_VOIX, formats des requêtes 1001, 1003, 1004, 1005, 1006
+                   (parametre_lecture, parametre_arret, morceaux_pcm, erreurs_requete_voix), dossier_sons ;
+                   schémas etat_voix, son_voix, commande_voix et requete_voix
+    equipe.py      source accueil et priorité securite de /robot/dire (champ id facultatif)
+
 Sessions de scan intégré (scans.py, sections 9 et 12.5 du plan) : LIEU/scans/<session>/
 ------------------------------------------------------------------------------------------
 Identifiant de session : AAAA-MM-JJ_HHhMM (suffixe -2, -3... si la minute est prise). Fichiers :

@@ -1,0 +1,113 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Ligne de actions.jsonl",
+  "description": "Une action de l'utilisateur dans l'Atelier pendant une séance (vague 6, section 13.3 du plan) : une ligne JSON par demande POST, PUT, PATCH ou DELETE sous /api/ (sauf les flèches de la téléopération), notée après sa réponse. Des champs en plus sont permis.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "version",
+    "t",
+    "genre",
+    "texte",
+    "methode",
+    "chemin",
+    "statut"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "t": {
+      "description": "Date et heure ISO 8601 avec le décalage, à la seconde ou plus fin (millisecondes) : 2026-11-12T14:05:41.218+01:00.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]{1,6})?([+-][0-9]{2}:[0-9]{2}|Z)$"
+    },
+    "depuis_s": {
+      "description": "Secondes depuis l'ouverture de la séance.",
+      "type": "number",
+      "minimum": 0
+    },
+    "genre": {
+      "description": "Le genre d'action (pour la chronologie du rapport).",
+      "enum": [
+        "arret",
+        "bloquer",
+        "debloquer",
+        "y_aller",
+        "stop",
+        "reperer",
+        "lancer",
+        "arreter",
+        "scan",
+        "pilotage",
+        "choregraphie",
+        "diagnostic",
+        "seance",
+        "demo",
+        "borne",
+        "voix",
+        "lieu",
+        "equipe",
+        "autre"
+      ]
+    },
+    "texte": {
+      "description": "En français : « ARRÊT », « Y aller : Salle B204 », « Posture : s'asseoir »…",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "methode": {
+      "enum": [
+        "POST",
+        "PUT",
+        "PATCH",
+        "DELETE"
+      ]
+    },
+    "chemin": {
+      "type": "string",
+      "pattern": "^/api/",
+      "maxLength": 300
+    },
+    "requete": {
+      "description": "Le corps de la demande (JSON lu, ou texte), coupé à 4 096 octets."
+    },
+    "statut": {
+      "description": "Code HTTP de la réponse, ou null si elle n'a pas pu partir.",
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 100,
+      "maximum": 599
+    },
+    "reponse": {
+      "description": "Le corps de la réponse (JSON lu, ou texte), coupé à 4 096 octets."
+    },
+    "duree_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "mode": {
+      "enum": [
+        "simu",
+        "reel",
+        "repetition",
+        null
+      ]
+    },
+    "client": {
+      "description": "local (ce PC), borne (la tablette de la borne), distant (une autre machine).",
+      "enum": [
+        "local",
+        "borne",
+        "distant"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "maxLength": 40
+    }
+  }
+}

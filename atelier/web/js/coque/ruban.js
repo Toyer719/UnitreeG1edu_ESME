@@ -25,14 +25,15 @@ export const ONGLETS_RUBAN = {
 };
 
 // Titres des groupes qui en ont un (les autres sont séparés par un simple trait)
-export const TITRES_GROUPES = { spectacle: 'Spectacle' };
+export const TITRES_GROUPES = { spectacle: 'Spectacle', demo: 'Démo' };
 
 // Chaque commande : id (stable), modes ('simu' et/ou 'reel'), onglet, groupe (trait entre groupes),
 // libelle (court, sous l'icône), icone (nom d'une icône SVG de js/coque/icones.js), aide (une phrase, en
 // infobulle et dans la barre d'état), ecran (module de js/ecrans/ qui l'exécute) et commande (passée à
 // l'écran : options.commande à l'ouverture, ou instance.commande(nom, valeur) s'il est déjà ouvert).
 // avance : rangée dans le menu « Avancé » (⚙) de l'onglet. case : commande à cocher (vrai/faux), pas
-// un bouton. Ajouts de la coque : vue (vue centrale préférée : '3d' ou 'plan' ; sans : celle de l'écran),
+// un bouton. Vague 6 (section 13.7) : module (diagnostic, seance) : la commande n'ouvre pas d'écran, la coque la
+// passe à executer(nom, valeur, outils) de js/coque/<module>.js (ecran vaut alors null). Ajouts de la coque : vue (vue centrale préférée : '3d' ou 'plan' ; sans : celle de l'écran),
 // menu (choix proposés sous le bouton ; la valeur choisie part avec la commande ; « dynamique » : les choix
 // viennent de l'écran, par ruban.menu(id, choix)).
 function c(id, modes, onglet, groupe, libelle, icone, aide, ecran, commande, plus) {
@@ -94,7 +95,8 @@ export const COMMANDES = [
   c('scan.fin', R, 'scanner', 'scan', 'Fin', 'stop', 'Termine le scan ; la carte se fabrique toute seule.', 'scan', 'fin'),
   c('scan.utiliser', R, 'scanner', 'scan', 'Utiliser cette carte', 'valider', 'Cette carte devient celle de l\'étage.', 'scan', 'utiliser'),
 
-  // Réel › Naviguer (vrai robot, ou répétition sans robot)
+  // Réel › Naviguer (vrai robot, ou répétition sans robot) ; vague 6 : « Vérifier le robot » d'abord (13.2)
+  c('robot.verifier', R, 'naviguer', 'robot', 'Vérifier le robot', 'diagnostic', 'Vérifie le câble, le réseau, les services et la batterie du robot, et dit quoi faire.', null, 'verifier', { module: 'diagnostic' }),
   c('navigation.lancer', R, 'naviguer', 'navigation', 'Lancer', 'lancer', 'Démarre la navigation sur le robot (ou la répétition sans robot).', 'simulation', 'lancer'),
   c('navigation.reperer', R, 'naviguer', 'navigation', 'Repérer', 'reperer', 'Posez le robot sur l\'accueil, tourné comme la flèche, puis cliquez.', 'simulation', 'reperer'),
   c('navigation.y-aller', R, 'naviguer', 'guide', 'Y aller', 'cible', 'Choisissez une salle : le robot y va.', 'simulation', 'y-aller', { menu: 'dynamique' }),
@@ -102,6 +104,9 @@ export const COMMANDES = [
   c('navigation.debloquer', R, 'naviguer', 'securite', 'Débloquer', 'cadenas-ouvert', 'Le robot peut de nouveau marcher, au prochain « Y aller » (rien ne repart seul).', 'simulation', 'debloquer'),
   c('navigation.arreter', R, 'naviguer', 'navigation', 'Arrêter', 'stop', 'Arrête la navigation (et la répétition).', 'simulation', 'arreter'),
   c('navigation.position', R, 'naviguer', 'avance', 'Situer le robot', 'position', 'Le robot n\'est pas sur l\'accueil : cliquez sur la carte où il est, puis glissez vers son avant.', 'simulation', 'position', { avance: true, vue: 'plan' }),
+  // vague 6 (section 13.3) : la boîte noire ; la séance s'ouvre seule en Réel, le badge de la barre d'outils la montre
+  c('seance.terminer', R, 'naviguer', 'avance', 'Terminer la séance', 'seance', 'Arrête l\'enregistrement de la séance et écrit son rapport.', null, 'terminer', { avance: true, module: 'seance' }),
+  c('seance.rapport', R, 'naviguer', 'avance', 'Rapport de séance', 'rapport', 'Ouvre le rapport de la dernière séance : trajets, arrêts, erreurs.', null, 'rapport', { avance: true, module: 'seance' }),
 
   // Réel › Piloter (vrai robot, ou répétition avec le faux G1)
   c('pilotage.main', R, 'piloter', 'main', 'Prendre la main', 'main', 'Pilotez le robot vous-même : le guide attend.', 'pilotage', 'main'),
@@ -120,6 +125,11 @@ export const COMMANDES = [
   c('dialogues.ouvrir', SR, 'equipe', 'equipe', 'Dialogues', 'dialogue', 'Ce que le robot répond aux visiteurs.', 'dialogues', 'ouvrir'),
   c('camera.ouvrir', SR, 'equipe', 'equipe', 'Caméra', 'camera', 'La caméra de poitrine et les visiteurs vus.', 'camera', 'ouvrir'),
   c('camera.reglages', SR, 'equipe', 'avance', 'Réglages de la caméra', 'reglages', 'Image, exposition et place de la caméra sur le robot.', 'camera', 'reglages', { avance: true }),
+  // Équipe › Démo (vague 6, section 13.4) : la démo d'accueil, avec la borne pour les visiteurs
+  c('demo.lancer', SR, 'equipe', 'demo', 'Lancer la démo', 'demo', 'Le robot accueille les visiteurs : la borne propose les salles, il les y accompagne.', 'demo', 'lancer'),
+  c('demo.arreter', SR, 'equipe', 'demo', 'Arrêter la démo', 'stop', 'Arrête la démo d\'accueil ; la borne affiche que le robot se prépare.', 'demo', 'arreter'),
+  c('demo.borne', SR, 'equipe', 'demo', 'Borne', 'borne', 'L\'adresse de la borne, à ouvrir sur la tablette ou le téléphone du hall.', 'demo', 'borne'),
+  c('demo.reglages', SR, 'equipe', 'avance', 'Réglages de la démo', 'reglages', 'Personnalité, voix, délais, code opérateur et salles cachées de la borne.', 'demo', 'reglages', { avance: true }),
 ];
 
 // Commandes d'un mode ('simu', 'reel' ; la répétition prend 'reel'), et d'un onglet s'il est donné

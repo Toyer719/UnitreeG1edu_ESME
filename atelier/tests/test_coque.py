@@ -115,6 +115,7 @@ def test_registre_du_ruban():
     dessins = _table(JS / "coque" / "icones.js", "DESSINS")
     ecrans = _table(JS / "coque" / "coque.js", "ECRANS")
     a_cocher = _table(JS / "coque" / "coque.js", "COMMANDES_A_COCHER")
+    modules = _table(JS / "coque" / "coque.js", "MODULES_COQUE")      # vague 6 (section 13.7 du plan)
     problemes = []
     for x in commandes:
         nom = x["id"]
@@ -127,14 +128,23 @@ def test_registre_du_ruban():
                 problemes.append(f"{nom} : l'onglet {x['onglet']} n'existe pas en {m}")
         if x["icone"] not in dessins:
             problemes.append(f"{nom} : icône « {x['icone']} » absente de icones.js")
-        if x["ecran"] not in ecrans or not (JS / "ecrans" / f"{x['ecran']}.js").is_file():
+        if x.get("module"):
+            # vague 6 : une commande d'un module de la coque (diagnostic.js, seance.js), sans écran
+            fichier = modules.get(x["module"], {}).get("fichier")
+            if x["ecran"] is not None or not fichier or not (JS / "coque" / fichier).is_file():
+                problemes.append(f"{nom} : module {x['module']} inconnu de la coque (MODULES_COQUE)")
+            elif f"'{x['commande']}'" not in (JS / "coque" / fichier).read_text(encoding="utf-8"):
+                problemes.append(f"{nom} : le module {fichier} ne traite pas « {x['commande']} »")
+        elif x["ecran"] not in ecrans or not (JS / "ecrans" / f"{x['ecran']}.js").is_file():
             problemes.append(f"{nom} : écran {x['ecran']} inconnu de la coque")
             continue
-        vues = ecrans[x["ecran"]]["vues"]
+        vues = ecrans[x["ecran"]]["vues"] if x["ecran"] in ecrans else []
         if x["vue"] is not None and x["vue"] not in vues:
             problemes.append(f"{nom} : vue {x['vue']} absente de l'écran {x['ecran']} ({vues})")
         # chaque commande est traitée : par l'écran (son nom y figure), par la coque (ouvrir, cases à cocher)
-        if x["case"]:
+        if x.get("module"):
+            pass
+        elif x["case"]:
             if nom not in a_cocher:
                 problemes.append(f"{nom} : case à cocher inconnue de la coque")
         elif x["commande"] != "ouvrir" and x["ecran"] in MES_ECRANS:
@@ -157,8 +167,11 @@ def test_registre_du_ruban():
             assert 1 <= len(visibles) <= 9, (m, o["id"], len(visibles))
     # le Pilotage n'existe qu'en Réel (décision I2)
     assert all(x["modes"] == ["reel"] for x in commandes if x["ecran"] == "pilotage")
-    assert titres == {"spectacle": "Spectacle"}
+    assert titres == {"spectacle": "Spectacle", "demo": "Démo"}
     assert {x["id"] for x in commandes if x["groupe"] == "spectacle"} == {"pilotage.danses", "pilotage.choregraphies"}
+    # vague 6 (section 13.7 du plan) : le groupe Démo d'Équipe, dans les deux modes
+    assert {x["id"] for x in commandes if x["groupe"] == "demo"} == {"demo.lancer", "demo.arreter", "demo.borne"}
+    assert all(x["modes"] == ["simu", "reel"] for x in commandes if x["id"].startswith("demo."))
 
 
 def test_menus_du_ruban():

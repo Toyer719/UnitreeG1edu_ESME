@@ -43,12 +43,20 @@ Vague 5 (section 12.6 du plan), fidèle au vrai G1 du 27/10 :
   - /g1_jumeau/mode (std_msgs/Int32, fiable) : sujet d'essai, le mode changé d'un coup (comme à la
     télécommande : 3 assis, 802 course, 501 marche...), lu ensuite par 7001.
 
+Vague 6 (section 13 du plan) :
+  /api/robot_state/request → /api/robot_state/response : services du robot (ServiceList 1003,
+      ServiceSwitch 1001 ; etat_robot.py, agent Diagnostic) ; paramètre services_arretes (texte
+      « lidar_driver,unitree_slam » ; défaut : la variable G1_JUMEAU_SERVICES_ARRETES, sinon
+      aucun) ; sujet d'essai /g1_jumeau/services (std_msgs/String JSON {"lidar_driver": 1, …}) ;
+  /api/voice/request : le binary (PCM de 1003) est passé au service voice (audio.py, agent Voix).
+
 Options pour les essais : latence_s (délai avant d'appliquer et de répondre), perte (part des
 requêtes perdues : ni appliquées ni répondues), graine (tirage des pertes).
 """
 from array import array
 import json
 import math
+import os
 import random
 import signal
 import sys
@@ -65,7 +73,7 @@ from .robot import BrasSimules, FauxG1, FSM_MARCHE
 SEUIL_MARCHE_M_S = 0.15
 SEUIL_ROTATION_RAD_S = 0.2
 
-SERVICES = ('sport', 'arm', 'voice')
+SERVICES = ('sport', 'arm', 'voice', 'robot_state')     # robot_state : vague 6 (13.2)
 PERIODE_LOWSTATE_S = 0.02
 PERIODE_BATTERIE_S = 1.0
 
@@ -119,12 +127,15 @@ def creer_noeud():
             seuil_lin = float(self.declare_parameter('seuil_marche_m_s', SEUIL_MARCHE_M_S).value)
             seuil_rot = float(self.declare_parameter('seuil_rotation_rad_s',
                                                      SEUIL_ROTATION_RAD_S).value)
+            arretes = str(self.declare_parameter(
+                'services_arretes', os.environ.get('G1_JUMEAU_SERVICES_ARRETES', '')).value)
+            services_arretes = tuple(s.strip() for s in arretes.split(',') if s.strip())
 
             # ValueError (réglage refusé, message en français) : le nœud ne démarre pas
             self.sport = FauxSport(seuil_lin=seuil_lin, seuil_rot=seuil_rot)
             self.sport.changer_panne(panne)
             self.robot = FauxG1(self.sport, fsm=fsm_depart, echelle_danses=echelle_danses,
-                                hors_marche=hors_marche)
+                                hors_marche=hors_marche, services_arretes=services_arretes)
             self.bras = BrasSimules()
             self.LowState, self.BmsState = LowState, BmsState
             self.batterie = 87.0
@@ -165,6 +176,9 @@ def creer_noeud():
             self.create_subscription(String, '/g1_jumeau/panne', self._sur_panne,
                                      QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
             self.create_subscription(Int32, '/g1_jumeau/mode', self._sur_mode,
+                                     QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
+            # vague 6 (section 13.2) : services du robot changés d'un coup, pour les essais
+            self.create_subscription(String, '/g1_jumeau/services', self._sur_services,
                                      QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE))
             self.create_timer(1.0 / frequence, self._publier_vitesse, clock=self.mural)
             self.create_timer(PERIODE_ETAT_S, self._publier_etat, clock=self.mural)
@@ -210,7 +224,8 @@ def creer_noeud():
 
         def _traiter(self, msg, service='sport'):
             identite = msg.header.identity
-            reponse_robot = self.robot.traiter(service, identite.api_id, msg.parameter)
+            binaire = bytes(msg.binary) if service == 'voice' else b''
+            reponse_robot = self.robot.traiter(service, identite.api_id, msg.parameter, binaire)
             if reponse_robot is None:
                 return                        # panne muet : ni réponse, ni mouvement
             code, data = reponse_robot
@@ -319,6 +334,18 @@ def creer_noeud():
                 return
             self.get_logger().info(f'mode changé (sujet d\'essai) : {self.robot.fsm}')
             self._publier_vitesse()
+            self._publier_etat()
+
+        def _sur_services(self, msg):
+            try:
+                statuts = json.loads(msg.data)
+                if not isinstance(statuts, dict):
+                    raise ValueError('un objet JSON {"nom du service": 0 ou 1} est attendu')
+                self.robot.etat_robot.changer(statuts)
+            except ValueError as erreur:
+                self.get_logger().warning(f'/g1_jumeau/services : {erreur}')
+                return
+            self.get_logger().info(f'services changés (sujet d\'essai) : {msg.data[:120]}')
             self._publier_etat()
 
         def _publier_etat(self):

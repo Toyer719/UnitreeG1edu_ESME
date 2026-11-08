@@ -23,7 +23,9 @@ import time
 
 # Commandes du ruban qui déclenchent une action (lancer Gazebo, un scan, prendre la main…) : le balayage ne
 # les clique pas (leur bouton est mesuré avec le reste du ruban)
-ACTIONS = {"lancer", "arreter", "reperer", "bloquer", "debloquer", "main", "utiliser", "scan", "fin", "refaire"}
+ACTIONS = {"lancer", "arreter", "reperer", "bloquer", "debloquer", "main", "utiliser", "scan", "fin", "refaire",
+           # vague 6 (section 13.7 du plan) : « Vérifier le robot » et la séance ouvrent une fenêtre, ce sont des actions
+           "verifier", "terminer", "rapport"}
 
 ESPIONS = """
 if (!window.espionsCoque) {

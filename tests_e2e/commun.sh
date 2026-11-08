@@ -16,13 +16,14 @@ RACINE="$(cd "$E2E/.." && pwd)"
 source "$HOME/robot-g1/setup/env.sh"
 # Paquets ROS du projet : dans ws/install (chargé par env.sh) ; à défaut, compilés à part dans
 # ws/install_<paquet> (copie de travail d'un agent)
-for _paquet in g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe; do
+for _paquet in g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe g1_accueil; do
   if [ ! -d "$RACINE/ws/install/$_paquet" ] && [ -f "$RACINE/ws/install_$_paquet/local_setup.bash" ]; then
     source "$RACINE/ws/install_$_paquet/local_setup.bash"
   fi
 done
 # Vague 5 (section 12.11 du plan) : paquets d'un agent compilés à part, chargés après ws/install et donc
-# prioritaires (ex. E2E_OVERLAY=~/robot-g1/ws/install_v5_robot ; plusieurs dossiers séparés par des espaces)
+# prioritaires (ex. E2E_OVERLAY=~/robot-g1/ws/install_v5_robot ; plusieurs dossiers séparés par des espaces ;
+# vague 6 : ws/install_v6_<agent>, section 13.11)
 for _overlay in $E2E_OVERLAY; do
   if [ -f "$_overlay/local_setup.bash" ]; then
     source "$_overlay/local_setup.bash"

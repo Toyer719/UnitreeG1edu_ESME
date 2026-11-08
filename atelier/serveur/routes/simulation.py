@@ -232,10 +232,20 @@ async def demarrer(demande: DemandeSimulation, request: Request):
     return etat_simulation(etat)
 
 
+def _journal_avant_arret(etat):
+    """Journal du conteneur du Jetson gardé dans la séance ouverte, avant « g1-jetson arreter » ; jamais d'exception."""
+    try:
+        etat.seance.avant_arret_jetson(local=False)
+    except Exception:       # noqa: BLE001 : la boîte noire n'empêche jamais d'arrêter le robot
+        pass
+
+
 @routeur.post("/api/simulation/arreter")
 async def arreter(request: Request):
     etat = _etat(request)
     if etat.mode() == "robot" and etat.simulation.get("en_cours"):
+        # vague 6 (section 13.3) : la boîte noire garde d'abord le journal du conteneur (fini les journaux perdus)
+        await run_in_threadpool(_journal_avant_arret, etat)
         r = await run_in_threadpool(lancer_et_attendre, "g1-jetson", ["arreter"], 60.0) \
             if commande("g1-jetson") is not None else {"code": None, "sortie": "g1-jetson absent"}
         etat.simulation["en_cours"] = False

@@ -1,0 +1,9 @@
+/* La page de la borne visiteur (vague 6, section 13.5 du plan) : feuille de l'agent Borne et orchestrateur.
+   Seulement les jetons de css/theme.css (aucune couleur en dur) ; pensée d'abord pour le tactile (téléphone
+   390 × 844 et tablette 1024 × 768) : cibles de 64 px au moins, la page ne défile jamais (la liste des salles
+   défile seule). Squelette livré par l'agent Contrats. */
+html, body { height: 100%; margin: 0; overflow: hidden; background: var(--fond); color: var(--texte); }
+[hidden] { display: none !important; }
+.borne-page { height: 100%; display: flex; align-items: center; justify-content: center; padding: 16px;
+  box-sizing: border-box; text-align: center; }
+.borne-titre { font-size: 1.8rem; margin: 0; }

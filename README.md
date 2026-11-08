@@ -135,6 +135,9 @@ Sans `--sans-fenetre`, Gazebo s'ouvre dans une fenêtre. `--lieu` accepte un id 
 | `g1-scan carte-unitree --lieu L [--etage E] [--delai 60]` | Enregistre la carte d'Unitree (`/unitree/slam_relocation/global_map`, publiée pendant « Repérer le robot ») dans `cartes/<etage>_unitree.pcd` |
 | `g1-visiteurs [--lieu L] [--source robot\|N\|/dev/…\|video.mp4] [--image] [--fenetre]` | Les visiteurs vus par la caméra de poitrine (YOLO pose et suivi), publiés sur `/visiteurs/detectes` (section « L'équipe ») |
 | `g1-jetson construire\|envoyer\|demarrer\|arreter\|etat\|journal\|verifier …` | Le conteneur de la navigation sur le Jetson (section « Le vrai robot » ; `--local` : sur le PC) |
+| `g1-diagnostic [--mode reel\|repetition] [--json]` | Vague 6, en cours (section 13.2 du plan) : « Vérifier le robot » en une commande (câble, réseau, services, mode, batterie, Jetson) ; code 0 si tout est bon |
+| `g1-seance demarrer\|arreter\|rapport\|exporter …` | Vague 6, en cours (13.3) : la boîte noire d'une séance avec le robot et son rapport |
+| `g1-accueil --lieu L`, `g1-voix --lieu L [--sortie robot\|borne\|robot_tts]` | Vague 6, en cours (13.4 et 13.6) : la démo d'accueil et la voix du robot, lancées par Équipe › Démo |
 
 Chaque commande a un alias `gl-…` et accepte `--help`.
 
@@ -444,10 +447,11 @@ cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q --ignore=ate
 cd ~/robot-g1 && ROS_LOCALHOST_ONLY=0 .venv-projet/bin/python -m pytest atelier/tests/test_robot_reperage_ros.py -q   # ce fichier à part (ses programmes l'imposent)
 cd ~/robot-g1 && .venv-projet/bin/python -m pytest docker/tests -q    # conteneur du Jetson : 1 min
 cd ~/robot-g1/ws && colcon test --executor sequential --packages-select g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe && colcon test-result --all   # paquets ROS 2
-~/robot-g1/tests_e2e/tout.sh            # les 36 critères de recette, sans fenêtre : « N / 36 » (2 h 10 environ)
+~/robot-g1/tests_e2e/tout.sh            # les 42 critères de recette, sans fenêtre : « N / 42 » (37 à 42 : vague 6, en cours)
 ~/robot-g1/tests_e2e/tout.sh 1 2 3 4    # seulement certains (11 à 15 : le scan ; 16 à 20 : le vrai robot en répétition ;
                                         # 21 à 30 : point principal, passants, guide, pilotage, équipe ;
-                                        # 31 à 36 : coque, carte 3D, scan corrigé, pont, caméra, ARRÊT)
+                                        # 31 à 36 : coque, carte 3D, scan corrigé, pont, caméra, ARRÊT ;
+                                        # 37 à 42 : diagnostic, boîte noire, borne, voix, démo, sécurité de la démo)
 ```
 
 Tous les tests tournent sans robot et sans écran, sur des copies de `lieux/demo` dans des

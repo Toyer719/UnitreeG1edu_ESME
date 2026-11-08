@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/voix/son",
+  "description": "Une phrase prête pour la sortie borne, en JSON (std_msgs/String) sur /voix/son (vague 6, section 13.6 du plan) : le WAV est servi par GET /api/voix/son/<id>. Des champs en plus sont permis.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "version",
+    "id",
+    "texte",
+    "duree_s",
+    "url"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "description": "Identifiant d'une phrase dite (et de son WAV) : minuscules, chiffres et -.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "texte": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "duree_s": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 60
+    },
+    "url": {
+      "type": "string",
+      "pattern": "^/api/voix/son/[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "priorite": {
+      "enum": [
+        "normale",
+        "haute",
+        "securite"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "maxLength": 40
+    },
+    "frequence_hz": {
+      "type": "integer",
+      "minimum": 8000,
+      "maximum": 48000
+    },
+    "temps": {
+      "description": "Date et heure ISO 8601 à l'heure locale, à la seconde, avec le décalage : 2026-11-12T14:03:05+01:00.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"
+    }
+  }
+}

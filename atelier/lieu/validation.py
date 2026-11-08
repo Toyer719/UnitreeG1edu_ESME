@@ -37,7 +37,13 @@ TYPES_FICHIERS = ("lieu", "monde", "salles", "itineraires", "zones", "carte", "s
                   "robot_geste",
                   # vague 5 (section 12 du plan) : en-tête d'un nuage d'affichage (cartes/<etage>.nuage.json),
                   # puis état du nœud caméra (/camera_poitrine/etat)
-                  "nuage", "etat_camera")
+                  "nuage", "etat_camera",
+                  # vague 6 (section 13 du plan) : diagnostic, boîte noire (manifeste et journal des actions),
+                  # demo.yaml du lieu, état de la borne, requêtes au service voice, puis les messages des sujets
+                  # de la démo et de la voix
+                  "diagnostic", "seance", "action_seance", "demo", "etat_borne", "requete_voix",
+                  "etat_demo", "evenement_demo", "choix_accueil", "commande_accueil", "etat_voix", "son_voix",
+                  "commande_voix")
 # Les messages ne sont pas des fichiers : ce sont les messages JSON (std_msgs/String) du pont, du
 # repérage (section 10 du plan) et des sujets de la vague 4 ; le nom affiché est celui du sujet ROS 2.
 NOMS_FICHIERS = {"lieu": "lieu.yaml", "monde": "monde.yaml", "salles": "salles.yaml",
@@ -52,10 +58,18 @@ NOMS_FICHIERS = {"lieu": "lieu.yaml", "monde": "monde.yaml", "salles": "salles.y
                  "personnes": "/personnes/lidar", "maitre_mouvement": "/mouvement/maitre",
                  "etat_pilotage": "/pilotage/etat", "robot_dire": "/robot/dire",
                  "personnalite_active": "/personnalite/active", "robot_geste": "/robot/geste",
-                 "nuage": "en-tête du nuage", "etat_camera": "/camera_poitrine/etat"}
+                 "nuage": "en-tête du nuage", "etat_camera": "/camera_poitrine/etat",
+                 "diagnostic": "diagnostic", "seance": "seance.json", "action_seance": "actions.jsonl",
+                 "demo": "demo.yaml", "etat_borne": "état de la borne", "requete_voix": "requête voice",
+                 "etat_demo": "/accueil/etat", "evenement_demo": "/accueil/evenement", "choix_accueil": "/accueil/choix",
+                 "commande_accueil": "/accueil/commande", "etat_voix": "/voix/etat", "son_voix": "/voix/son",
+                 "commande_voix": "/voix/commande"}
 TYPES_MESSAGES = ("etat_pont", "etat_reperage", "demande_reperage", "etat_guide", "evenement_guide",
                   "demande_guide", "pietons_etat", "pietons_consigne", "personnes", "maitre_mouvement",
-                  "etat_pilotage", "robot_dire", "personnalite_active", "robot_geste", "etat_camera")
+                  "etat_pilotage", "robot_dire", "personnalite_active", "robot_geste", "etat_camera",
+                  # vague 6 (section 13 du plan)
+                  "etat_demo", "evenement_demo", "choix_accueil", "commande_accueil", "etat_voix", "son_voix",
+                  "commande_voix")
 # noms de modèles Gazebo déjà pris (carte_du_scan : la carte extrudée d'un étage scanné, vague 5)
 IDS_RESERVES = ("sol", "g1_proxy", "carte_du_scan")
 IDS_BOOLEENS = ("yes", "no", "on", "off", "y", "n", "true", "false")
@@ -801,6 +815,73 @@ def regles_etat_camera(d, fichier="/camera_poitrine/etat"):
     return []
 
 
+# ---------------------------------------------------------------- vague 6 (section 13 du plan)
+
+GRAVITE_DIAGNOSTIC = {"ok": 0, "inconnu": 1, "attention": 2, "probleme": 3}     # = atelier.lieu.diagnostic.GRAVITE
+
+
+def regles_diagnostic(d, fichier="diagnostic"):
+    """ids uniques ; resume et etat (le pire) cohérents avec les vérifications ; un conseil pour chaque état qui
+    n'est pas ok ; actions = les actions des vérifications."""
+    messages = []
+    verifications = d["verifications"]
+    for ident in _doublons(v["id"] for v in verifications):
+        messages.append(f"{fichier} : la vérification « {ident} » apparaît plusieurs fois")
+    compte = {e: 0 for e in GRAVITE_DIAGNOSTIC}
+    for v in verifications:
+        compte[v["etat"]] += 1
+        if v["etat"] != "ok" and not (v["conseil"] or "").strip():
+            messages.append(f"{fichier}, vérification « {v['id']} » ({v['etat']}) : il manque le conseil (une phrase "
+                            "qui dit quoi faire)")
+    if compte != d["resume"]:
+        messages.append(f"{fichier} : resume ({d['resume']}) ne compte pas les vérifications ({compte})")
+    pire = max((v["etat"] for v in verifications), key=GRAVITE_DIAGNOSTIC.__getitem__)
+    if d["etat"] != pire:
+        messages.append(f"{fichier} : l'état global est « {d['etat']} », mais la vérification la plus grave est "
+                        f"« {pire} »")
+    if "actions" in d:
+        attendues = sorted({v["action"] for v in verifications if v["action"]})
+        if sorted(d["actions"]) != attendues:
+            messages.append(f"{fichier} : actions ({', '.join(d['actions']) or 'aucune'}) n'est pas la liste des "
+                            f"actions des vérifications ({', '.join(attendues) or 'aucune'})")
+    return messages
+
+
+def regles_seance(d, fichier="seance.json"):
+    """Une séance ouverte n'a ni fin ni fermeture ; une séance fermée ou interrompue a une fin ; fin après début."""
+    messages = []
+    if d["etat"] == "ouverte" and (d["fin"] is not None or d["fermeture"] is not None):
+        messages.append(f"{fichier} : une séance ouverte n'a pas encore de fin (fin et fermeture : null)")
+    if d["etat"] != "ouverte" and d["fin"] is None:
+        messages.append(f"{fichier} : une séance « {d['etat']} » a une heure de fin")
+    if d["etat"] == "fermee" and d["fermeture"] is None:
+        messages.append(f"{fichier} : une séance fermée dit pourquoi (fermeture)")
+    debut, fin = _instant(d["debut"]), _instant(d["fin"]) if d["fin"] else None
+    if debut is not None and fin is not None and fin < debut:
+        messages.append(f"{fichier} : la fin ({d['fin']}) est avant le début ({d['debut']})")
+    return messages
+
+
+def regles_etat_demo(d, fichier="/accueil/etat"):
+    """raison seulement en pause (et toujours en pause) ; une visite pendant depart, accompagnement et arrivee."""
+    messages = []
+    raison = d.get("raison")
+    if d["etat"] == "pause" and raison is None:
+        messages.append(f"{fichier} : une pause dit pourquoi (raison)")
+    if d["etat"] != "pause" and raison is not None:
+        messages.append(f"{fichier} : raison ({raison}) ne s'emploie qu'en pause")
+    if d["etat"] in ("depart", "accompagnement", "arrivee") and not d.get("visite"):
+        messages.append(f"{fichier} : l'état « {d['etat']} » suppose une visite (visite)")
+    return messages
+
+
+def regles_requete_voix(d, fichier="requête voice"):
+    """1003 : PCM de 16 bits, donc un nombre pair d'octets."""
+    if d["api_id"] == 1003 and d["octets"] % 2:
+        return [f"{fichier} : {d['octets']} octets de PCM : un nombre pair est attendu (échantillons de 16 bits)"]
+    return []
+
+
 def _sans_regle(d, fichier=""):
     return []
 
@@ -816,7 +897,11 @@ REGLES = {"lieu": regles_lieu_v4, "monde": regles_monde, "salles": regles_salles
           "pietons_etat": regles_pietons_etat, "pietons_consigne": _sans_regle, "personnes": regles_personnes,
           "maitre_mouvement": _sans_regle, "etat_pilotage": _sans_regle, "robot_dire": _sans_regle,
           "personnalite_active": _sans_regle, "robot_geste": _sans_regle,
-          "nuage": regles_nuage, "etat_camera": regles_etat_camera}
+          "nuage": regles_nuage, "etat_camera": regles_etat_camera,
+          "diagnostic": regles_diagnostic, "seance": regles_seance, "action_seance": _sans_regle, "demo": _sans_regle,
+          "etat_borne": _sans_regle, "requete_voix": regles_requete_voix, "etat_demo": regles_etat_demo,
+          "evenement_demo": _sans_regle, "choix_accueil": _sans_regle, "commande_accueil": _sans_regle,
+          "etat_voix": _sans_regle, "son_voix": _sans_regle, "commande_voix": _sans_regle}
 
 
 def valider_donnees(type_fichier, donnees, fichier=None):
@@ -825,7 +910,9 @@ def valider_donnees(type_fichier, donnees, fichier=None):
     type_fichier : lieu, monde, salles, itineraires, zones, carte, session_scan,
     ou un message du vrai robot : etat_pont, etat_reperage, demande_reperage (section 10 du plan) ;
     vague 4 (section 11) : personnalites, dialogues, camera, scene, choregraphie, et les messages de
-    TYPES_MESSAGES ; vague 5 (section 12) : nuage (en-tête d'un nuage d'affichage), etat_camera.
+    TYPES_MESSAGES ; vague 5 (section 12) : nuage (en-tête d'un nuage d'affichage), etat_camera ; vague 6
+    (section 13) : diagnostic, seance, action_seance, demo, etat_borne, requete_voix et les messages de la démo et
+    de la voix.
     fichier : nom affiché au début de chaque message (par défaut : salles.yaml, monde.yaml...).
     Renvoie une liste vide si tout va bien.
     """

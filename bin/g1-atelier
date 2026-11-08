@@ -3,7 +3,8 @@
 #   g1-atelier                     port 8000, ouvre le navigateur
 #   g1-atelier --port 8080         autre port
 #   g1-atelier --sans-navigateur   n'ouvre pas le navigateur (ex. sur le Jetson)
-#   g1-atelier --hote 0.0.0.0      accessible depuis une tablette du même réseau
+#   g1-atelier --hote 0.0.0.0      la borne (http://IP:port/borne) sur une tablette du même réseau
+#   g1-atelier --hote 0.0.0.0 --distant-complet   tout l'Atelier depuis le réseau (pas seulement la borne)
 # Ctrl+C arrête le serveur, et avec lui la simulation et la navigation qu'il a lancées.
 # Le code vient de la copie de travail qui contient cette commande (worktree compris).
 set -o pipefail   # pas de -u : les scripts de ROS 2 ne le supportent pas
@@ -12,9 +13,10 @@ RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 PORT=8000
 HOTE=127.0.0.1
 NAVIGATEUR=1
+DISTANT=borne
 
 aide() {
-  sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 while [ $# -gt 0 ]; do
@@ -24,6 +26,7 @@ while [ $# -gt 0 ]; do
     --hote) HOTE="$2"; shift 2 ;;
     --hote=*) HOTE="${1#*=}"; shift ;;
     --sans-navigateur) NAVIGATEUR=0; shift ;;
+    --distant-complet) DISTANT=complet; shift ;;
     -h|--help) aide; exit 0 ;;
     *) echo "erreur : option inconnue « $1 »" >&2; aide >&2; exit 2 ;;
   esac
@@ -55,6 +58,9 @@ if [ ! -x "$PY" ]; then
 fi
 export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
 export PATH="$RACINE/bin:$PATH"
+# Vague 6 (section 13.5 du plan) : le serveur sait où il écoute (adresse de la borne) ; depuis le réseau, seule la
+# borne est permise, sauf avec --distant-complet
+export ATELIER_HOTE="$HOTE" ATELIER_PORT="$PORT" ATELIER_DISTANT="$DISTANT"
 
 if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
   echo "erreur : le port $PORT est déjà pris (un autre Atelier tourne ?). Essayez : g1-atelier --port $((PORT + 1))" >&2

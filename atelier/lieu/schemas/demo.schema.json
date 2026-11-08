@@ -1,0 +1,126 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "demo.yaml",
+  "description": "Réglages de la démo d'accueil, fichier facultatif du lieu lieux/<id>/demo.yaml, écrit par Équipe › Démo (vague 6, section 13.4 du plan). Tout est facultatif sauf version ; valeurs par défaut : atelier.lieu.accueil.DEMO_DEFAUT. Une salle se cache de la borne par l'étiquette hors_borne (salles.yaml).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "personnalite": {
+      "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+    },
+    "voix": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sortie": {
+          "description": "robot (Piper sur le PC, haut-parleur du robot), borne (la page de la borne) ou robot_tts (synthèse d'Unitree).",
+          "enum": [
+            "robot",
+            "borne",
+            "robot_tts"
+          ]
+        },
+        "volume": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "nom": {
+          "description": "Voix Piper (fr_FR-siwis-medium, fr_FR-tom-medium).",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_.-]{1,80}$"
+        },
+        "vitesse": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2
+        }
+      }
+    },
+    "visiteurs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "description": "auto (caméra si elle publie, sinon LiDAR), camera, lidar ou borne (seulement les appuis sur la borne).",
+          "enum": [
+            "auto",
+            "camera",
+            "lidar",
+            "borne"
+          ]
+        },
+        "distance_m": {
+          "description": "Un visiteur plus près que cela est salué.",
+          "type": "number",
+          "minimum": 0.3,
+          "maximum": 5
+        },
+        "presence_s": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 10
+        }
+      }
+    },
+    "delais": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "choix_s": {
+          "description": "Sans choix de salle pendant ce temps : retour à l'attente.",
+          "type": "number",
+          "minimum": 5,
+          "maximum": 600
+        },
+        "depart_s": {
+          "description": "Le guide doit partir avant ce délai après la demande, sinon pause.",
+          "type": "number",
+          "minimum": 2,
+          "maximum": 120
+        },
+        "entre_visiteurs_s": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 600
+        }
+      }
+    },
+    "accompagner": {
+      "type": "boolean"
+    },
+    "retour": {
+      "type": "boolean"
+    },
+    "borne": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "code_operateur": {
+          "description": "Code de 4 à 8 chiffres qui ouvre le mode opérateur de la borne (pause, reprendre, ramener). Absent : pas de mode opérateur. Ce n'est pas un mot de passe.",
+          "type": "string",
+          "pattern": "^[0-9]{4,8}$"
+        },
+        "langue": {
+          "enum": [
+            "fr",
+            "en"
+          ]
+        },
+        "titre": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        }
+      }
+    }
+  }
+}

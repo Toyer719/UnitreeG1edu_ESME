@@ -11,12 +11,20 @@ noté dans simulation["mode"] :
 Vague 5 (section 12.4 du plan) : arret est le dernier verrou posé ou retiré par l'Atelier (ARRÊT de la
 barre d'outils, « Bloquer » et « Débloquer » de Naviguer) : {verrou, depuis, mode, par}, aussi dans
 /ws/etat.
+
+Vague 6 (section 13 du plan) : seance est la boîte noire (atelier.seance.GestionnaireSeance, agent Boîte noire) :
+reprise des séances interrompues au démarrage, fermeture à l'arrêt ; /ws/etat reçoit seance (la séance ouverte, en
+bref), demo (dernier /accueil/etat) et voix (dernier /voix/etat).
 """
+import logging
 import time
 
 from .pietons import positions_pietons
 from .pont_ros import PERIMEE_S, PIETONS_FRAIS_S, PontRos
 from .processus import Gestionnaire
+from atelier.seance import GestionnaireSeance
+
+JOURNAL = logging.getLogger("atelier.serveur")
 
 
 class EtatServeur:
@@ -28,14 +36,31 @@ class EtatServeur:
         self.simulation = None
         # vague 5 (section 12.4) : dernier verrou du pont posé ou retiré par l'Atelier (routes/arret.py)
         self.arret = {"verrou": False, "depuis": None, "mode": None, "par": None}
+        # vague 6 (section 13.3) : la boîte noire ; ses méthodes ne lèvent jamais d'exception vers le serveur
+        self.seance = GestionnaireSeance(self)
 
     def demarrer(self):
         if self.ros:
             self.pont.demarrer()
+        try:
+            self.seance.demarrage_serveur()        # séances restées ouvertes : interrompues (13.3)
+        except Exception:       # noqa: BLE001 : la boîte noire ne doit pas empêcher l'Atelier de démarrer
+            JOURNAL.exception("boîte noire : reprise des séances impossible")
 
     def arreter(self):
+        try:
+            self.seance.fermer("arret_atelier")    # avant les processus : l'enregistrement se ferme proprement
+        except Exception:       # noqa: BLE001
+            JOURNAL.exception("boîte noire : séance non fermée")
         self.gestionnaire.arreter_tout()
         self.pont.arreter()
+
+    def seance_direct(self):
+        """La séance ouverte, en bref (champ seance de /ws/etat), ou None ; jamais d'exception."""
+        try:
+            return self.seance.etat()
+        except Exception:       # noqa: BLE001
+            return None
 
     def simulation_en_cours(self):
         """Vrai si Gazebo tourne (modes simu et repetition)."""
@@ -112,4 +137,8 @@ class EtatServeur:
             "visiteurs": self.pont.dernier("/visiteurs/detectes"),
             # vague 5 (section 12.4) : le verrou posé par l'ARRÊT de l'Atelier
             "arret": dict(self.arret),
+            # vague 6 (section 13) : la séance de la boîte noire, la démo d'accueil et la voix
+            "seance": self.seance_direct(),
+            "demo": self.pont.dernier("/accueil/etat"),
+            "voix": self.pont.dernier("/voix/etat"),
         }

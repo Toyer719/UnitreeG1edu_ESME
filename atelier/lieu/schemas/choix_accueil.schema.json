@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/accueil/choix",
+  "description": "La salle choisie par un visiteur, en JSON (std_msgs/String) sur /accueil/choix (vague 6, section 13.4 du plan) : publiée par le serveur pour la borne, et plus tard par le chatbot de l'équipe (source dialogue). Réponse : /accueil/evenement choix_accepte ou choix_refuse.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "salle",
+    "source"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "description": "Identifiant d'une demande, repris dans la réponse (événement) et les journaux.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "salle": {
+      "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+    },
+    "source": {
+      "enum": [
+        "borne",
+        "dialogue",
+        "atelier",
+        "operateur",
+        "test"
+      ]
+    },
+    "texte": {
+      "description": "Facultatif : ce que le visiteur a dit (chatbot).",
+      "type": "string",
+      "maxLength": 300
+    },
+    "langue": {
+      "type": "string",
+      "pattern": "^[a-z]{2}$"
+    },
+    "accompagner": {
+      "description": "Facultatif (défaut : demo.yaml) : accompagner le visiteur.",
+      "type": "boolean"
+    }
+  }
+}

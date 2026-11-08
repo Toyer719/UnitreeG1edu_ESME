@@ -21,6 +21,12 @@
            dernière de chacune est gardée dans images[sujet] (atelier.equipe.images.DernieresImages),
            lue par les routes /api/camera/* ; l'état du nœud camera_usb (/camera_poitrine/etat) est
            un sujet JSON de plus.
+  vague 6  les sujets de la démo et de la voix (/accueil/etat, /accueil/evenement, /voix/etat, /voix/son) et
+  (13)     leurs entrées (/accueil/choix, /accueil/commande, /voix/commande) dans SUJETS_JSON et PUBLICATIONS_JSON ;
+           pour le diagnostic : sujets() et infos_sujet(sujet) (le graphe ROS 2, sans le nœud du serveur),
+           attendre_message(sujet, type, delai) (un message typé : batterie /lf/bmsstate…), et
+           appeler_unitree(service, api_id, parametre) : une requête unitree_api au robot, seulement parmi
+           atelier.lieu.diagnostic.APPELS_UNITREE_PERMIS (robot_state 1003 et 1001, sport 7001 en lecture).
 
 Le nœud a son propre contexte rclpy : il n'installe pas de gestionnaire de Ctrl+C (c'est
 uvicorn qui s'en occupe) et ne gêne pas un autre nœud du même processus. Il respecte
@@ -54,6 +60,11 @@ SUJETS_JSON = {
     "/personnalite/active": (0, "verrou"),     # personnalité active (11.6)
     "/robot/dire": (20, "ecoute"),             # phrases à dire (11.6)
     SUJET_ETAT_CAMERA: (0, "ecoute"),          # état du nœud camera_usb (12.7)
+    # vague 6 (section 13 du plan) : démo d'accueil (nœud accueil) et voix (nœud voix)
+    "/accueil/etat": (0, "ecoute"),            # état de la démo (13.4)
+    "/accueil/evenement": (50, "ecoute"),      # événements de la démo, réponses aux choix et commandes (13.4)
+    "/voix/etat": (0, "ecoute"),               # état du nœud voix (13.6)
+    "/voix/son": (20, "ecoute"),               # phrases prêtes pour la borne (13.6)
 }
 # Publications possibles par les routes : sujet → (forme, QoS). « texte » : le texte brut ;
 # « json » : un dict, envoyé en JSON
@@ -61,7 +72,13 @@ PUBLICATIONS_JSON = {
     "/visiteur/texte": ("texte", "defaut"),
     "/robot/dire": ("json", "defaut"),
     "/personnalite/active": ("json", "verrou"),
+    # vague 6 (section 13 du plan) : la borne et l'Atelier parlent à la démo et à la voix
+    "/accueil/choix": ("json", "defaut"),
+    "/accueil/commande": ("json", "defaut"),
+    "/voix/commande": ("json", "defaut"),
 }
+# Vague 6 (section 13.2) : requêtes unitree_api du diagnostic (le robot ne les reçoit que de cette liste)
+DELAI_ABONNE_UNITREE_S = 2.0      # attente d'un abonné à /api/<service>/request avant d'envoyer
 PIETONS_FRAIS_S = 1.0     # s : /pietons/etat plus vieux, l'Atelier recalcule les piétons depuis le monde
 
 
@@ -92,6 +109,12 @@ class PontRos:
         self._Bool = None
         self._json = {}              # sujet → [(dict, instant de réception)], le plus récent à la fin
         self._pubs_json = {}         # sujet → publieur
+        # vague 6 : requêtes unitree_api du diagnostic (créées au premier appel de chaque service)
+        self._unitree = {}           # service → publieur de /api/<service>/request
+        self._reponses_unitree = {}  # identity.id d'une de NOS requêtes → (code, data)
+        self._attendus_unitree = set()   # identity.id des requêtes en attente de réponse
+        self._verrou_unitree = threading.Lock()
+        self._numero_unitree = 0
         # vague 5 : dernière image JPEG de chaque sujet d'images (caméra de poitrine, visiteurs)
         self.images = {sujet: DernieresImages() for sujet in SUJETS_IMAGES}
         self.erreur_images = None
@@ -384,6 +407,117 @@ class PontRos:
         publieur = self._pubs_json[sujet]
         publieur.publish(self._Chaine(data=texte))
         return publieur.get_subscription_count()
+
+    # ------------------------------------------------------------ vague 6 : graphe et requêtes du diagnostic
+
+    def sujets(self):
+        """{sujet: [types]} de tout le graphe ROS 2 vu par le serveur ; {} sans pont."""
+        if not self.actif or self._noeud is None:
+            return {}
+        try:
+            return {nom: list(types) for nom, types in self._noeud.get_topic_names_and_types()}
+        except Exception:       # noqa: BLE001 : graphe indisponible (arrêt en cours)
+            return {}
+
+    def infos_sujet(self, sujet):
+        """{publieurs: [nœuds], abonnes: [nœuds]} d'un sujet, sans le nœud du serveur lui-même (un sujet « vu »
+        par le diagnostic est publié ou écouté par un autre programme) ; None sans pont."""
+        if not self.actif or self._noeud is None:
+            return None
+        try:
+            publieurs = self._noeud.get_publishers_info_by_topic(sujet)
+            abonnes = self._noeud.get_subscriptions_info_by_topic(sujet)
+        except Exception:       # noqa: BLE001 : graphe indisponible
+            return None
+        return {"publieurs": sorted({i.node_name for i in publieurs if i.node_name != self.nom_noeud}),
+                "abonnes": sorted({i.node_name for i in abonnes if i.node_name != self.nom_noeud})}
+
+    def attendre_message(self, sujet, type_message, delai=2.0):
+        """Le prochain message d'un sujet typé (ex. « unitree_hg/msg/BmsState » sur /lf/bmsstate, la batterie),
+        reçu en moins de delai secondes (QoS des capteurs : au mieux), ou None. L'abonnement ne dure que l'attente.
+        RuntimeError sans pont ROS 2 ; ValueError pour un type introuvable."""
+        if not self.actif or self._noeud is None:
+            raise RuntimeError(self.erreur or "le pont ROS 2 n'est pas démarré")
+        try:
+            paquet, _, nom = str(type_message).replace("/msg/", "/").partition("/")
+            classe = getattr(importlib.import_module(f"{paquet}.msg"), nom)
+        except (ImportError, AttributeError, ValueError):
+            raise ValueError(f"type de message introuvable : {type_message}") from None
+        from rclpy.qos import qos_profile_sensor_data
+        recu = []
+        arrive = threading.Event()
+
+        def recevoir(msg):
+            if not recu:
+                recu.append(msg)
+                arrive.set()
+        abonnement = self._noeud.create_subscription(classe, sujet, recevoir, qos_profile_sensor_data)
+        try:
+            arrive.wait(delai)
+        finally:
+            try:
+                self._noeud.destroy_subscription(abonnement)
+            except Exception:       # noqa: BLE001 : nœud en cours d'arrêt
+                pass
+        return recu[0] if recu else None
+
+    def appeler_unitree(self, service, api_id, parametre="{}", delai=2.0):
+        """Une requête au robot (unitree_api/Request sur /api/<service>/request) et sa réponse : (code, data).
+        Seulement les appels de APPELS_UNITREE_PERMIS (PermissionError sinon) ; RuntimeError sans pont ROS 2 ou
+        sans unitree_api ; TimeoutError si personne n'écoute ou si la réponse n'arrive pas dans le délai."""
+        from atelier.lieu.diagnostic import APPELS_UNITREE_PERMIS
+        if (service, int(api_id)) not in APPELS_UNITREE_PERMIS:
+            raise PermissionError(f"requête {service} {api_id} interdite depuis l'Atelier")
+        if not self.actif or self._noeud is None:
+            raise RuntimeError(self.erreur or "le pont ROS 2 n'est pas démarré")
+        try:
+            from unitree_api.msg import Request, Response
+        except ImportError as e:
+            raise RuntimeError(f"messages unitree_api introuvables ({e}) : lancez l'Atelier avec g1-atelier") from None
+        from rclpy.qos import QoSProfile, ReliabilityPolicy
+        debut = time.monotonic()
+        with self._verrou_unitree:
+            publieur = self._unitree.get(service)
+            if publieur is None:
+                fiable = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
+                self._noeud.create_subscription(Response, f"/api/{service}/response", self._recevoir_unitree, fiable)
+                publieur = self._noeud.create_publisher(Request, f"/api/{service}/request", fiable)
+                self._unitree[service] = publieur
+            self._numero_unitree += 1
+            ident = time.monotonic_ns() + self._numero_unitree
+        while publieur.get_subscription_count() == 0:
+            if time.monotonic() - debut > min(delai, DELAI_ABONNE_UNITREE_S):
+                raise TimeoutError(f"personne n'écoute /api/{service}/request : le robot (ou le faux G1) est-il relié ?")
+            time.sleep(0.05)
+        requete = Request()
+        requete.header.identity.id = ident
+        requete.header.identity.api_id = int(api_id)
+        requete.parameter = str(parametre)
+        fin = debut + delai
+        with self._condition:
+            self._attendus_unitree.add(ident)
+        try:
+            publieur.publish(requete)
+            with self._condition:
+                while ident not in self._reponses_unitree:
+                    reste = fin - time.monotonic()
+                    if reste <= 0:
+                        raise TimeoutError(f"pas de réponse du robot à {service} {api_id} en {delai:g} s")
+                    self._condition.wait(min(reste, 0.1))
+                return self._reponses_unitree.pop(ident)
+        finally:
+            with self._condition:
+                self._attendus_unitree.discard(ident)
+                self._reponses_unitree.pop(ident, None)
+
+    def _recevoir_unitree(self, msg):
+        """Réponse d'un service du robot : gardée seulement si c'est celle d'une de nos requêtes (celles du pont et
+        du pilotage passent sur le même sujet)."""
+        with self._condition:
+            ident = msg.header.identity.id
+            if ident in self._attendus_unitree:
+                self._reponses_unitree[ident] = (msg.header.status.code, msg.data)
+                self._condition.notify_all()
 
     # ------------------------------------------------------------ vague 5 : images (section 12.7)
 

@@ -66,6 +66,17 @@ Avec `jumeau:=true`, `g1_sim` ne relie plus le robot proxy à `/cmd_vel`, `/odom
 Limite : un SIGKILL du faux G1 laisse la dernière consigne dans Gazebo (le vrai robot, lui,
 s'arrête seul à la fin de `duration`).
 
+## Vague 6 (section 13 du plan) : robot_state et la voix
+
+| Fichier | Agent | Ce qu'il fait |
+|---|---|---|
+| `g1_jumeau/etat_robot.py` (`FauxRobotState`) | Diagnostic | service `robot_state` : ServiceList 1003 (`[{"name", "status", "protect"}]`, 0 = actif, 1 = arrêté), ServiceSwitch 1001 (`{"name", "switch"}` → `{"status": s}`), arrêts et services hors liste blanche comptés ; sujets `/api/robot_state/request` et `/response` |
+| `g1_jumeau/audio.py` (`FausseVoix`) | Voix | service `voice` (le comportement d'avant : TTS 1001, volume 1005 et 1006, LED 1010) ; reçoit le `binary` des requêtes : 1003 START_PLAY (PCM 16 kHz) et 1004 STOP_PLAY, vérifiés et suivis par l'agent Voix |
+
+Paramètre `services_arretes` (« lidar_driver,unitree_slam » ; défaut : la variable `G1_JUMEAU_SERVICES_ARRETES`) et
+sujet d'essai `/g1_jumeau/services` (`{"lidar_driver": 1}`) ; champ `services` de `/g1_jumeau/etat`. `robot.py` et
+`jumeau.py` les relient (livrés par l'agent Contrats) ; chaque agent n'écrit que son fichier.
+
 ## Tests
 
 ```bash

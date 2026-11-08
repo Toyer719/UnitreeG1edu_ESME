@@ -54,6 +54,15 @@ SUJETS_EQUIPE = {
     "/robot/geste": ("std_msgs/String", "robot_geste", "chatbot (action geste, geste_salut de la personnalité)"),
     # vague 5 (section 12.7 du plan) : état du nœud de la caméra de poitrine (See3CAM)
     "/camera_poitrine/etat": ("std_msgs/String", "etat_camera", "nœud camera_usb (g1_equipe), 1 Hz"),
+    # vague 6 (sections 13.4 et 13.6 du plan) : la démo d'accueil et la voix ; le chatbot choisira la salle
+    # par /accueil/choix (source dialogue), comme la borne
+    "/accueil/choix": ("std_msgs/String", "choix_accueil", "borne (serveur), plus tard le chatbot : la salle choisie"),
+    "/accueil/commande": ("std_msgs/String", "commande_accueil", "borne et Atelier : appui, pause, reprendre, ramener"),
+    "/accueil/etat": ("std_msgs/String", "etat_demo", "nœud accueil (g1_accueil), 2 Hz"),
+    "/accueil/evenement": ("std_msgs/String", "evenement_demo", "nœud accueil : réponses aux choix et commandes"),
+    "/voix/commande": ("std_msgs/String", "commande_voix", "Atelier : taire, volume, sortie, voix"),
+    "/voix/etat": ("std_msgs/String", "etat_voix", "nœud voix (g1-voix), 1 Hz"),
+    "/voix/son": ("std_msgs/String", "son_voix", "nœud voix : phrase prête pour la borne (WAV)"),
 }
 
 # Vague 5 (section 12.7 du plan) : sujets d'images (sensor_msgs/CompressedImage, JPEG), à part de
@@ -127,7 +136,8 @@ REPERES_REPONSE = ("{nom_salle}", "{salle}")     # réponse d'une règle guider 
 REPERES_PHRASE = ("{nom}",)                       # phrases d'une personnalité : nom de la salle visée
 _REPERE = re.compile(r"\{[^{}]*\}")
 
-SOURCES_DIRE = ("guide", "dialogue", "personnalite", "choregraphie", "atelier", "autre")     # schéma robot_dire
+SOURCES_DIRE = ("guide", "dialogue", "personnalite", "choregraphie", "atelier", "accueil", "autre")   # schéma robot_dire
+PRIORITES_DIRE = ("normale", "haute", "securite")    # vague 6 (section 13.6) : securite vide aussi la file
 
 # Réglages de départ d'une caméra connue (onglet Caméra, « Préréglage »). La See3CAM_11CUG d'e-con
 # Systems est une caméra couleur USB 3 (UVC) de 1,3 mégapixel, à objectif interchangeable (M12) :
