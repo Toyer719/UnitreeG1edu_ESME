@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # La démo d'accueil (vague 6, section 13.4 du plan) : le nœud ROS 2 « accueil » (paquet g1_accueil), lancé par
 # l'Atelier (Équipe › Démo › Lancer la démo) :
-#   g1-accueil --lieu L [--etage E] [-- --ros-args -p delai_choix_s:=30 …]
-# Commande de l'agent Borne et orchestrateur (squelette livré par l'agent Contrats).
+#   g1-accueil --lieu L [--etage E] [-- --ros-args -p delai_choix_s:=30.0 …]
+# Ctrl+C l'arrête (une visite en cours est finie par le guide). Commande de l'agent Borne et orchestrateur.
 # Pas de set -u : les scripts de ROS 2 ne le supportent pas.
 RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
 source "$HOME/robot-g1/setup/env.sh"

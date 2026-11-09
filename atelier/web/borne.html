@@ -3,11 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
   <title>Borne du robot d'accueil</title>
   <meta name="description" content="La borne du robot d'accueil G1 : choisissez une salle, le robot vous y accompagne.">
-  <!-- Vague 6 (section 13.5 du plan) : page de la borne, servie par GET /borne. Elle ne charge que des fichiers
-       permis depuis la tablette (atelier.lieu.accueil.chemin_permis_borne) : css/theme.css, css/borne.css et
-       js/borne/. Page de l'agent Borne et orchestrateur ; squelette livré par l'agent Contrats. -->
+  <!-- Vague 6 (section 13.5 du plan) : page de la borne, servie par GET /borne, pour une tablette ou un téléphone du
+       même réseau. Elle ne charge que des fichiers permis depuis la tablette (atelier.lieu.accueil.chemin_permis_borne) :
+       css/theme.css, css/borne.css et js/borne/. Tout le contenu est fabriqué par js/borne/borne.js (textContent).
+       Page de l'agent Borne et orchestrateur. -->
   <link rel="stylesheet" href="/css/theme.css">
   <link rel="stylesheet" href="/css/borne.css">
   <script>

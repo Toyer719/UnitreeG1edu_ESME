@@ -11,7 +11,12 @@ def test_noeud_declare():
 
 
 def test_logique_sans_ros():
-    """La machine d'états se crée sans ROS (squelette : rien à publier)."""
+    """La machine d'états se crée sans ROS ; au démarrage, un choix est refusé (robot occupé)."""
     from g1_accueil.logique import Orchestrateur
     o = Orchestrateur([], 'accueil', 'rdc')
-    assert o.entrer('/accueil/choix', {'salle': 'b204'}) == [] and o.pas() == []
+    sorties = o.entrer('/accueil/choix', {'version': 1, 'salle': 'b204', 'source': 'test'})
+    evenements = [d for s, d in sorties if s == '/accueil/evenement']
+    assert [e['code'] for e in evenements] == ['choix_refuse']
+    assert evenements[0]['raison'] == 'occupe'
+    assert not [s for s, _ in sorties if s == '/guide/aller']
+    assert o.etat()['etat'] == 'demarrage'

@@ -1,2 +1,129 @@
-/* Vague 6 (section 13 du plan) : styles de js/ecrans/demo.js (agent Borne et orchestrateur).
-   Seulement les jetons de css/theme.css, aucune couleur en dur. Feuille vide livrée par l'agent Contrats. */
+/* Vague 6 (sections 13.4, 13.5 et 13.7 du plan) : styles de js/ecrans/demo.js, l'écran Démo de l'Atelier (agent
+   Borne et orchestrateur). Seulement les jetons de css/theme.css, aucune couleur en dur. La mascotte de la borne
+   (js/borne/dessins.js) y a ses couleurs, car css/borne.css n'est chargée que par la page de la borne. */
+
+/* ---------------------------------------------------------------- l'état de la démo, dans le panneau */
+
+.panneau-demo .demo-etat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--rayon);
+  border: 1px solid var(--bord);
+  border-left: 5px solid var(--bord-fort);
+  background: var(--surface-2);
+}
+.panneau-demo .demo-etat:is([data-etat="attente"], [data-etat="salutation"], [data-etat="choix"]) { border-left-color: var(--succes); }
+.panneau-demo .demo-etat:is([data-etat="depart"], [data-etat="accompagnement"], [data-etat="arrivee"], [data-etat="retour"]) {
+  border-left-color: var(--accent-actif);
+}
+.panneau-demo .demo-etat:is([data-etat="pause"], [data-etat="occupe"]) { border-left-color: var(--avertissement); }
+.demo-visage { width: 54px; height: 54px; flex: none; }
+.demo-etat-textes { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.demo-etat-titre { font-size: 1.05rem; color: var(--texte); }
+.demo-etat-message { font-size: 0.86rem; line-height: 1.35; color: var(--texte-doux); }
+.panneau-demo .demo-visite { margin: 8px 0 0; color: var(--texte); }
+.demo-boutons, .demo-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.demo-boutons .bouton { flex: 1 1 100%; }
+.demo-actions .bouton { flex: 1 1 auto; }
+.demo-avertissements:empty { display: none; }
+.demo-avertissements p { margin: 8px 0 0; }
+
+/* ---------------------------------------------------------------- borne, statistiques, réglages */
+
+.panneau-demo .demo-adresse {
+  margin: 0 0 6px;
+  padding: 8px 10px;
+  border-radius: var(--rayon-petit);
+  background: var(--champ);
+  border: 1px solid var(--bord);
+  font-size: 0.95rem;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+.demo-statistiques { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.demo-statistique {
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: var(--rayon-petit);
+  background: var(--surface-3);
+  border: 1px solid var(--bord);
+  text-align: center;
+}
+.demo-statistique-valeur { margin: 0; font-size: 1.35rem; font-weight: 800; color: var(--texte); line-height: 1.1; }
+.demo-statistique-libelle { font-size: 0.72rem; line-height: 1.2; color: var(--texte-doux); }
+.demo-statistique[data-statistique="duree_moyenne_s"] .demo-statistique-valeur { font-size: 1rem; }
+.demo-reglages { margin-top: 12px; }
+.demo-sous-titre { margin: 14px 0 6px; font-size: 0.9rem; color: var(--texte); }
+
+/* ---------------------------------------------------------------- le plan : la salle visée, les salles cachées */
+
+.icone-orientee.salle.demo-visee .icone-fleche { outline: 3px solid var(--succes); outline-offset: 2px; border-radius: 50%; }
+.icone-orientee.salle.demo-cachee { opacity: 0.45; }
+
+/* ---------------------------------------------------------------- l'adresse de la borne, en grand, sur la vue */
+
+/* sous la barre flottante de la vue (z-index 900) et la languette de l'arbre : elles restent cliquables */
+.demo-borne {
+  position: absolute;
+  inset: 0;
+  z-index: 850;
+  display: flex;
+  flex-direction: column;
+  padding: 64px 22px 22px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background: var(--surface);
+  color: var(--texte);
+}
+.demo-borne-tete { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.demo-borne-titre { margin: 0; font-size: 1.5rem; }
+.demo-borne-fermer { min-width: var(--cible); min-height: var(--cible); font-size: 1.2rem; border: 1px solid var(--bord-fort); }
+.demo-borne-corps {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 28px 40px;
+}
+.demo-qr { width: min(36vmin, 300px); flex: none; }
+.demo-qr .qr { display: block; width: 100%; height: auto; border-radius: var(--rayon); box-shadow: var(--ombre-forte); }
+.demo-borne-ouverte .leaflet-control-container { visibility: hidden; }
+.qr-fond { fill: var(--vue-texte); }
+.qr-modules { fill: var(--vue-fond); }
+.demo-borne-textes { display: flex; flex-direction: column; gap: 12px; max-width: 580px; min-width: 0; }
+.demo-borne-message { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--avertissement); }
+.demo-borne-consigne { margin: 0; font-size: 1.1rem; color: var(--texte-doux); }
+.demo-borne-adresse {
+  margin: 0;
+  font-family: ui-monospace, "DejaVu Sans Mono", monospace;
+  font-size: clamp(1.15rem, 2.1vw, 1.9rem);
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--accent-texte);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+/* ---------------------------------------------------------------- la mascotte (copie des couleurs de borne.css) */
+
+.demo-visage .mascotte { width: 100%; height: 100%; overflow: visible; display: block; }
+.demo-visage .m-tete, .demo-visage .m-corps { fill: var(--surface-3); stroke: var(--accent-texte); stroke-width: 3; }
+.demo-visage .m-visage { fill: var(--champ); }
+.demo-visage .m-oreille { fill: var(--accent); }
+.demo-visage .m-cou { fill: var(--bord-fort); }
+.demo-visage .m-antenne-tige { stroke: var(--bord-fort); stroke-width: 3; stroke-linecap: round; }
+.demo-visage .m-antenne { fill: var(--repere-accueil); }
+.demo-visage .m-oeil { fill: var(--accent-texte); }
+.demo-visage .m-reflet { fill: var(--texte); opacity: 0.85; }
+.demo-visage .m-trait { fill: none; stroke: var(--accent-texte); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.demo-visage .m-joue { fill: var(--nuage-haut); opacity: 0.45; }
+.demo-visage .m-z { fill: var(--texte-doux); font-family: var(--police); font-weight: 800; font-size: 15px; }
+.demo-visage .m-z2 { font-size: 11px; }
