@@ -28,6 +28,10 @@ Toutes les commandes s'utilisent dans un terminal ouvert après l'installation (
 | `g1-jetson` | Conteneur de la navigation sur le Jetson du robot : construire, envoyer, démarrer, arrêter (section « Le vrai robot ») | oui (non avec `--local`) |
 | `g1-pilotage` | Piloter le G1 comme Réel › Piloter de l'Atelier : postures, gestes, voix, LED, danses, chorégraphies (section « Pilotage et danses ») | oui (non contre le faux G1) |
 | `g1-visiteurs` | Les visiteurs vus par la caméra de poitrine (YOLO) : cadres, distances, `/visiteurs/detectes` (section « L'équipe ») | non (oui pour la caméra du robot) |
+| `g1-diagnostic` | « Vérifier le robot » en une commande : câble, réseau, services de cartographie, mode, batterie, Jetson ; dit quoi faire (section « Vérifier le robot ») | oui (non avec `--mode repetition`) |
+| `g1-seance` | La boîte noire des séances avec le robot : liste, rapport, `.zip` à donner à Claude (section « La boîte noire ») | non |
+| `g1-voix` | La voix du robot : ses phrases dites par son haut-parleur (Piper sur le PC), par la borne ou par la synthèse d'Unitree (section « La démo d'accueil ») | non (oui pour le haut-parleur du robot) |
+| `g1-accueil` | Le nœud de la démo d'accueil, lancé d'habitude par Équipe › Démo › Lancer la démo (section « La démo d'accueil ») | non |
 
 Le calendrier jour par jour, avec toutes les commandes de chaque étape, est sur la page du
 projet : https://claude.ai/artifact/3sjPDb9CYcwJGrTZ8vgxNP
@@ -73,7 +77,7 @@ L'espace de travail ne défile jamais (habillage d'Unitree Explore, thème sombr
 | Mode | Onglets du ruban |
 |---|---|
 | Simulation | **Dessiner** (murs, passages, meubles, piétons, départ ; la carte se refait seule à « Enregistrer »), **Placer** (salle, accueil ★, nœud, relier, zones interdites et lentes), **Simuler** (Lancer, Arrêter, Y aller, Accompagner, Retour ; Avancé : faux visiteur, passants, réglages du guide, scan simulé), **Équipe** |
-| Robot réel | **Scanner** (Scan, Fin, Utiliser cette carte), **Placer** (sur le nuage du scan, en 3D), **Naviguer** (Lancer, Repérer, Y aller, Bloquer, Débloquer, Arrêter), **Piloter** (prendre la main, postures, gestes, voix, lumière, joysticks ; Spectacle : danses, chorégraphies), **Équipe** (personnalités, dialogues, caméra) |
+| Robot réel | **Scanner** (Scan, Fin, Utiliser cette carte), **Placer** (sur le nuage du scan, en 3D), **Naviguer** (Vérifier le robot, Lancer, Repérer, Y aller, Bloquer, Débloquer, Arrêter ; Avancé : Terminer la séance, Rapport de séance), **Piloter** (prendre la main, postures, gestes, voix, lumière, joysticks ; Spectacle : danses, chorégraphies), **Équipe** (personnalités, dialogues, caméra ; Démo : Lancer la démo, Arrêter la démo, Borne ; Avancé : Réglages de la démo) |
 
 - l'**arbre du lieu** à gauche (étage, carte, monde, ★ accueil et salles, itinéraires, zones, scans,
   équipe ; ⚠ sur ce que « Vérifier le lieu » signale) ;
@@ -97,7 +101,10 @@ simulation, pose du repérage, retour après chaque visite), des **passants** qu
 ou attend, l'**accompagnement** du visiteur et le retour automatique, **Piloter** (postures,
 joystick, gestes, voix, LED, danses du robot, chorégraphies) et l'**Équipe** (personnalités,
 dialogues, caméra). Depuis la vague 5 (section 12) : cette interface, la carte 3D, le scan corrigé,
-la vitesse minimale du pont et la caméra de poitrine. Chacun a sa section ci-dessous.
+la vitesse minimale du pont et la caméra de poitrine. Depuis la vague 6 (section 13) : **Vérifier le
+robot** (le diagnostic en un clic), la **boîte noire** de chaque séance avec le robot (badge
+« ● Enregistrement » et rapport de séance) et la **démo d'accueil** (borne visiteur sur une tablette,
+voix du robot). Chacun a sa section ci-dessous.
 
 ### Les mêmes étapes en ligne de commande
 
@@ -135,9 +142,11 @@ Sans `--sans-fenetre`, Gazebo s'ouvre dans une fenêtre. `--lieu` accepte un id 
 | `g1-scan carte-unitree --lieu L [--etage E] [--delai 60]` | Enregistre la carte d'Unitree (`/unitree/slam_relocation/global_map`, publiée pendant « Repérer le robot ») dans `cartes/<etage>_unitree.pcd` |
 | `g1-visiteurs [--lieu L] [--source robot\|N\|/dev/…\|video.mp4] [--image] [--fenetre]` | Les visiteurs vus par la caméra de poitrine (YOLO pose et suivi), publiés sur `/visiteurs/detectes` (section « L'équipe ») |
 | `g1-jetson construire\|envoyer\|demarrer\|arreter\|etat\|journal\|verifier …` | Le conteneur de la navigation sur le Jetson (section « Le vrai robot » ; `--local` : sur le PC) |
-| `g1-diagnostic [--mode reel\|repetition] [--json]` | Vague 6, en cours (section 13.2 du plan) : « Vérifier le robot » en une commande (câble, réseau, services, mode, batterie, Jetson) ; code 0 si tout est bon |
-| `g1-seance demarrer\|arreter\|rapport\|exporter …` | Vague 6, en cours (13.3) : la boîte noire d'une séance avec le robot et son rapport |
-| `g1-accueil --lieu L`, `g1-voix --lieu L [--sortie robot\|borne\|robot_tts]` | Vague 6, en cours (13.4 et 13.6) : la démo d'accueil et la voix du robot, lancées par Équipe › Démo |
+| `g1-diagnostic [--mode reel\|repetition] [--rapide] [--json]` | « Vérifier le robot » : chaque point OK, Attention, Problème ou Inconnu, avec ce qu'il faut faire ; code 0 si rien n'est à régler (section « Vérifier le robot ») |
+| `g1-diagnostic --action demarrer-services\|retablir-cable\|cable-automatique` | Une action du diagnostic (services de cartographie, connexion du câble), après la réponse « oui » |
+| `g1-seance demarrer\|arreter\|etat\|liste`, `g1-seance rapport\|exporter ID\|derniere [--sans-bag]` | La boîte noire : ouvrir ou terminer la séance de l'Atelier qui tourne, la liste des séances, refaire un rapport, le `.zip` d'une séance (section « La boîte noire ») |
+| `g1-accueil --lieu L [--etage E]` | Le nœud de la démo d'accueil (section « La démo d'accueil ») |
+| `g1-voix --lieu L [--sortie robot\|borne\|robot_tts] [--volume N] [--voix fr_FR-siwis-medium] [--vitesse 1.0]` | La voix du robot seule ; `g1-voix --mesurer` : le temps de synthèse de Piper sur ce PC |
 
 Chaque commande a un alias `gl-…` et accepte `--help`.
 
@@ -416,6 +425,50 @@ Le robot répond (« Je vous emmène à Salle B204. Suivez-moi ! ») et le guide
 coéquipiers (sujets, formats, comment brancher la See3CAM, le chatbot et la voix) :
 **`docs/integration-equipe.md`**.
 
+### La démo d'accueil : borne visiteur et voix du robot
+
+La démo complète du robot d'accueil (vague 6, sections 13.4 à 13.6 du plan), qui marche sans le
+chatbot de l'équipe : le robot attend à l'accueil ; un visiteur s'approche (vu par la caméra ou le
+LiDAR) ou touche la **borne** (une tablette ou un téléphone) ; le robot le salue, la borne propose
+les salles en grandes cartes, le visiteur en touche une (« Je vous accompagne à … ? » Oui), le robot
+l'y accompagne (« Suivez-moi ! », la distance restante sur la borne), annonce l'arrivée, puis revient
+seul à l'accueil et attend le visiteur suivant.
+
+1. Lancer le guide : en Simulation, **Simuler › Lancer** ; avec le robot, **Naviguer › Lancer**, puis
+   **Repérer**.
+2. **Équipe › Démo › Lancer la démo** : le panneau montre l'état de la démo (« Attend un visiteur »),
+   la visite en cours, les statistiques et ce que dit la voix ; Pause, Reprendre et Ramener à
+   l'accueil.
+3. La borne : sur ce PC, http://localhost:8000/borne ; sur une tablette du même réseau, lancez
+   l'Atelier avec `g1-atelier --hote 0.0.0.0`, puis **Équipe › Démo › Borne** montre l'adresse en grand
+   et son code QR. Depuis le réseau, seule la borne est permise (ni l'Atelier, ni « Débloquer », ni
+   les réglages ; `g1-atelier --distant-complet` rend tout, pour un ordinateur de l'équipe).
+
+**Sécurité** : un ARRÊT, « Bloquer », le robot assis ou muet, le pont arrêté ou le pilotage qui prend
+la main mettent la démo **en pause**, et **rien ne repart seul** : « Reprendre » (le robot à l'accueil)
+ou « Ramener à l'accueil » (une demande explicite) dans l'Atelier, ou sur la borne en mode opérateur
+(un bouton discret et le code opérateur des réglages). Arrêter la démo n'arrête pas le robot : c'est
+le rôle de l'ARRÊT.
+
+**Réglages** (**Équipe › ⚙ Avancé › Réglages de la démo**, fichier `demo.yaml` du lieu) : personnalité,
+**la voix** (où le robot parle, voix, volume, vitesse ; « Démarrer la voix » et « Essayer » une phrase
+sans lancer la démo), les visiteurs (caméra, LiDAR ou borne seule, distance), les délais,
+l'accompagnement, le retour seul, le titre et la langue de la borne, le code opérateur, et les salles
+cachées de la borne.
+
+**La voix du robot** (`g1-voix`, lancée avec la démo) dit les phrases du robot (salutation, « Je vous
+accompagne à … », arrivée, retour, pause, phrases des personnalités et, plus tard, du chatbot) par
+l'une de trois sorties : **robot** (voix française de Piper calculée sur le PC, jouée par le
+haut-parleur du robot), **borne** (la tablette joue le son ; c'est la sortie de la simulation) ou
+**robot_tts** (la synthèse intégrée d'Unitree, dont le français est à vérifier à la séance 2). Une
+seule phrase à la fois ; les phrases de sécurité passent devant.
+
+```bash
+g1-voix --lieu demo --sortie borne        # la voix seule (Ctrl+C : elle se tait, puis s'arrête)
+g1-voix --mesurer                         # temps de synthèse de Piper sur ce PC (environ 0,1 s par phrase)
+g1-accueil --lieu demo                    # la démo sans l'Atelier (le guide doit tourner)
+```
+
 ### Les fichiers d'un lieu
 
 ```
@@ -434,6 +487,7 @@ lieux/<id>/
 ├── itineraires.yaml                   nœuds et couloirs du guide
 ├── zones.yaml                         zones interdites et lentes
 ├── personnalites.yaml, dialogues.yaml, camera.yaml   pour l'équipe (vague 4, facultatifs)
+├── demo.yaml                          réglages de la démo d'accueil (vague 6, facultatif)
 ├── sauvegardes/<date>_<raison>/       copies faites avant une migration (g1-lieu migrer, vague 4)
 └── scans/<date>_<heure>/              un dossier par scan (session.json, enregistrement, carte, nuages, rapport)
 ```
@@ -443,11 +497,11 @@ Les formats exacts sont dans `atelier/lieu/schemas/` et dans la section 4 du pla
 ### Tester
 
 ```bash
-cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q --ignore=atelier/tests/test_robot_reperage_ros.py   # bibliothèques, scan, serveur, interface : 11 min environ
+cd ~/robot-g1 && .venv-projet/bin/python -m pytest atelier/tests -q --ignore=atelier/tests/test_robot_reperage_ros.py   # bibliothèques, scan, serveur, interface, vague 6 : 20 min environ
 cd ~/robot-g1 && ROS_LOCALHOST_ONLY=0 .venv-projet/bin/python -m pytest atelier/tests/test_robot_reperage_ros.py -q   # ce fichier à part (ses programmes l'imposent)
 cd ~/robot-g1 && .venv-projet/bin/python -m pytest docker/tests -q    # conteneur du Jetson : 1 min
-cd ~/robot-g1/ws && colcon test --executor sequential --packages-select g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe && colcon test-result --all   # paquets ROS 2
-~/robot-g1/tests_e2e/tout.sh            # les 42 critères de recette, sans fenêtre : « N / 42 » (37 à 42 : vague 6, en cours)
+cd ~/robot-g1/ws && colcon test --executor sequential --packages-select g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe g1_accueil && colcon test-result --all   # paquets ROS 2
+~/robot-g1/tests_e2e/tout.sh            # les 42 critères de recette, sans fenêtre : « N / 42 »
 ~/robot-g1/tests_e2e/tout.sh 1 2 3 4    # seulement certains (11 à 15 : le scan ; 16 à 20 : le vrai robot en répétition ;
                                         # 21 à 30 : point principal, passants, guide, pilotage, équipe ;
                                         # 31 à 36 : coque, carte 3D, scan corrigé, pont, caméra, ARRÊT ;
@@ -550,6 +604,47 @@ navigation sont ceux de l'Atelier G1 (section ci-dessus : `g1-monde simuler`,
 1. Robot sur son portique, zone dégagée.
 2. Une personne garde la télécommande officielle en main pendant tout l'essai.
 3. Chargeur du PC branché, batterie du robot chargée.
+4. Câble branché, `source ~/robot-g1/setup/robot.sh`, `g1-atelier`, puis **Vérifier le robot**
+   (ci-dessous) : tout doit être OK avant de lancer quoi que ce soit.
+
+### Vérifier le robot (diagnostic en un clic)
+
+Sur l'accueil de l'Atelier (carte **Robot réel**), dans la barre d'outils et dans **Naviguer**, le bouton
+**Vérifier le robot** contrôle tout en quelques secondes et dit, pour chaque point, OK, Attention,
+Problème ou Inconnu, avec la phrase qui dit quoi faire : le câble, l'adresse du PC, la connexion
+`robot-g1`, les réglages ROS, le PC1, le Jetson et le LiDAR, les sujets du robot, les **services de
+cartographie** (`lidar_driver` et `unitree_slam`, arrêtés à la séance 1), le mode du robot, la
+batterie, et le Jetson (clé SSH, Docker, version de l'image, place, horloge, caméra). Les actions
+proposées ne partent qu'après une confirmation dans la page : **Démarrer les services de
+cartographie** (seulement ces deux-là, jamais un arrêt), **Rétablir la connexion du câble**, et **La
+rétablir seule à chaque branchement**. Le diagnostic ne fait jamais bouger le robot.
+
+```bash
+g1-diagnostic                              # le même, dans un terminal (code 0 si tout est bon)
+g1-diagnostic --action demarrer-services   # une action, après la réponse « oui »
+g1-diagnostic --mode repetition            # contre le faux G1 de la répétition, sans robot
+```
+
+### La boîte noire : chaque séance est enregistrée
+
+Dès qu'on ouvre l'espace en **Réel** (vrai robot ou répétition), une **séance** s'ouvre (badge
+« ● Enregistrement » dans la barre d'outils) et l'Atelier garde tout dans
+`~/robot-g1/journaux/seances/<date>_<heure>/` : le diagnostic du début, chaque action (ARRÊT, Bloquer,
+Y aller, Repérer, postures…), un enregistrement ROS 2 léger (états du guide, du pont et du repérage,
+ordres de marche, odométrie à 10 Hz, batterie, démo, voix, journaux des nœuds ; jamais les nuages de
+points ni les images, et il s'arrête proprement au-delà de 1 Go ou sous 2 Go de place libre), les
+journaux du serveur et des commandes, et le journal du conteneur du Jetson, récupéré avant chaque
+arrêt. **Terminer la séance** (menu du badge, ou Naviguer › ⚙ Avancé) écrit le **rapport de séance**
+(page HTML : durée, batterie, chaque trajet sur la carte avec son résultat et la cause des arrêts,
+états du pont, erreurs, et « À regarder en premier » : les anomalies trouvées toutes seules, comme
+un mouvement sans demande). Après un plantage, la séance est marquée interrompue et son rapport est
+fait au redémarrage.
+
+```bash
+g1-seance liste                           # les séances, la plus récente d'abord
+g1-seance exporter derniere               # un .zip de la dernière séance, à donner à Claude
+g1-seance rapport derniere                # refaire son rapport
+```
 
 ### La télécommande officielle
 
@@ -735,7 +830,7 @@ robot-g1/
 ├── sim/            scripts de simulation
 ├── robot/          scripts pour le vrai robot
 ├── outils/         modules communs (manette, connexion, état)
-├── atelier/        Atelier G1 : lieu, monde, scan, serveur web, interface, tests
+├── atelier/        Atelier G1 : lieu, monde, scan, serveur web, interface, diagnostic, boîte noire (seance), voix, tests
 ├── lieux/          paquets de lieu (demo : le lycée d'exemple)
 ├── tests_e2e/      critères de recette de l'Atelier (tout.sh)
 ├── docker/         conteneur de la navigation pour le Jetson du robot (g1-jetson)
@@ -743,7 +838,8 @@ robot-g1/
 ├── setup/          installation et environnement (env.sh, robot.sh)
 ├── third_party/    dépôts Unitree, versions dans VERSIONS.txt
 ├── ws/            espace de travail ROS 2 : pilote LiDAR, FAST-LIO2, g1_sim, g1_nav, g1_bridge (pont), g1_jumeau (faux G1),
-│                  g1_pilotage (pilotage, vague 4), g1_equipe (chatbot, personnalités, caméra de poitrine)
+│                  g1_pilotage (pilotage, vague 4), g1_equipe (chatbot, personnalités, caméra de poitrine),
+│                  g1_accueil (démo d'accueil, vague 6)
 ├── choregraphies/ chorégraphies du G1 (vague 4) ; musique/ : vos musiques, jamais dans Git
 ├── modeles/       YOLO, Vosk, voix Piper, Whisper
 ├── opt/           SDK C++ Unitree et SDK Livox compilés

@@ -32,6 +32,11 @@ marche (état `pas_en_marche`, avec un message qui dit quoi faire).
 - **un nouveau scan**, plus lent, avec la nouvelle chaîne (H, si le temps le permet) ;
 - **le pilotage depuis le mode 501 et une danse sûre**, d'abord au portique (P).
 
+**Nouveau depuis la vague 6 (09/11)** : au début, **Vérifier le robot** contrôle tout en un clic et
+propose de démarrer les services de cartographie (étape A) ; pendant toute la séance, la **boîte
+noire** enregistre tout (actions, états du robot, journaux) et écrit un **rapport de séance** à la fin
+(étape Fin) ; en option, à la fin, **la voix du robot et la démo d'accueil** (étape V).
+
 **Durée :** environ 2 h 30 avec le robot, plus 45 min la veille et 15 min le matin. Si le temps
 manque, on garde l'ordre et on saute H.
 
@@ -150,7 +155,8 @@ Puis débranche la caméra du PC et **fixe-la sur la poitrine du robot**, câble
 **Ne lance pas de mise à jour du robot aujourd'hui.**
 
 - [ ] **Note la version du logiciel du robot** (micrologiciel), si ce n'est pas déjà fait.
-- [ ] **Active les services `unitree_slam` et `lidar_driver`** (sans eux, ni repérage ni scan).
+- [ ] **Active les services `unitree_slam` et `lidar_driver`** (sans eux, ni repérage ni scan). Si tu
+  oublies, « Vérifier le robot » (étape A) le verra et proposera de les démarrer.
 - [ ] Ensuite, **ne pilote plus le robot avec l'appli** pendant nos essais.
 
 ### 2.3 Le point principal au sol
@@ -196,6 +202,17 @@ source ~/robot-g1/setup/robot.sh
    Note la batterie (ligne A). Si `g1-etat` ne dit pas « Connecté » (« Aucune donnée du robot… ») :
    le robot a-t-il fini de démarrer ? Le câble est-il branché ? Relance
    `source ~/robot-g1/setup/robot.sh` (il réactive la connexion du câble), puis recommence.
+4. **A2. Vérifier le robot.** Dans T1, lance l'Atelier (`g1-atelier`) ; sur l'accueil, carte **Robot
+   réel** (sans « Répétition »), clique sur **Vérifier le robot**. En moins de 10 s, chaque point dit OK,
+   Attention, Problème ou Inconnu, avec ce qu'il faut faire. Si les services de cartographie sont
+   arrêtés : **Démarrer les services de cartographie**, confirme (seulement `lidar_driver` et
+   `unitree_slam` ; rien d'autre n'est touché), puis **Vérifier à nouveau**. Si la connexion du câble
+   est tombée : **Rétablir la connexion du câble**. Note chaque ligne qui n'est pas OK et la durée
+   (ligne A2). Le même dans un terminal : `g1-diagnostic` (T5). Le diagnostic ne fait jamais bouger le
+   robot.
+5. Ouvre ensuite l'espace (le lieu `seance`, **Ouvrir**) : la **séance** s'ouvre seule (point rouge
+   « ● Enregistrement » dans la barre d'outils). Elle garde tout jusqu'à « Terminer la séance » (étape
+   Fin) : rien d'autre à faire.
 
 ### Étape M : mesurer les vrais seuils, au portique (25 min)
 
@@ -567,6 +584,23 @@ puis **Naviguer › Arrêter**.
    g1-jetson arreter
    ```
 
+### Étape V : la voix du robot et la démo d'accueil (15 min, en option)
+
+Seulement si tout le reste est fait, robot repéré à la croix et navigation lancée (étapes E et F).
+
+1. **V1. La voix.** Ruban **Équipe › ⚙ Avancé › Réglages de la démo**, partie « La voix du robot » :
+   « Le robot parle par » **Haut-parleur du robot (voix du PC)**, volume 50 %, **Démarrer la voix**, puis
+   **Essayer**. Attendu : le robot dit la phrase par son haut-parleur. Note si le son est net (sans
+   craquement), le délai avant le son, et si 70 % s'entend bien dans le hall. Essaie aussi « Synthèse
+   du robot (langues à vérifier) » : parle-t-elle français ? Puis **Arrêter la voix**.
+2. **V2. La démo.** **Équipe › Démo › Lancer la démo** ; sur ton téléphone, branché au même Wi-Fi que
+   le PC, ouvre la borne (relance d'abord l'Atelier avec `g1-atelier --hote 0.0.0.0` ; **Équipe ›
+   Démo › Borne** montre l'adresse et son code QR). Un volontaire se présente devant le robot (1,5 m) ou
+   touche la borne, choisit une salle proche ; le robot l'accompagne puis revient. Pendant la visite,
+   un **ARRÊT** met la démo en pause : rien ne doit repartir avant « Ramener à l'accueil » ou
+   « Reprendre ». Note ce qui marche et ce qui gêne (ligne V).
+3. **Arrêter la démo**.
+
 ### Fin (5 min)
 
 1. Un conteneur tourne-t-il encore (par exemple si l'étape P a été sautée) ? Dans T5 :
@@ -583,8 +617,17 @@ puis **Naviguer › Arrêter**.
    g1-jetson arreter
    ```
 
-2. Robot en amortissement, puis éteint. Débranche le câble. Ctrl+C dans T1 (l'Atelier).
-3. Complète la feuille de résultats.
+2. **Terminer la séance** : clique sur le point rouge de la barre d'outils, **Terminer la séance**,
+   confirme. Le rapport s'écrit en quelques secondes (**Rapport de séance** dans le même menu : trajets
+   sur la carte, arrêts et leurs causes, erreurs, « À regarder en premier »). Puis dans T5 :
+
+   ```bash
+   g1-seance exporter derniere --sortie ~/robot-g1/docs/releves/seance-2_boite_noire.zip
+   ```
+
+   (Si tu oublies, Ctrl+C dans T1 ferme aussi la séance et écrit son rapport.)
+3. Robot en amortissement, puis éteint. Débranche le câble. Ctrl+C dans T1 (l'Atelier).
+4. Complète la feuille de résultats.
 
 ---
 
@@ -672,7 +715,10 @@ Dis-moi **« séance 2 faite »**, avec :
    `seance-2_pilotage.log` (étape P) et, s'il y en a, `seance-2_conteneur.log` (un conteneur qui
    tournait encore à la fin) et `seance-2_relances.log` (un conteneur arrêté en cours de route, pour le
    relancer ou pour le plan B) ;
-3. les messages d'erreur, copiés mot pour mot.
+3. les messages d'erreur, copiés mot pour mot ;
+4. le `.zip` de la boîte noire, `docs/releves/seance-2_boite_noire.zip` (étape Fin) : avec lui, je revois
+   toute la séance (actions, états du robot, journaux, diagnostic du début), même ce que la feuille
+   n'a pas eu le temps de noter.
 
 Je retrouverai seul le nouveau scan (`lieux/seance/scans/`), la carte d'Unitree
 (`lieux/seance/cartes/rdc_unitree.*`), les journaux de l'Atelier (`journaux/`) et ceux de ROS 2

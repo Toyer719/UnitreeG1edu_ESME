@@ -30,7 +30,11 @@ Structure de SolidWorks, habillage d'Unitree Explore (thème sombre par défaut,
 | Mode | Onglets du ruban |
 |---|---|
 | Simulation | **Dessiner** (choisir, mur, passage, objet, piéton, départ), **Placer** (salle, accueil, nœud, relier, zones), **Simuler** (lancer, arrêter, Y aller, accompagner, retour ; Avancé : faux visiteur, passants, réglages du guide, scan simulé), **Équipe** (personnalités, dialogues, caméra ; Avancé : réglages de la caméra) |
-| Réel (et répétition) | **Scanner** (Scan, Fin, Utiliser cette carte), **Placer**, **Naviguer** (lancer, repérer, Y aller, bloquer, débloquer, arrêter), **Piloter** (prendre la main, postures, gestes, voix, lumière, joysticks ; groupe Spectacle : danses, chorégraphies), **Équipe** |
+| Réel (et répétition) | **Scanner** (Scan, Fin, Utiliser cette carte), **Placer**, **Naviguer** (vérifier le robot, lancer, repérer, Y aller, bloquer, débloquer, arrêter ; Avancé : terminer la séance, rapport de séance), **Piloter** (prendre la main, postures, gestes, voix, lumière, joysticks ; groupe Spectacle : danses, chorégraphies), **Équipe** (et le groupe Démo, comme en Simulation) |
+
+Vague 6 (section 13.7 du plan) : l'onglet **Équipe** des deux modes reçoit le groupe **Démo** (Lancer la démo, Arrêter la
+démo, Borne ; Avancé : Réglages de la démo, avec les réglages de la voix) ; en Réel, **Naviguer** commence par **Vérifier
+le robot** (le diagnostic) et son menu Avancé a **Terminer la séance** et **Rapport de séance** (la boîte noire).
 
 - **Arbre** : Lieu ▸ Étage ▸ Carte, Monde, Points (★ Accueil d'abord, puis les salles dans l'ordre et avec le
   numéro de leur épingle 3D), Itinéraires, Zones, Scans, Équipe ; clic : l'élément choisi dans la vue et ses
@@ -65,6 +69,15 @@ Structure de SolidWorks, habillage d'Unitree Explore (thème sombre par défaut,
 - **Thème** : sombre par défaut ; ◐ passe au clair (clé `atelier.theme`) ; la vue 3D reste sombre.
 - **Écrans étroits** (moins de 1100 px, tablette) : l'arbre et le panneau deviennent des tiroirs (boutons
   de la barre d'outils) ; cibles tactiles de 44 px.
+- **Vague 6 dans la barre d'outils** (Réel et répétition), après les pastilles d'état : le badge de la séance
+  (`[data-role=seance]`, un point rouge qui bat pendant l'enregistrement ; son menu : Terminer la séance, rapports des
+  dernières séances) et **Vérifier le robot** (`[data-role=verifier-robot]`, l'icône et la pastille du dernier
+  diagnostic). Les pastilles d'état ne rétrécissent jamais : les listes du lieu et de l'étage d'abord, puis la marque
+  (sous 1440 px), le texte d'« Enregistrer » et de ROS 2 (sous 1366 px) ; le texte du badge et de « Vérifier »
+  n'apparaît qu'à partir de 1800 px.
+- **Échap et les fenêtres des modules** : une fenêtre ou une incrustation qu'Échap ferme porte `data-ferme-echap`
+  (fenêtre du diagnostic, adresse de la borne en grand) ; la coque la compte comme un menu (`echapServi`) : Échap la
+  ferme sans ARRÊT tant que le robot ne bouge pas.
 
 ## Fichiers
 
@@ -90,6 +103,11 @@ Structure de SolidWorks, habillage d'Unitree Explore (thème sombre par défaut,
 | `js/carte3d/essai.js`, `essais/carte3d.html` | page d'essai de la carte seule (`?lieu=demo&mode=simu`), jamais liée par l'interface |
 | `js/camera/flux.js` | la vue Caméra (`creerVueCamera`, section 12.7) : le flux MJPEG de `/api/camera/flux` dans `<img data-role=camera-flux>`, les cadres des visiteurs dans `<canvas data-role=camera-cadres>` ; le flux s'arrête quand la vue est cachée ; `data-etat` (`arrete`, `attente`, `sans-image`, `ok`) replie l'incrustation |
 | `js/camera/essai.js`, `essais/camera.html` | page d'essai de la vue Caméra |
+| `js/coque/diagnostic.js`, `css/diagnostic.css` | vague 6 (13.2) : « Vérifier le robot » : bouton et résumé de l'accueil Réel (`monterDiagnosticAccueil`), bouton de la barre d'outils (`monterDiagnosticBarre`), commande `robot.verifier` (`executer`), fenêtre dans la page `[data-role=diagnostic]` (vérifications par groupe, `[data-verification=<id>][data-etat]`, boutons `[data-action=<id>]` avec confirmation dans la page, `[data-role=reverifier]`) |
+| `js/coque/seance.js`, `css/seance.css` | vague 6 (13.3) : la boîte noire : `surEspace` (ouvre la séance en Réel), badge `[data-role=seance]` (`data-etat` : `enregistrement`, `coupe`, `arrete`) et son menu, « Terminer la séance » (confirmation dans la page), lien `[data-role=rapport-seance]` ; commandes `seance.terminer`, `seance.rapport` |
+| `js/ecrans/demo.js`, `css/demo.css` | vague 6 (13.4) : l'écran Démo : état (`[data-role=demo-etat]`, mascotte), Lancer et Arrêter, Pause, Reprendre, Ramener, statistiques (`[data-role=demo-statistiques]`), plan avec les salles et le robot, adresse de la borne en grand avec son code QR (`[data-role=adresse-borne]`), réglages de `demo.yaml` et salles cachées de la borne |
+| `js/voix/reglages_voix.js` | vague 6 (13.6, monté par l'écran Démo dans ses réglages) : la voix du robot : sortie, voix, volume, vitesse, « Démarrer la voix », « Arrêter la voix », « Essayer » et l'écoute sur le PC (`[data-role=voix-reglages]`, `voix-etat`, `voix-demarrer`, `voix-arreter`, `voix-essai`, `voix-essayer`, `voix-ecouter`) |
+| `borne.html`, `js/borne/`, `css/borne.css` | vague 6 (13.5) : la page de la borne visiteur (`/borne`), pour une tablette ou un téléphone : `borne.js` (les écrans : hors service, salles, confirmation, suivez-moi, arrivée, retour, occupé, pause ; mode opérateur), `textes.js` (français, anglais), `dessins.js` (mascotte, pictogrammes), `liaison.js` (`/ws/borne`, repli sur `GET`, anti-rebond), `son.js` (le son de la sortie borne), `qr.js` (code QR, aussi pour l'écran Démo) ; elle ne charge que `theme.css`, `borne.css` et `js/borne/` (la garde du serveur ne laisse rien d'autre à une tablette) ; `window.erreursBorne` |
 | `js/ecrans/scan.js`, `js/nuage3d.js`, `css/scan.css` | l'écran de scan : plein écran sombre pendant le scan (nuage en direct, trajet, compteurs, gros boutons Scan et Fin), progression, « Utiliser cette carte » |
 | `js/panneaux/`, `js/pilotage/`, `js/equipe/` | panneaux de la vague 4 (passants, guide), vue du robot et joysticks du pilotage, éditeurs de l'équipe |
 | `js/api.js`, `contexte.js`, `direct.js` | appels à l'API (`ErreurApi`), lieu et étage choisis, WebSocket `/ws/etat` (reconnexion automatique) |
@@ -142,6 +160,28 @@ Les tests ne cherchent jamais un bouton par son texte : `[data-role=accueil]`, `
 `[data-cadrage]`, `[data-calque]` ; `[data-role=panneau|panneau-titre|panneau-corps|ok|annuler]` ;
 `[data-role=barre-etat|etat-message|etat-coordonnees|etat-liaison]` ; `[data-role=confirmation|confirmer|renoncer]` ;
 `[data-ecran=<id>]` sur l'écran ouvert. Liste complète : section 12.2 du plan.
+Vague 6 (13.7 et 13.13) : `[data-role=zone-diagnostic-accueil|zone-diagnostic|zone-seance]`, `[data-role=verifier-robot]`,
+`[data-role=diagnostic-resume]`, `[data-role=diagnostic]` avec `[data-verification=<id>][data-etat]` et `[data-action=<id>]`,
+`[data-role=reverifier]` ; `[data-role=seance]` (`data-etat`), `[data-role=menu-seance]`, `[data-role=rapport-seance]` ;
+`[data-ecran=demo]`, `[data-role=demo-etat|demo-statistiques|demo-reglages|adresse-borne]`, `[data-role=voix-reglages]` ;
+borne : `[data-role=borne]` (`data-ecran`), `[data-salle=<id>]`, `[data-role=confirmer-salle|borne-son|borne-operateur]`.
+
+## Routes de la vague 6 (section 13.8 du plan)
+
+- Diagnostic : `GET /api/robot/diagnostic?mode=reel|repetition&rapide=1`, `GET …/diagnostic/dernier?mode=`,
+  `POST /api/robot/diagnostic/{demarrer-services|retablir-cable|cable-automatique} {confirme: true}` (409 sans
+  confirmation ou en simulation, 403 service interdit).
+- Boîte noire : `GET /api/seance`, `POST /api/seance/demarrer|arreter`, `GET /api/seances`, `GET /api/seances/{id}`,
+  `GET|POST …/{id}/rapport` (`?format=md|json`), `GET …/{id}/fichiers/{nom}`, `GET …/{id}/export[?sans_bag=1]`.
+- Démo : `GET /api/demo/etat`, `POST /api/demo/lancer|arreter`, `POST /api/demo/commande {action}`,
+  `GET|PUT /api/lieux/{id}/demo`.
+- Borne : `GET /borne`, `GET /api/borne/etat`, `WS /ws/borne[?jeton=]`, `POST /api/borne/appui|choisir|annuler`,
+  `POST /api/borne/operateur {code}` puis `POST /api/borne/operateur/{pause|reprendre|ramener}` (en-tête
+  `X-Jeton-Borne`), `GET /api/borne/adresse`.
+- Voix : `GET /api/voix/etat`, `POST /api/voix/demarrer|arreter|essayer|commande`, `GET /api/voix/son/{id}` (WAV).
+- `/ws/etat` reçoit `seance`, `demo` et `voix`. Quand l'Atelier écoute le réseau (`g1-atelier --hote 0.0.0.0`), un
+  client qui n'est pas ce PC n'a que la borne (`/borne`, `/js/borne/`, `/api/borne/`, `/ws/borne`, `/api/voix/son/`,
+  `theme.css`, `borne.css`) : tout le reste répond 403 (`g1-atelier --distant-complet` rend tout).
 
 ## Routes de la coque
 
@@ -164,6 +204,9 @@ E2E_DOMAINE=101 tests_e2e/tout.sh 9 31 36                                   # pa
 DISPLAY=:1 .venv-projet/bin/python -m pytest -q atelier/tests/test_carte3d_web.py atelier/tests/test_carte3d_geometrie.py atelier/tests/test_carte3d_navigateur.py
 .venv-projet/bin/python -m pytest -q atelier/tests/test_camera_geometrie.py atelier/tests/test_camera_serveur.py atelier/tests/test_camera_navigateur.py
 DISPLAY=:1 E2E_DOMAINE=101 tests_e2e/tout.sh 32 35                           # carte 3D par la coque (WebGL), caméra
+DISPLAY=:1 .venv-projet/bin/python -m pytest -q atelier/tests/test_diagnostic_navigateur.py atelier/tests/test_seance_navigateur.py \
+  atelier/tests/test_borne_navigateur.py atelier/tests/test_demo_navigateur.py atelier/tests/test_assemblage_vague6.py   # vague 6
+E2E_DOMAINE=101 tests_e2e/tout.sh 37 38 39 40 41 42                          # vague 6 : diagnostic, boîte noire, borne, voix, démo
 ```
 
 - La carte 3D a besoin de WebGL : Firefox sans fenêtre n'en a qu'avec l'affichage X de la session

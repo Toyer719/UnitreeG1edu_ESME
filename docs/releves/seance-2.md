@@ -12,6 +12,7 @@ notes libres, en bas.
 | N° | Point vérifié | Attendu | Constaté | OK ? |
 |---|---|---|---|---|
 | A | Branchement, `g1-etat` | « Connecté », batterie | | |
+| A2 | Vérifier le robot (accueil Robot réel, ou `g1-diagnostic`) | tout OK, ou l'action proposée faite (services de cartographie) ; durée (moins de 10 s) ; lignes pas OK et leur texte | | |
 | M0 | Pont en consignes brutes, `/pont/etat` | `pret`, `mode_robot.fsm` 501 en marche | | |
 | M1 | Seuil en avant : 0,12, 0,15, 0,18, 0,2 m/s | vitesse atteinte de chaque essai ; seuil | | |
 | M2 | Seuil de côté : 0,12 à 0,2 m/s, et −0,15 | vitesse atteinte ; seuil | | |
@@ -46,7 +47,9 @@ notes libres, en bas.
 | P2 | Joystick à peine incliné | marche à 0,2 m/s | | |
 | P3 | ARRÊT, joystick toujours tenu | arrêt ; le manche tenu ne relance pas le robot | | |
 | P4 | Danse 604 depuis 501, au portique | durée ; mode à la fin (501 ou 801) | | |
+| V | Option : voix du robot (Essayer, haut-parleur) et démo d'accueil (borne sur un téléphone) | son net, délai, volume ; français de la synthèse d'Unitree ; une visite ; pause sur ARRÊT, rien ne repart seul | | |
 | Fin | Journaux du conteneur gardés, `g1-jetson arreter` | journal enregistré ; arrêt propre, conteneur retiré | | |
+| Z | Terminer la séance, rapport, `g1-seance exporter derniere` | rapport écrit ; `.zip` dans `docs/releves/` | | |
 
 ## Notes libres
 
