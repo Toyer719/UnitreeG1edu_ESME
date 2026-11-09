@@ -68,14 +68,15 @@
 .seance-nouvelle:disabled { cursor: progress; opacity: 0.6; }
 @media (pointer: coarse) { .seance-nouvelle { min-height: 40px; } }
 /* sous 1 800 px, la barre d'outils manque de place (assemblage de la vague 6 : à 1 600 px, les listes du lieu et de
-   l'étage tombaient à une lettre) : le badge ne dit que « Séance » de 1 440 à 1 799 px (corrections de la vague 6 :
-   un simple point rouge ressemblait à un voyant d'erreur ; la marque « Atelier G1 » laisse sa place), puis devient
-   un point sous 1 440 px ; le lien du rapport et « Nouvelle séance » gardent leur icône (infobulle et menu) */
+   l'étage tombaient à une lettre) : le badge ne dit que « Séance » de 1 366 à 1 799 px (corrections de la vague 6 :
+   un simple point rouge ressemblait à un voyant d'erreur ; la marque « Atelier G1 », puis le texte d'« Enregistrer »
+   sous 1 440 px, laissent leur place), puis devient un point sous 1 366 px ; le lien du rapport et « Nouvelle
+   séance » gardent leur icône (infobulle et menu) */
 .seance-badge-court { display: none; }
 @media (max-width: 1799px) {
   .seance-badge-texte, .seance-lien-texte, .seance-nouvelle-texte { display: none; }
   .seance-badge, .seance-lien-rapport, .seance-nouvelle { padding: 0 9px; }
 }
-@media (min-width: 1440px) and (max-width: 1799px) {
+@media (min-width: 1366px) and (max-width: 1799px) {
   .seance-badge-court { display: inline; }
 }

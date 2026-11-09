@@ -244,7 +244,7 @@ export function ouvrir(racine, options) {
     const s = demo && demo.statistiques ? demo.statistiques : {};
     STATISTIQUES.forEach((x) => { valeurs[x[0]].textContent = demo ? valeurStatistique(x[0], s[x[0]]) : '—'; });
     avertissements.textContent = '';
-    etat.avertissements.forEach((a) => avertissements.appendChild(el('p', 'panneau-alerte', a)));
+    etat.avertissements.forEach((a) => avertissements.appendChild(el('p', 'panneau-alerte', insecables(a))));
     const voix = etat.voix;
     if (voix && typeof voix.age_recu_s === 'number' && voix.age_recu_s < DELAI_PERIME_S) {
       const parle = voix.en_cours ? 'dit « ' + voix.en_cours.texte + ' »' : 'se tait';

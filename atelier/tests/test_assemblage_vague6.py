@@ -234,8 +234,9 @@ def test_barre_d_outils_de_la_repetition_a_toutes_les_largeurs(sans_ros, serveur
     """Avec le badge de la séance et « Vérifier le robot » en plus, les pastilles d'état étaient rognées de 1100 à
     1600 px (« Refus du ro… ») : les états ne rétrécissent plus, les listes du lieu et de l'étage d'abord, puis la
     marque, le texte d'« Enregistrer » et de ROS 2 ; le texte du badge et de « Vérifier » à partir de 1800 px.
-    Corrections de la vague 6 (revue de l'interface, défaut 9) : le badge dit « Séance » de 1440 à 1799 px (un point
-    seul ressemblait à un voyant d'erreur), la marque laisse sa place sous 1600 px, « Vérifier » écrit dès 1700 px ;
+    Corrections de la vague 6 (revue de l'interface, défaut 9) : le badge dit « Séance » de 1366 à 1799 px (un point
+    seul ressemblait à un voyant d'erreur), la marque laisse sa place sous 1600 px, puis le texte d'« Enregistrer »
+    sous 1440 px (en Réel), « Vérifier » écrit dès 1700 px ;
     les listes du lieu et de l'étage gardent au moins 100 px à partir de 1366 px."""
     _, base = serveur
     nav = navigateur
@@ -258,7 +259,7 @@ def test_barre_d_outils_de_la_repetition_a_toutes_les_largeurs(sans_ros, serveur
                             "document.querySelector(s).getBoundingClientRect().width);")
             assert min(listes) >= 100, f"à {largeur} px, les listes du lieu et de l'étage : {listes} px"
     assert textes[1100] == [False, False, False, False, False], textes
-    assert textes[1366] == [False, True, False, False, False], textes
+    assert textes[1366] == [False, False, False, True, False], textes          # « Séance » dès 1366 px
     assert textes[1440] == [False, True, False, True, False], textes
     assert textes[1600] == [True, True, False, True, False], textes
     assert textes[1700] == [True, True, False, True, True], textes

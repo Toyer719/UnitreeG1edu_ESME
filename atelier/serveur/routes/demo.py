@@ -54,9 +54,9 @@ MESSAGES_SANS_GUIDE = {"reel": "La démo a besoin du guide : lancez d'abord la n
 # Corrections de la vague 6 (revue de l'interface, défaut 7) : en Simulation, sans faux visiteur (il vient avec une
 # scène d'essai), le robot part seul vers la salle et l'accompagnement n'est pas essayé ; l'écran Démo le dit
 SUJET_FAUX_VISITEUR = "/faux_visiteur/mode"
-MESSAGE_SANS_FAUX_VISITEUR = ("Pas de faux visiteur dans cette simulation : le robot partira seul vers la salle, sans "
-                              "personne à accompagner. Le faux visiteur vient avec la scène d'essai « Accompagnement "
-                              "d'un visiteur » (Simuler › Avancé › Passants, scènes d'essai).")
+MESSAGE_SANS_FAUX_VISITEUR = ("Pas de faux visiteur dans cette simulation : le robot partira seul, sans personne à "
+                              "accompagner. Le faux visiteur vient avec la scène d'essai « Accompagnement d'un "
+                              "visiteur » (Simuler › Avancé › Passants).")
 STATUT_REFUS = {"occupe": 409, "pause": 409, "demo_arretee": 409, "action_impossible": 409,
                 "salle_inconnue": 404, "salle_cachee": 422, "autre_etage": 422, "deja_la": 422}
 _numeros = itertools.count(1)

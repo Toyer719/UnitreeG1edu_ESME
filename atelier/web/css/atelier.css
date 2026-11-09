@@ -337,6 +337,11 @@ a { color: var(--accent-texte); }
 @media (max-width: 1599px) {
   .marque-barre { display: none; }
 }
+/* corrections de la vague 6 (revue de l'interface, défaut 9) : en Réel, sous 1 440 px, « Enregistrer » garde son icône
+   et son infobulle (Ctrl+S) : la place va au mot « Séance » du badge, jusqu'à 1 366 px (le portable de référence) */
+@media (max-width: 1439px) {
+  .espace:not([data-mode="simu"]) .bouton-enregistrer .bouton-barre-texte { display: none; }
+}
 @media (max-width: 1365px) {
   .bouton-enregistrer .bouton-barre-texte { display: none; }
   .etats-barre .etat-pastille[data-etat="ros"] .etat-pastille-texte { display: none; }
