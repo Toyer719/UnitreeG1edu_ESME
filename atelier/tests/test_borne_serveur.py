@@ -225,6 +225,42 @@ def test_garde_de_la_borne_depuis_le_reseau(tmp_path, monkeypatch):
             assert ws.receive_json()["ecran"] == "salles"
 
 
+def test_garde_de_la_borne_sans_detour_par_les_points(tmp_path, monkeypatch):
+    """Corrections de la vague 6 (revue du code, défauts 3 et 10) : « .. » dans le chemin ne sort plus de la borne.
+    httpx (donc TestClient) normalise lui-même « .. » avant l'envoi et ne pourrait pas montrer le défaut : les
+    demandes partent ici en scope ASGI brut, le chemin tel qu'uvicorn le donne (déjà décodé : %2e%2e y est « .. »)."""
+    import asyncio
+    monkeypatch.setenv("ATELIER_HOTE", "0.0.0.0")
+    monkeypatch.setenv("ATELIER_LIEUX", str(tmp_path))
+    monkeypatch.delenv("ATELIER_DISTANT", raising=False)
+    from atelier.serveur.main import creer_app
+    app = creer_app(ros=False)
+
+    async def demander(chemin):
+        recu = []
+
+        async def recevoir():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def envoyer(message):
+            recu.append(message)
+        scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET", "scheme": "http",
+                 "path": chemin, "raw_path": chemin.encode("latin-1"), "root_path": "", "query_string": b"",
+                 "headers": [(b"host", b"192.168.0.12:8000")], "client": ("192.168.1.20", 50000),
+                 "server": ("192.168.0.12", 8000)}
+        await app(scope, recevoir, envoyer)
+        debut = next(m for m in recu if m["type"] == "http.response.start")
+        corps = b"".join(m.get("body", b"") for m in recu if m["type"] == "http.response.body")
+        return debut["status"], corps
+
+    for chemin in ("/js/borne/../coque/coque.js", "/js/borne/../../index.html", "/api/borne/../../js/app.js",
+                   "/api/voix/son/../../../js/coque/arret.js", "/js/borne//../app.js", "/css/../index.html"):
+        statut, corps = asyncio.run(demander(chemin))
+        assert statut == 403 and "seule la borne" in corps.decode("utf-8"), (chemin, statut, corps[:80])
+    statut, corps = asyncio.run(demander("/js/borne/borne.js"))
+    assert statut == 200 and b"<!doctype" not in corps[:50]
+
+
 def test_adresse_de_la_borne(demo, monkeypatch):
     r = demo.get("/api/borne/adresse").json()
     assert r["ecoute_reseau"] is False and r["adresses"] == [] and "--hote 0.0.0.0" in r["message"]

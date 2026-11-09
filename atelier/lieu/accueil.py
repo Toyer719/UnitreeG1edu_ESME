@@ -92,8 +92,21 @@ def ecran_borne(etat_demo):
     return ECRAN_DE_L_ETAT.get(etat_demo.get("etat"), "hors_service")
 
 
+def chemin_sans_detour(chemin):
+    """Vrai si le chemin ne peut pas sortir de son préfixe (corrections de la vague 6) : ni segment « . » ou « .. »
+    (le serveur de fichiers les résout : /js/borne/../../index.html servait l'interface entière), ni « // », ni barre
+    oblique inverse, ni caractère nul. Le chemin est celui de la demande ASGI, déjà décodé (%2e%2e y est « .. »)."""
+    chemin = str(chemin or "")
+    if not chemin.startswith("/") or "//" in chemin or "\\" in chemin or "\x00" in chemin:
+        return False
+    return not any(morceau in (".", "..") for morceau in chemin.split("/"))
+
+
 def chemin_permis_borne(chemin):
-    """Vrai si un client distant (la tablette de la borne) peut demander ce chemin."""
+    """Vrai si un client distant (la tablette de la borne) peut demander ce chemin : un chemin de la borne, sans détour
+    (chemin_sans_detour)."""
+    if not chemin_sans_detour(chemin):
+        return False
     return chemin in CHEMINS_BORNE or chemin in FICHIERS_BORNE or chemin.startswith(PREFIXES_BORNE)
 
 

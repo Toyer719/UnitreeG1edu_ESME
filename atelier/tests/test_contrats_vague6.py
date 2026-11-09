@@ -386,8 +386,13 @@ def test_ecrans_messages_et_chemins_de_la_borne():
         assert A.chemin_permis_borne(chemin), chemin
     for chemin in ("/", "/index.html", "/api/arret", "/api/arret/debloquer", "/api/guide/aller", "/api/lieux",
                    "/ws/etat", "/ws/pilotage", "/js/app.js", "/js/coque/coque.js", "/css/atelier.css",
-                   "/api/voix/essayer", "/api/demo/lancer", "/bornes", "/js/borne2/x.js"):
+                   "/api/voix/essayer", "/api/demo/lancer", "/bornes", "/js/borne2/x.js",
+                   # corrections de la vague 6 : aucun détour par « .. » (le serveur de fichiers les résout)
+                   "/js/borne/../coque/coque.js", "/js/borne/../../index.html", "/api/borne/../../js/app.js",
+                   "/api/voix/son/../../../js/coque/arret.js", "/js/borne/./../app.js", "/js/borne//x.js",
+                   "/js/borne/..\\..\\index.html", "/js/borne/x\x00.js", "js/borne/x.js", ""):
         assert not A.chemin_permis_borne(chemin), chemin
+    assert A.chemin_sans_detour("/js/borne/borne.js") and A.chemin_sans_detour("/js/borne/a..b.js")
     assert set(A.ACTIONS_OPERATEUR_BORNE) <= set(A.ACTIONS_COMMANDE) and "reprendre" in A.ACTIONS_OPERATEUR_BORNE
     assert set(A.REGLAGES_DEMO["source_visiteurs"].split()) <= set(A.SOURCES_VISITEURS)
 
