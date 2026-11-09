@@ -20,6 +20,7 @@ import { ouvrirPanneau } from '../coque/panneau.js';
 import * as F from '../formulaire.js';
 import { creerPlan, iconeOrientee, ll } from '../plan.js';
 import { iconePrincipal, sallePrincipale } from './salles.js';
+import { monterReglagesVoix } from '../voix/reglages_voix.js';
 
 export const DELAI_PERIME_S = 3.0;      // /accueil/etat plus vieux : la démo est tenue pour arrêtée
 const PERIODE_ETAT_MS = 2000;
@@ -36,7 +37,6 @@ export const STATISTIQUES = [
 const ACTIONS_ATELIER = [['pause', 'Mettre en pause'], ['reprendre', 'Reprendre'], ['ramener', 'Ramener à l\'accueil']];
 const SORTIES = [{ id: 'robot', texte: 'Le robot' }, { id: 'borne', texte: 'La borne' },
   { id: 'robot_tts', texte: 'Unitree (essai)' }];
-const VOIX = [{ id: 'fr_FR-siwis-medium', texte: 'Siwis (femme)' }, { id: 'fr_FR-tom-medium', texte: 'Tom (homme)' }];
 const SOURCES = [{ id: 'auto', texte: 'Automatique' }, { id: 'camera', texte: 'La caméra' },
   { id: 'lidar', texte: 'Le LiDAR' }, { id: 'borne', texte: 'La borne seule' }];
 
@@ -79,6 +79,7 @@ export function ouvrir(racine, options) {
     modifie: false, robot: null, avertissements: [], processus: {} };
   let retirerIncrustation = null;
   let minuterie = null;
+  let reglagesVoix = null;       // les réglages de la voix (js/voix/reglages_voix.js), dans les réglages de la démo
 
   // ---------------------------------------------------------------- vue Plan 2D : carte, salles, robot
 
@@ -337,12 +338,13 @@ export function ouvrir(racine, options) {
     if (retirerIncrustation) retirerIncrustation();
     const carte = el('div', 'demo-borne');
     carte.setAttribute('data-role', 'demo-borne');
+    // Échap la ferme : la coque n'envoie l'ARRÊT que si le robot bouge (data-ferme-echap, assemblage de la vague 6)
+    carte.setAttribute('data-ferme-echap', '');
     const tete = el('div', 'demo-borne-tete');
     tete.appendChild(el('h2', 'demo-borne-titre', 'La borne visiteur'));
     const fermer = F.bouton(tete, '✗', () => fermerBorne(), 'bouton bouton-icone demo-borne-fermer');
     fermer.setAttribute('data-role', 'fermer-borne');
-    // Échap la ferme aussi, mais la coque envoie d'abord l'ARRÊT si quelque chose tourne (règle de la vague 5)
-    fermer.title = 'Fermer (✗ ; Échap envoie aussi l\'ARRÊT quand le robot ou la simulation tourne)';
+    fermer.title = 'Fermer (✗ ou Échap ; si le robot roule, Échap l\'arrête aussi)';
     fermer.setAttribute('aria-label', 'Fermer');
     carte.appendChild(tete);
     const corps = el('div', 'demo-borne-corps');
@@ -431,10 +433,13 @@ export function ouvrir(racine, options) {
       else delete r.personnalite;
       changer();
     });
-    F.listeDeroulante(corpsReglages, 'Voix : sortie', r.voix.sortie, SORTIES, (v) => { r.voix.sortie = v; changer(); });
-    F.listeDeroulante(corpsReglages, 'Voix', r.voix.nom, VOIX, (v) => { r.voix.nom = v; changer(); });
-    F.champNombre(corpsReglages, 'Volume', r.voix.volume, { min: 0, max: 100, pas: 5, decimales: 0, unite: '%' },
-      (v) => { r.voix.volume = Math.round(Math.max(0, Math.min(100, v))); changer(); });
+    // la voix (assemblage de la vague 6) : le composant de l'agent Voix (sortie, voix, volume, vitesse ; démarrer
+    // la voix seule, essayer une phrase) ; ses valeurs sont celles de demo.yaml, enregistrées avec le reste
+    corpsReglages.appendChild(el('h4', 'demo-sous-titre', 'La voix du robot'));
+    if (reglagesVoix) reglagesVoix.fermer();
+    reglagesVoix = monterReglagesVoix(corpsReglages, { lieu: lieu, valeurs: r.voix,
+      surChange: (v) => { r.voix = v; changer(); }, message: (texte, genre) => coque.message(texte, genre) });
+    corpsReglages.appendChild(el('h4', 'demo-sous-titre', 'Visiteurs et borne'));
     F.listeDeroulante(corpsReglages, 'Visiteurs vus par', r.visiteurs.source, SOURCES, (v) => { r.visiteurs.source = v; changer(); });
     F.champNombre(corpsReglages, 'Salué à moins de', r.visiteurs.distance_m, { min: 0.3, max: 5, pas: 0.1, decimales: 1, unite: 'm' },
       (v) => { r.visiteurs.distance_m = v; changer(); });
@@ -533,6 +538,8 @@ export function ouvrir(racine, options) {
       etat.ferme = true;
       if (minuterie) clearInterval(minuterie);
       if (etat.desabonner) etat.desabonner();
+      if (reglagesVoix) reglagesVoix.fermer();
+      reglagesVoix = null;
       fermerBorne();
       plan.detruire();
     },

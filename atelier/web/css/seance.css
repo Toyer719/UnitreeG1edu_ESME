@@ -57,9 +57,10 @@
   .seance-badge, .seance-lien-rapport { min-height: 40px; }
   .seance-menu-ligne, .seance-menu-lien { min-height: var(--cible); }
 }
-/* sous 1 600 px, la barre d'outils manque de place (les pastilles d'état seraient rognées) : le badge devient un
-   simple point rouge, et le lien du rapport son icône (leur infobulle et le menu disent tout) */
-@media (max-width: 1599px) {
+/* sous 1 800 px, la barre d'outils manque de place (assemblage de la vague 6 : à 1 600 px, les listes du lieu et de
+   l'étage tombaient à une lettre) : le badge devient un simple point rouge, et le lien du rapport son icône (leur
+   infobulle et le menu disent tout) */
+@media (max-width: 1799px) {
   .seance-badge-texte, .seance-lien-texte { display: none; }
   .seance-badge, .seance-lien-rapport { padding: 0 9px; }
 }

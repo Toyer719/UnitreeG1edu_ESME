@@ -1464,6 +1464,9 @@ function outilAnnulable(id) {
 // une saisie, l'outil ou le geste en cours ? Vu avant que ces éléments réagissent (écoute en capture).
 function echapServi(ev) {
   if (fenetreOuverte() || document.querySelector('.menu-ruban')) return true;
+  // vague 6 : une fenêtre ou une incrustation d'un module qu'Échap ferme (fenêtre du diagnostic, adresse de la
+  // borne dans l'écran Démo) porte data-ferme-echap ; le menu de la séance est un .menu-ruban
+  if (document.querySelector('[data-ferme-echap]:not([hidden])')) return true;
   if (dansUnChamp(ev.target)) return true;
   if (!etat.espace) return !!(etat.accueil && etat.accueil.formulaireOuvert && etat.accueil.formulaireOuvert());
   const r = etat.espace.racine;

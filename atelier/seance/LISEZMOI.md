@@ -6,7 +6,7 @@ l'Atelier garde tout ce qu'il faut pour comprendre ce qui s'est passé, puis éc
 ## Ce qui se passe tout seul
 
 - **Ouverture** : dès qu'on ouvre l'espace de travail en mode **Réel** (vrai robot ou « Répétition sans
-  robot »), une séance s'ouvre. La barre d'outils montre le badge **● Enregistrement** (à partir de 1 600 px de
+  robot »), une séance s'ouvre. La barre d'outils montre le badge **● Enregistrement** (à partir de 1 800 px de
   large ; en dessous, un simple point rouge, avec son infobulle). Jamais en Simulation.
 - **Pendant la séance** :
   - le journal des **actions** : chaque clic qui change quelque chose (ARRÊT, Bloquer, Débloquer, Y aller,

@@ -367,6 +367,8 @@ function fermerFenetre() {
 function construireFenetre(outils, mode) {
   const racine = el('section', 'diagnostic-fenetre');
   racine.setAttribute('data-role', 'diagnostic');
+  // Échap la ferme : la coque ne l'envoie pas comme un ARRÊT tant que le robot ne bouge pas (assemblage, vague 6)
+  racine.setAttribute('data-ferme-echap', '');
   racine.setAttribute('role', 'dialog');
   racine.setAttribute('aria-modal', 'false');
   racine.setAttribute('aria-labelledby', 'diagnostic-titre');

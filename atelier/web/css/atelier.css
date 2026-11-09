@@ -320,6 +320,17 @@ a { color: var(--accent-texte); }
 .etat-pastille .icone { display: none; }
 .etat-pastille[data-etat="serveur"][data-genre="ok"] { display: none; }
 .etat-pastille-texte { overflow: hidden; text-overflow: ellipsis; }
+/* vague 6 (assemblage) : le badge de la séance et « Vérifier le robot » suivent les états dans la barre ; les états
+   ne sont jamais rognés (la pastille du robot était coupée de 1100 à 1600 px) : les listes du lieu et de l'étage
+   rétrécissent d'abord, la marque disparaît, puis « Enregistrer » et ROS 2 perdent leur texte (infobulles) */
+.etats-barre { flex-shrink: 0; }
+@media (max-width: 1439px) {
+  .marque-barre { display: none; }
+}
+@media (max-width: 1365px) {
+  .bouton-enregistrer .bouton-barre-texte { display: none; }
+  .etats-barre .etat-pastille[data-etat="ros"] .etat-pastille-texte { display: none; }
+}
 /* ARRÊT reste cliquable au-dessus de tout, même d'une fenêtre de confirmation ouverte (z-index 5000) */
 .zone-arret { flex: 0 0 auto; margin-left: 4px; position: relative; z-index: 6000; }
 .bouton-arret-global {

@@ -57,9 +57,10 @@
 .diagnostic-barre { position: relative; gap: 6px; padding: 0 10px; white-space: nowrap; }
 .diagnostic-barre .diagnostic-point { width: 8px; height: 8px; }
 /* la barre d'outils est pleine à 1366 px (lieu, étage, états, séance) : l'icône et sa pastille suffisent (infobulle
-   complète, et « Vérifier le robot » écrit en entier dans Naviguer) ; le libellé revient sur un grand écran */
+   complète, et « Vérifier le robot » écrit en entier dans Naviguer) ; le libellé revient sur un grand écran (à partir
+   de 1 800 px depuis l'assemblage de la vague 6, comme le texte du badge de la séance) */
 .diagnostic-barre .bouton-barre-texte { display: none; }
-@media (min-width: 1600px) {
+@media (min-width: 1800px) {
   .diagnostic-barre .bouton-barre-texte { display: inline; }
 }
 .diagnostic-barre[data-etat="probleme"] { color: var(--texte); }

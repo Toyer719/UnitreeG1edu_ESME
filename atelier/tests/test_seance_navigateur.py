@@ -82,7 +82,7 @@ def test_badge_menu_et_terminer_en_repetition(seances, serveur, navigateur, lieu
     assert seance["ouverture"] == "auto" and seance["mode"] == "repetition" and seance["lieu"] == "demo"
     assert (seances / seance["id"] / "seance.json").is_file()
     texte = nav.js("return document.querySelector('[data-role=seance]').textContent")
-    assert "Enregistrement" in texte                       # le texte est là (montré à partir de 1 600 px)
+    assert "Enregistrement" in texte                       # le texte est là (montré à partir de 1 800 px)
     assert "Enregistrement" in nav.js("return document.querySelector('[data-role=seance]').title + "
                                       "document.querySelector('[data-role=seance]').getAttribute('aria-label')")
     # le badge tient dans la barre d'outils, sans couvrir l'ARRÊT

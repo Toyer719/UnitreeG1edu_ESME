@@ -28,6 +28,11 @@
 .demo-boutons .bouton { flex: 1 1 100%; }
 .demo-actions .bouton { flex: 1 1 auto; }
 .demo-avertissements:empty { display: none; }
+/* les réglages de la voix (js/voix/reglages_voix.js, assemblage de la vague 6) */
+.voix-boutons { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.voix-boutons .bouton { flex: 1 1 auto; }
+.voix-reglages [data-role=voix-etat] { margin: 4px 0 8px; color: var(--texte-doux); }
+.voix-reglages [data-role=voix-etat][data-etat=muet] { color: var(--avertissement); }
 .demo-avertissements p { margin: 8px 0 0; }
 
 /* ---------------------------------------------------------------- borne, statistiques, réglages */

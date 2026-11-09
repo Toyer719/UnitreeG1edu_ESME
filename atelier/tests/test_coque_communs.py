@@ -529,15 +529,23 @@ return Array.from(document.querySelectorAll('[data-ecran=salles] .leaflet-marker
   const r = m.getBoundingClientRect(); return r.right > v.left && r.left < v.right && r.bottom > v.top && r.top < v.bottom;
 }).length;"""
 
-# la barre d'outils en répétition, avec la plus longue pastille du robot : rien ne se chevauche
+# la barre d'outils en répétition, avec la plus longue pastille du robot : rien ne se chevauche ; vague 6
+# (assemblage) : avec la batterie, le badge de la séance et « Vérifier le robot », et rien n'est coupé par la partie
+# gauche de la barre (une pastille rognée par .etats-barre « chevauchait » le badge voisin)
 BARRE_SANS_CHEVAUCHEMENT = """const p = document.querySelector('[data-etat=robot]');
 p.hidden = false;
 p.querySelector('.etat-pastille-texte').textContent = arguments[0];
-const boites = ['[data-role=lieu]', '[data-role=etage]', '[data-role=mode]', '[data-role=defaire]', '[data-etat=robot]',
-  '[data-role=theme]', '[data-role=arret]'].map((s) => [s, document.querySelector(s)]).filter((x) => x[1] && x[1].getClientRects().length)
-  .map((x) => [x[0], x[1].getBoundingClientRect()]);
+const bat = document.querySelector('[data-etat=batterie]');
+if (bat) { bat.hidden = false; bat.querySelector('.etat-pastille-texte').textContent = '100 %'; }
+const gauche = document.querySelector('.barre-outils-gauche').getBoundingClientRect();
+const boites = ['[data-role=lieu]', '[data-role=etage]', '[data-role=mode]', '[data-role=defaire]', '[data-etat=ros]',
+  '[data-etat=robot]', '[data-etat=batterie]', '[data-role=seance]', '[data-role=zone-diagnostic] [data-role=verifier-robot]',
+  '[data-role=theme]', '[data-role=reglages]', '[data-role=arret]'].map((s) => [s, document.querySelector(s)])
+  .filter((x) => x[1] && x[1].getClientRects().length).map((x) => [x[0], x[1].getBoundingClientRect()]);
 const fautes = [];
 for (let i = 0; i < boites.length; i += 1) {
+  const c = boites[i][1];
+  if (boites[i][0] !== '[data-role=arret]' && (c.right > gauche.right + 1 || c.left < gauche.left - 1)) fautes.push(boites[i][0] + ' coupé');
   for (let j = i + 1; j < boites.length; j += 1) {
     const a = boites[i][1], b = boites[j][1];
     if (a.right > b.left + 1 && b.right > a.left + 1 && a.bottom > b.top + 1 && b.bottom > a.top + 1) fautes.push(boites[i][0] + ' et ' + boites[j][0]);
@@ -577,10 +585,23 @@ def parcours_revue_v5(nav, base):
         vu.append(f"Placer ouvert en 3D, puis Plan 2D : {n} salle(s) visibles")
     else:
         vu.append("Placer s'ouvre en Plan 2D (sans WebGL) : cas de la 3D non essayé")
-    ouvrir_espace(nav, base, "repetition")
-    fautes = nav.js(BARRE_SANS_CHEVAUCHEMENT, "Refus du robot")
-    assert not fautes, f"barre d'outils de la répétition : {fautes}"
-    vu.append("barre d'outils de la répétition, pastille « Refus du robot » : rien ne se chevauche")
+    # vague 6 (assemblage) : de 1100 px (en dessous : les tiroirs) à la taille du critère, avec le badge de la séance
+    # et « Vérifier le robot » : rien ne se chevauche ni n'est coupé
+    taille = nav.js("return [window.innerWidth, window.innerHeight]")
+    largeurs = sorted({1100, 1280, int(taille[0])})
+    try:
+        for largeur in largeurs:
+            nav.taille(largeur, int(taille[1]))
+            ouvrir_espace(nav, base, "repetition")
+            nav.attendre("return !!document.querySelector('[data-role=seance]') && "
+                         "!!document.querySelector('[data-role=zone-diagnostic] [data-role=verifier-robot]')", delai=20.0,
+                         message="badge de la séance et « Vérifier le robot » dans la barre")
+            fautes = nav.js(BARRE_SANS_CHEVAUCHEMENT, "Refus du robot")
+            assert not fautes, f"barre d'outils de la répétition à {largeur} px : {fautes}"
+    finally:
+        nav.taille(int(taille[0]), int(taille[1]))
+    vu.append("barre d'outils de la répétition (pastille « Refus du robot », batterie, séance, Vérifier) à "
+              + ", ".join(f"{x} px" for x in largeurs) + " : rien ne se chevauche ni n'est coupé")
     return vu
 
 
