@@ -5,12 +5,15 @@
 //   surEspace(outils)
 //       appelée par la coque à chaque ouverture de l'espace de travail : en Réel (vrai robot ou répétition),
 //       la séance s'ouvre seule (POST /api/seance/demarrer {mode, lieu, etage, ouverture: 'auto'}) ; une séance
-//       déjà ouverte est rendue telle quelle ; en Simulation, rien ;
+//       déjà ouverte est rendue telle quelle ; en Simulation, une séance ouverte est terminée (corrections de la
+//       vague 6 : une séance correspond au mode Réel ; POST /api/seance/arreter {fermeture: 'simulation'}, refusé
+//       tant que la navigation du robot ou de la répétition tourne) ;
 //   monterSeanceBarre(element, outils) → {detruire()}
 //       dans la barre d'outils : le badge « ● Enregistrement » ([data-role=seance], data-etat=enregistrement|
 //       coupe|arrete) tant qu'une séance est ouverte (champ seance de /ws/etat) ; un clic : le petit menu de la
 //       séance ([data-role=menu-seance] : Terminer la séance, les rapports) ; après « Terminer », le lien du
-//       rapport ([data-role=rapport-seance], data-etat=en_cours|pret|echec) ;
+//       rapport ([data-role=rapport-seance], data-etat=en_cours|pret|echec) ; en Réel sans séance ouverte, le
+//       bouton « Nouvelle séance » ([data-role=nouvelle-seance], corrections de la vague 6) ;
 //   executer(nom, valeur, outils)
 //       commandes du ruban seance.terminer (« terminer » : confirmation dans la page, POST /api/seance/arreter,
 //       puis le lien du rapport) et seance.rapport (« rapport » : le menu, avec les rapports des dernières séances).
@@ -26,6 +29,7 @@ export const TEXTES_BADGE = {
   coupe: 'Enregistrement coupé',
   arrete: 'Séance sans enregistrement',
 };
+export const TEXTE_BADGE_COURT = 'Séance';     // le badge quand la barre manque de place (corrections de la vague 6)
 export const TEXTES_RAPPORT = { absent: 'Pas de rapport', en_cours: 'Le rapport s\'écrit…', pret: 'Rapport prêt',
   echec: 'Rapport en échec' };
 const PERIODE_RAPPORT_MS = 2000;      // suivi du rapport après « Terminer »
@@ -130,7 +134,8 @@ export function ligneSeance(s) {
 
 export function surEspace(outils) {
   const mode = modeSeance(outils);
-  if (!mode || !outils || !outils.api) return null;
+  if (!outils || !outils.api) return null;
+  if (!mode) return finirEnSimulation(outils);
   return outils.api.envoyer('/api/seance/demarrer', { mode: mode, lieu: outils.lieu || null,
     etage: outils.etage || null, ouverture: 'auto' })
     .then((r) => {
@@ -150,6 +155,52 @@ export function surEspace(outils) {
     });
 }
 
+// En Simulation : une séance restée ouverte (espace ouvert avant en Réel) est terminée, son rapport s'écrit.
+// Tant que la navigation du robot ou de la répétition tourne, le serveur refuse (409) : elle continue d'enregistrer.
+export function finirEnSimulation(outils) {
+  if (!outils || !outils.api || !outils.api.lire) return null;
+  return outils.api.lire('/api/seance')
+    .then((r) => {
+      if (!r || !r.seance || r.seance.etat !== 'ouverte') return null;
+      return outils.api.envoyer('/api/seance/arreter', { fermeture: 'simulation' })
+        .then((rep) => {
+          const m = rep && rep.seance;
+          if (!m) return null;
+          memoire.terminee = { id: m.id, rapport: (m.rapport && m.rapport.etat) || 'en_cours' };
+          memoire.seance = null;
+          notifier();
+          if (outils.message) {
+            outils.message('Séance terminée : vous êtes passé en Simulation, le rapport s\'écrit (une minute au plus).',
+              'info');
+          }
+          if (memoire.terminee.rapport !== 'pret') suivreRapport(m.id, outils);
+          return m;
+        });
+    })
+    .catch((e) => {
+      if (outils.message) outils.message('La séance continue : ' + (e && e.message ? e.message : e), 'avertissement');
+      return null;
+    });
+}
+
+// Une nouvelle séance à la main (ouverture « manuel »), depuis le bouton « Nouvelle séance » ou le menu
+export function commencerSeance(outils) {
+  const mode = modeSeance(outils);
+  if (!mode) return Promise.resolve(null);
+  return outils.api.envoyer('/api/seance/demarrer', { mode: mode, lieu: outils.lieu || null, etage: outils.etage || null,
+    ouverture: 'manuel' })
+    .then((r) => {
+      const bref = brefDuManifeste(r && r.seance);
+      if (bref) {
+        memoire.seance = bref;
+        memoire.terminee = null;
+        notifier();
+      }
+      if (outils.message) outils.message('Séance commencée : l\'enregistrement démarre.', 'succes');
+      return r ? r.seance : null;
+    });
+}
+
 // ---------------------------------------------------------------- barre d'outils
 
 export function monterSeanceBarre(element, outils) {
@@ -162,6 +213,7 @@ export function monterSeanceBarre(element, outils) {
   badge.appendChild(el('span', 'seance-point'));
   const texte = el('span', 'seance-badge-texte', TEXTES_BADGE.enregistrement);
   badge.appendChild(texte);
+  badge.appendChild(el('span', 'seance-badge-court', TEXTE_BADGE_COURT));    // de 1 440 à 1 799 px (seance.css)
   badge.addEventListener('click', () => basculerMenu(badge, outils));
   const lien = el('a', 'seance-lien-rapport');
   lien.setAttribute('data-role', 'rapport-seance');
@@ -171,8 +223,29 @@ export function monterSeanceBarre(element, outils) {
   lien.appendChild(icone('rapport', 16));
   const texteLien = el('span', 'seance-lien-texte', 'Rapport de séance');
   lien.appendChild(texteLien);
+  // corrections de la vague 6 : en Réel sans séance ouverte (après « Terminer »), en commencer une sans revenir à
+  // l'accueil
+  const nouvelle = el('button', 'seance-nouvelle');
+  nouvelle.type = 'button';
+  nouvelle.setAttribute('data-role', 'nouvelle-seance');
+  nouvelle.hidden = true;
+  nouvelle.appendChild(icone('seance', 16));
+  nouvelle.appendChild(el('span', 'seance-nouvelle-texte', 'Nouvelle séance'));
+  nouvelle.title = 'Aucune séance ouverte : cliquez pour en commencer une (la boîte noire enregistre de nouveau)';
+  nouvelle.setAttribute('aria-label', 'Commencer une nouvelle séance');
+  nouvelle.addEventListener('click', () => {
+    nouvelle.disabled = true;
+    commencerSeance(outils)
+      .catch((e) => {
+        if (outils.message) outils.message(e.message, 'erreur');
+      })
+      .then(() => {
+        nouvelle.disabled = false;
+      });
+  });
   element.appendChild(badge);
   element.appendChild(lien);
+  element.appendChild(nouvelle);
 
   function dessiner() {
     const b = badgeDe(memoire.seance);
@@ -183,6 +256,7 @@ export function monterSeanceBarre(element, outils) {
       badge.title = b.titre;
       badge.setAttribute('aria-label', b.texte + ' : menu de la séance');
     }
+    nouvelle.hidden = !!b || !modeSeance(outils);
     const t = memoire.terminee;
     lien.hidden = !t || !!b;
     if (t && !b) {
@@ -220,6 +294,7 @@ export function monterSeanceBarre(element, outils) {
       fermerMenu();
       badge.remove();
       lien.remove();
+      nouvelle.remove();
     },
   };
 }
@@ -253,7 +328,10 @@ function suivreRapport(id, outils) {
 export async function terminer(outils) {
   fermerMenu();
   if (!memoire.seance) {
-    if (outils && outils.message) outils.message('Aucune séance ouverte : elle s\'ouvre seule quand on ouvre l\'espace en Réel.', 'info');
+    if (outils && outils.message) {
+      outils.message(modeSeance(outils) ? 'Aucune séance ouverte : « Nouvelle séance », dans la barre d\'outils, en '
+        + 'commence une.' : 'Aucune séance ouverte : elle s\'ouvre seule quand on ouvre l\'espace en Réel.', 'info');
+    }
     return null;
   }
   const ok = await outils.confirmer('Terminer la séance ?\n\nL\'enregistrement s\'arrête et le rapport s\'écrit tout seul '
@@ -266,7 +344,10 @@ export async function terminer(outils) {
   memoire.terminee = { id: m.id, rapport: (m.rapport && m.rapport.etat) || 'en_cours' };
   memoire.seance = null;
   notifier();
-  if (outils.message) outils.message('Séance terminée : le rapport s\'écrit (une minute au plus).', 'succes');
+  if (outils.message) {
+    outils.message('Séance terminée : le rapport s\'écrit (une minute au plus). « Nouvelle séance », dans la barre '
+      + 'd\'outils, en commence une autre.', 'succes');
+  }
   if (memoire.terminee.rapport !== 'pret') suivreRapport(m.id, outils);
   return m;
 }
@@ -373,9 +454,10 @@ export function ouvrirMenu(ancre, outils) {
     });
     menu.appendChild(terminerBouton);
   } else {
-    etat.textContent = 'Aucune séance ouverte : elle s\'ouvre seule quand on ouvre l\'espace en Réel.';
-    menu.appendChild(etat);
     const mode = modeSeance(outils);
+    etat.textContent = mode ? 'Aucune séance ouverte : « Commencer une séance » en ouvre une (la boîte noire '
+      + 'enregistre de nouveau).' : 'Aucune séance ouverte : elle s\'ouvre seule quand on ouvre l\'espace en Réel.';
+    menu.appendChild(etat);
     if (mode) {
       // à la main (13.3) : une nouvelle séance tout de suite, sans rouvrir l'espace de travail
       const commencer = el('button', 'menu-ruban-choix');
@@ -386,17 +468,9 @@ export function ouvrirMenu(ancre, outils) {
       commencer.appendChild(el('span', '', 'Commencer une séance'));
       commencer.addEventListener('click', () => {
         commencer.disabled = true;
-        outils.api.envoyer('/api/seance/demarrer', { mode: mode, lieu: outils.lieu || null, etage: outils.etage || null,
-          ouverture: 'manuel' })
-          .then((r) => {
-            const bref = brefDuManifeste(r && r.seance);
-            if (bref) {
-              memoire.seance = bref;
-              memoire.terminee = null;
-              notifier();
-            }
+        commencerSeance(outils)
+          .then(() => {
             fermerMenu();
-            if (outils.message) outils.message('Séance commencée : l\'enregistrement démarre.', 'succes');
           })
           .catch((e) => {
             commencer.disabled = false;

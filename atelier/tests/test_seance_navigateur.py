@@ -162,6 +162,44 @@ def test_terminer_par_le_ruban_puis_nouvelle_seance(seances, serveur, navigateur
     assert nav.js("return window.erreursAtelier") == []
 
 
+def test_simulation_termine_la_seance_et_nouvelle_seance(seances, serveur, navigateur, lieux):  # noqa: F811
+    """Corrections de la vague 6 (revue de l'interface, défauts 5 et 17) : la séance ouverte en répétition continuait
+    quand on rouvrait l'espace en Simulation (le rapport disait « Répétition » pour des trajets simulés) ; elle est
+    maintenant terminée (fermeture « simulation »), le lien du rapport reste. Puis, revenu en Réel après « Terminer »,
+    le bouton « Nouvelle séance » de la barre d'outils en ouvre une sans revenir à l'accueil."""
+    _, base = serveur
+    nav = navigateur
+    nav.taille(1366, 768)
+    C.ouvrir_espace(nav, base, "repetition")
+    nav.attendre(BADGE, message="badge de la séance")
+    premiere = _api(base, "/api/seance")["seance"]["id"]
+    C.ouvrir_espace(nav, base, "simu")
+    nav.attendre("return !!document.querySelector('[data-role=rapport-seance]') && "
+                 "!document.querySelector('[data-role=rapport-seance]').hidden", message="lien du rapport en Simulation")
+    assert nav.js(BADGE) is None and _api(base, "/api/seance")["seance"] is None
+    m = _api(base, "/api/seances/" + premiere)
+    assert m["etat"] == "fermee" and m["fermeture"] == "simulation", m
+    assert "passé en Simulation" in nav.js("return document.querySelector('[data-role=barre-etat]').textContent")
+    assert nav.js("const b = document.querySelector('[data-role=nouvelle-seance]'); return !b || b.hidden")
+    # revenu en Réel : aucune séance ouverte toute seule, le bouton « Nouvelle séance » est là
+    C.ouvrir_espace(nav, base, "reel")
+    nav.attendre(BADGE, message="séance rouverte en Réel")
+    nav.commande("seance.terminer")
+    nav.clic("[data-role=confirmation] [data-role=confirmer]")
+    nav.attendre("const b = document.querySelector('[data-role=nouvelle-seance]'); return !!b && !b.hidden",
+                 message="bouton « Nouvelle séance »")
+    boite = nav.js("const r = document.querySelector('[data-role=nouvelle-seance]').getBoundingClientRect();"
+                   "const a = document.querySelector('[data-role=arret]').getBoundingClientRect();"
+                   "return [r.width, r.height, r.right <= a.left];")
+    assert boite[0] >= 24 and boite[1] >= 24 and boite[2], boite
+    nav.clic("[data-role=nouvelle-seance]")
+    nav.attendre(BADGE, message="nouvelle séance commencée")
+    seconde = _api(base, "/api/seance")["seance"]
+    assert seconde["ouverture"] == "manuel" and seconde["mode"] == "reel"
+    assert nav.js("return document.querySelector('[data-role=nouvelle-seance]').hidden")
+    assert nav.js("return window.erreursAtelier") == []
+
+
 def test_pas_de_seance_en_simulation(seances, serveur, navigateur, lieux):  # noqa: F811
     _, base = serveur
     nav = navigateur

@@ -154,3 +154,28 @@ def test_liste_de_plusieurs_seances(client):
     assert [s["id"] for s in liste] == ["2026-11-13_09h00", "2026-11-12_14h03-2", "2026-11-12_14h03"]
     assert set(liste[0]) >= {"id", "etat", "mode", "lieu", "debut", "duree_s", "rapport"}
     assert client.get("/api/seance").json()["derniere"]["id"] == "2026-11-13_09h00"
+
+
+def test_fermeture_en_simulation(client, monkeypatch):
+    """Corrections de la vague 6 (revue de l'interface, défaut 5) : l'espace rouvert en Simulation termine la séance
+    (fermeture « simulation ») ; tant que la navigation du robot ou de la répétition tourne, 409 et elle continue."""
+    _francais(client.post("/api/seance/arreter", json={"fermeture": "simulation"}), 404)
+    r = client.post("/api/seance/demarrer", json={"mode": "repetition", "lieu": "demo", "ouverture": "auto"})
+    assert r.status_code == 200, r.text
+    ident = r.json()["seance"]["id"]
+    etat = client.app_atelier.state.atelier
+    for mode in ("repetition", "robot"):
+        monkeypatch.setattr(etat, "mode_navigation", lambda m=mode: m)
+        r = client.post("/api/seance/arreter", json={"fermeture": "simulation"})
+        _francais(r, 409)
+        assert "tourne encore" in r.json()["detail"]
+        assert client.get("/api/seance").json()["seance"]["id"] == ident
+    monkeypatch.setattr(etat, "mode_navigation", lambda: None)
+    r = client.post("/api/seance/arreter", json={"fermeture": "simulation"})
+    assert r.status_code == 200, r.text
+    m = r.json()["seance"]
+    assert m["fermeture"] == "simulation" and valider_donnees("seance", m) == []
+    assert client.get("/api/seance").json()["seance"] is None
+    assert attendre(lambda: M.lire_manifeste(client.racine / "seances" / ident)["rapport"]["etat"] != "en_cours", 90)
+    rapport = client.get(f"/api/seances/{ident}/rapport", params={"format": "md"})
+    assert rapport.status_code == 200 and "passage en Simulation" in rapport.text, rapport.text[-800:]

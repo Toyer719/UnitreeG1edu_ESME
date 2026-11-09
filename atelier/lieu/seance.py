@@ -27,7 +27,8 @@ import atelier
 ETATS_SEANCE = ("ouverte", "fermee", "interrompue")
 MODES_SEANCE = ("reel", "repetition")
 OUVERTURES = ("auto", "manuel", "g1-seance")
-FERMETURES = ("terminer", "arret_atelier", "g1-seance", "plantage")
+FERMETURES = ("terminer", "arret_atelier", "g1-seance", "plantage",
+              "simulation")      # corrections de la vague 6 : l'espace rouvert en Simulation termine la séance
 ETATS_ENREGISTREMENT = ("demarrage", "en_cours", "arrete", "coupe", "absent", "erreur")
 ETATS_RAPPORT = ("absent", "en_cours", "pret", "echec")
 RAISONS_JOURNAL_JETSON = ("avant_arret", "fin", "manuel")

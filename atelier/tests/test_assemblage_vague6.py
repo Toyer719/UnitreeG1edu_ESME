@@ -233,11 +233,14 @@ def test_echap_ferme_le_diagnostic_et_la_borne_sans_arret(sans_ros, serveur, nav
 def test_barre_d_outils_de_la_repetition_a_toutes_les_largeurs(sans_ros, serveur, navigateur, lieux):  # noqa: F811
     """Avec le badge de la séance et « Vérifier le robot » en plus, les pastilles d'état étaient rognées de 1100 à
     1600 px (« Refus du ro… ») : les états ne rétrécissent plus, les listes du lieu et de l'étage d'abord, puis la
-    marque, le texte d'« Enregistrer » et de ROS 2 ; le texte du badge et de « Vérifier » à partir de 1800 px."""
+    marque, le texte d'« Enregistrer » et de ROS 2 ; le texte du badge et de « Vérifier » à partir de 1800 px.
+    Corrections de la vague 6 (revue de l'interface, défaut 9) : le badge dit « Séance » de 1440 à 1799 px (un point
+    seul ressemblait à un voyant d'erreur), la marque laisse sa place sous 1600 px, « Vérifier » écrit dès 1700 px ;
+    les listes du lieu et de l'étage gardent au moins 100 px à partir de 1366 px."""
     _, base = serveur
     nav = navigateur
     textes = {}
-    for largeur in (1100, 1280, 1366, 1600, 1920):
+    for largeur in (1100, 1280, 1366, 1440, 1600, 1700, 1920):
         nav.taille(largeur, 800)
         C.ouvrir_espace(nav, base, "repetition")
         nav.attendre("return !!document.querySelector('[data-role=seance]') && "
@@ -248,9 +251,18 @@ def test_barre_d_outils_de_la_repetition_a_toutes_les_largeurs(sans_ros, serveur
         textes[largeur] = nav.js("const v = (s) => { const e = document.querySelector(s); return !!e && "
                                  "getComputedStyle(e).display !== 'none'; };"
                                  "return [v('.marque-barre'), v('.bouton-enregistrer .bouton-barre-texte'),"
-                                 "v('[data-role=seance] .seance-badge-texte')];")
-    assert textes[1100] == [False, False, False] and textes[1366] == [False, True, False], textes
-    assert textes[1600] == [True, True, False] and textes[1920] == [True, True, True], textes
+                                 "v('[data-role=seance] .seance-badge-texte'), v('[data-role=seance] .seance-badge-court'),"
+                                 "v('[data-role=zone-diagnostic] .bouton-barre-texte')];")
+        if largeur >= 1366:
+            listes = nav.js("return ['[data-role=lieu]', '[data-role=etage]'].map((s) => "
+                            "document.querySelector(s).getBoundingClientRect().width);")
+            assert min(listes) >= 100, f"à {largeur} px, les listes du lieu et de l'étage : {listes} px"
+    assert textes[1100] == [False, False, False, False, False], textes
+    assert textes[1366] == [False, True, False, False, False], textes
+    assert textes[1440] == [False, True, False, True, False], textes
+    assert textes[1600] == [True, True, False, True, False], textes
+    assert textes[1700] == [True, True, False, True, True], textes
+    assert textes[1920] == [True, True, True, False, True], textes
     assert nav.js("return window.erreursAtelier") == []
 
 

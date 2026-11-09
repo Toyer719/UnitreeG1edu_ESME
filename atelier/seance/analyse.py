@@ -684,7 +684,8 @@ def chronologie(donnees, actions, manifeste, anomalies_vues=(), lieu=None):
         ajouter(fin, "seance", {"interrompue": "Séance interrompue (l'Atelier s'est arrêté brutalement)"}
                 .get(m.get("etat"), "Séance terminée" + {"terminer": " (« Terminer la séance »)",
                                                          "arret_atelier": " (arrêt de l'Atelier)",
-                                                         "g1-seance": " (g1-seance arreter)"}
+                                                         "g1-seance": " (g1-seance arreter)",
+                                                         "simulation": " (passage en Simulation)"}
                      .get(m.get("fermeture"), "")))
     lignes.sort(key=lambda x: x[0])
     return [{"t": heure_iso(t, ms=False), "depuis_s": round(max(0.0, t - debut), 1), "genre": g, "texte": x,

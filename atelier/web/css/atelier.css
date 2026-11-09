@@ -322,9 +322,11 @@ a { color: var(--accent-texte); }
 .etat-pastille-texte { overflow: hidden; text-overflow: ellipsis; }
 /* vague 6 (assemblage) : le badge de la séance et « Vérifier le robot » suivent les états dans la barre ; les états
    ne sont jamais rognés (la pastille du robot était coupée de 1100 à 1600 px) : les listes du lieu et de l'étage
-   rétrécissent d'abord, la marque disparaît, puis « Enregistrer » et ROS 2 perdent leur texte (infobulles) */
+   rétrécissent d'abord, la marque disparaît, puis « Enregistrer » et ROS 2 perdent leur texte (infobulles).
+   Corrections de la vague 6 : la marque disparaît dès 1 599 px, pour laisser au badge de la séance son mot « Séance »
+   de 1 440 à 1 799 px (un simple point rouge ressemblait à un voyant d'erreur) */
 .etats-barre { flex-shrink: 0; }
-@media (max-width: 1439px) {
+@media (max-width: 1599px) {
   .marque-barre { display: none; }
 }
 @media (max-width: 1365px) {

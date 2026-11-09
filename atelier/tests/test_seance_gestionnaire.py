@@ -161,6 +161,33 @@ def test_ouverture_journal_jetson_et_fermeture(etat, banc):
     assert valider_donnees("seance", M.lire_manifeste(dossier)) == []
 
 
+def test_actions_pendant_terminer_la_seance_gardees(etat, banc, monkeypatch):
+    """Corrections de la vague 6 (revue du code, défaut 7) : pendant « Terminer la séance » (journal du conteneur du
+    Jetson, jusqu'à 30 s, puis l'arrêt de l'enregistreur), chaque action était jetée, ARRÊT compris. Le journal des
+    actions se ferme maintenant en dernier."""
+    import threading
+    s = etat.seance
+    m = s.demarrer("reel", "demo", "rdc", "auto")
+    dossier = banc / "seances" / m["id"]
+    monkeypatch.setattr(etat, "mode_navigation", lambda: "robot")      # le robot tourne : journal du Jetson à la fin
+    monkeypatch.setenv("FAUX_JETSON_ATTENTE", "2")
+    s.noter_action(_action("/api/guide/aller", {"cible": "b204"}, reponse={"envoye": "b204"}))
+    fin = {}
+    fil = threading.Thread(target=lambda: fin.update(m=s.arreter("terminer")))
+    fil.start()
+    time.sleep(0.8)                                                    # pendant le journal du Jetson
+    s.noter_action(_action("/api/arret", {"mode": "reel"}, reponse={"arrete": True, "verrou": True}))
+    fil.join(timeout=30)
+    assert fin["m"]["etat"] == "fermee", fin
+    lignes = [json.loads(x) for x in (dossier / "actions.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [x["genre"] for x in lignes] == ["y_aller", "seance", "arret"], [x["texte"] for x in lignes]
+    assert lignes[1]["texte"] == "Terminer la séance" and fin["m"]["actions"] == 3
+    # après la fermeture, plus rien n'est noté
+    s.noter_action(_action("/api/arret", {"mode": "reel"}))
+    time.sleep(0.3)
+    assert len((dossier / "actions.jsonl").read_text(encoding="utf-8").splitlines()) == 3
+
+
 def test_refus_simulation_lieu_inconnu_et_sans_serveur(etat, banc):
     s = etat.seance
     for mode in ("simu",):

@@ -4,7 +4,9 @@
                                          fermée ou null}
   POST /api/seance/demarrer {mode, lieu?, etage?, ouverture?}   ouvre la séance (reel ou repetition), ou rend
                                          celle qui est ouverte : {seance} ; en simulation : 409
-  POST /api/seance/arreter {fermeture?}  « Terminer la séance » : {seance} (rapport en cours) ; 404 sans séance
+  POST /api/seance/arreter {fermeture?}  « Terminer la séance » : {seance} (rapport en cours) ; 404 sans séance ;
+                                         fermeture simulation (l'espace rouvert en Simulation) : 409 tant que la
+                                         navigation du robot ou de la répétition tourne
   GET  /api/seances                      les séances, la plus récente d'abord : [{id, etat, mode, lieu, etage, debut,
                                          fin, duree_s, actions, rapport, enregistrement}]
   GET  /api/seances/{id}                 seance.json
@@ -62,6 +64,10 @@ async def _corps(request):
     return donnees
 
 
+MESSAGE_NAVIGATION_EN_COURS = ("La navigation du robot (ou de la répétition) tourne encore : la séance continue "
+                               "d'enregistrer. Arrêtez-la d'abord (Naviguer › Arrêter), ou terminez la séance.")
+
+
 def _texte(donnees, nom):
     valeur = donnees.get(nom)
     if valeur is not None and not isinstance(valeur, str):
@@ -99,8 +105,15 @@ async def demarrer(request: Request):
 async def arreter(request: Request):
     d = await _corps(request)
     fermeture = _texte(d, "fermeture") or "terminer"
-    if fermeture not in ("terminer", "g1-seance"):
-        raise ErreurAtelier(422, "« fermeture » vaut terminer (bouton « Terminer la séance ») ou g1-seance.")
+    if fermeture not in ("terminer", "g1-seance", "simulation"):
+        raise ErreurAtelier(422, "« fermeture » vaut terminer (bouton « Terminer la séance »), g1-seance ou "
+                                 "simulation (l'espace rouvert en Simulation).")
+    if fermeture == "simulation":
+        # corrections de la vague 6 : une séance correspond au mode Réel ; rouvrir l'espace en Simulation la termine,
+        # sauf si la navigation du robot (ou de la répétition) tourne encore : elle continue d'enregistrer
+        mode = request.app.state.atelier.mode_navigation()
+        if mode in ("robot", "repetition"):
+            raise ErreurAtelier(409, MESSAGE_NAVIGATION_EN_COURS)
     m = await run_in_threadpool(_seance(request).arreter, fermeture)
     if m is None:
         raise ErreurAtelier(404, "Aucune séance ouverte : elle s'ouvre seule quand on ouvre l'espace de travail en "

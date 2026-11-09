@@ -55,6 +55,7 @@ JOURNAL = logging.getLogger("atelier.seance")
 PERIODE_SURVEILLANCE_S = 1.0
 DELAI_JETSON_S = 30.0             # g1-jetson journal (13.3)
 DELAI_FERMETURE_S = 10.0          # fermer() à l'arrêt de l'Atelier
+FERMETURES_NOTEES = ("terminer", "g1-seance", "simulation")   # notées dans le journal des actions par la séance
 ATTENTE_ENREGISTREUR_S = 8.0      # après SIGINT, l'enregistreur ferme son bag (en moins d'une seconde d'habitude)
 ATTENTE_REPRISE_S = 15.0          # reprise : un enregistreur orphelin s'arrête seul en 1 à 2 s
 LIGNES_JETSON = 100000
@@ -153,6 +154,7 @@ class _Ouverte:
         self.fil = None
         self.ecrit = None                 # dernier texte écrit du manifeste (pour n'écrire que les changements)
         self.fermeture = False
+        self.journal_ferme = False      # le journal des actions est fermé : plus aucune action notée
 
 
 class GestionnaireSeance:
@@ -438,7 +440,9 @@ class GestionnaireSeance:
     def noter_action(self, action):
         try:
             o = self._ouverte
-            if o is not None and o.journal is not None and not o.fermeture:
+            # corrections de la vague 6 : les actions faites pendant « Terminer la séance » (journal du Jetson jusqu'à
+            # 30 s, arrêt de l'enregistreur) sont gardées, ARRÊT compris : le journal se ferme en dernier
+            if o is not None and o.journal is not None and not o.journal_ferme:
                 o.journal.noter(action)
         except Exception:       # noqa: BLE001 : la boîte noire ne gêne jamais une demande
             pass
@@ -494,23 +498,21 @@ class GestionnaireSeance:
             debut = time.monotonic()
             reste = (lambda: max(0.5, delai - (time.monotonic() - debut))) if delai else (lambda: None)
             m = o.manifeste
+            # 0. « Terminer la séance » est noté par la séance elle-même, à l'heure de la demande (la demande qui la
+            #    ferme ne peut plus l'être), par la file : dans l'ordre des actions ; le journal reste ouvert jusqu'à
+            #    l'étape 3
+            if o.journal is not None and fermeture in FERMETURES_NOTEES:
+                try:
+                    o.journal.noter({"t": M.heure_iso(ms=True), "methode": "POST", "chemin": "/api/seance/arreter",
+                                      "requete": {"fermeture": fermeture}, "statut": 200, "reponse": None,
+                                      "duree_ms": 0.0, "client": "local"})
+                except Exception:       # noqa: BLE001
+                    pass
             # 1. le journal du conteneur du Jetson, si le robot tourne encore (raison fin)
             if self._mode_navigation() == "robot":
                 attente = DELAI_JETSON_S if delai is None else min(DELAI_JETSON_S, max(1.0, reste() * 0.5))
                 self.avant_arret_jetson(local=False, raison="fin", delai=attente)
-            # 2. le journal des actions : « Terminer la séance » est noté par la séance elle-même (la demande qui la
-            #    ferme ne peut plus l'être), puis la file est vidée
-            if o.journal is not None:
-                if fermeture in ("terminer", "g1-seance"):
-                    try:
-                        o.journal.ecrire({"t": M.heure_iso(ms=True), "methode": "POST", "chemin": "/api/seance/arreter",
-                                          "requete": {"fermeture": fermeture}, "statut": 200, "reponse": None,
-                                          "duree_ms": 0.0, "client": "local"})
-                    except Exception:       # noqa: BLE001
-                        pass
-                o.journal.arreter(delai=2.0)
-                m["actions"] = o.journal.nombre
-            # 3. l'enregistreur : SIGINT, le bag se ferme proprement
+            # 2. l'enregistreur : SIGINT, le bag se ferme proprement
             if o.processus is not None and o.processus.en_cours:
                 attente = ATTENTE_ENREGISTREUR_S if delai is None else min(ATTENTE_ENREGISTREUR_S, max(1.0, reste()))
                 try:
@@ -525,6 +527,11 @@ class GestionnaireSeance:
             e = m["enregistrement"]
             if e.get("etat") in ("demarrage", "en_cours"):
                 e["etat"] = "arrete"
+            # 3. le journal des actions, fermé en dernier (les actions faites pendant 1 et 2 y sont), file vidée
+            if o.journal is not None:
+                o.journal_ferme = True
+                o.journal.arreter(delai=2.0)
+                m["actions"] = o.journal.nombre
             # 4. la fin des journaux des commandes lancées pendant la séance
             self._copier_journaux(o)
             self._debrancher_journal_serveur(o)
