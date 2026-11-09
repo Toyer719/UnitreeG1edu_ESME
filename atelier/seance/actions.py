@@ -10,7 +10,8 @@ B204 », « Posture : S'asseoir »…), puis l'écrit, une ligne JSON par action
   JournalActions(fichier, debut, mode, noms)            la file et le fil d'écriture : noter(action) rend la main
                                                         tout de suite (le serveur n'attend jamais le disque)
 
-Rien de secret ne va dans le journal : le code opérateur de la borne est masqué (CHAMPS_MASQUES).
+Rien de secret ne va dans le journal : le code opérateur de la borne est masqué (CHAMPS_MASQUES), celui tapé sur la
+borne comme celui des réglages de la démo.
 """
 import json
 import logging
@@ -24,7 +25,12 @@ from .manifeste import heure_iso, lire_heure
 JOURNAL = logging.getLogger("atelier.seance")
 
 LONGUEUR_TEXTE_MAX = 200                 # schéma action_seance
-CHAMPS_MASQUES = ("code", "jeton")       # le code opérateur de la borne, un jeton : jamais en clair
+# le code opérateur de la borne (tapé sur la borne, ou dans les réglages de la démo : demo.yaml borne.code_operateur,
+# corrections de la vague 6, revue du code, défaut 6), un jeton : jamais en clair
+CHAMPS_MASQUES = ("code", "jeton", "code_operateur")
+MASQUE = "••••"
+# le même champ dans un corps gardé en texte (JSON coupé à LIMITE_CORPS_OCTETS : la valeur peut être coupée aussi)
+MOTIF_CHAMP_MASQUE = re.compile(r'("(?:code|jeton|code_operateur)"\s*:\s*)("[^"]*(?:"|$)|-?\d+)')
 SOURCES_CLIENT = {"local": "atelier", "borne": "borne", "distant": "distant"}
 
 MODES_LANCEMENT = {"simu": "la simulation", "repetition": "la navigation (répétition sans robot)",
@@ -192,13 +198,14 @@ def decrire(methode, chemin, requete=None, reponse=None, noms=None):
 
 
 def _masquer(corps):
-    """Copie du corps sans les champs secrets (code opérateur, jeton)."""
+    """Copie du corps sans les champs secrets (code opérateur de la borne, jeton), aussi dans un corps gardé en
+    texte."""
     if isinstance(corps, dict):
-        return {k: ("••••" if k in CHAMPS_MASQUES and v not in (None, "") else _masquer(v)) for k, v in corps.items()}
+        return {k: (MASQUE if k in CHAMPS_MASQUES and v not in (None, "") else _masquer(v)) for k, v in corps.items()}
     if isinstance(corps, list):
         return [_masquer(v) for v in corps]
-    if isinstance(corps, str) and re.search(r'"(code|jeton)"\s*:', corps):
-        return re.sub(r'("(?:code|jeton)"\s*:\s*)"[^"]*"', r'\1"••••"', corps)
+    if isinstance(corps, str):
+        return MOTIF_CHAMP_MASQUE.sub(lambda m: m.group(1) + '"' + MASQUE + '"', corps)
     return corps
 
 

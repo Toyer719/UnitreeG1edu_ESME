@@ -91,15 +91,40 @@ def enregistreur_vivant(pid, dossier=None):
     return "atelier.seance" in texte and "enregistrer" in texte and (dossier is None or str(dossier) in texte)
 
 
+def masquer_code_demo(fichier):
+    """Dans une copie de demo.yaml, le code opérateur de la borne (borne.code_operateur) devient « •••• » (corrections
+    de la vague 6, revue du code, défaut 6 : la copie du lieu va dans le .zip « à donner »). Une copie illisible est
+    retirée (elle pourrait le contenir). Vrai si la copie reste."""
+    import yaml
+    from .actions import MASQUE
+    fichier = Path(fichier)
+    try:
+        d = yaml.safe_load(fichier.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, yaml.YAMLError):
+        d = None
+    if not isinstance(d, dict):
+        if "code_operateur" in (fichier.read_text(encoding="utf-8", errors="replace") if fichier.is_file() else ""):
+            fichier.unlink()
+            return False
+        return True
+    borne = d.get("borne")
+    if isinstance(borne, dict) and borne.get("code_operateur") not in (None, ""):
+        borne["code_operateur"] = MASQUE
+        fichier.write_text(yaml.safe_dump(d, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    return True
+
+
 def copier_lieu(source, destination, etage=None):
-    """Copie dans destination les petits fichiers du lieu et la carte 2D de l'étage (ou de tous les étages).
-    Renvoie la liste des fichiers copiés (chemins relatifs)."""
+    """Copie dans destination les petits fichiers du lieu et la carte 2D de l'étage (ou de tous les étages), sans le
+    code opérateur de la borne (masquer_code_demo). Renvoie la liste des fichiers copiés (chemins relatifs)."""
     source, destination = Path(source), Path(destination)
     copies = []
     destination.mkdir(parents=True, exist_ok=True)
     for nom in FICHIERS_LIEU_COPIES:
         if (source / nom).is_file():
             shutil.copy2(source / nom, destination / nom)
+            if nom == "demo.yaml" and not masquer_code_demo(destination / nom):
+                continue
             copies.append(nom)
     cartes = source / "cartes"
     if cartes.is_dir():

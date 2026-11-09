@@ -340,3 +340,23 @@ def test_outils(tmp_path):
     copies = copier_fichiers_lieu(DEMO, tmp_path / "lieu", "rdc")
     assert "salles.yaml" in copies and all(not c.startswith("mondes") for c in copies)
     assert not atelier_vivant(os.getpid()) and not atelier_vivant(None)
+
+
+def test_la_copie_du_lieu_n_a_pas_le_code_operateur(tmp_path):
+    """Corrections de la vague 6 (revue du code, défaut 6) : la séance copiait demo.yaml tel quel dans lieu/ (mis
+    dans le .zip de g1-seance exporter), avec le code opérateur de la borne en clair."""
+    import yaml
+    from atelier.lieu import accueil as A
+    lieu = tmp_path / "lieux" / "demo"
+    copier_lieu(DEMO, lieu)
+    A.enregistrer_demo(lieu, {"version": 1, "borne": {"code_operateur": "4826", "langue": "fr"}})
+    assert "4826" in (lieu / "demo.yaml").read_text(encoding="utf-8")
+    copies = copier_fichiers_lieu(lieu, tmp_path / "seance" / "lieu", "rdc")
+    copie = (tmp_path / "seance" / "lieu" / "demo.yaml").read_text(encoding="utf-8")
+    assert "demo.yaml" in copies and "4826" not in copie
+    assert yaml.safe_load(copie)["borne"] == {"code_operateur": "••••", "langue": "fr"}
+    assert "4826" in (lieu / "demo.yaml").read_text(encoding="utf-8")         # le lieu, lui, n'a pas changé
+    # un demo.yaml illisible qui parle du code : pas copié du tout
+    (lieu / "demo.yaml").write_text("borne: {code_operateur: '4826'\n", encoding="utf-8")
+    copies = copier_fichiers_lieu(lieu, tmp_path / "autre" / "lieu", "rdc")
+    assert "demo.yaml" not in copies and not (tmp_path / "autre" / "lieu" / "demo.yaml").exists()

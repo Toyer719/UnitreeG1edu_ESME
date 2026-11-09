@@ -107,6 +107,19 @@ def test_ligne_conforme_et_secrets_masques():
     # corps coupé (texte) : le code est masqué aussi
     texte = ligne_action(dict(action, requete='{"code": "9876", "x": "' + "a" * 50 + ' […]'), debut, "reel")
     assert "9876" not in texte["requete"]
+    # corrections de la vague 6 (revue du code, défaut 6) : le code des réglages de la démo (PUT …/demo, la demande
+    # et la réponse qui rend le fichier) était écrit en clair
+    reglages = {"version": 1, "borne": {"code_operateur": "4826", "langue": "fr"}, "accompagner": True}
+    demo = ligne_action({"t": heure_iso(ms=True), "methode": "PUT", "chemin": "/api/lieux/seance/demo",
+                         "requete": reglages, "statut": 200, "reponse": {"enregistre": ["demo.yaml"],
+                                                                         "donnees": reglages}}, debut, "reel")
+    assert "4826" not in json.dumps(demo) and demo["requete"]["borne"] == {"code_operateur": "••••", "langue": "fr"}
+    assert demo["reponse"]["donnees"]["borne"]["code_operateur"] == "••••" and reglages["borne"]["code_operateur"]
+    for coupe in ('{"borne": {"code_operateur": "4826", "langue": "fr"}, "x": "a […]',
+                  '{"borne": {"code_operateur": "48', '{"borne": {"code_operateur": 4826, "x": 1', '{"code": 1234}'):
+        texte = ligne_action(dict(action, chemin="/api/lieux/seance/demo", methode="PUT", requete=coupe), debut,
+                             "reel")["requete"]
+        assert "4826" not in texte and "48" not in texte.replace("••••", "") and "1234" not in texte, texte
     # statut absent ou absurde, mode inconnu, client inconnu : la ligne reste conforme
     bizarre = ligne_action({"chemin": "/api/arret", "statut": 999, "client": "martien"}, None, "lune")
     assert valider_donnees("action_seance", bizarre) == []
