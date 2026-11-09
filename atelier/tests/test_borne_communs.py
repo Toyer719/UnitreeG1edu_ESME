@@ -166,6 +166,31 @@ class PontDemo:
         return None
 
 
+class PontLent(PontDemo):
+    """Comme le vrai pont ROS 2 (corrections de la vague 6, revue du code, défauts 4 et 10) : la démo reçoit le message
+    et répond dans un autre fil, un peu plus tard (PontDemo répond dans la même pile d'appels : deux demandes ne s'y
+    chevauchent jamais). sans_reponse : la démo ne répond pas du tout."""
+
+    retard_s = 0.05
+    sans_reponse = False
+
+    def publier_json(self, sujet, donnees):
+        if not self.actif:
+            raise RuntimeError("le pont ROS 2 n'est pas démarré")
+        with self.verrou:
+            self.publies.append((sujet, donnees))
+        if self.o is None or sujet not in ("/accueil/choix", "/accueil/commande") or self.sans_reponse:
+            return 1
+
+        def plus_tard():
+            time.sleep(self.retard_s)
+            with self.verrou:
+                self._garder(self.o.entrer(sujet, donnees))
+                self.rafraichir()
+        threading.Thread(target=plus_tard, name="démo lente", daemon=True).start()
+        return 1
+
+
 def orchestrateur(dossier, **reglages):
     """La machine d'états de la démo sur un lieu (salles.yaml), réglages de test."""
     from atelier.lieu import charger_salles

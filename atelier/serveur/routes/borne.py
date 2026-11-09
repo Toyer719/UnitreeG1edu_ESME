@@ -19,7 +19,9 @@
                                          locale, message} (« relancez avec g1-atelier --hote 0.0.0.0 » sinon)
 
 Anti-rebond (ANTI_REBOND_S, 0,6 s) : deux appuis, deux choix ou deux annulations du même client à moins de
-0,6 s comptent pour un (la réponse du premier est rendue, avec rebond: true). Depuis la borne (un client qui
+0,6 s comptent pour un (la réponse du premier est rendue, avec rebond: true) ; une demande pareille qui arrive
+pendant que la première attend encore la démo l'attend aussi et rend sa réponse (Borne.reserver : cinq choix
+envoyés ensemble ne publient qu'un /accueil/choix). Depuis la borne (un client qui
 n'est pas ce PC), seules ces pages et ces routes sont permises (garde de main.py, chemin_permis_borne) : rien
 d'autre, ni l'ARRÊT contourné, ni les réglages.
 """
@@ -80,6 +82,9 @@ class DemandeCode(BaseModel):
     code: str
 
 
+MESSAGE_SANS_REPONSE_BORNE = "Le robot n'a pas répondu : réessayez dans un instant."
+
+
 class Borne:
     """Ce que le serveur retient pour les bornes : jetons opérateur, essais de code, anti-rebond, fichiers lus."""
 
@@ -89,23 +94,43 @@ class Borne:
         self.jetons = {}          # jeton → (client, fin de validité)
         self.echecs = {}          # client → [instants des mauvais codes]
         self.reponses = {}        # (client, route) → (instant, statut, corps)
+        self.en_cours = {}        # (client, route) → futur de la première demande qui attend la démo
         self.fichiers = {}        # dossier → (dates des fichiers, données lues)
 
     # ------------------------------------------------------------ anti-rebond
 
-    def rebond(self, client, route):
-        """La réponse rendue au même client pour la même route il y a moins de ANTI_REBOND_S, ou None."""
-        with self.verrou:
-            r = self.reponses.get((client, route))
-        if r is not None and self.horloge() - r[0] < A.ANTI_REBOND_S:
-            return r[1], dict(r[2], rebond=True)
-        return None
+    def _retenir(self, client, route, statut, corps):
+        self.reponses[(client, route)] = (self.horloge(), statut, corps)
+        if len(self.reponses) > 500:
+            self.reponses = dict(list(self.reponses.items())[-200:])
 
-    def retenir(self, client, route, statut, corps):
+    def reserver(self, client, route):
+        """L'anti-rebond, aussi pour des demandes simultanées (corrections de la vague 6, revue du code, défaut 4 : la
+        réponse n'était retenue qu'après l'attente de la démo, jusqu'à 2 s, et cinq choix envoyés ensemble partaient
+        tous). Rend ("reponse", (statut, corps)) si le même client a eu sa réponse il y a moins de ANTI_REBOND_S,
+        ("attendre", futur) si sa première demande attend encore la démo (le futur rend (statut, corps, erreur)),
+        sinon ("premier", futur) : la clé est prise jusqu'à finir(). Dans la boucle asyncio du serveur."""
         with self.verrou:
-            self.reponses[(client, route)] = (self.horloge(), statut, corps)
-            if len(self.reponses) > 500:
-                self.reponses = dict(list(self.reponses.items())[-200:])
+            deja = self.reponses.get((client, route))
+            if deja is not None and self.horloge() - deja[0] < A.ANTI_REBOND_S:
+                return "reponse", (deja[1], dict(deja[2], rebond=True))
+            futur = self.en_cours.get((client, route))
+            if futur is not None and not futur.done():
+                return "attendre", futur
+            futur = asyncio.get_running_loop().create_future()
+            self.en_cours[(client, route)] = futur
+            return "premier", futur
+
+    def finir(self, client, route, futur, statut=None, corps=None, erreur=None):
+        """La première demande a sa réponse (retenue pour l'anti-rebond) ou son erreur : les demandes pareilles qui
+        l'attendaient la reçoivent, et la clé est libérée."""
+        with self.verrou:
+            if statut is not None:
+                self._retenir(client, route, statut, corps)
+            if self.en_cours.get((client, route)) is futur:
+                del self.en_cours[(client, route)]
+        if not futur.done():
+            futur.set_result((statut, corps, erreur))
 
     # ------------------------------------------------------------ code opérateur
 
@@ -328,11 +353,6 @@ async def direct_borne(ws: WebSocket):
         pass        # la page a été fermée
 
 
-def _reponse(borne, client, route, statut, corps):
-    borne.retenir(client, route, statut, corps)
-    return JSONResponse(corps, status_code=statut)
-
-
 def _refus(reponse, defaut="Refusé."):
     """(statut, corps) d'un refus de la démo (événement choix_refuse ou commande_refusee)."""
     raison = reponse.get("raison")
@@ -340,24 +360,48 @@ def _refus(reponse, defaut="Refusé."):
                                            "raison": raison}
 
 
-async def _commande_borne(request, action, route):
-    etat, borne, client = _etat(request), _borne(request), _client(request)
-    deja = borne.rebond(client, route)
-    if deja is not None:
-        return JSONResponse(deja[1], status_code=deja[0])
+async def _une_fois(request, route, faire):
+    """Fait faire() (une coroutine qui rend (statut, corps)) une seule fois pour les demandes pareilles du même
+    client (Borne.reserver) : une demande qui arrive pendant l'attente de la première, ou moins de ANTI_REBOND_S
+    après sa réponse, rend la même réponse avec rebond: true (ou la même erreur)."""
+    borne, client = _borne(request), _client(request)
+    genre, valeur = borne.reserver(client, route)
+    if genre == "reponse":
+        return JSONResponse(valeur[1], status_code=valeur[0])
+    if genre == "attendre":
+        statut, corps, erreur = await valeur
+        if erreur is not None:
+            raise ErreurAtelier(erreur.statut, erreur.detail)
+        return JSONResponse(dict(corps, rebond=True), status_code=statut)
+    futur = valeur
     try:
-        exiger_demo(etat)
+        statut, corps = await faire()
     except ErreurAtelier as e:
-        return _reponse(borne, client, route, e.statut, {"detail": e.detail, "accepte": False,
-                                                         "raison": "demo_arretee"})
-    message = A.message_commande(action, "borne", nouvel_id(f"borne-{action}"))
-    reponse = await envoyer_et_attendre(etat, "/accueil/commande", message)
-    if reponse is None:
-        raise ErreurAtelier(503, "Le robot n'a pas répondu : réessayez dans un instant.")
-    if reponse.get("code") == "commande_acceptee":
-        return _reponse(borne, client, route, 200, {"accepte": True, "texte": reponse.get("texte")})
-    statut, corps = _refus(reponse)
-    return _reponse(borne, client, route, statut, corps)
+        borne.finir(client, route, futur, erreur=e)
+        raise
+    except BaseException:
+        borne.finir(client, route, futur, erreur=ErreurAtelier(503, MESSAGE_SANS_REPONSE_BORNE))
+        raise
+    borne.finir(client, route, futur, statut, corps)
+    return JSONResponse(corps, status_code=statut)
+
+
+async def _commande_borne(request, action, route):
+    etat = _etat(request)
+
+    async def faire():
+        try:
+            exiger_demo(etat)
+        except ErreurAtelier as e:
+            return e.statut, {"detail": e.detail, "accepte": False, "raison": "demo_arretee"}
+        message = A.message_commande(action, "borne", nouvel_id(f"borne-{action}"))
+        reponse = await envoyer_et_attendre(etat, "/accueil/commande", message)
+        if reponse is None:
+            raise ErreurAtelier(503, MESSAGE_SANS_REPONSE_BORNE)
+        if reponse.get("code") == "commande_acceptee":
+            return 200, {"accepte": True, "texte": reponse.get("texte")}
+        return _refus(reponse)
+    return await _une_fois(request, route, faire)
 
 
 @routeur.post("/api/borne/appui")
@@ -372,38 +416,34 @@ async def annuler(request: Request):
 
 @routeur.post("/api/borne/choisir")
 async def choisir(demande: DemandeChoix, request: Request):
-    etat, borne, client = _etat(request), _borne(request), _client(request)
-    deja = borne.rebond(client, "choisir")
-    if deja is not None:
-        return JSONResponse(deja[1], status_code=deja[0])
-    try:
-        demo = exiger_demo(etat)
-    except ErreurAtelier as e:
-        return _reponse(borne, client, "choisir", e.statut, {"detail": e.detail, "accepte": False,
-                                                             "raison": "demo_arretee"})
-    salle = demande.salle.strip()
-    try:
-        donnees = borne.donnees_lieu(dossier_du_lieu(demo.get("lieu")))
-    except (ErreurAtelier, ErreurLieu, OSError):
-        donnees = None
-    if donnees is not None:
-        refus = A.refus_choix(salle, donnees["salles"], donnees["principal"], demo.get("etage"))
-        if refus is not None:
-            return _reponse(borne, client, "choisir", STATUT_REFUS[refus[0]],
-                            {"detail": refus[1], "accepte": False, "raison": refus[0]})
-    if not atelier.MOTIF_ID.match(salle):
-        return _reponse(borne, client, "choisir", 404, {"detail": "Cette salle n'existe pas dans ce lieu.",
-                                                        "accepte": False, "raison": "salle_inconnue"})
-    message = A.message_choix(salle, "borne", nouvel_id("borne"))
-    reponse = await envoyer_et_attendre(etat, "/accueil/choix", message)
-    if reponse is None:
-        raise ErreurAtelier(503, "Le robot n'a pas répondu : réessayez dans un instant.")
-    if reponse.get("code") == "choix_accepte":
-        return _reponse(borne, client, "choisir", 200, {"accepte": True, "visite": reponse.get("visite"),
-                                                        "salle": salle, "nom": reponse.get("nom"),
-                                                        "texte": reponse.get("texte")})
-    statut, corps = _refus(reponse)
-    return _reponse(borne, client, "choisir", statut, corps)
+    etat, borne = _etat(request), _borne(request)
+
+    async def faire():
+        try:
+            demo = exiger_demo(etat)
+        except ErreurAtelier as e:
+            return e.statut, {"detail": e.detail, "accepte": False, "raison": "demo_arretee"}
+        salle = demande.salle.strip()
+        try:
+            donnees = borne.donnees_lieu(dossier_du_lieu(demo.get("lieu")))
+        except (ErreurAtelier, ErreurLieu, OSError):
+            donnees = None
+        if donnees is not None:
+            refus = A.refus_choix(salle, donnees["salles"], donnees["principal"], demo.get("etage"))
+            if refus is not None:
+                return STATUT_REFUS[refus[0]], {"detail": refus[1], "accepte": False, "raison": refus[0]}
+        if not atelier.MOTIF_ID.match(salle):
+            return 404, {"detail": "Cette salle n'existe pas dans ce lieu.", "accepte": False,
+                         "raison": "salle_inconnue"}
+        message = A.message_choix(salle, "borne", nouvel_id("borne"))
+        reponse = await envoyer_et_attendre(etat, "/accueil/choix", message)
+        if reponse is None:
+            raise ErreurAtelier(503, MESSAGE_SANS_REPONSE_BORNE)
+        if reponse.get("code") == "choix_accepte":
+            return 200, {"accepte": True, "visite": reponse.get("visite"), "salle": salle, "nom": reponse.get("nom"),
+                         "texte": reponse.get("texte")}
+        return _refus(reponse)
+    return await _une_fois(request, "choisir", faire)
 
 
 @routeur.post("/api/borne/operateur")

@@ -95,6 +95,53 @@ def test_anti_rebond(demo):
     assert appuis[0].status_code == 409 and appuis[1].json()["rebond"]       # en visite : occupé
 
 
+def _ensemble(app, demandes, client=("192.168.0.50", 40000)):
+    """Les demandes [(chemin, corps)] envoyées ensemble par un même client (httpx.AsyncClient : elles se
+    chevauchent vraiment dans la boucle du serveur, ce que TestClient ne fait pas)."""
+    import asyncio
+    import httpx
+
+    async def tout():
+        transport = httpx.ASGITransport(app=app, client=client)
+        async with httpx.AsyncClient(transport=transport, base_url="http://127.0.0.1:8000", timeout=30) as c:
+            return await asyncio.gather(*[c.post(chemin, json=corps) for chemin, corps in demandes])
+    return asyncio.run(tout())
+
+
+def test_anti_rebond_de_demandes_simultanees(tmp_path, monkeypatch):
+    """Corrections de la vague 6 (revue du code, défauts 4 et 10) : la réponse n'était retenue qu'après l'attente de
+    la démo ; cinq choix envoyés ensemble (cinq doigts, ou un double appui pendant une latence du Wi-Fi) publiaient
+    cinq /accueil/choix, et la démo répondait « occupé » à quatre d'entre eux. Avec une démo qui répond depuis un
+    autre fil, comme le vrai pont."""
+    from .test_borne_communs import PontLent, orchestrateur
+    app, _, dossier = client_demo(tmp_path, monkeypatch)
+    pont = PontLent(orchestrateur(dossier))
+    app.state.atelier.pont = pont
+    pont.guide("attente")
+    reponses = _ensemble(app, [("/api/borne/choisir", {"salle": "b204"})] * 5)
+    assert [r.status_code for r in reponses] == [200] * 5, [r.text for r in reponses]
+    assert sorted(r.json().get("rebond", False) for r in reponses) == [False, True, True, True, True]
+    assert len({r.json()["visite"] for r in reponses}) == 1
+    assert len([s for s, _ in pont.publies if s == "/accueil/choix"]) == 1
+    assert pont.o.etat()["statistiques"]["refus_occupe"] == 0
+    # un autre client n'est pas confondu avec le premier : sa demande part (et la démo, occupée, la refuse)
+    autre = _ensemble(app, [("/api/borne/choisir", {"salle": "cdi"})], client=("192.168.0.51", 40000))
+    assert autre[0].status_code == 409 and len([s for s, _ in pont.publies if s == "/accueil/choix"]) == 2
+    # trois appuis ensemble : une seule commande
+    time.sleep(A.ANTI_REBOND_S + 0.05)
+    appuis = _ensemble(app, [("/api/borne/appui", None)] * 3)
+    assert len({r.status_code for r in appuis}) == 1
+    assert len([s for s, _ in pont.publies if s == "/accueil/commande"]) == 1
+    # la démo ne répond pas : une seule publication, la même erreur pour toutes, et la demande suivante repart
+    time.sleep(A.ANTI_REBOND_S + 0.05)
+    pont.sans_reponse = True
+    muets = _ensemble(app, [("/api/borne/annuler", None)] * 3)
+    assert [r.status_code for r in muets] == [503] * 3 and "pas répondu" in muets[0].json()["detail"]
+    assert len([d for s, d in pont.publies if s == "/accueil/commande"]) == 2
+    assert _ensemble(app, [("/api/borne/annuler", None)])[0].status_code == 503
+    assert len([d for s, d in pont.publies if s == "/accueil/commande"]) == 3
+
+
 def test_appui_annuler_et_suivi(demo):
     r = demo.post("/api/borne/appui")
     assert r.status_code == 200 and r.json()["accepte"]
