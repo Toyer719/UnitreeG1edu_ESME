@@ -638,11 +638,36 @@ class Guide:
             self._panne_depuis = self.horloge()
         self._lever_limite()
 
+    def _seul_vers_le_principal(self):
+        """
+        Vrai pour une visite vers le point principal sans visiteur à accompagner.
+
+        « Ramener à l'accueil » de la démo, « Y aller » vers l'accueil : le robot rentre
+        seul ; il ne dit ni « Suivez-moi, je vous emmène à… » ni « Nous sommes arrivés »
+        (corrections de la vague 6), mais « Je retourne à l'accueil » et « Je suis de
+        retour à l'accueil ».
+        """
+        return (self._mission == 'visite' and self.principal is not None
+                and self._cible == self.principal and not self._accompagner)
+
+    def _loin_du_principal(self):
+        """Vrai si le robot est à plus de TOLERANCE_RETOUR_M du principal (ou sans position)."""
+        pose = self.position()
+        if pose is None:
+            return True
+        px, py, _ = self.routeur.pose_arrivee(self.principal)
+        return math.dist(pose[:2], (px, py)) > TOLERANCE_RETOUR_M
+
     def _commencer_visite(self, but):
         """Départ d'une visite : itinéraire, puis l'annonce (depart, ou seul sans visiteur vu)."""
         if not self._partir_vers(but, 'en_route'):
             return False
-        if self._accompagner:
+        if self._seul_vers_le_principal():
+            # déjà au point principal : au plus une rotation, sans annonce (comme le retour)
+            self._retour_annonce = self._loin_du_principal()
+            if self._retour_annonce:
+                self._evenement('retour')
+        elif self._accompagner:
             if self._suivi.choisir(self._personnes_fraiches(), self.horloge(), self.position(),
                                    DISTANCE_VISITEUR_DEPART_M):
                 self.journal(f'visiteur choisi (personne n° {self._suivi.id}, à '
@@ -740,8 +765,12 @@ class Guide:
             return
         self._lever_limite()
         self._changer('arrive', f'arrivé à « {self._cible} »')
-        phrase = (self.routeur.salles.get(self._cible) or {}).get('phrase_arrivee') or None
-        self._evenement('arrivee', texte=phrase)
+        if self._seul_vers_le_principal():
+            if self._retour_annonce:
+                self._evenement('retour_arrive')
+        else:
+            phrase = (self.routeur.salles.get(self._cible) or {}).get('phrase_arrivee') or None
+            self._evenement('arrivee', texte=phrase)
         self._programmer_retour()
 
     def _orienter(self):

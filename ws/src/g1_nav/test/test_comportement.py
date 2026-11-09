@@ -197,6 +197,34 @@ def test_retour_automatique_apres_l_arrivee(dossier):
     assert banc.guide.etat()['etat'] == 'attente' and not banc.moteur.etat()['en_cours']
 
 
+def test_ramener_au_principal_sans_suivez_moi(dossier):
+    """
+    « Ramener à l'accueil » : le robot rentre seul, il ne dit pas « Suivez-moi ».
+
+    Corrections de la vague 6 (revue de l'interface, défaut 4) : la démo envoie
+    {cible: principal, accompagner: false} ; le guide disait « Suivez-moi, je vous emmène à
+    Accueil. » puis « Nous sommes arrivés ». Il dit maintenant « Je retourne à l'accueil. »
+    et « Je suis de retour à l'accueil. ».
+    """
+    banc = Banc(dossier, depart=(21.0, 13.0, 1.57), delai_avant_retour_s=2.0)
+    assert banc.guide.aller('principal', accompagner=False, retour=False, source='accueil')
+    assert banc.codes() == ['retour'] and 'depart' not in banc.codes()
+    assert banc.evenements[0]['texte'] == 'Je retourne à l\'accueil.'
+    assert banc.tourner(120.0)['etat'] == 'arrive'
+    assert banc.codes() == ['retour', 'retour_arrive']
+    assert banc.evenements[-1]['texte'] == 'Je suis de retour à l\'accueil.'
+    banc.conformes()
+    # avec un visiteur à accompagner vers l'accueil (Y aller de l'Atelier), « Suivez-moi » reste
+    banc2 = Banc(dossier, depart=(21.0, 13.0, 1.57))
+    banc2.vues = visiteur_derriere(1.0)
+    banc2.guide.aller('accueil', accompagner=True)
+    assert banc2.codes() == ['depart']
+    # une salle sans accompagnement : « depart », comme avant
+    banc3 = Banc(dossier)
+    banc3.guide.aller('b204')
+    assert banc3.codes() == ['depart']
+
+
 def test_orientation_reessayee_puis_attente(dossier):
     """La rotation laisse un écart : nouvel essai (3 au plus), puis attente quand même."""
     banc = Banc(dossier, erreur_cap=0.6, residu=0.2, delai_avant_retour_s=1.0)
@@ -279,6 +307,8 @@ def test_visite_du_point_principal_lui_meme(dossier):
     banc.tourner(15.0, jusqu_a=('attente',))
     assert banc.guide.etat()['etat'] == 'attente'
     assert 'retour' not in banc.codes() and 'retour_arrive' not in banc.codes()
+    # corrections de la vague 6 : ni « Suivez-moi » ni « Nous sommes arrivés » sur place
+    assert 'depart' not in banc.codes() and 'arrivee' not in banc.codes()
 
 
 # ---------------------------------------------------------------- accompagnement du visiteur
