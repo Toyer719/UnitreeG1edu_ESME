@@ -51,9 +51,15 @@ def _echap(nav):
 # ---------------------------------------------------------------- les dossiers des tests
 
 def test_les_seances_et_les_sons_des_tests_restent_dans_le_test(tmp_path):
+    from atelier.diagnostic import FauxContexte, contexte_par_defaut
     from atelier.lieu.seance import dossier_seances
     from atelier.lieu.voix import dossier_sons
     assert tmp_path in dossier_seances().parents and tmp_path in dossier_sons().parents
+    # le diagnostic des tests (et celui de l'ouverture d'une séance en Réel) : un faux contexte vide, câble absent,
+    # jamais de ping ni de ssh vers le robot, même câble branché
+    ctx = contexte_par_defaut()
+    assert type(ctx) is FauxContexte and ctx.lire("/sys/class/net/eno2/carrier") is None
+    assert ctx.ping("192.168.123.161") is None
     commun = (RACINE / "tests_e2e" / "commun.sh").read_text(encoding="utf-8")
     assert 'export ATELIER_SEANCES="$TRAVAIL/seances"' in commun
     assert 'export ATELIER_VOIX_SONS="$TRAVAIL/sons"' in commun
@@ -62,7 +68,7 @@ def test_les_seances_et_les_sons_des_tests_restent_dans_le_test(tmp_path):
 # ---------------------------------------------------------------- Échap et les fenêtres de la vague 6
 
 @NAVIGATEUR
-def test_echap_ferme_le_diagnostic_et_l_adresse_de_la_borne_sans_arret(sans_ros, serveur, navigateur, lieux):
+def test_echap_ferme_le_diagnostic_et_la_borne_sans_arret(sans_ros, serveur, navigateur, lieux):  # noqa: F811
     _, base = serveur
     nav = navigateur
     nav.taille(1366, 768)
@@ -101,7 +107,7 @@ def test_echap_ferme_le_diagnostic_et_l_adresse_de_la_borne_sans_arret(sans_ros,
 # ---------------------------------------------------------------- la barre d'outils, pleine depuis la vague 6
 
 @NAVIGATEUR
-def test_barre_d_outils_de_la_repetition_a_toutes_les_largeurs(sans_ros, serveur, navigateur, lieux):
+def test_barre_d_outils_de_la_repetition_a_toutes_les_largeurs(sans_ros, serveur, navigateur, lieux):  # noqa: F811
     """Avec le badge de la séance et « Vérifier le robot » en plus, les pastilles d'état étaient rognées de 1100 à
     1600 px (« Refus du ro… ») : les états ne rétrécissent plus, les listes du lieu et de l'étage d'abord, puis la
     marque, le texte d'« Enregistrer » et de ROS 2 ; le texte du badge et de « Vérifier » à partir de 1800 px."""
@@ -128,7 +134,7 @@ def test_barre_d_outils_de_la_repetition_a_toutes_les_largeurs(sans_ros, serveur
 # ---------------------------------------------------------------- les réglages de la voix dans l'écran Démo
 
 @pytest.fixture
-def vraie_voix(faux_bin):
+def vraie_voix(faux_bin):  # noqa: F811
     """Le vrai g1-voix dans le $ATELIER_BIN des tests (les autres commandes restent fausses)."""
     (faux_bin.dossier / "g1-voix").symlink_to(RACINE / "bin" / "g1-voix")
     yield
@@ -155,7 +161,7 @@ def _choisir(nav, libelle, valeur):
 
 
 @NAVIGATEUR
-def test_reglages_de_la_voix_dans_l_ecran_demo(vraie_voix, serveur, navigateur, lieux):
+def test_reglages_de_la_voix_dans_l_ecran_demo(vraie_voix, serveur, navigateur, lieux):  # noqa: F811
     _, base = serveur
     nav = navigateur
     if not _lire(base, "/api/etat").get("ros", {}).get("actif"):
@@ -163,11 +169,14 @@ def test_reglages_de_la_voix_dans_l_ecran_demo(vraie_voix, serveur, navigateur, 
     nav.taille(1600, 1000)
     C.ouvrir_espace(nav, base, "simu")
     purs = nav.js_async("""const fini = arguments[arguments.length - 1];
-      import('/js/voix/reglages_voix.js').then((V) => fini([V.reglagesVoix({ volume: 300, vitesse: 'x', sortie: 'pc' }),
+      import('/js/voix/reglages_voix.js').then((V) => fini([
+        V.reglagesVoix({ volume: 300, vitesse: 'x', sortie: 'pc' }),
         V.reglagesVoix({ sortie: 'borne', nom: 'fr_FR-tom-medium', volume: 42.4, vitesse: 1.3 }),
-        V.resumeEtatVoix(null).genre, V.resumeEtatVoix({ tourne: true, etat: { sortie: 'robot', robot: { abonne: false } } }).genre,
+        V.resumeEtatVoix(null).genre,
+        V.resumeEtatVoix({ tourne: true, etat: { sortie: 'robot', robot: { abonne: false } } }).genre,
         V.resumeEtatVoix({ tourne: true, etat: { sortie: 'borne', en_cours: { texte: 'Bonjour' } } }).genre,
-        V.resumeEtatVoix({ tourne: true, etat: { sortie: 'borne', dites: 2 } }).texte])).catch((e) => fini(String(e)));""")
+        V.resumeEtatVoix({ tourne: true, etat: { sortie: 'borne', dites: 2 } }).texte]))
+        .catch((e) => fini(String(e)));""")
     assert purs[0] == {"sortie": "robot", "nom": "fr_FR-siwis-medium", "volume": 100, "vitesse": 1}, purs
     assert purs[1] == {"sortie": "borne", "nom": "fr_FR-tom-medium", "volume": 42, "vitesse": 1.3}, purs
     assert purs[2:5] == ["arrete", "muet", "parle"] and "2 phrases dites" in purs[5], purs
