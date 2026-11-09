@@ -456,7 +456,7 @@ export function ouvrir(racine, options) {
       if (v.trim()) r.borne.code_operateur = v.trim();
       else delete r.borne.code_operateur;
       changer();
-    }, { indice: '4 à 8 chiffres (vide : pas de mode opérateur)' });
+    }, { indice: '4 à 8 chiffres, ou vide' });
     code.setAttribute('inputmode', 'numeric');
     code.setAttribute('data-role', 'code-operateur');
     F.paragraphe(corpsReglages, 'Le code opérateur ouvre, sur la borne, la pause, la reprise et le retour à l\'accueil. '

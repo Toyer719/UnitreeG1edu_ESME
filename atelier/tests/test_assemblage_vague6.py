@@ -268,6 +268,51 @@ def test_barre_d_outils_de_la_repetition_a_toutes_les_largeurs(sans_ros, serveur
 
 # ---------------------------------------------------------------- les réglages de la voix dans l'écran Démo
 
+# le texte choisi de chaque liste (et la valeur de chaque champ texte d'une ligne) des réglages de la démo tient-il ?
+TEXTES_COUPES = r"""
+const c = document.createElement('canvas').getContext('2d');
+const coupes = [];
+for (const e of document.querySelectorAll('[data-role=demo-reglages] select, [data-role=demo-reglages] input[type=text]')) {
+  if (!e.offsetParent) continue;
+  const s = getComputedStyle(e);
+  c.font = s.fontWeight + ' ' + s.fontSize + ' ' + s.fontFamily;
+  const textes = e.tagName === 'SELECT' ? Array.from(e.options).map((o) => o.textContent) : [e.value];
+  const place = e.clientWidth - parseFloat(s.paddingLeft) - parseFloat(s.paddingRight) - (e.tagName === 'SELECT' ? 18 : 0);
+  for (const t of textes) {
+    const l = c.measureText(t).width;
+    if (l > place + 1) coupes.push('« ' + t + ' » : ' + Math.round(l) + ' px pour ' + Math.round(place));
+  }
+}
+return coupes;"""
+
+
+@NAVIGATEUR
+def test_listes_des_reglages_de_la_demo_entieres(sans_ros, serveur, navigateur, lieux):  # noqa: F811
+    """Corrections de la vague 6 (revue de l'interface, défaut 3) : dans le panneau étroit, « Le robot parle par »
+    montrait « Haut-parleur du » (113 px sur 259), « Voix » et « Personnalité » coupées aussi, à toutes les tailles
+    d'écran. L'étiquette est au-dessus, la liste en pleine largeur, les noms des sorties sont courts et une phrase dit
+    la différence (voix du PC, borne, synthèse du robot à vérifier)."""
+    _, base = serveur
+    nav = navigateur
+    for largeur, hauteur in ((1920, 1080), (1366, 768)):
+        nav.taille(largeur, hauteur)
+        C.ouvrir_espace(nav, base, "simu")
+        nav.commande("demo.reglages")
+        nav.ecran("demo")
+        nav.attendre("const d = document.querySelector('[data-role=demo-reglages]'); return !!d && d.open && "
+                     "!!d.querySelector('[data-role=voix-sortie-aide]')", message="réglages ouverts")
+        assert nav.js(TEXTES_COUPES) == [], largeur
+        aide = nav.js("return document.querySelector('[data-role=voix-sortie-aide]').textContent")
+        assert "PC" in aide and "haut-parleur du robot" in aide, aide
+    _choisir(nav, "Le robot parle par", "robot_tts")
+    assert "à vérifier" in nav.js("return document.querySelector('[data-role=voix-sortie-aide]').textContent")
+    purs = nav.js_async("""const fini = arguments[arguments.length - 1];
+      import('/js/voix/reglages_voix.js').then((V) => fini([V.SORTIES_VOIX.map((s) => s.id), V.aideSortie('borne'),
+        V.aideSortie('inconnue')])).catch((e) => fini(String(e)));""")
+    assert purs[0] == ["robot", "borne", "robot_tts"] and "borne" in purs[1] and purs[2] == "", purs
+    assert nav.js("return window.erreursAtelier") == []
+
+
 @pytest.fixture
 def vraie_voix(faux_bin):  # noqa: F811
     """Le vrai g1-voix dans le $ATELIER_BIN des tests (les autres commandes restent fausses)."""

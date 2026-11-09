@@ -15,6 +15,19 @@ import { bouton, champNombre, champTexte, el, listeDeroulante, paragraphe } from
 export const TEXTE_ESSAI = "Bonjour ! Je suis le robot d'accueil. Suivez-moi !";
 export const PERIODE_ETAT_MS = 1000;
 export const REGLAGES_DEFAUT = { sortie: 'robot', nom: 'fr_FR-siwis-medium', volume: 70, vitesse: 1.0 };
+// Les sorties de la voix (corrections de la vague 6 : le panneau est étroit, « Haut-parleur du robot (voix du PC) » se
+// lisait « Haut-parleur du ») : un nom court dans la liste, et une phrase sous la liste qui dit la différence
+export const SORTIES_VOIX = [
+  { id: 'robot', texte: 'Haut-parleur du robot', aide: 'La voix est fabriquée sur ce PC, puis jouée par le haut-parleur du robot.' },
+  { id: 'borne', texte: 'Borne (tablette ou téléphone)', aide: 'Le son est joué par la tablette ou le téléphone de la borne.' },
+  { id: 'robot_tts', texte: 'Synthèse du robot', aide: 'La voix intégrée du robot : son français est à vérifier avec le robot.' },
+];
+
+// La phrase d'aide d'une sortie (SORTIES_VOIX)
+export function aideSortie(id) {
+  const s = SORTIES_VOIX.find((x) => x.id === id);
+  return s ? s.aide : '';
+}
 
 // Les réglages de la voix (champ voix de demo.yaml) complétés par les défauts, bornés comme le schéma demo.
 export function reglagesVoix(voix) {
@@ -74,10 +87,14 @@ export function monterReglagesVoix(zone, options) {
     }
   }
 
-  const choixSorties = [{ id: 'robot', texte: 'Haut-parleur du robot (voix du PC)' },
-    { id: 'borne', texte: 'Borne (tablette ou téléphone)' }, { id: 'robot_tts', texte: 'Synthèse du robot (langues à vérifier)' }];
+  const choixSorties = SORTIES_VOIX.map((x) => ({ id: x.id, texte: x.texte }));
   const choixVoix = [{ id: 'fr_FR-siwis-medium', texte: 'Siwis (voix de femme)' }, { id: 'fr_FR-tom-medium', texte: "Tom (voix d'homme)" }];
-  const sortie = listeDeroulante(racine, 'Le robot parle par', valeurs.sortie, choixSorties, (v) => changer('sortie', v));
+  const sortie = listeDeroulante(racine, 'Le robot parle par', valeurs.sortie, choixSorties, (v) => {
+    changer('sortie', v);
+    aide.textContent = aideSortie(valeurs.sortie);
+  });
+  const aide = paragraphe(racine, aideSortie(valeurs.sortie), 'panneau-note voix-sortie-aide');
+  aide.setAttribute('data-role', 'voix-sortie-aide');
   const voix = listeDeroulante(racine, 'Voix', valeurs.nom, choixVoix, (v) => changer('nom', v));
   champNombre(racine, 'Volume', valeurs.volume, { pas: 5, min: 0, max: 100, unite: '%', decimales: 0 },
     (v) => changer('volume', v));
@@ -106,7 +123,7 @@ export function monterReglagesVoix(zone, options) {
   });
   arreter.setAttribute('data-role', 'voix-arreter');
 
-  const essai = champTexte(racine, 'Phrase à essayer', TEXTE_ESSAI, () => {});
+  const essai = champTexte(racine, 'Phrase à essayer', TEXTE_ESSAI, () => {}, { lignes: 2 });
   essai.setAttribute('data-role', 'voix-essai');
   const ecouter = el('audio');
   ecouter.setAttribute('data-role', 'voix-ecouter');

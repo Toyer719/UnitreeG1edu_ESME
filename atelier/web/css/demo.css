@@ -64,6 +64,15 @@
 .demo-statistique-libelle { font-size: 0.72rem; line-height: 1.2; color: var(--texte-doux); }
 .demo-statistique[data-statistique="duree_moyenne_s"] .demo-statistique-valeur { font-size: 1rem; }
 .demo-reglages { margin-top: 12px; }
+/* corrections de la vague 6 : le panneau est étroit ; l'étiquette au-dessus, la liste ou le texte en pleine largeur
+   (« Haut-parleur du robot (voix du PC) » se lisait « Haut-parleur du », à toutes les tailles d'écran) ; les champs
+   nombre gardent leur unité (%, s, m) à droite */
+.demo-reglages .champ:not(.champ-case) { gap: 4px 10px; }
+.demo-reglages .champ:not(.champ-case) > .champ-libelle { flex: 1 1 100%; min-width: 0; }
+.demo-reglages .champ > select, .demo-reglages .champ > input[type="text"], .demo-reglages .champ > input:not([type]),
+.demo-reglages .champ > textarea {
+  flex: 1 1 100%; width: 100%; min-width: 0;
+}
 .demo-sous-titre { margin: 14px 0 6px; font-size: 0.9rem; color: var(--texte); }
 
 /* ---------------------------------------------------------------- le plan : la salle visée, les salles cachées */
@@ -132,3 +141,4 @@
 .demo-visage .m-joue { fill: var(--nuage-haut); opacity: 0.45; }
 .demo-visage .m-z { fill: var(--texte-doux); font-family: var(--police); font-weight: 800; font-size: 15px; }
 .demo-visage .m-z2 { font-size: 11px; }
+.voix-sortie-aide { margin: -2px 0 6px; font-size: 0.8rem; }

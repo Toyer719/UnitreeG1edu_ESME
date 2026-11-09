@@ -589,10 +589,11 @@ puis **Naviguer › Arrêter**.
 Seulement si tout le reste est fait, robot repéré à la croix et navigation lancée (étapes E et F).
 
 1. **V1. La voix.** Ruban **Équipe › ⚙ Avancé › Réglages de la démo**, partie « La voix du robot » :
-   « Le robot parle par » **Haut-parleur du robot (voix du PC)**, volume 50 %, **Démarrer la voix**, puis
-   **Essayer**. Attendu : le robot dit la phrase par son haut-parleur. Note si le son est net (sans
-   craquement), le délai avant le son, et si 70 % s'entend bien dans le hall. Essaie aussi « Synthèse
-   du robot (langues à vérifier) » : parle-t-elle français ? Puis **Arrêter la voix**.
+   « Le robot parle par » **Haut-parleur du robot** (la voix est fabriquée sur le PC), volume 50 %,
+   **Démarrer la voix**, puis **Essayer**. Attendu : le robot dit la phrase par son haut-parleur. Note si
+   le son est net (sans craquement), le délai avant le son, et si 70 % s'entend bien dans le hall. Essaie
+   aussi « Synthèse du robot » (sa voix intégrée, langues à vérifier) : parle-t-elle français ? Puis
+   **Arrêter la voix**.
 2. **V2. La démo.** **Équipe › Démo › Lancer la démo** ; sur ton téléphone, branché au même Wi-Fi que
    le PC, ouvre la borne (relance d'abord l'Atelier avec `g1-atelier --hote 0.0.0.0` ; **Équipe ›
    Démo › Borne** montre l'adresse et son code QR). Un volontaire se présente devant le robot (1,5 m) ou
