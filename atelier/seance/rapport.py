@@ -44,6 +44,13 @@ LIBELLES_RESULTAT = {"arrive": "Arrivé", "interrompu": "Interrompu", "echec": "
                      "en_cours": "Pas fini à la fin de la séance"}
 ICONES_GRAVITE = {"probleme": "✖", "attention": "⚠", "info": "ℹ"}
 NOMS_GRAVITE = {"probleme": "Problème", "attention": "Attention", "info": "Pour info"}
+# Les états du diagnostic (13.2) écrits comme dans « Vérifier le robot » (assemblage de la vague 6)
+ETATS_DIAGNOSTIC = {"ok": "OK", "attention": "Attention", "probleme": "Problème", "inconnu": "Inconnu"}
+
+
+def etat_diagnostic(etat):
+    """« Problème » pour probleme… ; un état inconnu reste tel quel."""
+    return ETATS_DIAGNOSTIC.get(etat, etat if etat is not None else "?")
 
 
 # ---------------------------------------------------------------- mise en forme en français
@@ -446,9 +453,9 @@ def texte_markdown(r):
     if not diag:
         lignes.append("Pas de diagnostic au début de la séance.")
     else:
-        lignes.append(f"État : **{diag.get('etat')}**. {diag.get('message') or ''}".strip())
-        lignes += [f"- {v['titre']} ({v['etat']}) : {v.get('detail') or ''} {v.get('conseil') or ''}".rstrip()
-                   for v in diag.get("a_regler") or []]
+        lignes.append(f"État : **{etat_diagnostic(diag.get('etat'))}**. {diag.get('message') or ''}".strip())
+        lignes += [f"- {v['titre']} ({etat_diagnostic(v['etat'])}) : {v.get('detail') or ''} "
+                   f"{v.get('conseil') or ''}".rstrip() for v in diag.get("a_regler") or []]
     lignes += ["", "## Chronologie", "", "| Heure | Depuis le début | Ce qui s'est passé |", "|---|---|---|"]
     chrono = r.get("chronologie") or []
     for c in chrono[:CHRONOLOGIE_AFFICHEE]:
@@ -632,9 +639,10 @@ def texte_html(r, png=None):
     if not diag:
         ajouter("<p class=\"rien\">Pas de diagnostic au début de la séance.</p>")
     else:
-        ajouter(f"<p>État : <strong>{_e(diag.get('etat'))}</strong>. {_e(diag.get('message') or '')}</p>")
+        ajouter(f"<p>État : <strong>{_e(etat_diagnostic(diag.get('etat')))}</strong>. "
+                f"{_e(diag.get('message') or '')}</p>")
         if diag.get("a_regler"):
-            ajouter("<ul>" + "".join(f"<li><strong>{_e(v['titre'])}</strong> ({_e(v['etat'])}) : "
+            ajouter("<ul>" + "".join(f"<li><strong>{_e(v['titre'])}</strong> ({_e(etat_diagnostic(v['etat']))}) : "
                                      f"{_e(v.get('detail') or '')} {_e(v.get('conseil') or '')}</li>"
                                      for v in diag["a_regler"]) + "</ul>")
     ajouter("<h2>Chronologie</h2>")

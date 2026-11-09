@@ -284,7 +284,9 @@ def test_reprise_apres_un_plantage(etat, banc):
     # une séance ouverte par un autre Atelier qui tourne encore n'est pas touchée
     vivant = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", "atelier.serveur.main:app"])
     try:
-        assert atelier_vivant(vivant.pid)
+        # juste après Popen, le fils n'a pas toujours fait son exec : sa ligne de commande est encore celle d'avant
+        # (échec vu sous charge à l'assemblage) ; on attend qu'elle soit la sienne
+        assert attendre(lambda: atelier_vivant(vivant.pid), 5.0, 0.02)
         autre = _seance_ouverte_orpheline(banc, vivant.pid)
         etat.seance.demarrage_serveur()
         assert attendre(lambda: M.lire_manifeste(orpheline)["etat"] == "interrompue", 30)

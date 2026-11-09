@@ -58,6 +58,9 @@ EVENEMENTS_GUIDE = {
     "retour_arrive": "de retour à l'accueil", "perdu": "robot perdu (repérage)", "retrouve": "repérage retrouvé",
     "echec": "échec du trajet", "arret": "trajet arrêté", "pilotage": "refus : robot piloté à la main",
     "immobilise": "le robot ne peut pas bouger : {raison}"}
+# Événements de la démo d'accueil (/accueil/evenement, 13.4) à voir dans la chronologie : la démo mise en pause
+# (ARRÊT, verrou, robot assis ou muet, pilotage…) et la visite en échec (assemblage de la vague 6)
+EVENEMENTS_DEMO_A_REGARDER = ("pause", "visite_echouee")
 SOURCES_POSITION = ("/reperage/etat", "/g1_jumeau/odom", "/odom")
 SOURCES_VITESSE = ("/g1_jumeau/odom", "/state_estimator/odom_pelvis", "/reperage/etat", "/odom")
 MOTIF_ERREUR_JOURNAL = re.compile(r"\[ERROR\]|\bERROR\b|Traceback|\bErreur\b|\bException\b|process has died")
@@ -663,7 +666,8 @@ def chronologie(donnees, actions, manifeste, anomalies_vues=(), lieu=None):
         avant = etat
     for t, e in donnees.serie("json", "/accueil/evenement"):
         if e.get("texte") or e.get("code"):
-            ajouter(t, "demo", f"Démo : {e.get('texte') or e.get('code')}")
+            ajouter(t, "demo", f"Démo : {e.get('texte') or e.get('code')}",
+                    "attention" if e.get("code") in EVENEMENTS_DEMO_A_REGARDER else "info")
     for t, texte in donnees.serie("textes", "/g1_jumeau/panne") + [
             (t, json.dumps(d)) for t, d in donnees.serie("json", "/g1_jumeau/panne")]:
         ajouter(t, "essai", f"Essai : panne simulée du faux G1 « {texte} »")

@@ -33,3 +33,6 @@ lieux/*/scans/*/.processus.json
 # restent sur le PC ; aucune musique protégée dans le dépôt
 choregraphies/musique/*
 !choregraphies/musique/LISEZMOI.md
+# Vague 6 (section 13.3 du plan) : le .zip d'une séance de la boîte noire (g1-seance exporter, tutoriel de la
+# séance 2) peut peser des centaines de Mo (l'enregistrement ROS 2) : il reste sur le PC, jamais dans Git
+docs/releves/*.zip

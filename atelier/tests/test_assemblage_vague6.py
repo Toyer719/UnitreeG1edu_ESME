@@ -7,7 +7,10 @@
   la démo : la sortie choisie, « Démarrer la voix » lance le vrai nœud voix (sortie borne : rien vers un robot),
   « Essayer » fait dire une phrase dont le WAV est servi, le volume changé part au nœud qui tourne, « Arrêter la
   voix », puis « Enregistrer les réglages » écrit la voix dans demo.yaml ;
-- les séances et les sons des tests restent dans le dossier du test (conftest.py, tests_e2e/commun.sh).
+- les séances et les sons des tests restent dans le dossier du test (conftest.py, tests_e2e/commun.sh) ;
+- la boîte noire garde le vrai diagnostic du début (agent Diagnostic, faux contexte des tests) et chaque action de
+  la démo, de la borne, de la voix et du diagnostic, et son rapport les montre (diagnostic en français, refus dans
+  la chronologie) ; la chronologie montre les événements de la démo, une pause en « attention ».
 """
 import json
 import os
@@ -15,13 +18,15 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 from atelier.lieu import accueil as A
+from atelier.lieu import valider_donnees
 
 from . import test_coque_communs as C
-from .test_serveur_communs import faux_bin, journaux, lieux  # noqa: F401
+from .test_serveur_communs import client, faux_bin, journaux, lieux  # noqa: F401
 from .test_serveur_demarrage import serveur  # noqa: F401
 from .test_serveur_navigateur import GECKODRIVER, navigateur, sans_ros  # noqa: F401
 
@@ -50,11 +55,18 @@ def _echap(nav):
 
 # ---------------------------------------------------------------- les dossiers des tests
 
-def test_les_seances_et_les_sons_des_tests_restent_dans_le_test(tmp_path):
+def test_les_seances_et_les_sons_des_tests_restent_dans_le_test(tmp_path, tmp_path_factory):
+    import atelier
     from atelier.diagnostic import FauxContexte, contexte_par_defaut
     from atelier.lieu.seance import dossier_seances
     from atelier.lieu.voix import dossier_sons
-    assert tmp_path in dossier_seances().parents and tmp_path in dossier_sons().parents
+    # dans un dossier temporaire des tests, propre à ce test, et pas dans tmp_path (des tests comptent ce qu'ils y
+    # écrivent) ni dans les journaux du projet
+    base = tmp_path_factory.getbasetemp()
+    for dossier in (dossier_seances(), dossier_sons(), Path(os.environ["ATELIER_DIAGNOSTIC_FAUX"])):
+        assert base in dossier.parents and tmp_path not in dossier.parents, dossier
+        assert atelier.dossier_journaux() not in dossier.parents, dossier
+    assert list(tmp_path.iterdir()) == []
     # le diagnostic des tests (et celui de l'ouverture d'une séance en Réel) : un faux contexte vide, câble absent,
     # jamais de ping ni de ssh vers le robot, même câble branché
     ctx = contexte_par_defaut()
@@ -63,6 +75,117 @@ def test_les_seances_et_les_sons_des_tests_restent_dans_le_test(tmp_path):
     commun = (RACINE / "tests_e2e" / "commun.sh").read_text(encoding="utf-8")
     assert 'export ATELIER_SEANCES="$TRAVAIL/seances"' in commun
     assert 'export ATELIER_VOIX_SONS="$TRAVAIL/sons"' in commun
+
+
+# ---------------------------------------------------------------- la boîte noire garde le diagnostic et la démo
+
+def _attendre(condition, delai=20.0, pas=0.2):
+    fin = time.monotonic() + delai
+    while time.monotonic() < fin:
+        if condition():
+            return True
+        time.sleep(pas)
+    return condition()
+
+
+def _lignes(fichier):
+    try:
+        return [json.loads(x) for x in fichier.read_text(encoding="utf-8").splitlines() if x.strip()]
+    except OSError:
+        return []
+
+
+def test_la_seance_garde_le_diagnostic_et_les_actions_de_la_demo(client):  # noqa: F811
+    """Séance ouverte en Réel par l'Atelier entier (sans ROS 2) : le diagnostic du début est le vrai (agent
+    Diagnostic) sur le faux contexte des tests, source « seance » ; chaque demande de la démo, de la borne, de la voix
+    et du diagnostic est une ligne du journal des actions, refusée en français (jamais 500) ; « Terminer la séance » :
+    le rapport montre le diagnostic (états en français) et les refus dans sa chronologie."""
+    from atelier.lieu.seance import dossier_seances
+    r = client.post("/api/seance/demarrer", json={"mode": "reel", "lieu": "demo", "etage": "rdc",
+                                                  "ouverture": "auto"})
+    assert r.status_code == 200, r.text
+    ident = r.json()["seance"]["id"]
+    dossier = dossier_seances() / ident
+    # le diagnostic du début : le vrai, en arrière-plan, jamais vers le robot (faux contexte : câble absent)
+    assert _attendre(lambda: (dossier / "diagnostic_debut.json").is_file()
+                     and json.loads((dossier / "seance.json").read_text())["diagnostic_debut"]
+                     == "diagnostic_debut.json"), "diagnostic du début pas écrit"
+    diag = json.loads((dossier / "diagnostic_debut.json").read_text(encoding="utf-8"))
+    assert valider_donnees("diagnostic", diag) == []
+    assert (diag["source"], diag["mode"]) == ("seance", "reel")
+    etats = {v["id"]: v["etat"] for v in diag["verifications"]}
+    assert etats["cable"] == "probleme" and diag["etat"] == "probleme"
+    assert {i["id"] for i in diag["ignorees"]} >= {"pc1", "jetson", "lidar", "jetson_ssh"}   # ni ping ni ssh
+    # les demandes des modules de la vague 6 pendant la séance
+    demandes = [("/api/robot/diagnostic/demarrer-services", {}, "diagnostic",
+                 "Diagnostic : Démarrer les services de cartographie"),
+                ("/api/demo/lancer", {"lieu": "demo", "etage": "rdc"}, "demo", "Lancer la démo"),
+                ("/api/demo/commande", {"action": "pause"}, "demo", "Démo : pause"),
+                ("/api/borne/appui", {}, "borne", "Borne : appui"),
+                ("/api/borne/choisir", {"salle": "b204"}, "borne", "Borne : Salle B204"),
+                ("/api/borne/operateur", {"code": "1234"}, "borne", "Borne : code opérateur"),
+                ("/api/voix/essayer", {"texte": "Bonjour"}, "voix", "Voix : essayer « Bonjour »"),
+                ("/api/demo/arreter", {}, "demo", "Arrêter la démo")]
+    statuts = {}
+    for chemin, corps, _, _ in demandes:
+        r = client.post(chemin, json=corps)
+        assert r.status_code < 500 or r.status_code == 503, (chemin, r.status_code, r.text[:200])
+        if r.status_code >= 400:
+            assert isinstance(r.json()["detail"], str) and r.json()["detail"], chemin
+        statuts[chemin] = r.status_code
+    assert statuts["/api/robot/diagnostic/demarrer-services"] == 409        # sans confirmation : rien ne part
+    assert statuts["/api/demo/lancer"] == 409                               # le guide ne tourne pas
+    assert _attendre(lambda: len(_lignes(dossier / "actions.jsonl")) >= 1 + len(demandes))
+    lignes = _lignes(dossier / "actions.jsonl")[1:]                          # la 1re : l'ouverture de la séance
+    assert [(x["chemin"], x["genre"], x["texte"], x["statut"]) for x in lignes] == [
+        (chemin, genre, texte, statuts[chemin]) for chemin, _, genre, texte in demandes]
+    assert all(valider_donnees("action_seance", x) == [] and x["mode"] == "reel" for x in lignes)
+    assert lignes[5]["requete"] == {"code": "••••"}                         # le code opérateur jamais en clair
+    # « Terminer la séance » : le rapport
+    assert client.post("/api/seance/arreter", json={}).status_code == 200
+    assert _attendre(lambda: client.get(f"/api/seances/{ident}").json()["rapport"]["etat"] == "pret", 90)
+    rapport = client.get(f"/api/seances/{ident}/rapport?format=json").json()
+    assert rapport["diagnostic"]["etat"] == "probleme"
+    assert "Câble du robot" in [v["titre"] for v in rapport["diagnostic"]["a_regler"]]
+    textes = [c["texte"] for c in rapport["chronologie"]]
+    for _, _, _, texte in demandes:
+        assert any(t.startswith(texte) for t in textes), texte
+    refus = [c for c in rapport["chronologie"] if c["texte"].startswith("Lancer la démo")][0]
+    assert refus["gravite"] == "attention" and "refusé (409)" in refus["texte"] and "guide" in refus["texte"]
+    md = client.get(f"/api/seances/{ident}/rapport?format=md").text
+    assert "État : **Problème**." in md and "- Câble du robot (Problème) :" in md and "probleme" not in md
+    page = client.get(f"/api/seances/{ident}/rapport").text
+    assert "État : <strong>Problème</strong>." in page and "Borne : Salle B204" in page
+
+
+def test_la_chronologie_montre_la_demo():
+    """Les événements de la démo enregistrés (/accueil/evenement) sont dans la chronologie du rapport ; la démo
+    mise en pause (ARRÊT, verrou…) et une visite en échec sont « à regarder » (attention), le reste pour info."""
+    from atelier.seance import analyse as AN
+    from atelier.seance import rapport as R
+    from atelier.seance.lecture import Donnees
+    from atelier.seance.manifeste import heure_iso
+    t0 = 1794000000.0
+    d = Donnees()
+    evenements = [(5.0, {"version": 1, "code": "salutation", "texte": "Bonjour ! Je suis le robot d'accueil."}),
+                  (9.0, {"version": 1, "code": "choix_accepte", "texte": "Visite vers « Salle B204 » acceptée.",
+                         "salle": "b204", "source": "borne"}),
+                  (30.0, {"version": 1, "code": "pause", "texte": "La démo est en pause : ARRÊT.", "raison": "arret"}),
+                  (60.0, {"version": 1, "code": "visite_echouee", "texte": "La visite n'a pas abouti."}),
+                  (61.0, {"version": 1, "code": "reprise"})]
+    for t, e in evenements:
+        d.ajouter("/accueil/evenement", "std_msgs/msg/String", t0 + t, SimpleNamespace(data=json.dumps(e)))
+    m = {"id": "2026-11-12_14h03", "etat": "fermee", "mode": "repetition", "debut": heure_iso(t0),
+         "fin": heure_iso(t0 + 90), "ouverture": "auto", "fermeture": "terminer"}
+    demo = [(c["texte"], c["gravite"]) for c in AN.chronologie(d, [], m) if c["genre"] == "demo"]
+    assert demo == [("Démo : Bonjour ! Je suis le robot d'accueil.", "info"),
+                    ("Démo : Visite vers « Salle B204 » acceptée.", "info"),
+                    ("Démo : La démo est en pause : ARRÊT.", "attention"),
+                    ("Démo : La visite n'a pas abouti.", "attention"),
+                    ("Démo : reprise", "info")]
+    # les états du diagnostic écrits comme dans « Vérifier le robot »
+    assert [R.etat_diagnostic(e) for e in ("ok", "attention", "probleme", "inconnu", None, "autre")] == [
+        "OK", "Attention", "Problème", "Inconnu", "?", "autre"]
 
 
 # ---------------------------------------------------------------- Échap et les fenêtres de la vague 6
