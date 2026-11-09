@@ -16,6 +16,11 @@ Vague 6 (section 13 du plan), deux accroches autour de toutes les demandes :
   GardeBorne         quand l'Atelier écoute le réseau (g1-atelier --hote 0.0.0.0 : ATELIER_HOTE), un client qui
                      n'est pas ce PC n'a droit qu'à la borne (atelier.lieu.accueil.chemin_permis_borne) ; le reste
                      répond 403. ATELIER_DISTANT=complet (g1-atelier --distant-complet) rend tout l'Atelier.
+  GardeOrigine       (corrections de la vague 6) une page d'un autre site ouverte dans le navigateur du PC ne peut
+                     rien changer : une demande POST, PUT, PATCH ou DELETE et un WebSocket venus d'une autre origine
+                     (en-têtes Origin et Sec-Fetch-Site) répondent 403, et un nom d'hôte inconnu (en-tête Host :
+                     le « rebinding » DNS) aussi. L'ARRÊT passe toujours. curl, g1-seance et les tests (sans Origin)
+                     ne changent pas.
 
 Variables d'environnement :
   ATELIER_LIEUX   dossier des lieux (défaut ~/robot-g1/lieux)
@@ -24,11 +29,15 @@ Variables d'environnement :
   ATELIER_HOTE    adresse d'écoute du serveur (g1-atelier la met ; défaut : 127.0.0.1, ce PC seulement)
   ATELIER_PORT    port du serveur (g1-atelier le met ; pour l'adresse de la borne)
   ATELIER_DISTANT complet : tout l'Atelier depuis le réseau ; sinon la borne seulement (vague 6)
+  ATELIER_HOTES_PERMIS  noms d'hôte de plus acceptés par GardeOrigine (séparés par des virgules ; en plus de
+                  localhost, du nom du PC et de toute adresse IP)
 """
 import asyncio
+import ipaddress
 import json
 import logging
 import os
+import socket
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -74,6 +83,79 @@ def ecoute_reseau():
     """Vrai si le serveur écoute sur une autre adresse que la boucle locale (ATELIER_HOTE, mis par g1-atelier)."""
     hote = os.environ.get("ATELIER_HOTE") or "127.0.0.1"
     return not client_local(hote)
+
+
+METHODES_QUI_CHANGENT = ("POST", "PUT", "PATCH", "DELETE")
+SITES_REFUSES = ("cross-site", "same-site")      # Sec-Fetch-Site d'une demande venue d'une autre page
+CHEMINS_TOUJOURS_PERMIS = ("/api/arret",)        # l'ARRÊT passe toujours (il ne fait qu'arrêter)
+HOTES_DE_TEST = ("testserver",)                  # TestClient de Starlette
+
+
+def _entetes(scope):
+    """{nom en minuscules: valeur} des en-têtes d'une demande ASGI."""
+    return {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or []}
+
+
+def _nom_d_hote(hote_port):
+    """« 127.0.0.1:8000 » → « 127.0.0.1 » ; « [::1]:8000 » → « ::1 » ; en minuscules."""
+    h = str(hote_port or "").strip().lower()
+    if h.startswith("["):
+        return h[1:].split("]", 1)[0]
+    return h.rsplit(":", 1)[0] if h.count(":") == 1 else h
+
+
+def noms_du_pc():
+    """Noms d'hôte acceptés en plus des adresses IP : localhost, le nom du PC (et .local), ATELIER_HOTES_PERMIS."""
+    noms = {"localhost"}
+    try:
+        nom = socket.gethostname().lower()
+        noms.update({nom, nom + ".local", socket.getfqdn().lower()})
+    except OSError:
+        pass
+    noms.update(n.strip().lower() for n in os.environ.get("ATELIER_HOTES_PERMIS", "").split(",") if n.strip())
+    return noms
+
+
+def hote_permis(hote_port, noms=None):
+    """Vrai si l'en-tête Host désigne ce serveur : une adresse IP (la page vient alors de ce serveur), localhost
+    (et *.localhost), le nom du PC, un nom de ATELIER_HOTES_PERMIS ; ou pas d'en-tête (vieux client)."""
+    nom = _nom_d_hote(hote_port)
+    if not nom:
+        return True
+    try:
+        ipaddress.ip_address(nom)
+        return True
+    except ValueError:
+        pass
+    if nom.endswith(".localhost") or nom in HOTES_DE_TEST:
+        return True
+    return nom in (noms if noms is not None else noms_du_pc())
+
+
+def origine_refusee(scope, noms=None):
+    """La raison (texte) de refuser une demande qui vient d'une autre page que l'Atelier, ou None.
+    Refusées : un nom d'hôte inconnu (Host) ; pour une demande qui change quelque chose et pour un WebSocket, un
+    Sec-Fetch-Site d'un autre site ou un Origin différent de « schéma://Host » (Origin « null » : une page locale)."""
+    if scope.get("type") not in ("http", "websocket"):
+        return None
+    if scope["type"] == "http" and scope.get("path") in CHEMINS_TOUJOURS_PERMIS:
+        return None
+    entetes = _entetes(scope)
+    hote = entetes.get("host", "")
+    if not hote_permis(hote, noms):
+        return f"nom d'hôte inconnu ({hote[:80]})"
+    if scope["type"] == "http" and scope.get("method", "").upper() not in METHODES_QUI_CHANGENT:
+        return None
+    site = entetes.get("sec-fetch-site", "").lower()
+    if site in SITES_REFUSES:
+        return f"demande venue d'un autre site (Sec-Fetch-Site : {site})"
+    origine = entetes.get("origin")
+    if origine is not None:
+        attendu = hote.strip().lower()
+        _, _, reste = origine.strip().lower().partition("://")
+        if not attendu or reste.rstrip("/") != attendu:
+            return f"demande venue d'une autre page ({origine[:80]})"
+    return None
 
 
 def _lire_corps(octets, tronque):
@@ -172,6 +254,36 @@ class GardeBorne:
         await send({"type": "http.response.body", "body": corps})
 
 
+class GardeOrigine:
+    """Garde des origines (corrections de la vague 6), en ASGI pur : une page d'un autre site ouverte dans le
+    navigateur du PC (une « requête simple » part sans vérification CORS) ne peut ni agir sur le robot, ni sur la
+    démo, la voix, la séance ou le diagnostic : 403 en français (un WebSocket est refusé, code 4403). Un nom d'hôte
+    inconnu est refusé aussi (rebinding DNS : un autre site qui pointerait sur ce PC). L'ARRÊT passe toujours."""
+
+    MESSAGE = ("Demande refusée : elle ne vient pas de l'Atelier ({raison}). Utilisez la page de l'Atelier ouverte "
+               "par g1-atelier sur ce PC, ou la borne (/borne) sur la tablette.")
+
+    def __init__(self, app):
+        self.app = app
+        self.noms = noms_du_pc()
+
+    async def __call__(self, scope, receive, send):
+        raison = origine_refusee(scope, self.noms)
+        if raison is None:
+            await self.app(scope, receive, send)
+            return
+        JOURNAL.warning("demande refusée par la garde des origines : %s %s (%s)", scope.get("method", "WS"),
+                        scope.get("path", ""), raison)
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 4403})
+            return
+        corps = json.dumps({"detail": self.MESSAGE.format(raison=raison)}, ensure_ascii=False).encode("utf-8")
+        await send({"type": "http.response.start", "status": 403,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(corps)).encode()),
+                                (b"cache-control", b"no-cache")]})
+        await send({"type": "http.response.body", "body": corps})
+
+
 def _champ(loc):
     """Nom lisible du champ en faute dans une erreur de FastAPI : ('body', 'lieu') → « lieu »."""
     morceaux = [str(m) for m in loc if m not in ("body", "query", "path")]
@@ -247,9 +359,10 @@ def creer_app(ros=None):
     for module in (lieux, monde, plan, simulation, scan, robot, principal, passants, guide, pilotage, equipe,
                    arret, liaison, nuage, camera, diagnostic, seance, borne, demo, voix):
         app.include_router(module.routeur)
-    # vague 6 (section 13) : la garde de la borne, puis le journal des actions autour de tout (une demande refusée
-    # par la garde est notée aussi, client « distant »)
+    # vague 6 (section 13) : la garde de la borne, la garde des origines (corrections), puis le journal des actions
+    # autour de tout (une demande refusée par une garde est notée aussi)
     app.add_middleware(GardeBorne)
+    app.add_middleware(GardeOrigine)
     app.add_middleware(JournalDesActions, etat=etat)
 
     @app.get("/api/etat", tags=["serveur"])
