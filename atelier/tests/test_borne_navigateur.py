@@ -108,7 +108,7 @@ def test_parcours_d_un_visiteur(taille, nav, tmp_path, monkeypatch, captures):
         pont.guide("en_route", mission="visite", cible="b204", reste_m=16.2, pose=(6.0, 10.0, 0.0))
         attendre_ecran(nav, "suivez_moi")
         nav.attendre("return document.querySelector('[data-role=borne-detail]').textContent.replace(/\\u00a0/g, ' ').replace(/\\u2011/g, '-') === arguments[0]",
-                     "Encore 16 m jusqu'à Salle B204.", message="distance restante")
+                     "Encore 16 m jusqu'à « Salle B204 ».", message="distance restante")
         pont.guide("en_route", mission="visite", cible="b204", reste_m=8.0, pose=(14.0, 13.0, 0.0))
         time.sleep(1.0)
         _mesurer(nav, f"{taille}, suivez-moi")
@@ -116,7 +116,7 @@ def test_parcours_d_un_visiteur(taille, nav, tmp_path, monkeypatch, captures):
         capture_cadre(nav, captures / f"borne_{taille}_3_suivez_moi.png")
         pont.guide("arrive", mission="visite", cible="b204", reste_m=0.0, actif=True, pose=(21.0, 13.0, 1.57))
         attendre_ecran(nav, "arrivee")
-        assert _texte(nav, "borne-detail") == "Voici Salle B204."
+        assert _texte(nav, "borne-detail") == "Voici « Salle B204 »."
         capture_cadre(nav, captures / f"borne_{taille}_4_arrivee.png")
         pont.guide("retour", mission="retour", cible="accueil", reste_m=18.0, pose=(18.0, 13.0, 3.1))
         attendre_ecran(nav, "retour")

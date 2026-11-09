@@ -154,10 +154,10 @@ def test_appui_annuler_et_suivi(demo):
     assert demo.post("/api/borne/choisir", json={"salle": "cdi"}).status_code == 200
     demo.pont.guide("en_route", mission="visite", cible="cdi", reste_m=14.4, pose=(6.0, 10.0, 0.0))
     e = demo.get("/api/borne/etat").json()
-    assert e["ecran"] == "suivez_moi" and e["detail"] == "Encore 14 m jusqu'à CDI."
+    assert e["ecran"] == "suivez_moi" and e["detail"] == "Encore 14 m jusqu'à « CDI »."
     demo.pont.guide("arrive", mission="visite", cible="cdi", reste_m=0.0, actif=True, pose=(23.0, 7.0, -1.57))
     e = demo.get("/api/borne/etat").json()
-    assert e["ecran"] == "arrivee" and e["texte"] == "Nous sommes arrivés." and e["detail"] == "Voici CDI."
+    assert e["ecran"] == "arrivee" and e["texte"] == "Nous sommes arrivés." and e["detail"] == "Voici « CDI »."
     demo.pont.guide("retour", mission="retour", cible="accueil", pose=(20.0, 7.0, 3.1))
     assert demo.get("/api/borne/etat").json()["ecran"] == "retour"
     demo.pont.guide("attente")

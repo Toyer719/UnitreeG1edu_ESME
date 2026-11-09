@@ -30,10 +30,13 @@ ETATS_FINAUX_VISITE = ("arrive", "echec")          # fin d'une visite (le retour
 ETATS_EN_MISSION = ("en_route", "retour", "bloque", "detour", "attente_passage", "attente_visiteur", "perdu")
 MISSIONS = ("visite", "retour")
 
-# Textes par défaut des événements ; {nom} : nom de la salle visée (salles.yaml)
+# Textes par défaut des événements ; {nom} : nom de la salle visée (salles.yaml). Corrections de la vague 6 (revue de
+# l'interface, défaut 15) : le nom d'une salle n'a pas d'article (« Infirmerie », « Salle B204 ») ; « je vous emmène à
+# Infirmerie » ou « voici Amphithéâtre » sonnaient faux : « direction {nom} » et « nous sommes arrivés : {nom} » se
+# disent bien avec tous les noms
 CODES_EVENEMENT = {
-    "depart": "Suivez-moi, je vous emmène à {nom}.",
-    "seul": "Je ne vous vois pas derrière moi : je pars vers {nom}, suivez-moi.",
+    "depart": "Suivez-moi : direction {nom} !",
+    "seul": "Je ne vous vois pas derrière moi : je pars, direction {nom}. Suivez-moi !",
     "ralentir": "Je ralentis pour vous attendre.",
     "attente_visiteur": "Je vous attends.",
     "visiteur_retrouve": "Vous voilà ! Continuons.",
@@ -41,7 +44,7 @@ CODES_EVENEMENT = {
     "passant_gene": "Pardon, puis-je passer ?",
     "passage_libre": "Merci !",
     "detour": "Le passage est encombré : je prends un autre chemin.",
-    "arrivee": "Nous sommes arrivés : voici {nom}.",
+    "arrivee": "Nous sommes arrivés : {nom}.",
     "retour": "Je retourne à l'accueil.",
     "retour_arrive": "Je suis de retour à l'accueil.",
     "perdu": "Je me suis un peu perdu : un instant, s'il vous plaît.",
@@ -52,6 +55,13 @@ CODES_EVENEMENT = {
     # correction du 01/11/2026 (section 12.15) : robot bloqué, pas en mode marche, muet ou qui refuse
     # de marcher : le trajet est annulé (ou « Y aller » refusé), champ raison (RAISONS_IMMOBILE)
     "immobilise": "Je ne peux pas bouger pour le moment.",
+}
+# Les textes par défaut d'avant la vague 6 : un guide d'une image du Jetson pas encore refaite les dit encore ; le
+# relais de l'équipe et de la démo les reconnaît (texte_par_defaut) et dit ceux d'aujourd'hui
+TEXTES_EVENEMENT_AVANT = {
+    "depart": ("Suivez-moi, je vous emmène à {nom}.",),
+    "seul": ("Je ne vous vois pas derrière moi : je pars vers {nom}, suivez-moi.",),
+    "arrivee": ("Nous sommes arrivés : voici {nom}.",),
 }
 # Ce qui immobilise le robot (événement immobilise, champ raison ; champ immobilise de /guide/etat) :
 # verrou du pont (/pont/arret : Bloquer, ARRÊT, ligne de commande), mode du robot qui n'est pas la marche
@@ -139,6 +149,16 @@ def texte_evenement(code, nom=None, phrases=None):
     return modele.replace("{nom}", nom or "la destination")
 
 
+def texte_par_defaut(code, texte, nom=None):
+    """Vrai si texte est le texte par défaut de l'événement code pour ce nom, celui d'aujourd'hui
+    (CODES_EVENEMENT) ou celui d'avant (TEXTES_EVENEMENT_AVANT), et non une phrase propre (d'une salle, d'une
+    personnalité)."""
+    if code not in CODES_EVENEMENT or not texte:
+        return False
+    modeles = (CODES_EVENEMENT[code],) + TEXTES_EVENEMENT_AVANT.get(code, ())
+    return any(texte == m.replace("{nom}", nom or "la destination") for m in modeles)
+
+
 def evenement(code, salle=None, nom=None, texte=None, mission=None, phrases=None):
     """Contrat. Message /guide/evenement conforme au schéma evenement_guide. texte : celui à dire,
     sinon texte_evenement(code, nom, phrases)."""
@@ -156,4 +176,4 @@ __all__ = ["CODES_EVENEMENT", "DELAIS_GUIDE", "DELAI_VISITEUR_DEPART_S", "DELAI_
            "EXEMPLE_DEMANDE_ALLER", "EXEMPLE_ETAT_GUIDE", "EXEMPLE_EVENEMENT", "EXEMPLE_PERSONNES", "MISSIONS",
            "MODES_FAUX_VISITEUR", "RAISONS_IMMOBILE", "SUJET_EVENEMENT", "SUJET_FAUX_VISITEUR",
            "SUJET_LIMITE_VITESSE", "SUJET_PERSONNES", "TOLERANCE_RETOUR_M", "TOLERANCE_RETOUR_RAD", "evenement",
-           "lire_demande_aller", "reglages_guide", "texte_evenement"]
+           "TEXTES_EVENEMENT_AVANT", "lire_demande_aller", "reglages_guide", "texte_evenement", "texte_par_defaut"]

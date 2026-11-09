@@ -330,8 +330,8 @@ def test_visite_complete_et_statistiques(banc):
     assert aller == [{'cible': 'b204', 'accompagner': True, 'retour': True, 'source': 'accueil',
                       'id': r['visite']}]
     dire = [d['texte'] for d in banc.publies('/robot/dire')]
-    assert 'Je vous accompagne à Salle B204. Suivez-moi !' in dire
-    # le départ du guide n'est pas redit (le relais le tait après « Je vous accompagne… »)
+    assert 'Direction Salle B204 : suivez-moi !' in dire
+    # le départ du guide n'est pas redit (le relais le tait après « Direction… »)
     banc.evenement_guide('depart', salle='b204', nom='Salle B204',
                          texte='Suivez-moi, je vous emmène à Salle B204.')
     assert not [d for d in banc.publies('/robot/dire') if d.get('code') == 'depart']

@@ -51,7 +51,10 @@ ETATS_BLOQUANTS_PONT = ('verrou', 'pas_en_marche', 'pont_absent')
 SOURCES = ('borne', 'dialogue', 'atelier', 'operateur', 'test')   # SOURCES_ACCUEIL
 NOTE_LOIN = 'Le robot n\'est pas à l\'accueil : cliquez sur « Ramener à l\'accueil ».'
 SALUTATION_DEFAUT = "Bonjour ! Choisissez une salle sur l'écran : je vous y accompagne."
-PHRASE_DEPART = 'Je vous accompagne à {nom}. Suivez-moi !'
+# corrections de la vague 6 (revue de l'interface, défaut 15) : « Je vous accompagne à
+# Amphithéâtre » sonnait faux (le nom d'une salle n'a pas d'article) ; « direction » se dit
+# bien avec tous les noms
+PHRASE_DEPART = 'Direction {nom} : suivez-moi !'
 PHRASE_PAUSE = 'Je fais une petite pause.'
 PHRASE_OCCUPE = 'Je suis occupé, je reviens dans un instant !'
 

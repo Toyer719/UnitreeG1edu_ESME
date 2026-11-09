@@ -10,7 +10,7 @@ from atelier.equipe.dialogue import MESSAGES, Chatbot, decider, en_visite
 from atelier.equipe.relais import Relais, Salueur
 from atelier.lieu import charger_salles, valider_message
 from atelier.lieu import equipe as E
-from atelier.lieu.comportement import CODES_EVENEMENT, evenement
+from atelier.lieu.comportement import CODES_EVENEMENT, evenement, texte_evenement
 
 DEMO = atelier.RACINE / "lieux" / "demo"
 
@@ -237,7 +237,7 @@ def test_relais_textes_et_personnalite():
     assert relais.texte(evenement("detour", salle="b204", nom="Salle B204")) == CODES_EVENEMENT["detour"]
     assert relais.texte(evenement("ralentir"), perso) == CODES_EVENEMENT["ralentir"]
     # sans personnalité
-    assert relais.texte(ev) == "Suivez-moi, je vous emmène à Salle B204."
+    assert relais.texte(ev) == "Suivez-moi : direction Salle B204 !"
 
 
 def test_relais_arrivee_propre_a_la_salle():
@@ -360,3 +360,30 @@ def test_message_visiteurs_borne():
     m = message_visiteurs(-1, [{"id": i, "x": 1.0, "y": 0.0, "confiance": 7} for i in range(150)])
     assert m["temps"] == 0.0 and len(m["personnes"]) == 100 and m["personnes"][0]["confiance"] == 1.0
     assert valider_message("personnes", m) == []
+
+
+def test_phrases_avec_les_noms_des_salles_et_guide_d_avant():
+    """Corrections de la vague 6 (revue de l'interface, défaut 15) : « Je vous accompagne à Amphithéâtre », « Voici
+    Infirmerie » (le nom d'une salle n'a pas d'article). Les textes par défaut disent « direction … » et « nous sommes
+    arrivés : … » ; ceux d'avant, dits par un guide d'une image du Jetson pas encore refaite, sont reconnus par le
+    relais, qui dit ceux d'aujourd'hui (et la phrase d'arrivée de la personnalité)."""
+    from atelier.lieu.comportement import TEXTES_EVENEMENT_AVANT, texte_par_defaut
+    assert texte_evenement("depart", "Infirmerie") == "Suivez-moi : direction Infirmerie !"
+    assert texte_evenement("arrivee", "Amphithéâtre") == "Nous sommes arrivés : Amphithéâtre."
+    assert "à {nom}" not in "".join(CODES_EVENEMENT.values()) and "voici {nom}" not in "".join(CODES_EVENEMENT.values())
+    assert texte_par_defaut("depart", "Suivez-moi, je vous emmène à Salle B204.", "Salle B204")
+    assert texte_par_defaut("depart", "Suivez-moi : direction Salle B204 !", "Salle B204")
+    assert not texte_par_defaut("arrivee", "Voici l'amphithéâtre.", "Amphithéâtre")         # phrase de la salle
+    assert not texte_par_defaut("inconnu", "x") and not texte_par_defaut("depart", None)
+    assert set(TEXTES_EVENEMENT_AVANT) <= set(CODES_EVENEMENT)
+    relais = Relais()
+    vieux = evenement("depart", salle="b204", nom="Salle B204", texte="Suivez-moi, je vous emmène à Salle B204.")
+    assert relais.texte(vieux) == "Suivez-moi : direction Salle B204 !"
+    seul = evenement("seul", salle="b204", nom="Salle B204",
+                     texte="Je ne vous vois pas derrière moi : je pars vers Salle B204, suivez-moi.")
+    assert relais.texte(seul) == "Je ne vous vois pas derrière moi : je pars, direction Salle B204. Suivez-moi !"
+    perso = {"phrases": {"arrivee": "Et voilà : {nom}. Bonne journée !"}}
+    arrivee = evenement("arrivee", salle="b204", nom="Salle B204", texte="Nous sommes arrivés : voici Salle B204.")
+    assert relais.texte(arrivee, perso) == "Et voilà : Salle B204. Bonne journée !"
+    propre = evenement("arrivee", salle="amphi", nom="Amphithéâtre", texte="Voici l'amphithéâtre.")
+    assert relais.texte(propre, perso) == "Voici l'amphithéâtre."           # la phrase de la salle reste

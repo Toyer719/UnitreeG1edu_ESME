@@ -370,7 +370,7 @@ def test_demande_aller():
 
 def test_evenements():
     e = C.evenement("depart", salle="b204", nom="Salle B204", mission="visite")
-    assert L.valider_message("evenement_guide", e) == [] and e["texte"] == "Suivez-moi, je vous emmène à Salle B204."
+    assert L.valider_message("evenement_guide", e) == [] and e["texte"] == "Suivez-moi : direction Salle B204 !"
     phrases = E.exemple_equipe("personnalites")["personnalites"][0]["phrases"]
     assert C.texte_evenement("arrivee", "le CDI", phrases) == "Et voilà : le CDI. Bonne journée !"
     assert C.texte_evenement("ralentir") == "Je ralentis pour vous attendre."

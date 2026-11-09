@@ -64,7 +64,8 @@ TEXTES_EN = {
 }
 DETAILS = {
     "fr": {"hors_service": "La visite guidée reprend bientôt.", "salles": "Touchez une salle : je vous y accompagne.",
-           "en_route": "En route vers {nom}.", "reste": "Encore {d} m jusqu'à {nom}.", "arrivee": "Voici {nom}.",
+           "en_route": "En route vers « {nom} ».", "reste": "Encore {d} m jusqu'à « {nom} ».",
+           "arrivee": "Voici « {nom} ».",
            "retour": "À tout à l'heure !", "occupe": "Merci de patienter un peu.",
            "pause": "Un membre de l'équipe va s'occuper de moi."},
     "en": {"hors_service": "The guided tour starts again soon.", "salles": "Touch a room: I will take you there.",

@@ -321,7 +321,7 @@ def test_accompagnement_depart_ralenti_attente_reprise(dossier):
     etat = banc.guide.etat()
     assert etat['accompagner'] is True and etat['visiteur']['vu'] is True
     assert banc.codes() == ['depart']
-    assert banc.evenements[0]['texte'] == 'Suivez-moi, je vous emmène à Salle B204.'
+    assert banc.evenements[0]['texte'] == 'Suivez-moi : direction Salle B204 !'
     banc.tourner(4.0, jusqu_a=())
     assert banc.limites == [None]          # aucune limite pendant que le visiteur suit
     # Il traîne : au-delà de 2 m, le robot ralentit (50 %), une seule fois
@@ -383,8 +383,8 @@ def test_personne_derriere_au_depart_sinon_seul(dossier):
     assert banc.codes() == []
     banc.tourner(1.2, jusqu_a=())
     assert banc.codes() == ['seul']
-    assert banc.evenements[0]['texte'] == ('Je ne vous vois pas derrière moi : je pars vers '
-                                           'Salle B204, suivez-moi.')
+    assert banc.evenements[0]['texte'] == ('Je ne vous vois pas derrière moi : je pars, direction '
+                                           'Salle B204. Suivez-moi !')
     assert banc.guide.etat()['accompagner'] is False and banc.guide.etat()['visiteur'] is None
     assert banc.tourner(80.0)['etat'] == 'arrive'
     # Le visiteur arrive pendant les 3 s : départ annoncé dès qu'il est vu

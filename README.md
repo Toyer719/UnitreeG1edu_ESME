@@ -291,7 +291,7 @@ Le guide (`g1_nav`) sait maintenant :
   position, puis échoue avec un message qui dit quoi faire ;
 - **attendre les passants** (section précédente) ;
 - **annoncer** chaque étape au visiteur, en français, sur `/guide/evenement` (la voix de l'équipe
-  les dit) : « Suivez-moi, je vous emmène à … », « Je vous attends. », « Je retourne à l'accueil. »…
+  les dit) : « Suivez-moi : direction … ! », « Je vous attends. », « Je retourne à l'accueil. »…
 
 ```bash
 g1-guide aller b204 --accompagner          # le robot suit le visiteur des yeux, ralentit ou l'attend

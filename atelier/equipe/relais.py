@@ -19,7 +19,7 @@ Horloge injectable (tests) : horloge() rend des secondes croissantes.
 """
 import time
 
-from atelier.lieu.comportement import CODES_EVENEMENT, texte_evenement
+from atelier.lieu.comportement import CODES_EVENEMENT, texte_evenement, texte_par_defaut
 from atelier.lieu.equipe import message_robot_dire
 
 PRIORITE_HAUTE = frozenset({"arret"})
@@ -49,11 +49,14 @@ class Relais:
                 return None
         phrases = (personnalite or {}).get("phrases") or {}
         du_guide = evenement.get("texte")
+        nom = evenement.get("nom")
         if code in phrases and code in CODES_EVENEMENT:
-            nom = evenement.get("nom")
-            propre = code == "arrivee" and du_guide and du_guide != texte_evenement("arrivee", nom)
+            propre = code == "arrivee" and du_guide and not texte_par_defaut("arrivee", du_guide, nom)
             if not propre:
                 return texte_evenement(code, nom, phrases)
+        if du_guide and texte_par_defaut(code, du_guide, nom):
+            # un texte par défaut, peut-être celui d'avant (image du Jetson pas encore refaite) : celui d'aujourd'hui
+            return texte_evenement(code, nom)
         if du_guide:
             return du_guide
         return texte_evenement(code, evenement.get("nom")) if code in CODES_EVENEMENT else None
