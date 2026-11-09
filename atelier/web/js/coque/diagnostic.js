@@ -512,6 +512,8 @@ export function ouvrirDiagnostic(outils, options) {
     f.outils = outils;
   }
   f.proprietaire = o.proprietaire || null;
+  // depuis l'accueil, la fenêtre laisse voir la rangée « Ouvrir » (diagnostic.css, corrections de la vague 6)
+  f.racine.classList.toggle('sur-accueil', !!document.querySelector('[data-role=accueil]'));
   rafraichirFenetre(f);
   try {
     f.racine.focus({ preventScroll: true });

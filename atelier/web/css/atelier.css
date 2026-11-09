@@ -254,6 +254,14 @@ a { color: var(--accent-texte); }
 .verification-detail:empty { display: none; }
 .verification-message { margin-top: 8px; }
 .accueil-actions { display: flex; align-items: center; gap: 16px; }
+/* corrections de la vague 6 : en Réel, la liste « Avant de commencer » et « Vérifier le robot » poussaient « Ouvrir »
+   sous le bas de l'écran (74 px à 1366 × 768, 120 px à 1280 × 720) : la rangée d'actions reste collée en bas de
+   l'accueil quand il défile */
+.accueil { scroll-padding-bottom: 96px; }      /* un élément amené à l'écran (Tab) n'est pas caché sous la rangée */
+.accueil-corps > .accueil-actions {
+  position: sticky; bottom: 0; z-index: 2; margin: 0 -24px -32px; padding: 14px 24px 16px;
+  background: linear-gradient(to bottom, transparent, var(--fond) 18px);
+}
 .accueil-message { flex: 1; margin: 0; text-align: right; color: var(--texte-doux); font-size: 0.92rem; }
 .accueil-message[data-genre="erreur"] { color: var(--danger-texte); font-weight: 600; }
 .accueil-message[data-genre="succes"] { color: var(--succes); }

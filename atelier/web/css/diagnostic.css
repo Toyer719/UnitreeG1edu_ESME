@@ -73,6 +73,8 @@
   background: var(--surface); color: var(--texte); border: 1px solid var(--bord); border-radius: var(--rayon);
   box-shadow: var(--ombre-forte); outline: none;
 }
+/* ouverte depuis l'accueil : elle laisse voir la rangée « Ouvrir », collée en bas (corrections de la vague 6) */
+.diagnostic-fenetre.sur-accueil { max-height: calc(100% - var(--h-barre-outils) - 22px - 96px); }
 .diagnostic-fenetre:focus-visible { box-shadow: var(--ombre-forte), 0 0 0 2px var(--accent-actif); }
 .diagnostic-entete {
   display: flex; align-items: center; gap: 12px; padding: 12px 12px 10px 16px; flex: 0 0 auto;

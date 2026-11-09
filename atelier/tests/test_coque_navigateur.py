@@ -42,6 +42,38 @@ def test_accueil_et_les_deux_modes(liaison_lo, sans_ros, serveur, navigateur, li
     assert nav.js("return window.erreursAtelier") == []
 
 
+OUVRIR_ATTEIGNABLE = """const o = document.querySelector('[data-role=ouvrir]');
+const r = o.getBoundingClientRect();
+const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+return [Math.round(r.top), Math.round(r.bottom), window.innerHeight, !!t && o.contains(t)];"""
+
+
+def test_ouvrir_visible_en_reel_a_1366_et_1280(sans_ros, serveur, navigateur, lieux):
+    """Corrections de la vague 6 (revue de l'interface, défaut 2) : en Robot réel, la liste « Avant de commencer » et
+    « Vérifier le robot » poussaient « Ouvrir » 74 px sous le bas de l'écran à 1366 × 768 (120 px à 1280 × 720). La
+    rangée d'actions reste collée en bas de l'accueil : « Ouvrir » est visible et cliquable, sans défiler, même la
+    fenêtre du diagnostic ouverte."""
+    _, base = serveur
+    nav = navigateur
+    for largeur, hauteur in ((1366, 768), (1280, 720)):
+        nav.taille(largeur, hauteur)
+        C.charger(nav, base + "/", C.ACCUEIL, "accueil")
+        nav.js("localStorage.setItem('atelier.mode', 'reel'); localStorage.setItem('atelier.repetition', '0');"
+               "localStorage.setItem('atelier.lieu', 'demo');")
+        C.charger(nav, base + "/", "return !!document.querySelector('[data-role=zone-diagnostic-accueil] "
+                                   "[data-role=verifier-robot]')", "accueil Réel")
+        nav.js("document.querySelector('[data-role=accueil]').scrollTop = 0")
+        haut, bas, h, cliquable = nav.js(OUVRIR_ATTEIGNABLE)
+        assert bas <= h and cliquable, f"{largeur} × {hauteur} : « Ouvrir » en {haut}–{bas} pour {h} px, cliquable {cliquable}"
+        nav.clic("[data-role=zone-diagnostic-accueil] [data-role=verifier-robot]")
+        nav.attendre("return !!document.querySelector('[data-role=diagnostic]')", message="fenêtre du diagnostic")
+        haut, bas, h, cliquable = nav.js(OUVRIR_ATTEIGNABLE)
+        assert bas <= h and cliquable, f"{largeur} × {hauteur}, diagnostic ouvert : « Ouvrir » recouvert ou caché"
+        nav.js("document.querySelector('[data-role=diagnostic]').dispatchEvent(new KeyboardEvent('keydown', "
+               "{key: 'Escape', bubbles: true}))")
+    assert nav.js("return window.erreursAtelier") == []
+
+
 def test_mise_en_page_a_1366(sans_ros, serveur, navigateur, lieux):
     _, base = serveur
     nav = navigateur
