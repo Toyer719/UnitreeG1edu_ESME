@@ -48,6 +48,10 @@ OUTILS="$E2E/outils_e2e.py"
 NOM_TEST="$(basename "$0" .sh)"
 TRAVAIL="$(mktemp -d "${TMPDIR:-/tmp}/atelier_e2e_${NOM_TEST}_XXXX")"
 export ATELIER_LIEUX="$TRAVAIL/lieux"
+# Vague 6 (assemblage, section 13.13 du plan) : les séances de la boîte noire (une séance s'ouvre seule quand un
+# critère ouvre l'espace en Réel) et les sons de la voix restent dans le dossier du test, jamais dans journaux/
+export ATELIER_SEANCES="$TRAVAIL/seances"
+export ATELIER_VOIX_SONS="$TRAVAIL/sons"
 mkdir -p "$ATELIER_LIEUX" "$TRAVAIL/journaux"
 GROUPES=()
 DEBUT_TEST=$(date +%s)

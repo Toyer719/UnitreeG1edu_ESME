@@ -131,7 +131,7 @@ class Observateur:
         n = self.noeud
         fiable = QoSProfile(depth=50, reliability=ReliabilityPolicy.RELIABLE)
         for sujet in ('/accueil/etat', '/accueil/evenement', '/robot/dire', '/guide/aller', '/guide/etat',
-                      '/guide/evenement', '/pont/etat', '/voix/etat', '/personnes/lidar'):
+                      '/guide/evenement', '/pont/etat', '/voix/etat', '/voix/son', '/personnes/lidar'):
             n.create_subscription(String, sujet, self._recepteur(sujet), fiable)
         n.create_subscription(Odometry, verite, self._verite, qos_profile_sensor_data)
         try:
@@ -310,9 +310,13 @@ def arreter_demo(api, obs):
     ok(f'« Arrêter la démo » : plus de nœud accueil ni voix (événement arretee : {bool(arretee)})')
 
 
+BORNES_VUES = []      # les états de la borne lus par le critère (le champ son : la voix vue par la borne)
+
+
 def borne(api):
     code, e = appel(api, 'GET', '/api/borne/etat')
     verifier(code == 200, f'GET /api/borne/etat : {code}')
+    BORNES_VUES.append(e)
     return e
 
 
@@ -365,6 +369,29 @@ def un_visiteur(api, obs, numero, salle, salles, principal, salutation):
     return comment
 
 
+def verifier_voix(api, obs, salutation, depuis):
+    """Assemblage de la vague 6 : la démo parle par la voix. Le nœud voix lancé avec la démo (sortie borne en
+    simulation) a dit la salutation de chaque visiteur : /voix/son annonce son WAV, GET /api/voix/son/<id> le sert en
+    audio/wav, la borne l'a montré (champ son) ; /voix/etat compte les phrases dites, sans erreur."""
+    sons = [d for _, d in obs.messages('/voix/son', depuis)]
+    saluts = [s for s in sons if s.get('texte') == salutation]
+    verifier(len(saluts) >= 3, f'la voix n\'a pas dit les trois salutations ({len(saluts)} sur /voix/son, '
+                               f'{len(sons)} phrases en tout)')
+    try:
+        with urllib.request.urlopen(api + saluts[-1]['url'], timeout=10) as r:
+            entete, octets = r.headers.get('Content-Type', ''), len(r.read())
+    except urllib.error.HTTPError as e:
+        entete, octets = f'erreur {e.code}', 0
+    verifier(entete.startswith('audio/wav') and octets > 1000, f'GET {saluts[-1]["url"]} : {entete}, {octets} octets')
+    etat = obs.dernier('/voix/etat') or {}
+    verifier(etat.get('sortie') == 'borne' and etat.get('dites', 0) >= len(saluts) and not etat.get('erreurs'),
+             f'/voix/etat : sortie {etat.get("sortie")}, {etat.get("dites")} phrases dites, {etat.get("erreurs")} erreurs')
+    vues = {(d.get('son') or {}).get('id') for d in BORNES_VUES} - {None}
+    verifier(any(s.get('id') in vues for s in sons), 'la borne n\'a jamais montré un son de la voix (champ son)')
+    ok(f'la démo parle : {len(sons)} phrases de la voix (sortie borne), dont les {len(saluts)} salutations, WAV servi '
+       f'({octets} octets), {etat.get("dites")} phrases dites sans erreur, la borne les a reçues')
+
+
 def _attendre_sans_echec(condition, delai):
     fin = time.monotonic() + delai
     while time.monotonic() < fin:
@@ -388,7 +415,9 @@ def critere_41(args):
         ok(f'simulation lancée, Nav2 actif ({time.monotonic() - debut:.0f} s)')
         obs.visiteur('suivre')
         lancer_demo(args.api, obs, args.lieu)
+        t_demo = time.monotonic()
         comments = [un_visiteur(args.api, obs, i + 1, s, salles, principal, salutation) for i, s in enumerate(SALLES_41)]
+        verifier_voix(args.api, obs, salutation, t_demo)
         stats = obs.demo()['statistiques']
         verifier(stats['visiteurs'] == 3 and stats['visites_reussies'] == 3,
                  f'statistiques : {stats} (3 visiteurs et 3 visites réussies attendus)')

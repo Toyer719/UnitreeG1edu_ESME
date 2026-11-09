@@ -514,7 +514,8 @@ def test_journal_des_actions(client):
     assert r.status_code == 200 and r.json()["arrete"] is True
     gros = client.post("/api/robot/diagnostic/demarrer-services", content=b'{"x": "' + b"a" * 10000 + b'"}',
                        headers={"Content-Type": "application/json"})
-    assert gros.status_code == 501
+    # assemblage de la vague 6 : la route est écrite ; sans « confirme », rien ne part (409, 13.2)
+    assert gros.status_code == 409 and gros.json()["detail"]
 
 
 def test_journal_coupe_les_gros_corps():
@@ -604,8 +605,11 @@ def test_appels_de_la_seance_par_le_serveur(tmp_path, monkeypatch):
     etat.demarrer()
     etat.arreter()
     assert etat.seance_direct() is None and etat.etat_direct()["seance"] is None
-    with pytest.raises(NotImplementedError):
+    # assemblage de la vague 6 : sans le serveur de l'Atelier, la vraie boîte noire refuse en français (503)
+    from atelier.serveur.communs import ErreurAtelier
+    with pytest.raises(ErreurAtelier) as refus:
         GestionnaireSeance().demarrer("reel")
+    assert refus.value.statut == 503 and "g1-atelier" in str(refus.value.detail)
     assert GestionnaireSeance().noter_action({"chemin": "/api/arret"}) is None
 
 
@@ -767,9 +771,11 @@ def test_paquet_g1_accueil_et_commandes():
         assert alias.is_symlink() and os.readlink(alias) == nom, alias
     for module in ("diagnostic", "seance", "voix"):
         assert f"-m atelier.{module}" in (RACINE / "bin" / f"g1-{module}").read_text(encoding="utf-8")
-    with pytest.raises(NotImplementedError):
-        from atelier.diagnostic import diagnostiquer
-        diagnostiquer()
+    # assemblage de la vague 6 : diagnostiquer est écrit ; l'appeler lancerait les vraies vérifications (nœud ROS,
+    # câble, ping, ssh) : on ne vérifie que sa signature du contrat (13.2)
+    import inspect
+    from atelier.diagnostic import diagnostiquer
+    assert list(inspect.signature(diagnostiquer).parameters)[:5] == ["mode", "pont", "contexte", "source", "rapide"]
     assert "g1_accueil" in (RACINE / "tests_e2e" / "commun.sh").read_text(encoding="utf-8")
 
 
