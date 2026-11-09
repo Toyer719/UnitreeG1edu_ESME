@@ -55,12 +55,19 @@ def test_ecran_demo(nav, tmp_path, monkeypatch):
     etat = app.state.atelier
     etat.simulation = {"lieu": "essai", "etage": "rdc", "dossier": str(dossier), "monde": None, "debut": time.time(),
                        "avertissements": [], "mode": "simu"}
-    etat.mode_navigation = lambda: "simu"
+    etat.mode_navigation = lambda: None          # rien ne tourne encore
     pont.muet = True                             # la démo ne tourne pas encore
     pont.recus.pop("/accueil/etat", None)
     with ServeurDemo(app, pont) as serveur:
         nav.taille(1600, 1000)
         ouvrir_espace(nav, serveur.base, mode="simu", lieu="essai")
+        # corrections de la vague 6 (revue de l'interface, défaut 13) : sans guide, la phrase du mode de l'Atelier
+        nav.commande("demo.lancer")
+        sans_guide = nav.attendre("const e = Array.from(document.querySelectorAll('.message-erreur')).find((x) => "
+                                  "x.textContent.indexOf('besoin du guide') >= 0); return e ? e.textContent : null",
+                                  message="la démo a besoin du guide")
+        assert "Simuler › Lancer" in sans_guide and "Naviguer" not in sans_guide, sans_guide
+        etat.mode_navigation = lambda: "simu"
         nav.commande("demo.lancer")
         nav.attendre("const b = document.querySelector('[data-role=demo-arreter]'); return !!b && !b.hidden",
                      message="démo lancée")
@@ -90,6 +97,9 @@ def test_ecran_demo(nav, tmp_path, monkeypatch):
         nav.clic("[data-action=pause]:not([hidden])")
         nav.attendre("return document.querySelector('[data-role=demo-etat]').dataset.etat === 'pause'", message="pause")
         assert pont.o.raison == "operateur"
+        # corrections de la vague 6 (défaut 11) : les guillemets du message gardent leur espace insécable
+        message = nav.js("return document.querySelector('[data-role=demo-message]').textContent")
+        assert "«\u00a0Reprendre\u00a0»" in message and "« " not in message, message
         assert [d for s, d in pont.publies if s == "/accueil/commande"][-1]["source"] == "atelier"
         nav.clic("[data-action=reprendre]:not([hidden])")
         nav.attendre("return document.querySelector('[data-role=demo-etat]').dataset.etat === 'attente'", message="reprise")

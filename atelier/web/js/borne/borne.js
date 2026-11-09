@@ -13,7 +13,7 @@
 import { fleche, HUMEURS, mascotte, pictogramme, svg } from './dessins.js';
 import { ANTI_REBOND_MS, creerAntiRebond, creerLiaison } from './liaison.js';
 import { creerSon } from './son.js';
-import { pictogrammeDe, texte } from './textes.js';
+import { insecables, pictogrammeDe, texte } from './textes.js';
 
 export const ECRANS_BORNE = ['hors_service', 'salles', 'suivez_moi', 'arrivee', 'retour', 'occupe', 'pause'];
 export const ECRANS_AVEC_SALLES = ['salles', 'occupe', 'pause'];
@@ -37,14 +37,8 @@ function bouton(classe, contenu, role) {
   return b;
 }
 
-// Typographie française : une espace insécable avant ? ! : ; et à l'intérieur des guillemets (« … »), et un
-// trait d'union insécable dans les mots composés (« Suivez-moi ») : une ponctuation ou une moitié de mot ne se
-// retrouve jamais seule en début de ligne
-export function insecables(t) {
-  return String(t === undefined || t === null ? '' : t)
-    .replace(/ ([?!:;»])/g, '\u00a0$1').replace(/« /g, '«\u00a0')
-    .replace(/([A-Za-zÀ-ÿ])-([A-Za-zÀ-ÿ])/g, '$1\u2011$2');
-}
+// insecables (la typographie française) est dans textes.js ; gardée ici pour les modules et les essais d'avant
+export { insecables };
 
 // L'écran à montrer pour un état reçu (inconnu ou absent : hors_service)
 export function ecranAffiche(etat) {
@@ -249,7 +243,7 @@ export function demarrerBorne(racine, options) {
   }
 
   function montrerBulle(message) {
-    bulle.textContent = message;
+    bulle.textContent = langue === 'fr' ? insecables(message) : message;
     bulle.hidden = false;
     attendre('bulle', DUREE_BULLE_MS, () => { bulle.hidden = true; });
   }
@@ -412,7 +406,7 @@ export function demarrerBorne(racine, options) {
 
   function majActions() {
     const mode = dernier && dernier.mode_operateur;
-    messageActions.textContent = (mode && mode.message) || '';
+    messageActions.textContent = insecables((mode && mode.message) || '');
     ACTIONS_OPERATEUR.forEach((a) => {
       // sans l'état du mode opérateur (jeton pas encore vu par le serveur) : rien n'est possible
       actions[a].disabled = !(mode && Array.isArray(mode.actions) && mode.actions.indexOf(a) >= 0);

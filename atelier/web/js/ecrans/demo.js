@@ -14,6 +14,7 @@ import { api, urlLieu } from '../api.js';
 import { contexte } from '../contexte.js';
 import { abonner } from '../direct.js';
 import { mascotte } from '../borne/dessins.js';
+import { insecables } from '../borne/textes.js';
 import { svgQR } from '../borne/qr.js';
 import { preparerEcran, section } from '../coque/ecran.js';
 import { ouvrirPanneau } from '../coque/panneau.js';
@@ -214,8 +215,9 @@ export function ouvrir(racine, options) {
     const e = demo ? demo.etat : 'arretee';
     pastille.setAttribute('data-etat', e);
     titreEtat.textContent = texteEtat(demo);
-    messageEtat.textContent = demo ? demo.message
-      : (etat.lancee ? 'La démo démarre…' : 'Lancez la démo : le robot accueillera les visiteurs, la borne proposera les salles.');
+    // les guillemets et les deux-points avec leur espace insécable (« « » seul en fin de ligne : corrections de la vague 6)
+    messageEtat.textContent = insecables(demo ? demo.message
+      : (etat.lancee ? 'La démo démarre…' : 'Lancez la démo : le robot accueillera les visiteurs, la borne proposera les salles.'));
     const humeur = { attente: 'accueil', salutation: 'content', choix: 'accueil', depart: 'marche', accompagnement: 'marche',
       arrivee: 'content', retour: 'marche', occupe: 'occupe', pause: 'pause' }[e] || 'dort';
     if (visage.getAttribute('data-humeur') !== humeur) {
@@ -297,7 +299,8 @@ export function ouvrir(racine, options) {
   async function commande(nom) {
     if (nom === 'lancer') {
       try {
-        const r = await api.envoyer('/api/demo/lancer', { lieu: lieu, etage: etage });
+        // le mode de l'Atelier : la phrase qui dit quoi lancer d'abord (Naviguer › Lancer en Réel, Simuler › Lancer)
+        const r = await api.envoyer('/api/demo/lancer', { lieu: lieu, etage: etage, mode: ecran.mode });
         etat.lancee = true;
         coque.message(r.message, 'succes', r.avertissements && r.avertissements.length ? r.avertissements : null);
         (r.avertissements || []).forEach((a) => coque.message(a, 'avertissement'));

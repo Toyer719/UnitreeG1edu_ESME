@@ -68,6 +68,21 @@ def test_lancer_sans_guide(demo, fausses):
     assert demo.post("/api/demo/lancer", json={"lieu": "essai", "etage": "etage9"}).status_code == 404
 
 
+def test_lancer_sans_guide_dit_quoi_lancer_dans_ce_mode(demo, fausses):
+    """Corrections de la vague 6 (revue de l'interface, défaut 13) : en répétition, la phrase parlait de « Simuler ›
+    Lancer » (il n'y a pas d'onglet Simuler en Réel) et la barre d'état la coupait à 1 366 px."""
+    from atelier.serveur.routes import demo as D
+    reel = demo.post("/api/demo/lancer", json={"lieu": "essai", "mode": "reel"})
+    assert reel.status_code == 409 and reel.json()["detail"] == D.MESSAGES_SANS_GUIDE["reel"]
+    assert "Naviguer › Lancer" in reel.json()["detail"] and "Simuler" not in reel.json()["detail"]
+    simu = demo.post("/api/demo/lancer", json={"lieu": "essai", "mode": "simu"})
+    assert simu.status_code == 409 and "Simuler › Lancer" in simu.json()["detail"]
+    assert "Naviguer" not in simu.json()["detail"]
+    assert all(len(m) <= 80 for m in D.MESSAGES_SANS_GUIDE.values())
+    autre = demo.post("/api/demo/lancer", json={"lieu": "essai", "mode": "martien"})     # mode inconnu : les deux
+    assert autre.status_code == 409 and autre.json()["detail"] == D.MESSAGE_SANS_GUIDE
+
+
 def test_lancer_refuse_si_une_demo_tourne_dehors(demo, fausses):
     _simulation(demo)
     demo.pont.rafraichir()                       # une démo répond, lancée hors de l'Atelier

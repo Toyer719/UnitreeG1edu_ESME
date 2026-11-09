@@ -4,6 +4,15 @@
 
 export const LANGUES = ['fr', 'en'];
 
+// Typographie française : une espace insécable avant ? ! : ; et à l'intérieur des guillemets (« … »), et un
+// trait d'union insécable dans les mots composés (« Suivez-moi ») : une ponctuation ou une moitié de mot ne se
+// retrouve jamais seule en début de ligne (aussi pour l'écran Démo de l'Atelier : corrections de la vague 6)
+export function insecables(t) {
+  return String(t === undefined || t === null ? '' : t)
+    .replace(/ ([?!:;»])/g, '\u00a0$1').replace(/« /g, '«\u00a0')
+    .replace(/([A-Za-zÀ-ÿ])-([A-Za-zÀ-ÿ])/g, '$1\u2011$2');
+}
+
 export const TEXTES = {
   fr: {
     question: 'Je vous accompagne à',

@@ -91,6 +91,16 @@ EMPECHEMENTS = {
     'occupe': 'Le guide est encore en route : attendez qu\'il s\'arrête.',
     'position': 'La position du robot est inconnue : repérez-le d\'abord.',
 }
+# Réponse à une commande acceptée (corrections de la vague 6, revue de l'interface, défaut 10 :
+# la borne et l'Atelier montraient « Commande « ramener » acceptée. », le nom de la commande)
+TEXTES_COMMANDE = {
+    'appui': 'Appui de la borne reçu.',
+    'annuler': 'Choix annulé : retour aux salles.',
+    'pause': 'La démo est en pause.',
+    'reprendre': 'La démo reprend.',
+    'ramener': 'Le robot retourne à l\'accueil.',
+    'remise_a_zero': 'Statistiques remises à zéro.',
+}
 TEXTES_REFUS = {
     'occupe': 'Je suis occupé : la visite en cours doit d\'abord finir.',
     'pause': 'La démo est en pause.',
@@ -919,8 +929,8 @@ class Orchestrateur:
             return
         refus = traiter(source)
         if refus is None:
-            self._evenement('commande_acceptee', f'Commande « {action} » acceptée.', id=ident,
-                            source=source, action=action)
+            self._evenement('commande_acceptee', TEXTES_COMMANDE.get(action, 'C\'est fait.'),
+                            id=ident, source=source, action=action)
         else:
             raison, texte = refus
             self._evenement('commande_refusee', texte, id=ident, source=source, action=action,
@@ -1012,7 +1022,10 @@ class Orchestrateur:
                 if empechement is not None:
                     message += ' ' + EMPECHEMENTS[empechement]
                 elif not self._au_principal():
-                    message += ' Puis « Ramener à l\'accueil » : rien ne repart seul.'
+                    # corrections de la vague 6 (revue de l'interface, défaut 11) : un « Puis »
+                    # ne suivait aucune consigne
+                    message += (' Quand le passage est libre, cliquez sur « Ramener à '
+                                'l\'accueil » : rien ne repart seul.')
             return message
         nom = (self._visite or {}).get('nom') or ''
         message = MESSAGES_ETAT[etat].replace('{nom}', nom)

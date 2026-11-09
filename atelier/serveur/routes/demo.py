@@ -5,8 +5,9 @@
                                          lieu, etage, avertissements}
   POST /api/demo/lancer {lieu, etage?}   lance g1-accueil (rôle demo) et g1-voix (rôle voix, avec la sortie de
                                          demo.yaml ; en simulation, la sortie borne) ; 409 si le guide ne tourne
-                                         pas (ni simulation ni navigation), si la simulation tourne sur un autre
-                                         lieu ou étage, ou, en Réel et en répétition, si le robot n'est pas repéré
+                                         pas (ni simulation ni navigation ; mode? simu ou reel, celui de l'Atelier,
+                                         choisit la phrase), si la simulation tourne sur un autre lieu ou étage,
+                                         ou, en Réel et en répétition, si le robot n'est pas repéré
   POST /api/demo/arreter                 arrête la démo et la voix ; le robot n'est pas arrêté par cela (ARRÊT)
   POST /api/demo/commande {action}       /accueil/commande depuis l'Atelier (source atelier) : pause, reprendre,
                                          ramener, remise_a_zero ; la réponse de la démo (2 s au plus) : 200
@@ -46,6 +47,10 @@ MESSAGE_SANS_REPONSE = ("La démo n'a pas répondu à temps : vérifiez qu'elle 
                         "puis réessayez.")
 MESSAGE_SANS_GUIDE = ("La démo a besoin du guide : lancez d'abord la simulation (Simuler › Lancer) ou la "
                       "navigation du robot (Naviguer › Lancer).")
+# corrections de la vague 6 (revue de l'interface, défaut 13) : la phrase du mode où l'on est (il n'y a pas d'onglet
+# Simuler en Réel), plus courte (la barre d'état la coupait à 1 366 px)
+MESSAGES_SANS_GUIDE = {"reel": "La démo a besoin du guide : lancez d'abord la navigation (Naviguer › Lancer).",
+                       "simu": "La démo a besoin du guide : lancez d'abord la simulation (Simuler › Lancer)."}
 # Corrections de la vague 6 (revue de l'interface, défaut 7) : en Simulation, sans faux visiteur (il vient avec une
 # scène d'essai), le robot part seul vers la salle et l'accompagnement n'est pas essayé ; l'écran Démo le dit
 SUJET_FAUX_VISITEUR = "/faux_visiteur/mode"
@@ -60,6 +65,7 @@ _numeros = itertools.count(1)
 class DemandeLancer(BaseModel):
     lieu: str
     etage: Optional[str] = None
+    mode: Optional[str] = None      # simu ou reel : le mode de l'Atelier, pour la phrase quand le guide manque
 
 
 class DemandeCommande(BaseModel):
@@ -198,12 +204,13 @@ def etat_demo(request: Request):
             "avertissements": _avertissements(etat), "ros": {"actif": etat.pont.actif, "erreur": etat.pont.erreur}}
 
 
-def _verifier_guide(etat, lieu, etage):
-    """409 si la démo ne peut pas tourner : pas de guide, autre lieu ou étage, robot pas repéré."""
+def _verifier_guide(etat, lieu, etage, mode_atelier=None):
+    """409 si la démo ne peut pas tourner : pas de guide (la phrase du mode de l'Atelier, simu ou reel), autre lieu
+    ou étage, robot pas repéré."""
     from .simulation import MESSAGE_REPERER, robot_repere
     mode = etat.mode_navigation()
     if mode is None:
-        raise ErreurAtelier(409, MESSAGE_SANS_GUIDE)
+        raise ErreurAtelier(409, MESSAGES_SANS_GUIDE.get(mode_atelier, MESSAGE_SANS_GUIDE))
     s = etat.simulation or {}
     if s.get("lieu") != lieu:
         raise ErreurAtelier(409, f"Le guide tourne sur le lieu « {s.get('lieu')} » : lancez la démo sur ce lieu, ou "
@@ -222,7 +229,7 @@ async def lancer(demande: DemandeLancer, request: Request):
     principal = exiger_point_principal(dossier)
     etage = demande.etage or principal.etage
     etage_du_lieu(dossier, etage)
-    mode = _verifier_guide(etat, demande.lieu, etage)
+    mode = _verifier_guide(etat, demande.lieu, etage, demande.mode)
     if etat_demo_frais(etat) is not None and not etat.gestionnaire.en_cours(ROLE_DEMO):
         raise ErreurAtelier(409, "Une démo tourne déjà, lancée hors de l'Atelier (g1-accueil dans un terminal) : "
                                  "arrêtez-la d'abord là où elle a été lancée (Ctrl+C).")

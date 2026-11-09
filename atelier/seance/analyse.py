@@ -849,6 +849,11 @@ def chronologie(donnees, actions, manifeste, anomalies_vues=(), lieu=None):
             ajouter(t, "reperage", texte, "attention" if etat in ("perdu", "echec") else "info")
         avant = etat
     for t, e in donnees.serie("json", "/accueil/evenement"):
+        # l'accusé de réception d'une commande (appui, pause, ramener…) : l'action est dans le journal des actions et
+        # son effet a son propre événement (« Un visiteur a touché la borne », la pause, le retour) ; corrections de
+        # la vague 6 (revue de l'interface, défaut 10)
+        if e.get("code") == "commande_acceptee":
+            continue
         if e.get("texte") or e.get("code"):
             ajouter(t, "demo", f"Démo : {e.get('texte') or e.get('code')}",
                     "attention" if e.get("code") in EVENEMENTS_DEMO_A_REGARDER else "info")

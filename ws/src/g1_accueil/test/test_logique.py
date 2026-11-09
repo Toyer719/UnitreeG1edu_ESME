@@ -524,6 +524,39 @@ def test_arret_pendant_la_visite_puis_ramener(banc):
     assert banc.o.etat()['statistiques']['pauses'] == 1
 
 
+def test_textes_des_commandes_et_de_la_pause(banc):
+    """
+    Corrections de la vague 6 (revue de l'interface, défauts 10 et 11).
+
+    La borne et l'Atelier montraient « Commande « ramener » acceptée. » (le nom interne de la
+    commande) ; après un ARRÊT loin de l'accueil, le message de la pause disait « … Puis
+    « Ramener à l'accueil » : rien ne repart seul. », un « Puis » qui ne suivait rien.
+    """
+    banc.visite_jusqu_a_l_accompagnement()
+    banc.entrer('/pont/arret', True)
+    banc.evenement_guide('arret')
+    banc.guide.changer('attente', mission=None, cible=None)
+    banc.entrer('/pont/arret', False)
+    banc.avancer(1.0)
+    message = banc.o.etat()['message']
+    assert message.endswith('Quand le passage est libre, cliquez sur « Ramener à l\'accueil » : '
+                            'rien ne repart seul.'), message
+    assert 'Puis' not in message
+    attendus = {'ramener': 'Le robot retourne à l\'accueil.', 'pause': 'La démo est en pause.',
+                'remise_a_zero': 'Statistiques remises à zéro.'}
+    assert banc.commande('ramener')['texte'] == attendus['ramener']
+    banc.pose = PRINCIPAL
+    banc.guide.changer('arrive', actif=False)
+    banc.avancer(0.3)
+    assert banc.o.etat_courant == 'attente'
+    assert banc.commande('pause')['texte'] == attendus['pause']
+    assert banc.commande('reprendre')['texte'] == 'La démo reprend.'
+    assert banc.commande('remise_a_zero')['texte'] == attendus['remise_a_zero']
+    assert banc.commande('appui', source='borne')['texte'] == 'Appui de la borne reçu.'
+    assert banc.commande('annuler', source='borne')['texte'] == 'Choix annulé : retour aux salles.'
+    assert not [e for e in banc.evenements() if 'Commande «' in e['texte']]
+
+
 def test_bloquer_pendant_la_visite(banc):
     banc.visite_jusqu_a_l_accompagnement()
     banc.entrer('/pont/arret', True)

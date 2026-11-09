@@ -435,3 +435,15 @@ def test_un_etat_de_passage_du_pont_n_a_pas_de_duree():
     for t, etat in ((0.0, "pret"), (1.0, "arret"), (1.0, "arret_verrouille"), (3.0, "pret")):
         d.ajouter("/pont/etat", "std_msgs/msg/String", T0 + t, _string({"etat": etat}))
     assert A.etats_pont(d) == {"arret_verrouille": 2.0, "pret": 1.5}
+
+
+def test_chronologie_sans_l_accuse_de_reception_des_commandes_de_la_demo():
+    """Corrections de la vague 6 (revue de l'interface, défaut 10) : « Démo : Commande « appui » acceptée. » doublait
+    l'événement « Un visiteur a touché la borne » à chaque visiteur."""
+    d = Donnees()
+    for i, e in enumerate(({"code": "visiteur", "texte": "Un visiteur a touché la borne."},
+                           {"code": "commande_acceptee", "texte": "Appui de la borne reçu.", "action": "appui"},
+                           {"code": "pause", "texte": "Pause : arrêt demandé pendant la visite."})):
+        d.ajouter("/accueil/evenement", "std_msgs/msg/String", T0 + 1.0 + i, _string(dict(e, version=1)))
+    textes = [c["texte"] for c in A.chronologie(d, [], _manifeste()) if c["genre"] == "demo"]
+    assert textes == ["Démo : Un visiteur a touché la borne.", "Démo : Pause : arrêt demandé pendant la visite."]
