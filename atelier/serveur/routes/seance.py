@@ -103,7 +103,8 @@ async def demarrer(request: Request):
                                 _texte(d, "etage"), ouverture)
     # nouvelle : cette demande a ouvert la séance (sinon, celle qui était déjà ouverte est rendue telle quelle ; la
     # boîte noire n'écrit pas ce « rien » dans le journal des actions : corrections de la vague 6)
-    return {"seance": m, "nouvelle": avant is None or avant.get("id") != (m or {}).get("id")}
+    # (nouvelle d'abord : la boîte noire la lit même dans une réponse coupée à 4 096 octets)
+    return {"nouvelle": avant is None or avant.get("id") != (m or {}).get("id"), "seance": m}
 
 
 @routeur.post("/api/seance/arreter")

@@ -277,4 +277,6 @@ def test_ouvrir_une_seance_deja_ouverte_n_est_pas_note(tmp_path):
     j.arreter(delai=5.0)
     assert [x["texte"] for x in _lignes(tmp_path / "actions.jsonl")] == ["Ouvrir la séance (automatique)"]
     assert not action_sans_effet({"chemin": "/api/seance/demarrer", "reponse": "texte coupé"})
+    assert action_sans_effet({"chemin": "/api/seance/demarrer", "reponse": '{"nouvelle": false, "seance": {"id": […]'})
+    assert not action_sans_effet({"chemin": "/api/seance/demarrer", "reponse": '{"nouvelle": true, "seance": {"i'})
     assert not action_sans_effet({"chemin": "/api/arret", "reponse": {"nouvelle": False}})

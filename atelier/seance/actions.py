@@ -121,9 +121,13 @@ def action_sans_effet(action):
     """Vrai pour une demande qui n'a rien changé et n'a pas sa place dans le journal : rouvrir l'espace en Réel quand
     la séance est déjà ouverte (POST /api/seance/demarrer répond nouvelle: false ; « Ouvrir la séance
     (automatique) » revenait 11 fois dans une séance, corrections de la vague 6, revue de l'interface, défaut 12)."""
+    if action.get("chemin") != "/api/seance/demarrer":
+        return False
     reponse = action.get("reponse")
-    return (action.get("chemin") == "/api/seance/demarrer" and isinstance(reponse, dict)
-            and reponse.get("nouvelle") is False)
+    if isinstance(reponse, dict):
+        return reponse.get("nouvelle") is False
+    # réponse coupée (gardée en texte) : « nouvelle » vient en premier
+    return isinstance(reponse, str) and re.match(r'\{\s*"nouvelle"\s*:\s*false\b', reponse) is not None
 
 
 def decrire(methode, chemin, requete=None, reponse=None, noms=None):
