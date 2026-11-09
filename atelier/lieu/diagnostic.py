@@ -128,6 +128,39 @@ def parametre_service_switch(nom):
     return json.dumps({"name": nom, "switch": 1})
 
 
+def verifier_appel_unitree(service, api_id, parametre):
+    """La garde de PontRos.appeler_unitree (corrections de la vague 6, revue du code, défaut 8) : l'appel et son
+    paramètre exacts, pas seulement (service, api). PermissionError en français pour tout ce qui n'est pas :
+    robot_state 1001 {"name": un service de SERVICES_CARTOGRAPHIE, "switch": 1} (jamais d'arrêt : un 1001
+    {"name": "ai_sport", "switch": 0} ferait tomber un G1 debout), robot_state 1003 et sport 7001 avec « {} » (ou
+    rien). Fonction pure."""
+    try:
+        api = int(api_id)
+    except (TypeError, ValueError):
+        api = None
+    if (service, api) not in APPELS_UNITREE_PERMIS:
+        raise PermissionError(f"requête {service} {api_id} interdite depuis l'Atelier")
+    texte = "" if parametre is None else str(parametre).strip()
+    if api == API_ROBOT_STATE["service_switch"]:
+        try:
+            d = json.loads(texte)
+        except ValueError:
+            d = None
+        bon = (isinstance(d, dict) and set(d) == {"name", "switch"} and d["name"] in SERVICES_CARTOGRAPHIE
+               and type(d["switch"]) is int and d["switch"] == 1)
+        if not bon:
+            raise PermissionError(f"ServiceSwitch refusé ({texte[:80]}) : l'Atelier ne fait que démarrer "
+                                  f"{' et '.join(SERVICES_CARTOGRAPHIE)} (switch 1), jamais d'arrêt ni d'autre service")
+        return
+    if texte not in ("", "{}"):
+        try:
+            vide = json.loads(texte) == {}
+        except ValueError:
+            vide = False
+        if not vide:
+            raise PermissionError(f"requête {service} {api} refusée : elle se fait sans paramètre (« {{}} »)")
+
+
 def _json(data):
     if isinstance(data, (list, dict)):
         return data

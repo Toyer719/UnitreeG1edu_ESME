@@ -15,7 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import atelier
-from atelier.lieu.diagnostic import APPELS_UNITREE_PERMIS
+from atelier.lieu.diagnostic import verifier_appel_unitree
 from atelier.lieu.equipe import SUJET_ETAT_CAMERA
 
 JUMEAU = atelier.RACINE / "ws" / "src" / "g1_jumeau"
@@ -69,8 +69,7 @@ class FauxPont:
         return {s: ["inconnu"] for s in self.graphe} if self.actif else {}
 
     def appeler_unitree(self, service, api_id, parametre="{}", delai=2.0):
-        if (service, int(api_id)) not in APPELS_UNITREE_PERMIS:
-            raise PermissionError(f"requête {service} {api_id} interdite depuis l'Atelier")
+        verifier_appel_unitree(service, api_id, parametre)          # la garde du vrai pont, paramètre compris
         if not self.actif:
             raise RuntimeError(self.erreur)
         with self._verrou:

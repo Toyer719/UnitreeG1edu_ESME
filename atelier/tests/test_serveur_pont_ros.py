@@ -217,3 +217,62 @@ def test_l_enregistreur_de_la_seance_n_est_pas_le_robot(faux_robot, tmp_path, mo
         enregistreur.destroy_node()
         outil.destroy_node()
         pont.arreter()
+
+
+# ---------------------------------------------------------------- corrections de la vague 6 (revue du code, défaut 8)
+
+class _FauxPublieurUnitree:
+    """Le robot qui écoute et répond tout de suite ; rien ne part sur le réseau."""
+
+    def __init__(self, pont):
+        self.pont, self.publiees = pont, []
+
+    def get_subscription_count(self):
+        return 1
+
+    def publish(self, msg):
+        from types import SimpleNamespace as N
+        self.publiees.append((msg.header.identity.api_id, msg.parameter))
+        self.pont._recevoir_unitree(N(header=N(identity=N(id=msg.header.identity.id), status=N(code=0)), data="{}"))
+
+
+class _FauxNoeudUnitree:
+    def __init__(self, pont):
+        self.pub = _FauxPublieurUnitree(pont)
+
+    def create_subscription(self, *a, **k):
+        return object()
+
+    def create_publisher(self, *a, **k):
+        return self.pub
+
+
+def test_appeler_unitree_verifie_le_parametre_avant_de_publier():
+    """La garde ne regardait que (service, api) : un 1001 {"name": "ai_sport", "switch": 0} (le robot debout
+    tomberait) ou {"name": "motion_switcher", "switch": 0} partait au robot."""
+    from atelier.lieu.diagnostic import verifier_appel_unitree
+    pont = PontRos(nom_noeud="essai_liste_blanche")
+    pont.actif = True
+    pont._noeud = _FauxNoeudUnitree(pont)
+    refuses = [("robot_state", 1001, '{"name": "ai_sport", "switch": 0}'),
+               ("robot_state", 1001, '{"name": "motion_switcher", "switch": 0}'),
+               ("robot_state", 1001, '{"name": "lidar_driver", "switch": 0}'),
+               ("robot_state", 1001, '{"name": "ai_sport", "switch": 1}'),
+               ("robot_state", 1001, '{"name": "lidar_driver", "switch": true}'),
+               ("robot_state", 1001, '{"name": "lidar_driver", "switch": 1, "autre": 2}'),
+               ("robot_state", 1001, "pas du json"), ("robot_state", 1001, "{}"),
+               ("robot_state", 1003, '{"name": "ai_sport"}'), ("sport", 7001, '{"data": 1}'),
+               ("sport", 7105, "{}"), ("robot_state", 1002, "{}"), ("robot_state", "x", "{}")]
+    for service, api, parametre in refuses:
+        with pytest.raises(PermissionError):
+            pont.appeler_unitree(service, api, parametre, delai=0.5)
+        with pytest.raises(PermissionError):
+            verifier_appel_unitree(service, api, parametre)
+    assert pont._noeud.pub.publiees == []                         # rien n'est parti
+    permis = [("robot_state", 1001, '{"name": "lidar_driver", "switch": 1}'),
+              ("robot_state", 1001, '{"switch": 1, "name": "unitree_slam"}'),
+              ("robot_state", 1003, "{}"), ("robot_state", 1003, ""), ("sport", 7001, "{}"),
+              ("sport", 7001, " { } ")]
+    for service, api, parametre in permis:
+        assert pont.appeler_unitree(service, api, parametre, delai=0.5) == (0, "{}")
+    assert [a for a, _ in pont._noeud.pub.publiees] == [1001, 1001, 1003, 1003, 7001, 7001]

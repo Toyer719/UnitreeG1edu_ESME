@@ -480,11 +480,12 @@ class PontRos:
 
     def appeler_unitree(self, service, api_id, parametre="{}", delai=2.0):
         """Une requête au robot (unitree_api/Request sur /api/<service>/request) et sa réponse : (code, data).
-        Seulement les appels de APPELS_UNITREE_PERMIS (PermissionError sinon) ; RuntimeError sans pont ROS 2 ou
-        sans unitree_api ; TimeoutError si personne n'écoute ou si la réponse n'arrive pas dans le délai."""
-        from atelier.lieu.diagnostic import APPELS_UNITREE_PERMIS
-        if (service, int(api_id)) not in APPELS_UNITREE_PERMIS:
-            raise PermissionError(f"requête {service} {api_id} interdite depuis l'Atelier")
+        Seulement les appels de APPELS_UNITREE_PERMIS, avec leur paramètre exact (verifier_appel_unitree : 1001 ne
+        fait que démarrer un service de la cartographie ; PermissionError sinon, avant toute publication) ;
+        RuntimeError sans pont ROS 2 ou sans unitree_api ; TimeoutError si personne n'écoute ou si la réponse
+        n'arrive pas dans le délai."""
+        from atelier.lieu.diagnostic import verifier_appel_unitree
+        verifier_appel_unitree(service, api_id, parametre)
         if not self.actif or self._noeud is None:
             raise RuntimeError(self.erreur or "le pont ROS 2 n'est pas démarré")
         try:
@@ -504,7 +505,8 @@ class PontRos:
             ident = time.monotonic_ns() + self._numero_unitree
         while publieur.get_subscription_count() == 0:
             if time.monotonic() - debut > min(delai, DELAI_ABONNE_UNITREE_S):
-                raise TimeoutError(f"personne n'écoute /api/{service}/request : le robot (ou le faux G1) est-il relié ?")
+                raise TimeoutError(f"personne n'écoute /api/{service}/request : le robot (ou le faux G1) est-il "
+                                   "relié ?")
             time.sleep(0.05)
         requete = Request()
         requete.header.identity.id = ident
