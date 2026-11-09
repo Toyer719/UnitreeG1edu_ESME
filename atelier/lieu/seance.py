@@ -75,6 +75,11 @@ REGLAGES_SEANCE = {
     "periode_controle_s": 5.0,      # contrôle de la taille et de la place libre
     "journal_max_mo": 20,           # fin d'un journal de commande copiée dans journaux/ (le reste est coupé)
     "cpu_max": 0.15,                # part d'un cœur que l'enregistrement ne doit pas dépasser (mesurée, 13.9)
+    # corrections de la vague 6 (revue du code, défaut 9) : un client du réseau qui insiste ne remplit plus le disque
+    "actions_max_mo": 50,           # actions.jsonl : au-delà, seuls l'ARRÊT, Bloquer, Débloquer et la séance
+    "serveur_log_max_mo": 50,       # journaux/serveur.log de la séance : au-delà, plus rien (une ligne le dit)
+    "resume_repetitions_s": 60,     # demandes refusées par une garde, rebonds de la borne, 429 : une ligne, puis
+                                    # le nombre des suivantes du même client, par minute
 }
 VARIABLES_SEANCE = {
     "ATELIER_SEANCES": "dossier des séances (défaut : journaux/seances du projet)",

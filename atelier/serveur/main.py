@@ -221,9 +221,17 @@ class JournalDesActions:
                       "statut": vu["statut"], "reponse": _lire_corps(bytes(reponse), vu["reponse"] > len(reponse)),
                       "duree_ms": round((time.monotonic() - debut) * 1000.0, 1),
                       "client": "local" if local else ("borne" if chemin_permis_borne(chemin) else "distant")}
+            if scope.get(CLE_GARDE):            # refusée par GardeBorne ou GardeOrigine : résumée par la séance
+                action["garde"] = scope[CLE_GARDE]
             self.etat.seance.noter_action(action)
         except Exception:       # noqa: BLE001 : la boîte noire ne doit jamais gêner une demande
             JOURNAL.exception("journal des actions : action non notée")
+
+
+# Une demande refusée par une garde le dit dans son scope ASGI (le même dictionnaire que voit JournalDesActions) :
+# la boîte noire résume ces demandes au lieu d'écrire une ligne par demande (corrections de la vague 6, revue du
+# code, défaut 9)
+CLE_GARDE = "atelier.garde"
 
 
 class GardeBorne:
@@ -247,6 +255,7 @@ class GardeBorne:
         if scope["type"] == "websocket":
             await send({"type": "websocket.close", "code": 4403})
             return
+        scope[CLE_GARDE] = "borne"
         corps = json.dumps({"detail": self.MESSAGE}, ensure_ascii=False).encode("utf-8")
         await send({"type": "http.response.start", "status": 403,
                     "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(corps)).encode()),
@@ -263,20 +272,35 @@ class GardeOrigine:
     MESSAGE = ("Demande refusée : elle ne vient pas de l'Atelier ({raison}). Utilisez la page de l'Atelier ouverte "
                "par g1-atelier sur ce PC, ou la borne (/borne) sur la tablette.")
 
-    def __init__(self, app):
+    PERIODE_ALERTE_S = 10.0     # une page qui insiste : une alerte au plus toutes les 10 s dans le journal du serveur
+
+    def __init__(self, app, horloge=time.monotonic):
         self.app = app
         self.noms = noms_du_pc()
+        self.horloge = horloge
+        self._derniere_alerte = None
+        self._taisees = 0
+
+    def _alerter(self, scope, raison):
+        maintenant = self.horloge()
+        if self._derniere_alerte is not None and maintenant - self._derniere_alerte < self.PERIODE_ALERTE_S:
+            self._taisees += 1
+            return
+        plus = f" ; {self._taisees} autres refusées avant elle, sans alerte" if self._taisees else ""
+        JOURNAL.warning("demande refusée par la garde des origines : %s %s (%s)%s", scope.get("method", "WS"),
+                        scope.get("path", ""), raison, plus)
+        self._derniere_alerte, self._taisees = maintenant, 0
 
     async def __call__(self, scope, receive, send):
         raison = origine_refusee(scope, self.noms)
         if raison is None:
             await self.app(scope, receive, send)
             return
-        JOURNAL.warning("demande refusée par la garde des origines : %s %s (%s)", scope.get("method", "WS"),
-                        scope.get("path", ""), raison)
+        self._alerter(scope, raison)
         if scope["type"] == "websocket":
             await send({"type": "websocket.close", "code": 4403})
             return
+        scope[CLE_GARDE] = "origine"
         corps = json.dumps({"detail": self.MESSAGE.format(raison=raison)}, ensure_ascii=False).encode("utf-8")
         await send({"type": "http.response.start", "status": 403,
                     "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(corps)).encode()),

@@ -18,8 +18,9 @@ import logging
 import queue
 import re
 import threading
+import time
 
-from atelier.lieu.seance import GENRES_ACTION
+from atelier.lieu.seance import GENRES_ACTION, reglage
 from .manifeste import heure_iso, lire_heure
 
 JOURNAL = logging.getLogger("atelier.seance")
@@ -235,19 +236,62 @@ def ligne_action(action, debut=None, mode=None, noms=None):
     return ligne
 
 
+# Corrections de la vague 6 (revue du code, défaut 9) : une borne ou une page qui insiste (3 000 demandes refusées
+# en 1,7 s : 3 Go par heure) ne remplit plus le disque. Les demandes répétées (refusées par une garde de main.py,
+# rebonds de la borne, trop de codes faux) : la première de chaque minute est notée, puis une ligne de résumé dit
+# combien d'autres ont suivi (même client) ; au-delà de actions_max_mo, seules les actions qui comptent pour la
+# sécurité sont encore notées (ARRÊT, Bloquer, Débloquer, la séance).
+MOTIFS_REPETITION = {"garde": "refusées par la garde de l'Atelier", "rebond": "comptées pour une (anti-rebond)",
+                     "trop_d_essais": "refusées : trop de codes faux"}
+GENRES_TOUJOURS = ("arret", "bloquer", "debloquer", "seance")
+
+
+def motif_repetition(action):
+    """Pourquoi une demande se résume avec ses pareilles au lieu d'être notée une à une (MOTIFS_REPETITION) :
+    garde (refusée par une garde de main.py, champ garde de l'action), rebond (anti-rebond de la borne),
+    trop_d_essais (429) ; None pour une demande ordinaire."""
+    if action.get("garde"):
+        return "garde"
+    if action.get("statut") == 429:
+        return "trop_d_essais"
+    reponse = action.get("reponse")
+    if isinstance(reponse, dict) and reponse.get("rebond") is True:
+        return "rebond"
+    return None
+
+
+def ligne_toujours_notee(ligne):
+    """Vrai pour une action qui compte pour la sécurité, notée même quand le journal est coupé : ARRÊT, Bloquer,
+    Débloquer, la séance, faits sur ce PC et acceptés."""
+    statut = ligne.get("statut")
+    return (ligne.get("genre") in GENRES_TOUJOURS and ligne.get("client") == "local"
+            and (statut is None or statut < 400))
+
+
 class JournalActions:
     """File et fil d'écriture de actions.jsonl : noter(action) ne fait que mettre l'action dans la file (le
     serveur n'attend jamais le disque) ; le fil décrit l'action (ligne_action) et l'ajoute au fichier.
-    surNote(n) est appelée après chaque ligne écrite (n : le nombre de lignes du journal)."""
+    surNote(n) est appelée après chaque ligne écrite (n : le nombre de lignes du journal). Les demandes répétées
+    sont résumées par minute (motif_repetition) et le fichier ne dépasse pas taille_max_mo (ensuite, seulement
+    ligne_toujours_notee)."""
 
-    def __init__(self, fichier, debut, mode, noms=None, sur_note=None, mode_actuel=None):
+    def __init__(self, fichier, debut, mode, noms=None, sur_note=None, mode_actuel=None, taille_max_mo=None,
+                 periode_resume_s=None, horloge=time.time):
         self.fichier = fichier
         self.debut = debut
         self.mode = mode
         self.noms = dict(noms or {})
         self.sur_note = sur_note
         self.mode_actuel = mode_actuel          # fonction : le mode de la navigation qui tourne, ou None
+        self.taille_max = (reglage("actions_max_mo") if taille_max_mo is None else taille_max_mo) * 1e6
+        self.periode_resume = reglage("resume_repetitions_s") if periode_resume_s is None else periode_resume_s
+        self.horloge = horloge
         self.nombre = self._compter()
+        self.octets = self._taille()
+        self.coupe = False
+        self.non_notees = 0                     # actions jetées après la coupure
+        self._repetitions = {}                  # (client, motif) → {periode, nombre, dernier, premier_t}
+        self._verrou = threading.RLock()        # le fil d'écriture, et ecrire() appelé par la séance
         self._file = queue.SimpleQueue()
         self._fin = threading.Event()
         self._fil = threading.Thread(target=self._boucle, name="journal des actions", daemon=True)
@@ -257,6 +301,13 @@ class JournalActions:
         try:
             with open(self.fichier, "rb") as f:
                 return sum(1 for _ in f)
+        except OSError:
+            return 0
+
+    def _taille(self):
+        try:
+            with open(self.fichier, "rb") as f:
+                return f.seek(0, 2)
         except OSError:
             return 0
 
@@ -275,32 +326,118 @@ class JournalActions:
         return {"robot": "reel"}.get(m, m) or self.mode
 
     def ecrire(self, action):
-        """Écrit une action tout de suite (sans la file) : « Terminer la séance », notée par la séance elle-même."""
+        """Écrit une action tout de suite (sans la file ni le résumé des répétitions) : « Terminer la séance », notée
+        par la séance elle-même. Rend la ligne, ou None si le journal est coupé et qu'elle n'y va pas."""
         ligne = ligne_action(action, self.debut, self._mode(), self.noms)
+        with self._verrou:
+            return ligne if self._ajouter(ligne) else None
+
+    def _ajouter(self, ligne):
+        """Ajoute la ligne au fichier, dans la limite de taille ; vrai si elle est écrite."""
+        texte = json.dumps(ligne, ensure_ascii=False) + "\n"
+        if not self.coupe and self.octets + len(texte.encode("utf-8")) > self.taille_max:
+            self.coupe = True
+            mo = self.taille_max / 1e6
+            self._ecrire_texte(json.dumps(self._ligne_seance(
+                f"Journal des actions coupé : il a atteint {mo:g} Mo. Seuls l'ARRÊT, « Bloquer », « Débloquer » et la "
+                "séance sont encore notés.", coupure=True), ensure_ascii=False) + "\n")
+        if self.coupe and not ligne_toujours_notee(ligne):
+            self.non_notees += 1
+            return False
+        self._ecrire_texte(texte)
+        return True
+
+    def _ecrire_texte(self, texte):
         with open(self.fichier, "a", encoding="utf-8") as f:
-            f.write(json.dumps(ligne, ensure_ascii=False) + "\n")
+            f.write(texte)
+        self.octets += len(texte.encode("utf-8"))
         self.nombre += 1
         if self.sur_note:
             self.sur_note(self.nombre)
+
+    def _ligne_seance(self, texte, **plus):
+        """Une ligne de la séance elle-même (coupure, actions non notées), conforme au schéma action_seance."""
+        ligne = ligne_action({"t": heure_iso(self.horloge(), ms=True), "methode": "POST",
+                              "chemin": "/api/seance/journal", "statut": None, "client": "local"},
+                             self.debut, self._mode(), self.noms)
+        ligne.update(genre="seance", texte=_texte_court(texte, LONGUEUR_TEXTE_MAX), **plus)
         return ligne
+
+    def _traiter(self, action):
+        """Une action de la file : notée, ou comptée avec ses pareilles (motif_repetition). Avant une action
+        ordinaire, les résumés en cours sont écrits : le journal reste dans l'ordre du temps."""
+        motif = motif_repetition(action)
+        with self._verrou:
+            if motif is None:
+                for cle in list(self._repetitions):
+                    self._resumer(cle)
+            else:
+                t = lire_heure(action.get("t")) or self.horloge()
+                cle, periode = (action.get("client") or "local", motif), int(t // self.periode_resume)
+                r = self._repetitions.get(cle)
+                if r is not None and r["periode"] == periode:
+                    r["nombre"] += 1
+                    r["dernier"] = action
+                    return
+                if r is not None:
+                    self._resumer(cle)
+                self._repetitions[cle] = {"periode": periode, "nombre": 0, "dernier": action, "premier_t": t}
+            self._ajouter(ligne_action(action, self.debut, self._mode(), self.noms))
+
+    def _resumer(self, cle):
+        """Écrit la ligne de résumé d'une série de demandes répétées (si d'autres ont suivi la première)."""
+        r = self._repetitions.pop(cle, None)
+        if r is None or r["nombre"] == 0:
+            return
+        derniere = ligne_action(r["dernier"], self.debut, self._mode(), self.noms)
+        n = r["nombre"]
+        derniere.update(texte=_texte_court(f"+{n} demande{'s' if n > 1 else ''} pareille{'s' if n > 1 else ''} "
+                                           f"{MOTIFS_REPETITION[cle[1]]} (même client) : {derniere['texte']}",
+                                           LONGUEUR_TEXTE_MAX),
+                        requete=None, reponse=None, resume={"motif": cle[1], "nombre": n,
+                                                            "depuis": heure_iso(r["premier_t"], ms=True)})
+        self._ajouter(derniere)
+
+    def _resumer_finies(self, toutes=False):
+        """Les résumés des séries dont la minute est finie (ou de toutes, à la fermeture)."""
+        with self._verrou:
+            maintenant = int(self.horloge() // self.periode_resume)
+            for cle in [c for c, r in self._repetitions.items() if toutes or r["periode"] < maintenant]:
+                self._resumer(cle)
 
     def _boucle(self):
         while True:
             try:
                 action = self._file.get(timeout=0.2)
             except queue.Empty:
+                try:
+                    self._resumer_finies()
+                except Exception:       # noqa: BLE001
+                    JOURNAL.exception("journal des actions : résumé non écrit")
                 if self._fin.is_set():
                     return
                 continue
             if action is None:
                 return
             try:
-                self.ecrire(action)
+                self._traiter(action)
             except Exception:       # noqa: BLE001 : une action illisible ne doit pas arrêter le journal
                 JOURNAL.exception("journal des actions : une action n'a pas pu être écrite")
 
     def arreter(self, delai=2.0):
-        """Écrit ce qui reste dans la file (delai secondes au plus), puis arrête le fil."""
+        """Écrit ce qui reste dans la file (delai secondes au plus), les résumés en cours et, si le journal a été
+        coupé, le nombre d'actions non notées ; puis arrête le fil."""
         self._file.put(None)
         self._fil.join(timeout=delai)
         self._fin.set()
+        try:
+            with self._verrou:
+                self._resumer_finies(toutes=True)
+                if self.non_notees:
+                    n = self.non_notees
+                    self._ecrire_texte(json.dumps(self._ligne_seance(
+                        f"{n} action{'s' if n > 1 else ''} de plus non notée{'s' if n > 1 else ''} (journal coupé).",
+                        non_notees=n), ensure_ascii=False) + "\n")
+                    self.non_notees = 0
+        except Exception:       # noqa: BLE001
+            JOURNAL.exception("journal des actions : fin non écrite")

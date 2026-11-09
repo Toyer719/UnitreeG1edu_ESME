@@ -150,3 +150,107 @@ def test_journal_ne_bloque_jamais_et_garde_l_ordre(tmp_path):
     rouvert = JournalActions(tmp_path / "actions.jsonl", time.time(), "reel")
     assert rouvert.nombre == 200
     rouvert.arreter()
+
+
+# ------------------------------------------------ corrections de la vague 6 (revue du code, défaut 9)
+# Un client du réseau qui insiste (3 000 demandes refusées en 1,7 s, 476 octets chacune : 3 Go par heure) remplissait
+# le disque par actions.jsonl et serveur.log, que les garde-fous de la séance (bag seulement) ne couvraient pas.
+
+class Horloge:
+    def __init__(self, t=1794000000.0):
+        self.t = t
+
+    def __call__(self):
+        return self.t
+
+
+def _lignes(fichier):
+    return [json.loads(x) for x in fichier.read_text(encoding="utf-8").splitlines()]
+
+
+def _refusee(h, client="distant", chemin="/api/arret/debloquer", **plus):
+    return dict({"t": heure_iso(h.t, ms=True), "methode": "POST", "chemin": chemin, "requete": "x" * 400,
+                 "statut": 403, "reponse": {"detail": "Depuis cette tablette, seule la borne est permise."},
+                 "client": client, "garde": "borne"}, **plus)
+
+
+def test_demandes_repetees_resumees_par_minute(tmp_path):
+    from atelier.seance.actions import motif_repetition
+    h = Horloge()
+    j = JournalActions(tmp_path / "actions.jsonl", h.t, "repetition", NOMS, horloge=h)
+    for _ in range(1000):                                  # une page ou une machine qui insiste, la même minute
+        j.noter(_refusee(h))
+    j.noter(_refusee(h, client="local", chemin="/api/voix/essayer", garde="origine"))   # autre client : à part
+    j.noter({"t": heure_iso(h.t, ms=True), "methode": "POST", "chemin": "/api/arret", "requete": {"mode": "reel"},
+             "statut": 200, "client": "local"})          # une action ordinaire : notée telle quelle
+    for _ in range(3):                                     # rebonds de la borne et codes faux : résumés aussi
+        j.noter({"t": heure_iso(h.t, ms=True), "methode": "POST", "chemin": "/api/borne/appui", "statut": 200,
+                 "reponse": {"accepte": True, "rebond": True}, "client": "borne"})
+        j.noter({"t": heure_iso(h.t, ms=True), "methode": "POST", "chemin": "/api/borne/operateur", "statut": 429,
+                 "requete": {"code": "0000"}, "client": "borne"})
+    deadline = time.monotonic() + 5
+    while j.nombre < 5 and time.monotonic() < deadline:
+        time.sleep(0.05)
+    h.t += 61.0                                            # la minute suivante : un premier résumé, puis une ligne
+    j.noter(_refusee(h))
+    j.arreter(delai=5.0)
+    lignes = _lignes(tmp_path / "actions.jsonl")
+    assert all(valider_donnees("action_seance", x) == [] for x in lignes)
+    resumes = {(x["client"], x["resume"]["motif"]): x for x in lignes if "resume" in x}
+    assert resumes[("distant", "garde")]["resume"]["nombre"] == 999
+    assert resumes[("distant", "garde")]["texte"].startswith("+999 demandes pareilles refusées par la garde")
+    assert resumes[("distant", "garde")]["requete"] is None
+    assert resumes[("borne", "rebond")]["resume"]["nombre"] == 2
+    assert resumes[("borne", "trop_d_essais")]["resume"]["nombre"] == 2 and ("local", "garde") not in resumes
+    assert [x["texte"] for x in lignes if x["genre"] == "arret"] == ["ARRÊT"]
+    # 1 006 demandes : 9 lignes (les premières de chaque série, leurs résumés, l'ARRÊT, la minute suivante)
+    assert len(lignes) == 9, [x["texte"] for x in lignes]
+    assert motif_repetition({"statut": 403}) is None      # un refus d'une route (pas de la garde) reste une ligne
+
+
+def test_journal_des_actions_coupe_a_sa_taille_maximale(tmp_path):
+    h = Horloge()
+    fichier = tmp_path / "actions.jsonl"
+    j = JournalActions(fichier, h.t, "reel", NOMS, taille_max_mo=0.004, horloge=h)
+    for i in range(40):
+        h.t += 1.0
+        j.noter({"t": heure_iso(h.t, ms=True), "methode": "POST", "chemin": "/api/guide/aller",
+                 "requete": {"cible": "b204"}, "statut": 200, "client": "local"})
+    for genre_chemin, client in ((("/api/arret", 200), "local"), (("/api/arret", 403), "distant"),
+                                 (("/api/arret/debloquer", 200), "local")):
+        h.t += 1.0
+        j.noter({"t": heure_iso(h.t, ms=True), "methode": "POST", "chemin": genre_chemin[0],
+                 "statut": genre_chemin[1], "client": client})
+    j.arreter(delai=5.0)
+    lignes = _lignes(fichier)
+    assert all(valider_donnees("action_seance", x) == [] for x in lignes)
+    coupures = [x for x in lignes if x.get("coupure")]
+    assert len(coupures) == 1 and coupures[0]["texte"].startswith("Journal des actions coupé : il a atteint 0.004 Mo")
+    apres = lignes[lignes.index(coupures[0]) + 1:]
+    # après la coupure : l'ARRÊT et « Débloquer » de ce PC seulement, puis le nombre d'actions non notées
+    assert [x["texte"] for x in apres[:2]] == ["ARRÊT", "Débloquer"]
+    assert apres[-1]["non_notees"] >= 1 and "non notée" in apres[-1]["texte"]
+    assert fichier.stat().st_size < 4000 + 3 * 600
+
+
+def test_journal_du_serveur_plafonne(tmp_path):
+    import logging
+    from atelier.seance import _JournalPlafonne, _Plafond
+    fichier = tmp_path / "serveur.log"
+    plafond = _Plafond(fichier, 2000)
+    journal = logging.getLogger("essai.plafond")
+    journal.propagate = False
+    journal.setLevel(logging.INFO)
+    deux = [_JournalPlafonne(fichier, plafond), _JournalPlafonne(fichier, plafond)]    # racine et uvicorn
+    for g in deux:
+        journal.addHandler(g)
+    try:
+        for i in range(500):
+            journal.info("demande refusée %d %s", i, "x" * 40)
+    finally:
+        for g in deux:
+            journal.removeHandler(g)
+            g.close()
+    texte = fichier.read_text(encoding="utf-8")
+    assert len(texte.encode("utf-8")) < 2000 + 200
+    assert texte.count("Journal du serveur coupé : il a atteint 0.002 Mo") == 1

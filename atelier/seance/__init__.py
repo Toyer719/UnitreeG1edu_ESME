@@ -152,6 +152,61 @@ def copier_fin(source, destination, maximum):
         shutil.copyfileobj(entree, sortie)
 
 
+class _Plafond:
+    """La taille partagée par les gestionnaires de journaux/serveur.log (corrections de la vague 6, revue du code,
+    défaut 9 : une borne ou une page qui insiste remplissait le disque) : prendre(n) est vrai tant que le fichier
+    reste sous maximum octets ; annoncer() est vrai une seule fois, quand il vient d'être atteint."""
+
+    def __init__(self, fichier, maximum):
+        self.maximum = maximum
+        try:
+            self.octets = Path(fichier).stat().st_size
+        except OSError:
+            self.octets = 0
+        self.atteint = False
+        self._annonce = False
+        self._verrou = threading.Lock()
+
+    def prendre(self, n):
+        with self._verrou:
+            if self.atteint or self.octets + n > self.maximum:
+                self.atteint = True
+                return False
+            self.octets += n
+            return True
+
+    def annoncer(self):
+        with self._verrou:
+            if self.atteint and not self._annonce:
+                self._annonce = True
+                return True
+            return False
+
+
+class _JournalPlafonne(logging.FileHandler):
+    """logging.FileHandler qui s'arrête au plafond (_Plafond), après une ligne qui le dit."""
+
+    def __init__(self, fichier, plafond):
+        super().__init__(fichier, encoding="utf-8")
+        self.plafond = plafond
+
+    def emit(self, record):
+        try:
+            texte = self.format(record) + self.terminator
+        except Exception:       # noqa: BLE001
+            self.handleError(record)
+            return
+        if self.plafond.prendre(len(texte.encode("utf-8", "replace"))):
+            super().emit(record)
+        elif self.plafond.annoncer():
+            try:
+                self.stream.write(f"Journal du serveur coupé : il a atteint {self.plafond.maximum / 1e6:g} Mo "
+                                  "(la suite reste dans le terminal de l'Atelier).\n")
+                self.flush()
+            except Exception:   # noqa: BLE001
+                pass
+
+
 class _FiltreAcces(logging.Filter):
     """Journal d'accès d'uvicorn dans serveur.log : seulement les demandes qui changent quelque chose (POST, PUT,
     PATCH, DELETE) et les erreurs ; pas les lectures (la page lit beaucoup, et sans intérêt)."""
@@ -297,7 +352,8 @@ class GestionnaireSeance:
         try:
             fichier = M.chemin(o.dossier, "serveur")
             fichier.parent.mkdir(parents=True, exist_ok=True)
-            gestionnaire = logging.FileHandler(fichier, encoding="utf-8")
+            plafond = _Plafond(fichier, reglage("serveur_log_max_mo") * 1e6)
+            gestionnaire = _JournalPlafonne(fichier, plafond)
             gestionnaire.setLevel(logging.INFO)
             gestionnaire.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s : %(message)s"))
             racine = logging.getLogger()
@@ -309,7 +365,7 @@ class GestionnaireSeance:
             for nom in ("uvicorn", "uvicorn.access"):
                 journal = logging.getLogger(nom)
                 if not journal.propagate:
-                    gestionnaire_nom = logging.FileHandler(fichier, encoding="utf-8")
+                    gestionnaire_nom = _JournalPlafonne(fichier, plafond)
                     gestionnaire_nom.setFormatter(gestionnaire.formatter)
                     if nom == "uvicorn.access":
                         gestionnaire_nom.addFilter(_FiltreAcces())
