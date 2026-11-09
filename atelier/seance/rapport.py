@@ -184,9 +184,11 @@ def lire_journaux(dossier):
     return lignes
 
 
-def lire_diagnostic(dossier):
+def lire_diagnostic(dossier, cle="diagnostic_debut"):
+    """Le résumé d'un diagnostic de la séance (diagnostic_debut, ou diagnostic_lancement : celui d'après le lancement
+    de la navigation, corrections de la vague 6), ou None."""
     try:
-        d = json.loads(chemin(dossier, "diagnostic_debut").read_text(encoding="utf-8"))
+        d = json.loads(chemin(dossier, cle).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     if not isinstance(d, dict):
@@ -380,6 +382,17 @@ def fichiers_affiches(r):
     return lignes
 
 
+def sections_diagnostic(debut, lancement):
+    """[(titre, diagnostic, court)] des sections du diagnostic (corrections de la vague 6, revue de l'interface, défaut
+    8 : pris à l'ouverture, avant « Lancer », il ne disait que « Lancez la répétition ») : celui d'après le lancement
+    d'abord, en entier, puis celui de l'ouverture en une ligne ; sans lui, celui de l'ouverture seul."""
+    if lancement:
+        quand = heure_courte(lancement.get("date")) if lancement.get("date") else ""
+        return [(f"Diagnostic après le lancement{' (' + quand + ')' if quand else ''}", lancement, False),
+                ("Diagnostic à l'ouverture de la séance (avant le lancement)", debut, True)]
+    return [("Diagnostic à l'ouverture de la séance", debut, False)]
+
+
 def etage_affiche(r):
     """« Rez-de-chaussée » (le nom de l'étage dans la fiche du lieu), sinon « étage rdc »."""
     return r.get("nom_etage") or f"étage {r.get('etage')}"
@@ -479,13 +492,15 @@ def texte_markdown(r):
                        f"{str(e['technique']).replace('<', '‹').replace('>', '›')}" for e in techniques]
             lignes += ["", "</details>"]
     diag = r.get("diagnostic")
-    lignes += ["", "## Diagnostic du début", ""]
-    if not diag:
-        lignes.append("Pas de diagnostic au début de la séance.")
-    else:
-        lignes.append(f"État : **{etat_diagnostic(diag.get('etat'))}**. {diag.get('message') or ''}".strip())
-        lignes += [f"- {v['titre']} ({etat_diagnostic(v['etat'])}) : {v.get('detail') or ''} "
-                   f"{v.get('conseil') or ''}".rstrip() for v in diag.get("a_regler") or []]
+    for titre, d, court in sections_diagnostic(diag, r.get("diagnostic_lancement")):
+        lignes += ["", f"## {titre}", ""]
+        if not d:
+            lignes.append("Pas de diagnostic au début de la séance.")
+            continue
+        lignes.append(f"État : **{etat_diagnostic(d.get('etat'))}**. {d.get('message') or ''}".strip())
+        if not court:
+            lignes += [f"- {v['titre']} ({etat_diagnostic(v['etat'])}) : {v.get('detail') or ''} "
+                       f"{v.get('conseil') or ''}".rstrip() for v in d.get("a_regler") or []]
     lignes += ["", "## Chronologie", "", "| Heure | Depuis le début | Ce qui s'est passé |", "|---|---|---|"]
     chrono = r.get("chronologie") or []
     for c in chrono[:CHRONOLOGIE_AFFICHEE]:
@@ -668,14 +683,14 @@ def texte_html(r, png=None):
                     f"<td>{_e(e.get('source'))}</td><td>{_e(e.get('texte'))}{technique}</td>"
                     f"<td class=\"nombre\">{_e(e.get('nombre', 1))}</td></tr>")
         ajouter("</tbody></table>")
-    ajouter("<h2>Diagnostic du début</h2>")
-    diag = r.get("diagnostic")
-    if not diag:
-        ajouter("<p class=\"rien\">Pas de diagnostic au début de la séance.</p>")
-    else:
+    for titre, diag, court in sections_diagnostic(r.get("diagnostic"), r.get("diagnostic_lancement")):
+        ajouter(f"<h2>{_e(titre)}</h2>")
+        if not diag:
+            ajouter("<p class=\"rien\">Pas de diagnostic au début de la séance.</p>")
+            continue
         ajouter(f"<p>État : <strong>{_e(etat_diagnostic(diag.get('etat')))}</strong>. "
                 f"{_e(diag.get('message') or '')}</p>")
-        if diag.get("a_regler"):
+        if diag.get("a_regler") and not court:
             ajouter("<ul>" + "".join(f"<li><strong>{_e(v['titre'])}</strong> ({_e(etat_diagnostic(v['etat']))}) : "
                                      f"{_e(v.get('detail') or '')} {_e(v.get('conseil') or '')}</li>"
                                      for v in diag["a_regler"]) + "</ul>")
@@ -725,6 +740,7 @@ def faire_rapport(dossier, sortie=sys.stdout):
         actions = lire_actions(dossier)
         rapport = A.analyser(manifeste, actions, donnees, lieu, lire_journaux(dossier), infos,
                              lire_diagnostic(dossier))
+        rapport["diagnostic_lancement"] = lire_diagnostic(dossier, "diagnostic_lancement")
         if reindexe:
             rapport["enregistrement"]["reindexe"] = True
         png = None

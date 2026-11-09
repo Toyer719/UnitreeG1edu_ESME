@@ -53,6 +53,8 @@ from .enregistreur import lire_etat
 JOURNAL = logging.getLogger("atelier.seance")
 
 PERIODE_SURVEILLANCE_S = 1.0
+ATTENTE_LANCEMENT_S = 15.0        # diagnostic après le lancement : la navigation en route depuis ce temps…
+ATTENTE_LANCEMENT_MAX_S = 90.0    # … et le pont vers la marche frais ; sans lui, au plus tard après ce temps
 DELAI_JETSON_S = 30.0             # g1-jetson journal (13.3)
 DELAI_FERMETURE_S = 10.0          # fermer() à l'arrêt de l'Atelier
 FERMETURES_NOTEES = ("terminer", "g1-seance", "simulation")   # notées dans le journal des actions par la séance
@@ -235,6 +237,12 @@ class _Ouverte:
         self.ecrit = None                 # dernier texte écrit du manifeste (pour n'écrire que les changements)
         self.fermeture = False
         self.journal_ferme = False      # le journal des actions est fermé : plus aucune action notée
+        # corrections de la vague 6 (revue de l'interface, défaut 8) : rien ne tournait à l'ouverture (répétition pas
+        # encore lancée) : le diagnostic du début ne disait que « Lancez la répétition » ; un second, en lecture seule,
+        # est pris une fois la navigation lancée et le pont vers la marche prêt
+        self.lancement_attendu = False
+        self.lancement_vu = None          # time.monotonic() quand la navigation a été vue en route
+        self.lancement_pris = False
 
 
 class GestionnaireSeance:
@@ -338,6 +346,7 @@ class GestionnaireSeance:
                                        sur_note=lambda n: o.manifeste.__setitem__("actions", n),
                                        mode_actuel=self._mode_navigation)
             self._lancer_enregistreur(o)
+            o.lancement_attendu = self._mode_navigation() not in ("repetition", "robot")
             self._ouverte = o
             self._ecrire(o, forcer=True)
             o.fil = threading.Thread(target=self._surveiller, args=(o,), name="séance (surveillance)", daemon=True)
@@ -410,33 +419,61 @@ class GestionnaireSeance:
         if p.journal:
             o.journaux[str(p.journal)] = "seance"
 
-    def _diagnostic(self, o):
-        """Le diagnostic du début (13.2), en arrière-plan : diagnostic_debut.json ; rien s'il n'existe pas encore."""
+    def _diagnostic(self, o, cle="diagnostic_debut", rapide=False):
+        """Le diagnostic du début (13.2), en arrière-plan : diagnostic_debut.json ; rien s'il n'existe pas encore. Avec
+        cle="diagnostic_lancement" : celui d'après le lancement de la navigation (_surveiller_lancement), rapide (sans
+        le ssh du Jetson, déjà vu à l'ouverture). Il ne fait que lire, comme « Vérifier le robot » sans action."""
         try:
             from atelier.diagnostic import diagnostiquer
-            resultat = diagnostiquer(o.manifeste["mode"], getattr(self.etat_serveur, "pont", None), source="seance")
+            resultat = diagnostiquer(o.manifeste["mode"], getattr(self.etat_serveur, "pont", None), source="seance",
+                                     **({"rapide": True} if rapide else {}))
         except NotImplementedError:
             return
         except Exception as e:      # noqa: BLE001
             with self._verrou:
-                self._message(o, f"Diagnostic du début impossible : {e}")
+                self._message(o, f"Diagnostic {'après le lancement' if rapide else 'du début'} impossible : {e}")
             return
         if not isinstance(resultat, dict):
             return
         try:
             from atelier.lieu.fichiers import ecrire_atomique
-            ecrire_atomique(M.chemin(o.dossier, "diagnostic_debut"),
-                            json.dumps(resultat, ensure_ascii=False, indent=1) + "\n")
+            ecrire_atomique(M.chemin(o.dossier, cle), json.dumps(resultat, ensure_ascii=False, indent=1) + "\n")
         except OSError as e:
-            JOURNAL.warning("boîte noire : diagnostic du début non écrit (%s)", e)
+            JOURNAL.warning("boîte noire : %s non écrit (%s)", cle, e)
             return
-        nom = FICHIERS_SEANCE["diagnostic_debut"]
+        nom = FICHIERS_SEANCE[cle]
         with self._verrou:
             if self._ouverte is o:
-                o.manifeste["diagnostic_debut"] = nom
+                o.manifeste[cle] = nom
                 self._ecrire(o)
             else:
-                M.modifier_manifeste(o.dossier, lambda m: m.__setitem__("diagnostic_debut", nom))
+                M.modifier_manifeste(o.dossier, lambda m: m.__setitem__(cle, nom))
+
+    def _surveiller_lancement(self, o, maintenant=None):
+        """Le diagnostic après le lancement (corrections de la vague 6, revue de l'interface, défaut 8) : si rien ne
+        tournait à l'ouverture, une fois la répétition ou la navigation du robot vue en route depuis
+        ATTENTE_LANCEMENT_S et le pont vers la marche frais (ou après ATTENTE_LANCEMENT_MAX_S), un diagnostic en
+        lecture seule, une seule fois. Rend vrai s'il vient d'être lancé."""
+        if not o.lancement_attendu or o.lancement_pris:
+            return False
+        maintenant = time.monotonic() if maintenant is None else maintenant
+        if self._mode_navigation() not in ("repetition", "robot"):
+            o.lancement_vu = None
+            return False
+        if o.lancement_vu is None:
+            o.lancement_vu = maintenant
+        attente = maintenant - o.lancement_vu
+        try:
+            pont = self.etat_serveur.pont.etat_pont()
+        except Exception:       # noqa: BLE001
+            pont = None
+        pret = isinstance(pont, dict) and not pont.get("perime")
+        if attente < ATTENTE_LANCEMENT_S or (not pret and attente < ATTENTE_LANCEMENT_MAX_S):
+            return False
+        o.lancement_pris = True
+        threading.Thread(target=self._diagnostic, args=(o, "diagnostic_lancement", True),
+                         name="séance (diagnostic après le lancement)", daemon=True).start()
+        return True
 
     # ------------------------------------------------------------ surveillance
 
@@ -477,6 +514,7 @@ class GestionnaireSeance:
             pass
         if o.journal is not None:
             o.manifeste["actions"] = o.journal.nombre
+        self._surveiller_lancement(o)
 
     # ------------------------------------------------------------ lecture
 

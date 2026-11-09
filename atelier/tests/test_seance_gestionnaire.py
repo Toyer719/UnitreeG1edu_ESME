@@ -360,3 +360,49 @@ def test_la_copie_du_lieu_n_a_pas_le_code_operateur(tmp_path):
     (lieu / "demo.yaml").write_text("borne: {code_operateur: '4826'\n", encoding="utf-8")
     copies = copier_fichiers_lieu(lieu, tmp_path / "autre" / "lieu", "rdc")
     assert "demo.yaml" not in copies and not (tmp_path / "autre" / "lieu" / "demo.yaml").exists()
+
+
+def test_diagnostic_apres_le_lancement(etat, banc, monkeypatch):
+    """Corrections de la vague 6 (revue de l'interface, défaut 8) : la séance ouverte en répétition avant « Lancer »
+    prend, une fois la navigation en route et le pont prêt, un second diagnostic en lecture seule (rapide), une seule
+    fois ; ouverte navigation lancée, elle n'en prend pas."""
+    import atelier.diagnostic
+    from atelier.seance import ATTENTE_LANCEMENT_MAX_S, ATTENTE_LANCEMENT_S
+    appels = []
+    monkeypatch.setattr(atelier.diagnostic, "diagnostiquer",
+                        lambda *a, **k: appels.append(k) or dict(EXEMPLE_DIAGNOSTIC))
+    mode = [None]
+    etat.mode_navigation = lambda: mode[0]
+    pont = [None]
+    monkeypatch.setattr(etat.pont, "etat_pont", lambda: pont[0])
+    m = etat.seance.demarrer("repetition", "demo", ouverture="auto")
+    o = etat.seance._ouverte
+    o.fin.set()                                    # la surveillance (1 Hz, heure réelle) ne s'en mêle pas : l'essai
+    o.fil.join(timeout=5)                          # appelle _surveiller_lancement avec son heure à lui
+    assert o.lancement_attendu and attendre(lambda: len(appels) == 1)          # celui de l'ouverture
+    assert appels[0].get("rapide") is None
+    g = etat.seance
+    assert g._surveiller_lancement(o, 1000.0) is False                         # rien ne tourne encore
+    mode[0] = "repetition"
+    assert g._surveiller_lancement(o, 1000.0) is False                         # vue en route : on attend
+    assert g._surveiller_lancement(o, 1000.0 + ATTENTE_LANCEMENT_S + 1) is False   # le pont n'est pas prêt
+    pont[0] = {"etat": "pret", "perime": False}
+    assert g._surveiller_lancement(o, 1000.0 + ATTENTE_LANCEMENT_S + 1) is True
+    dossier = banc / "seances" / m["id"]
+    assert attendre(lambda: (dossier / "diagnostic_lancement.json").is_file())
+    assert appels[-1] == {"source": "seance", "rapide": True}
+    assert g._surveiller_lancement(o, 5000.0) is False                         # une seule fois
+    assert attendre(lambda: M.lire_manifeste(dossier).get("diagnostic_lancement") == "diagnostic_lancement.json")
+    etat.seance.arreter()
+    # sans pont prêt : au plus tard après ATTENTE_LANCEMENT_MAX_S ; navigation déjà lancée à l'ouverture : jamais
+    mode[0], pont[0] = None, None
+    etat.seance.demarrer("repetition", "demo", ouverture="auto")
+    o = etat.seance._ouverte
+    o.fin.set()
+    o.fil.join(timeout=5)
+    mode[0] = "repetition"
+    assert g._surveiller_lancement(o, 0.0) is False and g._surveiller_lancement(o, ATTENTE_LANCEMENT_MAX_S) is True
+    etat.seance.arreter()
+    etat.seance.demarrer("repetition", "demo", ouverture="auto")
+    o = etat.seance._ouverte
+    assert not o.lancement_attendu and g._surveiller_lancement(o, 1e6) is False

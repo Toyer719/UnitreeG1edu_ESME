@@ -5,6 +5,7 @@ rapport.json, rapport.md, rapport.html (l'image dedans) et trajets.png ; le mani
 Atelier qui a planté (sans metadata.yaml) est réindexé ; une séance sans bag a quand même son rapport ; toutes les
 données insérées dans le HTML sont échappées ; la mise en forme en français.
 """
+import html
 import json
 import re
 import time
@@ -75,9 +76,9 @@ def test_html_et_markdown(seance):
     page = (seance / "rapport.html").read_text(encoding="utf-8")
     assert page.startswith("<!doctype html>") and '<html lang="fr">' in page
     assert "data:image/png;base64," in page                     # un seul fichier, l'image dedans
-    for titre in ("En bref", "À regarder en premier", "Les trajets", "Le robot", "Erreurs", "Diagnostic du début",
-                  "Chronologie", "Les fichiers de la séance"):
-        assert f"<h2>{titre}</h2>" in page, titre
+    for titre in ("En bref", "À regarder en premier", "Les trajets", "Le robot", "Erreurs",
+                  "Diagnostic à l'ouverture de la séance", "Chronologie", "Les fichiers de la séance"):
+        assert f"<h2>{html.escape(titre)}</h2>" in page, titre
     assert "Salle B204" in page and "ARRÊT" in page and "87 → 85 %" in page
     assert "Le robot a bougé sans qu&#x27;on le lui demande" in page
     # aucun nom de sujet ROS dans les titres ni dans les cases « En bref »
@@ -189,3 +190,23 @@ def test_petites_fautes_du_rapport(tmp_path):
                                         "duree_s": 3, "distance_m": 1.0, "arrets": []}]})
     assert "Lieu « Lycée démo » (Rez-de-chaussée)" in md and "étage rdc" not in md
     assert "| Interrompu : « Bloquer » |" in md
+
+
+def test_diagnostic_apres_le_lancement_dans_le_rapport(seance):
+    """Corrections de la vague 6 (revue de l'interface, défaut 8) : en répétition, le diagnostic du début était pris
+    avant « Lancer » et ne disait que « Lancez la répétition » ; celui d'après le lancement vient d'abord, en entier,
+    et celui de l'ouverture tient en une ligne."""
+    from atelier.lieu.diagnostic import EXEMPLE_DIAGNOSTIC
+    ouverture = dict(EXEMPLE_DIAGNOSTIC, etat="attention", message="Lancez la répétition (Naviguer › Lancer).")
+    (seance / "diagnostic_debut.json").write_text(json.dumps(ouverture), encoding="utf-8")
+    apres = dict(EXEMPLE_DIAGNOSTIC, date=M.heure_iso(T0 + 60))
+    (seance / "diagnostic_lancement.json").write_text(json.dumps(apres), encoding="utf-8")
+    r = R.faire_rapport(seance)
+    assert r["diagnostic_lancement"]["etat"] == apres["etat"] and r["diagnostic"]["etat"] == "attention"
+    md = (seance / "rapport.md").read_text(encoding="utf-8")
+    i, j = md.index("## Diagnostic après le lancement ("), md.index("## Diagnostic à l'ouverture de la séance (avant")
+    assert i < j and "Lancez la répétition" in md[j:md.index("## Chronologie")]
+    assert md[j:md.index("## Chronologie")].count("\n- ") == 0          # l'ouverture en une ligne
+    page = (seance / "rapport.html").read_text(encoding="utf-8")
+    assert "<h2>Diagnostic après le lancement (" in page
+    assert R.sections_diagnostic(ouverture, None) == [("Diagnostic à l'ouverture de la séance", ouverture, False)]

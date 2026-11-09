@@ -41,6 +41,7 @@ FICHIERS_PERMIS = {"trajets.png": "image/png", "rapport.md": "text/markdown; cha
                    "rapport.json": "application/json", "rapport.html": "text/html; charset=utf-8",
                    "actions.jsonl": "application/x-ndjson", "seance.json": "application/json",
                    "diagnostic_debut.json": "application/json", "diagnostic_fin.json": "application/json",
+                   "diagnostic_lancement.json": "application/json",
                    "enregistrement.json": "application/json"}
 FORMATS_RAPPORT = {"html": ("rapport.html", "text/html; charset=utf-8"),
                    "md": ("rapport.md", "text/markdown; charset=utf-8"),

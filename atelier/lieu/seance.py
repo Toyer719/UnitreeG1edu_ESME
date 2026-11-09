@@ -8,7 +8,9 @@ l'agent Boîte noire (atelier/seance/) ; ce module ne contient que ce que plusie
 Dossier : dossier_seances()/<AAAA-MM-JJ_HHhMM>/ (journaux/seances/ par défaut, jamais dans Git) :
     seance.json            manifeste (schéma seance), réécrit de façon atomique à chaque changement
     actions.jsonl          journal des actions : une ligne JSON par demande à l'Atelier (schéma action_seance)
-    diagnostic_debut.json  le diagnostic à l'ouverture (schéma diagnostic) ; diagnostic_fin.json, facultatif
+    diagnostic_debut.json  le diagnostic à l'ouverture (schéma diagnostic) ; diagnostic_fin.json, facultatif ;
+                           diagnostic_lancement.json : quand rien ne tournait à l'ouverture, le diagnostic pris
+                           seul (lecture seule) une fois la répétition ou la navigation du robot lancée
     bag/                   l'enregistrement ROS 2 (rosbag2, stockage sqlite3) : metadata.yaml, bag_0.db3
     journaux/              serveur.log (le journal du serveur pendant la séance) et la fin des journaux des
                            commandes lancées par l'Atelier (atelier_<rôle>_*.log) ; journaux/jetson/ : le journal
@@ -37,7 +39,8 @@ FORMAT_ID = "%Y-%m-%d_%Hh%M"         # + « -2 », « -3 »… si la minute est 
 MOTIF_ID_SEANCE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}_[0-9]{2}h[0-9]{2}(-[0-9]{1,3})?$")
 FICHIERS_SEANCE = {
     "manifeste": "seance.json", "actions": "actions.jsonl", "diagnostic_debut": "diagnostic_debut.json",
-    "diagnostic_fin": "diagnostic_fin.json", "bag": "bag", "journaux": "journaux", "jetson": "journaux/jetson",
+    "diagnostic_fin": "diagnostic_fin.json", "diagnostic_lancement": "diagnostic_lancement.json", "bag": "bag",
+    "journaux": "journaux", "jetson": "journaux/jetson",
     "serveur": "journaux/serveur.log", "lieu": "lieu", "rapport_json": "rapport.json",
     "rapport_md": "rapport.md", "rapport_html": "rapport.html", "trajets": "trajets.png",
 }
