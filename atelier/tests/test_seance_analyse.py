@@ -56,7 +56,7 @@ def test_trajets_de_la_seance_d_essai(lieu):
     assert second["distance_m"] == pytest.approx(2.0, abs=0.2)
     assert second["arrets"][-1]["cause"].startswith("ARRÊT")
     # parti de l'endroit de l'ARRÊT, à 2 m de la salle B204 : nommé par la salle la plus proche et ses coordonnées
-    assert troisieme["depart"] == "près de Salle B204 (21,6 ; 11,1)" and troisieme["nom"] == "Accueil"
+    assert troisieme["depart"] == "près de « Salle B204 » (21,6 ; 11,1)" and troisieme["nom"] == "Accueil"
     assert troisieme["distance_m"] > 15.0
     assert all(lire_heure(t["debut"]) < lire_heure(t["fin"]) for t in trajets)
 

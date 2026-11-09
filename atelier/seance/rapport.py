@@ -42,6 +42,10 @@ COULEURS_RESULTAT = {"arrive": "#0ca30c", "interrompu": "#ec835a", "echec": "#d0
 LIBELLES_RESULTAT = {"arrive": "Arrivé", "interrompu": "Interrompu", "echec": "Échec",
                      "abandonne": "Abandonné (visiteur perdu)", "remplace": "Remplacé par une autre demande",
                      "en_cours": "Pas fini à la fin de la séance"}
+# corrections de la vague 6 (revue de l'interface, défaut 12) : « 6 trajets : 5 arrivé » ; les pluriels
+LIBELLES_RESULTAT_PLURIEL = {"arrive": "arrivés", "interrompu": "interrompus", "echec": "échecs",
+                             "abandonne": "abandonnés (visiteur perdu)", "remplace": "remplacés par une autre demande",
+                             "en_cours": "pas finis à la fin de la séance"}
 ICONES_GRAVITE = {"probleme": "✖", "attention": "⚠", "info": "ℹ"}
 NOMS_GRAVITE = {"probleme": "Problème", "attention": "Attention", "info": "Pour info"}
 # Les états du diagnostic (13.2) écrits comme dans « Vérifier le robot » (assemblage de la vague 6)
@@ -114,9 +118,12 @@ def charger_lieu(dossier_lieu, etage=None):
     if not dossier_lieu.is_dir():
         return lieu, carte
     try:
-        lieu.nom = L.charger_fiche(dossier_lieu).nom
+        fiche = L.charger_fiche(dossier_lieu)
+        lieu.nom = fiche.nom
+        if etage is not None and fiche.etage(etage) is not None:
+            lieu.nom_etage = fiche.etage(etage).nom
     except Exception:       # noqa: BLE001 : la copie peut être incomplète
-        pass
+        fiche = None
     try:
         for s in L.charger_salles(dossier_lieu):
             lieu.salles[s.id] = {"nom": s.nom, "x": s.pose.x, "y": s.pose.y, "etage": s.etage,
@@ -136,6 +143,8 @@ def charger_lieu(dossier_lieu, etage=None):
             lieu.etage = p.etage
     except Exception:       # noqa: BLE001
         pass
+    if lieu.nom_etage is None and lieu.etage and fiche is not None and fiche.etage(lieu.etage) is not None:
+        lieu.nom_etage = fiche.etage(lieu.etage).nom
     if lieu.etage:
         try:
             carte = L.charger_carte(L.chemin_carte(dossier_lieu, lieu.etage))
@@ -296,13 +305,17 @@ def dessiner_trajets(rapport, donnees, carte, lieu, sortie):
     ax.set_ylim(bornes[2], bornes[3])
     ax.set_aspect("equal")
     ax.tick_params(colors="#898781", labelsize=8)
+    from matplotlib.ticker import FuncFormatter
+    ax.xaxis.set_major_formatter(FuncFormatter(nombre_axe))
+    ax.yaxis.set_major_formatter(FuncFormatter(nombre_axe))
     for cote in ax.spines.values():
         cote.set_color("#c3c2b7")
     ax.set_xlabel("x (m)", fontsize=8, color="#52514e")
     ax.set_ylabel("y (m)", fontsize=8, color="#52514e")
     titre = "Trajets du robot"
     if lieu.nom:
-        titre += f" — {lieu.nom}" + (f", étage {lieu.etage}" if lieu.etage else "")
+        etage = f", {lieu.nom_etage}" if lieu.nom_etage else (f", étage {lieu.etage}" if lieu.etage else "")
+        titre += f" — {lieu.nom}{etage}"
     ax.set_title(titre, fontsize=11, color="#0b0b0b", loc="left")
     if not pts:
         ax.text(0.5, 0.5, "Aucune position du robot enregistrée", transform=ax.transAxes, ha="center",
@@ -367,13 +380,24 @@ def fichiers_affiches(r):
     return lignes
 
 
+def etage_affiche(r):
+    """« Rez-de-chaussée » (le nom de l'étage dans la fiche du lieu), sinon « étage rdc »."""
+    return r.get("nom_etage") or f"étage {r.get('etage')}"
+
+
+def nombre_axe(v, _position=None):
+    """Graduation d'un axe en français : « 17,5 », « −2 » (virgule décimale)."""
+    return f"{v:g}".replace("-", "−").replace(".", ",")
+
+
 def phrase_trajets(r):
     s = r.get("resume") or {}
     n = s.get("trajets", 0)
     if not n:
         return "Aucun trajet du guide."
-    morceaux = [f"{nombre(v, 0)} {LIBELLES_RESULTAT.get(k, k).lower()}" for k, v in
-                sorted((s.get("par_resultat") or {}).items(), key=lambda x: -x[1])]
+    morceaux = [f"{nombre(v, 0)} " + (LIBELLES_RESULTAT_PLURIEL.get(k, k) if v > 1 else
+                                      LIBELLES_RESULTAT.get(k, k).lower())
+                for k, v in sorted((s.get("par_resultat") or {}).items(), key=lambda x: -x[1])]
     return f"{pluriel(n, 'trajet')} : " + ", ".join(morceaux) + "."
 
 
@@ -398,7 +422,7 @@ def texte_markdown(r):
     """rapport.md : le rapport en Markdown (l'image trajets.png à côté)."""
     lignes = [f"# Rapport de séance du {date_longue(r.get('debut'))}", ""]
     lieu = r.get("nom_lieu") or r.get("lieu") or "sans lieu"
-    lignes.append(f"Lieu « {lieu} »" + (f" (étage {r['etage']})" if r.get("etage") else "")
+    lignes.append(f"Lieu « {lieu} »" + (f" ({etage_affiche(r)})" if r.get("etage") else "")
                   + f" · {MODES.get(r.get('mode'), r.get('mode'))} · durée {duree(r.get('duree_s'))}"
                   + f" · séance {r.get('seance')}" + ("" if r.get("etat") != "interrompue" else " · **interrompue**"))
     lignes += ["", "## En bref", "", "| | | |", "|---|---|---|"]
@@ -418,7 +442,7 @@ def texte_markdown(r):
                    "|---|---|---|---|---|---|---|"]
         for t in trajets:
             arrets = " ; ".join(f"{heure_courte(x['t'])} {x['cause']}" for x in arrets_affiches(t)) or "—"
-            resultat = LIBELLES_RESULTAT.get(t["resultat"], t["resultat"]) + (f" ({t['cause']})" if t.get("cause")
+            resultat = LIBELLES_RESULTAT.get(t["resultat"], t["resultat"]) + (f" : {t['cause']}" if t.get("cause")
                                                                               else "")
             lignes.append(f"| {t['numero']} | {t['depart']} → {t['nom']} | {resultat} | {heure_courte(t['debut'])} "
                           f"| {duree(t['duree_s'])} | {nombre(t['distance_m'])} m | {arrets} |")
@@ -539,7 +563,7 @@ def texte_html(r, png=None):
     ajouter(f"<title>Rapport de séance {_e(r.get('seance'))}</title><style>{STYLE}</style></head><body><main>")
     ajouter(f"<h1>Rapport de séance du {_e(date_longue(r.get('debut')))}</h1>")
     lieu = r.get("nom_lieu") or r.get("lieu") or "sans lieu"
-    sous = (f"Lieu « {lieu} »" + (f" (étage {r['etage']})" if r.get("etage") else "")
+    sous = (f"Lieu « {lieu} »" + (f" ({etage_affiche(r)})" if r.get("etage") else "")
             + f" · {MODES.get(r.get('mode'), r.get('mode'))} · durée {duree(r.get('duree_s'))}"
             + f" · séance {r.get('seance')}")
     atel = r.get("atelier") or {}

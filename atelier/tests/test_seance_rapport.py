@@ -86,7 +86,7 @@ def test_html_et_markdown(seance):
     assert not any(re.search(r"/(guide|pont|reperage|cmd_vel|odom)", t) for t in titres)
     md = (seance / "rapport.md").read_text(encoding="utf-8")
     assert md.startswith("# Rapport de séance du ") and "![Trajets du robot sur la carte](trajets.png)" in md
-    assert "| 2 | Salle B204 → CDI | Interrompu (ARRÊT" in md
+    assert "| 2 | Salle B204 → CDI | Interrompu : ARRÊT" in md
 
 
 def test_les_donnees_sont_echappees_dans_le_html(tmp_path):
@@ -164,3 +164,28 @@ def test_mise_en_forme_en_francais():
     assert R.date_longue("2026-11-12T14:03:05+01:00").endswith("12 novembre 2026, 14 h 03")
     assert R.heure_courte(None) == "—"
     assert "2 arrivé" in R.phrase_trajets({"resume": {"trajets": 3, "par_resultat": {"arrive": 2, "interrompu": 1}}})
+
+
+def test_petites_fautes_du_rapport(tmp_path):
+    """Corrections de la vague 6 (revue de l'interface, défaut 12) : « 6 trajets : 5 arrivé », « (étage rdc) »,
+    « Interrompu (ARRÊT (bouton de l'Atelier ou Échap)) », « 17.5 » sur les axes du graphique."""
+    r = {"resume": {"trajets": 6, "par_resultat": {"arrive": 5, "interrompu": 1}}}
+    assert R.phrase_trajets(r) == "6 trajets : 5 arrivés, 1 interrompu."
+    r = {"resume": {"trajets": 3, "par_resultat": {"echec": 2, "abandonne": 1}}}
+    assert R.phrase_trajets(r) == "3 trajets : 2 échecs, 1 abandonné (visiteur perdu)."
+    assert R.etage_affiche({"etage": "rdc", "nom_etage": "Rez-de-chaussée"}) == "Rez-de-chaussée"
+    assert R.etage_affiche({"etage": "e2"}) == "étage e2"
+    assert [R.nombre_axe(v) for v in (17.5, 10.0, -2.0, 0.25)] == ["17,5", "10", "−2", "0,25"]
+    from atelier.lieu import copier_lieu
+    copie = copier_lieu(DEMO, tmp_path / "lieu")
+    lieu, _ = R.charger_lieu(copie, "rdc")
+    assert lieu.nom_etage == "Rez-de-chaussée"
+    lieu, _ = R.charger_lieu(copie)                      # l'étage du point principal
+    assert lieu.etage == "rdc" and lieu.nom_etage == "Rez-de-chaussée"
+    md = R.texte_markdown({"seance": "s", "debut": M.heure_iso(T0), "mode": "reel", "nom_lieu": "Lycée démo",
+                           "etage": "rdc", "nom_etage": "Rez-de-chaussée", "resume": {},
+                           "trajets": [{"numero": 1, "depart": "Accueil", "nom": "CDI", "cible": "cdi",
+                                        "resultat": "interrompu", "cause": "« Bloquer »", "debut": M.heure_iso(T0),
+                                        "duree_s": 3, "distance_m": 1.0, "arrets": []}]})
+    assert "Lieu « Lycée démo » (Rez-de-chaussée)" in md and "étage rdc" not in md
+    assert "| Interrompu : « Bloquer » |" in md

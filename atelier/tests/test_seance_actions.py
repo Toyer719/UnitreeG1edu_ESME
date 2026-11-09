@@ -35,6 +35,14 @@ CAS = [
     ("POST", "/api/simulation/demarrer", {"mode": "robot"}, None, "lancer", "Lancer la navigation du robot"),
     ("POST", "/api/simulation/demarrer", {}, None, "lancer", "Lancer la simulation"),
     ("POST", "/api/simulation/arreter", None, None, "arreter", "Arrêter la navigation"),
+    # corrections de la vague 6 (revue de l'interface, défaut 12) : ce qui a été arrêté, d'après la réponse
+    ("POST", "/api/simulation/arreter", None, {"simulation": {"lieu": "demo", "mode": "simu"}}, "arreter",
+     "Arrêter la simulation"),
+    ("POST", "/api/simulation/arreter", None, '{"simulation": {"lieu": "demo", "en_cours": false, '
+     '"mode": "repetition", "avertissements": []}, "processus": {"navigation": […]', "arreter",
+     "Arrêter la navigation (répétition sans robot)"),
+    ("POST", "/api/guide/visiteur", {"mode": "partir"}, None, "autre", "Faux visiteur : il s'en va"),
+    ("POST", "/api/guide/visiteur", {"mode": "danser"}, None, "autre", "Faux visiteur : danser"),
     ("POST", "/api/scan/demarrer", {}, None, "scan", "Scan : démarrer"),
     ("POST", "/api/scan/arreter", {}, None, "scan", "Scan : fin"),
     ("POST", "/api/scan/sessions/2026-10-27_14h22/adopter", {}, None, "scan", "Scan : utiliser cette carte"),
@@ -254,3 +262,19 @@ def test_journal_du_serveur_plafonne(tmp_path):
     texte = fichier.read_text(encoding="utf-8")
     assert len(texte.encode("utf-8")) < 2000 + 200
     assert texte.count("Journal du serveur coupé : il a atteint 0.002 Mo") == 1
+
+
+def test_ouvrir_une_seance_deja_ouverte_n_est_pas_note(tmp_path):
+    """Corrections de la vague 6 (revue de l'interface, défaut 12) : chaque réouverture de l'espace en Réel notait
+    « Ouvrir la séance (automatique) » (11 fois dans une séance) alors qu'elle était déjà ouverte."""
+    from atelier.seance.actions import action_sans_effet
+    h = Horloge()
+    j = JournalActions(tmp_path / "actions.jsonl", h.t, "reel", NOMS, horloge=h)
+    for nouvelle in (True, False, False):
+        j.noter({"t": heure_iso(h.t, ms=True), "methode": "POST", "chemin": "/api/seance/demarrer",
+                 "requete": {"mode": "reel", "ouverture": "auto"}, "statut": 200,
+                 "reponse": {"seance": {"id": "s"}, "nouvelle": nouvelle}, "client": "local"})
+    j.arreter(delai=5.0)
+    assert [x["texte"] for x in _lignes(tmp_path / "actions.jsonl")] == ["Ouvrir la séance (automatique)"]
+    assert not action_sans_effet({"chemin": "/api/seance/demarrer", "reponse": "texte coupé"})
+    assert not action_sans_effet({"chemin": "/api/arret", "reponse": {"nouvelle": False}})

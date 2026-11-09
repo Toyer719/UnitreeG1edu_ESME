@@ -61,7 +61,9 @@ def test_ouvrir_noter_terminer_et_lire_le_rapport(client):
     m = r.json()["seance"]
     assert valider_donnees("seance", m) == [] and m["ouverture"] == "auto" and m["mode"] == "repetition"
     assert m["enregistrement"]["etat"] == "absent"            # l'Atelier tourne sans ROS 2
-    assert client.post("/api/seance/demarrer", json={"mode": "reel"}).json()["seance"]["id"] == m["id"]
+    assert r.json()["nouvelle"] is True
+    deja = client.post("/api/seance/demarrer", json={"mode": "reel"}).json()
+    assert deja["seance"]["id"] == m["id"] and deja["nouvelle"] is False
     with client.websocket_connect("/ws/etat") as ws:
         d = ws.receive_json()
     assert d["seance"]["id"] == m["id"] and d["seance"]["badge"] == "arrete" and d["seance"]["etat"] == "ouverte"
@@ -70,11 +72,13 @@ def test_ouvrir_noter_terminer_et_lire_le_rapport(client):
     client.put("/api/lieux/demo/salles", content="pas du JSON", headers={"Content-Type": "application/json"})
     client.post("/api/simulation/teleop", json={"vx": 0.1})            # les flèches : jamais dans le journal
     dossier = client.racine / "seances" / m["id"]
-    assert attendre(lambda: len((dossier / "actions.jsonl").read_text(encoding="utf-8").splitlines()) >= 4, 10)
+    assert attendre(lambda: len((dossier / "actions.jsonl").read_text(encoding="utf-8").splitlines()) >= 3, 10)
     lignes = [json.loads(x) for x in (dossier / "actions.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert [x["genre"] for x in lignes] == ["seance", "seance", "arret", "lieu"]
-    assert lignes[0]["texte"] == "Ouvrir la séance (automatique)" and lignes[2]["texte"] == "ARRÊT"
-    assert lignes[3]["statut"] == 422 and lignes[3]["texte"] == "Salles enregistrées"
+    # la seconde ouverture (séance déjà ouverte) n'a rien changé : pas de ligne (corrections de la vague 6, défaut 12 :
+    # « Ouvrir la séance (automatique) » revenait à chaque réouverture de l'espace)
+    assert [x["genre"] for x in lignes] == ["seance", "arret", "lieu"]
+    assert lignes[0]["texte"] == "Ouvrir la séance (automatique)" and lignes[1]["texte"] == "ARRÊT"
+    assert lignes[2]["statut"] == 422 and lignes[2]["texte"] == "Salles enregistrées"
     assert all(valider_donnees("action_seance", x) == [] for x in lignes)
     # la liste, le manifeste
     liste = client.get("/api/seances").json()

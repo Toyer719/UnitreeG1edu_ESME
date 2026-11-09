@@ -100,6 +100,32 @@ def _pilotage(sous, corps):
     return "pilotage", textes.get(sous, f"Pilotage : {sous}")
 
 
+# Le faux visiteur de la simulation (POST /api/guide/visiteur {mode}) en mots simples (corrections de la vague 6,
+# revue de l'interface, défaut 12 : « POST /api/guide/visiteur » brut dans la chronologie)
+MODES_VISITEUR = {"suivre": "il suit le robot", "trainer": "il traîne", "partir": "il s'en va",
+                  "arreter": "il s'arrête"}
+
+
+def _mode_arrete(reponse):
+    """Le mode de ce qui vient d'être arrêté (réponse de POST /api/simulation/arreter : simulation.mode), aussi dans
+    une réponse gardée en texte (coupée), ou None."""
+    if isinstance(reponse, dict):
+        return (reponse.get("simulation") or {}).get("mode")
+    if isinstance(reponse, str):
+        m = re.search(r'"simulation":\s*\{[^{}]*?"mode":\s*"(\w+)"', reponse)
+        return m.group(1) if m else None
+    return None
+
+
+def action_sans_effet(action):
+    """Vrai pour une demande qui n'a rien changé et n'a pas sa place dans le journal : rouvrir l'espace en Réel quand
+    la séance est déjà ouverte (POST /api/seance/demarrer répond nouvelle: false ; « Ouvrir la séance
+    (automatique) » revenait 11 fois dans une séance, corrections de la vague 6, revue de l'interface, défaut 12)."""
+    reponse = action.get("reponse")
+    return (action.get("chemin") == "/api/seance/demarrer" and isinstance(reponse, dict)
+            and reponse.get("nouvelle") is False)
+
+
 def decrire(methode, chemin, requete=None, reponse=None, noms=None):
     """(genre, texte en français) d'une demande à l'API, pour la chronologie du rapport (fonction pure)."""
     corps = _dict(requete)
@@ -131,7 +157,10 @@ def decrire(methode, chemin, requete=None, reponse=None, noms=None):
         mode = corps.get("mode", "simu")
         return "lancer", f"Lancer {MODES_LANCEMENT.get(mode, 'la navigation')}"
     if chemin == "/api/simulation/arreter":
-        return "arreter", "Arrêter la navigation"
+        return "arreter", f"Arrêter {MODES_LANCEMENT.get(_mode_arrete(reponse), 'la navigation')}"
+    if chemin == "/api/guide/visiteur":
+        mode = str(corps.get("mode") or "?")
+        return "autre", f"Faux visiteur : {MODES_VISITEUR.get(mode, mode)}"
     if suite.startswith("scan/"):
         if suite == "scan/demarrer":
             return "scan", "Scan : démarrer"
@@ -364,8 +393,11 @@ class JournalActions:
         return ligne
 
     def _traiter(self, action):
-        """Une action de la file : notée, ou comptée avec ses pareilles (motif_repetition). Avant une action
-        ordinaire, les résumés en cours sont écrits : le journal reste dans l'ordre du temps."""
+        """Une action de la file : notée, ou comptée avec ses pareilles (motif_repetition), ou laissée si elle n'a rien
+        changé (action_sans_effet). Avant une action ordinaire, les résumés en cours sont écrits : le journal reste
+        dans l'ordre du temps."""
+        if action_sans_effet(action):
+            return
         motif = motif_repetition(action)
         with self._verrou:
             if motif is None:

@@ -3,7 +3,8 @@
   GET  /api/seance                       {seance: manifeste de la séance ouverte ou null, derniere: la dernière
                                          fermée ou null}
   POST /api/seance/demarrer {mode, lieu?, etage?, ouverture?}   ouvre la séance (reel ou repetition), ou rend
-                                         celle qui est ouverte : {seance} ; en simulation : 409
+                                         celle qui est ouverte : {seance, nouvelle} (nouvelle : elle vient
+                                         d'être ouverte) ; en simulation : 409
   POST /api/seance/arreter {fermeture?}  « Terminer la séance » : {seance} (rapport en cours) ; 404 sans séance ;
                                          fermeture simulation (l'espace rouvert en Simulation) : 409 tant que la
                                          navigation du robot ou de la répétition tourne
@@ -96,9 +97,12 @@ def seance(request: Request):
 async def demarrer(request: Request):
     d = await _corps(request)
     ouverture = _texte(d, "ouverture") or "manuel"
+    avant = _seance(request).etat()
     m = await run_in_threadpool(_seance(request).demarrer, _texte(d, "mode"), _texte(d, "lieu"),
                                 _texte(d, "etage"), ouverture)
-    return {"seance": m}
+    # nouvelle : cette demande a ouvert la séance (sinon, celle qui était déjà ouverte est rendue telle quelle ; la
+    # boîte noire n'écrit pas ce « rien » dans le journal des actions : corrections de la vague 6)
+    return {"seance": m, "nouvelle": avant is None or avant.get("id") != (m or {}).get("id")}
 
 
 @routeur.post("/api/seance/arreter")

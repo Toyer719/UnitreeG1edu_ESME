@@ -141,12 +141,13 @@ def initial(serie, debut, marge=3.0):
 class Lieu:
     """Ce que le rapport sait du lieu de la séance : noms et positions des salles et des nœuds, point principal."""
 
-    def __init__(self, salles=None, noeuds=None, principal=None, etage=None, nom=None):
+    def __init__(self, salles=None, noeuds=None, principal=None, etage=None, nom=None, nom_etage=None):
         self.salles = dict(salles or {})        # id → {nom, x, y, etage}
         self.noeuds = dict(noeuds or {})        # id → {x, y, etage}
         self.principal = principal
         self.etage = etage
         self.nom = nom
+        self.nom_etage = nom_etage              # « Rez-de-chaussée » (fiche du lieu), pour le rapport
 
     def nom_de(self, ident):
         if ident in (None, ""):
@@ -283,7 +284,7 @@ def trajets(donnees, actions, lieu, fin_seance=None):
             depart = lieu.endroit(p[1], p[2])
         if depart is None and p is not None:
             proche = lieu.endroit(p[1], p[2], distance=5.0)
-            depart = (f"près de {proche} " if proche else "") + f"({fr(p[1])} ; {fr(p[2])})"
+            depart = (f"près de « {proche} » " if proche else "") + f"({fr(p[1])} ; {fr(p[2])})"
         return {"debut_t": t, "cible": cible, "nom": lieu.nom_de(cible), "mission": mission,
                 "depart": depart or "?", "accompagner": bool(d.get("accompagner")), "arrets": [],
                 "etat": d.get("etat"), "position_depart": None if p is None else [round(p[1], 2), round(p[2], 2)]}
@@ -933,6 +934,6 @@ def analyser(manifeste, actions, donnees, lieu=None, lignes_journaux=(), infos_b
                            "sujets": {k: v.get("nombre") for k, v in ((infos_bag or {}).get("sujets") or {}).items()},
                            "octets": (infos_bag or {}).get("octets"), "metadata": (infos_bag or {}).get("metadata")},
         "diagnostic": diagnostic, "atelier": m.get("atelier"), "fermeture": m.get("fermeture"),
-        "nom_lieu": lieu.nom,
+        "nom_lieu": lieu.nom, "nom_etage": lieu.nom_etage,
     }
     return rapport
