@@ -1,7 +1,14 @@
 """Voix du robot (vague 6, section 13.6 du plan) : agent Voix.
 
-Squelette livré par l'agent Contrats ; l'agent Voix écrit ce paquet (synthèse Piper, PCM 16 kHz, file et
-priorités, sorties robot, borne et robot_tts, nœud ROS 2). Les formats sont dans atelier.lieu.voix.
+Les phrases à dire arrivent sur /robot/dire (personnalités par le relais des événements du guide, démo d'accueil,
+chatbot, Atelier « Essayer ») ; le nœud ROS 2 « voix » (commande g1-voix, sur le PC) les dit par une des trois
+sorties : le haut-parleur du robot (Piper sur le PC → PCM 16 kHz → service voice, api 1003, comme les exemples du
+SDK d'Unitree), la borne (le même son en WAV, joué par la page /borne) ou la synthèse du robot (api 1001, langues à
+vérifier). Les formats et valeurs du contrat sont dans atelier.lieu.voix.
+
+  synthese.py  Piper, rééchantillonnage à 16 kHz, WAV ; voix d'essai sans Piper (SyntheseFactice)
+  logique.py   file d'attente, priorités (normale, haute, securite), sorties, volume, robot muet : sans ROS
+  noeud.py     le nœud rclpy, le fil de synthèse, g1-voix et g1-voix --mesurer
 
 Contrat :
   python -m atelier.voix --lieu L [--sortie robot|borne|robot_tts] [--volume N] [--voix fr_FR-siwis-medium]

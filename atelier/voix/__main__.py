@@ -1,8 +1,7 @@
-"""g1-voix (vague 6, section 13.6 du plan) : squelette, écrit par l'agent Voix."""
+"""g1-voix (vague 6, section 13.6 du plan) : le nœud ROS 2 « voix », ou --mesurer (temps de synthèse de Piper)."""
 import sys
 
-from . import MESSAGE_PAS_ENCORE_FAIT
+from .noeud import main
 
 if __name__ == "__main__":
-    print(MESSAGE_PAS_ENCORE_FAIT.format(quoi="le nœud voix (g1-voix)"), file=sys.stderr)
-    sys.exit(1)
+    sys.exit(main())
