@@ -74,7 +74,7 @@ body.borne {
 @keyframes borne-saut { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-8px); } }
 @keyframes borne-z { 0% { opacity: 0; transform: translateY(4px); } 50% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
 @keyframes borne-parle { from { transform: scaleY(1); } to { transform: scaleY(1.6); } }
-@keyframes borne-avance { 0%, 100% { transform: translateX(-6px); } 50% { transform: translateX(14px); } }
+@keyframes borne-point { 0%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
 
 /* ---------------------------------------------------------------- centre : les cartes des salles */
 
@@ -133,6 +133,8 @@ body.borne {
 .borne-carte-nom { font-size: 1.38rem; font-weight: 750; line-height: 1.15; overflow-wrap: break-word; hyphens: auto; }
 .borne-carte-etage { font-size: 0.98rem; color: var(--texte-doux); }
 .borne-carte-chevron { flex: none; font-size: 2.1rem; line-height: 1; color: var(--accent-texte); padding: 0 2px 4px; }
+/* une carte inactive (robot occupé, pause) n'invite pas à toucher (corrections de la vague 6) */
+.borne-carte:disabled .borne-carte-chevron { visibility: hidden; }
 .borne-vide { margin: auto; font-size: 1.2rem; color: var(--texte-doux); text-align: center; }
 
 /* ---------------------------------------------------------------- les écrans */
@@ -144,10 +146,13 @@ body.borne {
 .borne-page[data-ecran=suivez_moi] .borne-visite,
 .borne-page[data-ecran=arrivee] .borne-visite,
 .borne-page[data-ecran=retour] .borne-visite { display: flex; }
-.borne-fleche { width: min(64%, 260px); height: auto; overflow: visible; animation: borne-avance 1.3s ease-in-out infinite; }
-.f-corps, .f-pointe { fill: none; stroke: var(--accent-texte); stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; }
-.borne-page[data-ecran=retour] .borne-fleche { transform: scaleX(-1); animation: none; opacity: 0.7; }
-.borne-page[data-ecran=arrivee] .borne-fleche { display: none; }
+/* le robot en route : trois points qui s'allument tour à tour (aucune direction) */
+.borne-en-route { width: min(46%, 180px); height: auto; overflow: visible; }
+.r-point { fill: var(--accent-texte); opacity: 0.25; animation: borne-point 1.2s ease-in-out infinite; }
+.r-point-2 { animation-delay: 0.2s; }
+.r-point-3 { animation-delay: 0.4s; }
+.borne-page[data-ecran=retour] .borne-en-route { opacity: 0.7; }
+.borne-page[data-ecran=arrivee] .borne-en-route { display: none; }
 .borne-barre { width: min(86%, 520px); height: 18px; border-radius: var(--rayon-pilule); background: var(--surface-3);
   border: 1px solid var(--bord); overflow: hidden; }
 .borne-barre-plein { height: 100%; width: 0; background: var(--accent); border-radius: var(--rayon-pilule);
@@ -362,5 +367,6 @@ body.borne {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mascotte, .m-clignote, .m-antenne, .m-z, .borne-fleche, .m-bouche { animation: none !important; }
+  .mascotte, .m-clignote, .m-antenne, .m-z, .r-point, .m-bouche { animation: none !important; }
+  .r-point { opacity: 0.8; }
 }

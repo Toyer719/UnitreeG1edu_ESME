@@ -16,6 +16,7 @@ export function insecables(t) {
 export const TEXTES = {
   fr: {
     question: 'Je vous accompagne à',
+    salleQuestion: '« {nom} » ?',
     oui: 'Oui, allons-y !',
     non: 'Non, merci',
     patience: 'Un instant…',
@@ -41,6 +42,7 @@ export const TEXTES = {
   },
   en: {
     question: 'Shall I take you to',
+    salleQuestion: '“{nom}”?',
     oui: 'Yes, let\'s go!',
     non: 'No, thanks',
     patience: 'Just a moment…',
@@ -76,6 +78,13 @@ export function texte(langue, cle, valeurs) {
     t = t.split('{' + k + '}').join(String(valeurs[k]));
   });
   return t;
+}
+
+// La salle de la question de la confirmation : « Salle B204 » ? en français (espaces insécables), “Salle B204”? en
+// anglais (corrections de la vague 6 : un visiteur anglophone lisait « Shall I take you to « CDI » ? »)
+export function questionSalle(langue, nom) {
+  const q = texte(langue, 'salleQuestion', { nom: nom });
+  return langue === 'en' ? q : insecables(q);
 }
 
 // Petits dessins des salles : l'étiquette de salles.yaml (pictogramme du serveur) ; à défaut, un mot du nom

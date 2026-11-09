@@ -10,10 +10,10 @@
 // ([data-role=borne-operateur] : code, puis pause, reprendre, ramener ; rien d'autre). Ce module ne charge que des
 // fichiers de js/borne/ (les seuls permis depuis la tablette). Aucune donnée insérée en HTML (textContent).
 
-import { fleche, HUMEURS, mascotte, pictogramme, svg } from './dessins.js';
+import { enRoute, HUMEURS, mascotte, pictogramme, svg } from './dessins.js';
 import { ANTI_REBOND_MS, creerAntiRebond, creerLiaison } from './liaison.js';
 import { creerSon } from './son.js';
-import { insecables, pictogrammeDe, texte } from './textes.js';
+import { insecables, pictogrammeDe, questionSalle, texte } from './textes.js';
 
 export const ECRANS_BORNE = ['hors_service', 'salles', 'suivez_moi', 'arrivee', 'retour', 'occupe', 'pause'];
 export const ECRANS_AVEC_SALLES = ['salles', 'occupe', 'pause'];
@@ -121,7 +121,7 @@ export function demarrerBorne(racine, options) {
   destination.appendChild(iconeDestination);
   destination.appendChild(nomDestination);
   visite.appendChild(destination);
-  visite.appendChild(fleche());
+  visite.appendChild(enRoute());
   visite.appendChild(barre);
   centre.appendChild(liste);
   centre.appendChild(vide);
@@ -280,7 +280,7 @@ export function demarrerBorne(racine, options) {
       return;
     }
     salleChoisie = s;
-    nomSalle.textContent = insecables('« ' + s.nom + ' » ?');
+    nomSalle.textContent = questionSalle(langue, s.nom);
     messageDialogue.hidden = true;
     oui.hidden = false;
     oui.disabled = false;

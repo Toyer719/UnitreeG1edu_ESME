@@ -71,11 +71,11 @@ export function mascotte(humeur) {
 }
 
 // La grosse flèche de « Suivez-moi ! »
-export function fleche() {
-  return svg('svg', { class: 'borne-fleche', viewBox: '0 0 120 60', 'aria-hidden': 'true' }, [
-    svg('path', { class: 'f-corps', d: 'M8 30 L86 30' }),
-    svg('path', { class: 'f-pointe', d: 'M70 10 L100 30 L70 50' }),
-  ]);
+// Le robot est en route : trois points qui s'allument tour à tour, un dessin sans direction (corrections de la
+// vague 6 : la grande flèche vers la droite pouvait faire croire au visiteur qu'il devait aller à droite)
+export function enRoute() {
+  return svg('svg', { class: 'borne-en-route', viewBox: '0 0 120 40', 'aria-hidden': 'true' },
+    [20, 60, 100].map((x, i) => svg('circle', { class: 'r-point r-point-' + (i + 1), cx: x, cy: 20, r: 11 })));
 }
 
 // Pictogrammes des salles (étiquettes PICTOGRAMMES_BORNE, et « porte » par défaut) : traits de 3 px sur 48 × 48

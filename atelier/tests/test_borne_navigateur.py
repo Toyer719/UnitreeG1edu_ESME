@@ -30,6 +30,14 @@ pytestmark = pytest.mark.skipif(GECKODRIVER is None or shutil.which("firefox") i
 TAILLES = {"telephone": (390, 844), "tablette": (1024, 768)}
 SALLES_BORNE = ["infirmerie", "cdi", "amphi", "b204"]       # demo sans l'accueil, vie_scolaire cachée
 
+# chevrons « › » des cartes visibles à l'écran (cachés sur les cartes inactives ; la tablette n'en a pas)
+CHEVRONS_VISIBLES = """
+return Array.from(document.querySelectorAll('.borne-carte-chevron')).filter((c) => {
+  const s = getComputedStyle(c);
+  return s.display !== 'none' && s.visibility !== 'hidden';
+}).length;
+"""
+
 CINQ_APPUIS = """
 const oui = document.querySelector('[data-role=confirmer-salle]');
 for (let i = 0; i < 5; i++) oui.click();
@@ -90,6 +98,7 @@ def test_parcours_d_un_visiteur(taille, nav, tmp_path, monkeypatch, captures):
         attendre_ecran(nav, "salles")
         m = _mesurer(nav, f"{taille}, salles")
         assert m["taille"] == [largeur, hauteur] and m["cartes"] == SALLES_BORNE
+        assert nav.js(CHEVRONS_VISIBLES) in (0, len(SALLES_BORNE))       # cartes actives : chevron s'il a la place
         assert _texte(nav, "borne-titre") == "Bonjour ! Où voulez-vous aller ?"
         capture_cadre(nav, captures / f"borne_{taille}_1_salles.png")
         # une salle touchée : la confirmation, dans la page
@@ -113,6 +122,10 @@ def test_parcours_d_un_visiteur(taille, nav, tmp_path, monkeypatch, captures):
         time.sleep(1.0)
         _mesurer(nav, f"{taille}, suivez-moi")
         assert _texte(nav, "borne-titre") == "Suivez-moi !"
+        # corrections de la vague 6 (revue de l'interface, défaut 18) : plus de grande flèche vers la droite (le
+        # visiteur pouvait croire qu'il devait aller à droite), trois points qui s'allument tour à tour
+        assert nav.js("return [document.querySelectorAll('.borne-en-route .r-point').length, "
+                      "!!document.querySelector('.borne-fleche, .f-pointe')]") == [3, False]
         capture_cadre(nav, captures / f"borne_{taille}_3_suivez_moi.png")
         pont.guide("arrive", mission="visite", cible="b204", reste_m=0.0, actif=True, pose=(21.0, 13.0, 1.57))
         attendre_ecran(nav, "arrivee")
@@ -128,11 +141,13 @@ def test_parcours_d_un_visiteur(taille, nav, tmp_path, monkeypatch, captures):
         pont.guide("en_route", mission="visite", cible="cdi", pose=(4.0, 10.0, 0.0))
         attendre_ecran(nav, "occupe")
         assert nav.js("return Array.from(document.querySelectorAll('[data-salle]')).every((c) => c.disabled)")
+        assert nav.js(CHEVRONS_VISIBLES) == 0           # une carte inactive n'invite pas à toucher (défaut 18)
         assert _texte(nav, "borne-titre") == A.TEXTES_BORNE["occupe"]
         capture_cadre(nav, captures / f"borne_{taille}_6_occupe.png")
         pont.entrer("/mouvement/maitre", {"maitre": "pilotage"})
         attendre_ecran(nav, "pause")
         assert nav.js("return Array.from(document.querySelectorAll('[data-salle]')).every((c) => c.disabled)")
+        assert nav.js(CHEVRONS_VISIBLES) == 0
         assert _texte(nav, "borne-titre") == "Je fais une petite pause."
         m = _mesurer(nav, f"{taille}, pause")
         capture_cadre(nav, captures / f"borne_{taille}_7_pause.png")
@@ -222,4 +237,12 @@ def test_hors_service_et_anglais(nav, tmp_path, monkeypatch, captures):
         nav.js("document.querySelector('[data-salle=cdi]').click()")
         nav.attendre("return !document.querySelector('[data-role=confirmation-borne]').hidden", message="confirmation")
         assert _texte(nav, "confirmer-salle") == "Yes, let's go!"
+        # corrections de la vague 6 (revue de l'interface, défaut 14) : « Shall I take you to « CDI » ? »
+        assert _texte(nav, "salle-confirmee") == "“CDI”?"
+        purs = nav.js_async("""const fini = arguments[arguments.length - 1];
+          import('/js/borne/textes.js').then((T) => fini([T.questionSalle('fr', 'Salle B204'),
+            T.questionSalle('en', 'CDI'), T.questionSalle('de', 'X'), T.insecables('« A » : b ?')]))
+            .catch((e) => fini(String(e)));""")
+        assert purs == ["«\u00a0Salle B204\u00a0»\u00a0?", "“CDI”?", "«\u00a0X\u00a0»\u00a0?",
+                        "«\u00a0A\u00a0»\u00a0: b\u00a0?"], purs
         assert nav.js("return document.documentElement.lang") == "en"
