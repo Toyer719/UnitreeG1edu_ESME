@@ -119,12 +119,28 @@ def _salle_dict(s):
             'pose': (pose.x, pose.y, pose.theta) if pose is not None else (None, None, None)}
 
 
+# entrées qui peuvent faire partir le robot : les pauses sont évaluées avant
+ENTREES_QUI_FONT_PARTIR = ('/accueil/choix', '/accueil/commande')
+CHIFFRES_MARQUE = '0123456789abcdefghijklmnopqrstuvwxyz'
+
+
+def marque_de_lancement(instant=None):
+    """Marque d'un lancement : l'heure (en secondes) à la milliseconde, en base 36 (8 signes)."""
+    n = int(round((time.time() if instant is None else instant) * 1000))
+    signes = ''
+    while True:
+        n, reste = divmod(n, 36)
+        signes = CHIFFRES_MARQUE[reste] + signes
+        if n == 0:
+            return signes
+
+
 class Orchestrateur:
     """Machine d'états de la démo d'accueil (section 13.4 du plan), sans ROS."""
 
     def __init__(self, salles, id_principal, etage, reglages=None, horloge=None, lieu='demo',
                  pose_principale=None, personnalite=None, personnalites=None,
-                 suivre_personnalite=True):
+                 suivre_personnalite=True, marque=None):
         """
         Prépare la démo.
 
@@ -139,7 +155,10 @@ class Orchestrateur:
         personnalites   : celles de personnalites.yaml (pour compléter un /personnalite/active
                           réduit à {id, nom}) ;
         suivre_personnalite : faux si demo.yaml impose sa personnalité (/personnalite/active
-                          ignoré).
+                          ignoré) ;
+        marque          : marque du lancement dans l'id des phrases (accueil-<marque>-salut-1),
+                          défaut marque_de_lancement() : d'un lancement à l'autre, les phrases
+                          n'ont jamais le même id (la borne ne joue qu'une fois chaque id).
         """
         self.salles = [_salle_dict(s) for s in salles]
         self.par_id = {s['id']: s for s in self.salles}
@@ -155,6 +174,7 @@ class Orchestrateur:
         self.personnalite = personnalite
         self.personnalites = {p.get('id'): p for p in (personnalites or []) if isinstance(p, dict)}
         self.suivre_personnalite = bool(suivre_personnalite)
+        self.marque = marque_de_lancement() if marque is None else str(marque)
         t = self.horloge()
         self._t = t
         self._relais = Relais(horloge=lambda: self._t)
@@ -204,6 +224,12 @@ class Orchestrateur:
         """Un message reçu sur un sujet d'entrée ; rend les messages à publier."""
         self._commencer(t)
         traiter = self._entrees.get(sujet)
+        if sujet in ENTREES_QUI_FONT_PARTIR:
+            # corrections de la vague 6 : les pauses d'abord (guide ou pont muet depuis
+            # 3 s, entre deux pas de la minuterie), pour qu'un choix ne parte jamais avec
+            # la pause dans le même lot (/guide/aller puis /guide/stop, deux sujets sans
+            # ordre garanti)
+            self._evaluer()
         if traiter is not None:
             traiter(donnees)
         self._evaluer()
@@ -293,10 +319,10 @@ class Orchestrateur:
         self._publier('/accueil/evenement', message)
         return message
 
-    def _dire(self, texte, ident, priorite='normale'):
+    def _dire(self, texte, suffixe, priorite='normale'):
         message = message_robot_dire(texte, 'accueil', priorite=priorite,
                                      personnalite=self.personnalite)
-        message['id'] = ident
+        message['id'] = f'accueil-{self.marque}-{suffixe}'
         self._publier('/robot/dire', message)
 
     def _changer(self, etat, note=None):
@@ -632,7 +658,7 @@ class Orchestrateur:
         self.pauses_vues.append((raison, self._t))
         del self.pauses_vues[:-1000]
         self._evenement('pause', MESSAGES_PAUSE[raison], raison=raison)
-        self._dire(PHRASE_PAUSE, self._nouvel_id('accueil-pause-'), priorite='securite')
+        self._dire(PHRASE_PAUSE, self._nouvel_id('pause-'), priorite='securite')
 
     def _dans_demarrage(self):
         if not self._guide_frais():
@@ -686,7 +712,7 @@ class Orchestrateur:
         self._stats['visiteurs'] += 1
         self._changer('salutation')
         salutation = (self.personnalite or {}).get('salutation') or SALUTATION_DEFAUT
-        self._dire(salutation, self._nouvel_id('accueil-salut-'))
+        self._dire(salutation, self._nouvel_id('salut-'))
         geste = (self.personnalite or {}).get('geste_salut')
         entier = isinstance(geste, int) and not isinstance(geste, bool)
         if self.reglages.get('saluer_geste') and entier:
@@ -860,7 +886,7 @@ class Orchestrateur:
             phrases = (self.personnalite or {}).get('phrases') or {}
             texte = (texte_evenement('depart', nom, phrases) if phrases.get('depart')
                      else PHRASE_DEPART.replace('{nom}', nom))
-            self._dire(texte, f'accueil-{visite}-depart')
+            self._dire(texte, f'{visite}-depart')
         self._abandon = False
         self._changer('depart')
 
@@ -917,7 +943,7 @@ class Orchestrateur:
         dit = self._dernier_occupe_dit
         if dit is None or self._t - dit >= DELAI_OCCUPE_DIT_S:
             self._dernier_occupe_dit = self._t
-            self._dire(PHRASE_OCCUPE, self._nouvel_id('accueil-occupe-'))
+            self._dire(PHRASE_OCCUPE, self._nouvel_id('occupe-'))
         return 'occupe', PHRASE_OCCUPE
 
     def _annuler(self, source):

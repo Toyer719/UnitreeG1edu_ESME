@@ -59,6 +59,7 @@ AVANCE_SYNTHESE = 3           # phrases de la file synthétisées d'avance au pl
 CARACTERES_PAR_S_TTS = 13.0   # durée estimée d'une phrase de la synthèse d'Unitree (robot_tts)
 LOCUTEUR_TTS_DEFAUT = V.LOCUTEURS_TTS["en"]   # le français n'est pas dans le SDK : l'anglais lit mieux nos lettres
 HISTORIQUE_MAX = 20
+IDS_GARDES = 1000                   # ids de son déjà donnés dans ce lancement (jamais deux fois le même)
 LIBELLES_SORTIES = {
     "robot": "Haut-parleur du robot (voix du PC)",
     "borne": "Borne (tablette ou téléphone)",
@@ -166,7 +167,7 @@ class LogiqueVoix:
 
     def __init__(self, sortie="robot", voix=V.VOIX_DEFAUT, volume=None, vitesse=1.0,
                  locuteur_tts=LOCUTEUR_TTS_DEFAUT, disponibles=None, horloge=time.monotonic, mur=None,
-                 identifiants=None):
+                 identifiants=None, deja_pris=None):
         if sortie not in V.SORTIES_VOIX:
             raise ValueError(f"sortie « {sortie} » inconnue : {', '.join(V.SORTIES_VOIX)}")
         if volume is not None and (isinstance(volume, bool) or not isinstance(volume, int) or not 0 <= volume <= 100):
@@ -174,6 +175,11 @@ class LogiqueVoix:
         self.horloge = horloge
         self.mur = mur or (lambda: datetime.now().astimezone())
         self.identifiants = identifiants or Identifiants()
+        # corrections de la vague 6 : jamais deux phrases avec le même id de son (la borne ne joue qu'une fois chaque
+        # id, le robot reçoit un flux par stream_id, le WAV est la trace) : deja_pris(id) dit si un son de ce nom existe
+        # déjà (le nœud regarde dossier_sons(), qui survit aux relances) ; les ids de ce lancement sont gardés aussi
+        self.deja_pris = deja_pris or (lambda ident: False)
+        self.ids_pris = deque(maxlen=IDS_GARDES)
         self.disponibles = list(V.VOIX_PIPER if disponibles is None else disponibles)
         self.sortie = sortie
         self.voix = choisir_voix(voix, self.disponibles) or voix
@@ -206,6 +212,22 @@ class LogiqueVoix:
 
     def _t(self, t):
         return float(self.horloge()) if t is None else float(t)
+
+    def _id_libre(self, ident):
+        """ident, ou ident suivi de « -2 », « -3 »… s'il est déjà pris (dans ce lancement, ou par un son gardé)."""
+        candidat, n = ident, 1
+        while candidat in self.ids_pris or self._pris_ailleurs(candidat):
+            n += 1
+            suffixe = f"-{n}"
+            candidat = ident[:64 - len(suffixe)].rstrip("-") + suffixe
+        self.ids_pris.append(candidat)
+        return candidat
+
+    def _pris_ailleurs(self, ident):
+        try:
+            return bool(self.deja_pris(ident))
+        except OSError:
+            return False
 
     def _iso(self):
         return self.mur().isoformat(timespec="seconds")
@@ -271,7 +293,8 @@ class LogiqueVoix:
             self.change = True
             return []
         self.numero += 1
-        phrase = Phrase(id_de_phrase(message.get("id"), self.numero, self.mur()), message, t, self.numero)
+        phrase = Phrase(self._id_libre(id_de_phrase(message.get("id"), self.numero, self.mur())), message, t,
+                        self.numero)
         sorties = []
         if phrase.rang >= 2:
             self.abandonnees += len(self.file)
@@ -504,9 +527,12 @@ class LogiqueVoix:
         return []
 
     def _noter(self, phrase, fin, t):
-        self.historique.append({"id": phrase.id, "texte": phrase.texte[:120], "priorite": phrase.priorite,
-                                "source": phrase.source, "sortie": phrase.sortie, "fin": fin,
-                                "duree_s": None if phrase.duree_s() is None else round(phrase.duree_s(), 2)})
+        note = {"id": phrase.id, "texte": phrase.texte[:120], "priorite": phrase.priorite,
+                "source": phrase.source, "sortie": phrase.sortie, "fin": fin,
+                "duree_s": None if phrase.duree_s() is None else round(phrase.duree_s(), 2)}
+        if phrase.demande and phrase.demande != phrase.id:
+            note["id_demande"] = phrase.demande
+        self.historique.append(note)
 
     def _commencer(self, t):
         while self.file:
@@ -579,7 +605,8 @@ class LogiqueVoix:
         return {"version": 1, "id": phrase.id, "texte": phrase.texte[:500],
                 "duree_s": round(max(0.01, phrase.son.duree_s), 3), "url": V.URL_SON + phrase.id, "priorite": phrase.priorite, "source": phrase.source[:40],
                 "frequence_hz": int(phrase.son.frequence_hz), "temps": self._iso(),
-                "voix": phrase.son.voix, "volume": self.volume}
+                "voix": phrase.son.voix, "volume": self.volume,
+                **({"id_demande": phrase.demande} if phrase.demande and phrase.demande != phrase.id else {})}
 
     # ------------------------------------------------------------ arrêt du nœud
 

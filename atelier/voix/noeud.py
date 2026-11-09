@@ -301,7 +301,8 @@ def main(argv=None):
         synthese = SyntheseFactice() if options.factice else SynthesePiper()
         logique = LogiqueVoix(sortie=reglages["sortie"], voix=reglages["voix"], volume=reglages["volume"],
                               vitesse=reglages["vitesse"], locuteur_tts=options.locuteur,
-                              disponibles=synthese.disponibles())
+                              disponibles=synthese.disponibles(),
+                              deja_pris=lambda ident: (V.dossier_sons() / f"{ident}.wav").exists())
     except (ValueError, TypeError) as e:
         print(f"g1-voix : réglage refusé : {e}", file=sys.stderr)
         return 2

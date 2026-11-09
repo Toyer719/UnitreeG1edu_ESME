@@ -224,7 +224,7 @@ async def essayer(request: Request):
         raise ErreurAtelier(422, f"Priorité « {priorite} » inconnue : {', '.join(V.PRIORITES_VOIX)}.")
     reglages = _reglages_voix(d.get("voix"))
     dernier = _exiger_voix(etat)
-    ident = f"essai-{time.strftime('%H%M%S')}-{next(_numeros)}"
+    ident = f"essai-{time.strftime('%Y%m%d-%H%M%S')}-{next(_numeros)}"
     message = {"version": 1, "id": ident, "texte": texte.strip(), "source": "atelier", "priorite": priorite,
                "langue": "fr"}
     if reglages:

@@ -8,7 +8,7 @@ import math
 
 from atelier.lieu import valider_message
 from g1_accueil.logique import (DELAI_GUIDE_MUET_S, DELAI_RAISON_S, DUREE_SALUTATION_S,
-                                Orchestrateur)
+                                marque_de_lancement, Orchestrateur)
 import pytest
 
 SALLES = [
@@ -64,14 +64,14 @@ class FauxGuide:
 class Banc:
     """L'orchestrateur, le faux guide, la position du robot et tout ce qui a été publié."""
 
-    def __init__(self, **reglages):
+    def __init__(self, marque=None, **reglages):
         self.h = Horloge()
         self.guide = FauxGuide()
         self.pose = PRINCIPAL
         self.sorties = []
         reglages.setdefault('presence_s', 1.0)
         self.o = Orchestrateur(SALLES, 'accueil', 'rdc', reglages, horloge=self.h, lieu='demo',
-                               personnalite=dict(PERSO), personnalites=[PERSO])
+                               personnalite=dict(PERSO), personnalites=[PERSO], marque=marque)
         self.non_conformes = []
         self.numero = 0
 
@@ -241,7 +241,7 @@ def test_visiteur_vu_au_lidar_devant_le_robot(banc):
     assert banc.o.etat_courant == 'salutation'
     dire = banc.publies('/robot/dire')
     assert dire[-1]['texte'] == PERSO['salutation'] and dire[-1]['source'] == 'accueil'
-    assert dire[-1]['id'].startswith('accueil-salut-')
+    assert dire[-1]['id'] == f'accueil-{banc.o.marque}-salut-1'
     assert banc.publies('/robot/geste')[-1]['geste'] == 26
     assert banc.evenements('visiteur') and banc.evenements('salutation')
     assert banc.o.etat()['visiteur'] == {'vu': True, 'source': 'lidar', 'distance_m': 1.2, 'id': 3}
@@ -373,6 +373,57 @@ def test_visite_complete_et_statistiques(banc):
     assert banc.o.etat()['statistiques']['visiteurs'] == 2
     assert banc.commande('remise_a_zero')['code'] == 'commande_acceptee'
     assert banc.o.etat()['statistiques']['visiteurs'] == 0
+
+
+def test_marque_de_lancement():
+    assert marque_de_lancement(0) == '0' and marque_de_lancement(0.035) == 'z'
+    assert marque_de_lancement(0.036) == '10' and len(marque_de_lancement()) == 8
+    assert marque_de_lancement(1794254877.0) != marque_de_lancement(1794254877.001)
+
+
+def test_deux_lancements_n_ont_jamais_les_memes_id_de_phrases():
+    """
+    Deux lancements de la démo n'ont jamais les mêmes id de phrases.
+
+    Corrections de la vague 6 (revue du code, défaut 2) : relancée, la démo renumérotait
+    ses phrases depuis 1 (accueil-salut-1, accueil-v2-depart…), la voix en faisait les
+    mêmes sons, et la borne restée ouverte, qui ne joue qu'une fois chaque id, restait
+    muette. Chaque lancement a sa marque dans l'id.
+    """
+    ids = []
+    for marque in (marque_de_lancement(1794254877), marque_de_lancement(1794254878)):
+        b = Banc(marque=marque)
+        b.visite_jusqu_a_l_accompagnement('b204')
+        b.commande('pause', source='operateur')
+        ids.append([d['id'] for d in b.publies('/robot/dire')])
+        assert all(i.startswith(f'accueil-{marque}-') for i in ids[-1]), ids[-1]
+        assert len(ids[-1]) >= 3 and len(set(ids[-1])) == len(ids[-1]), ids[-1]
+    assert not set(ids[0]) & set(ids[1]), ids
+    # par défaut, la marque vient de l'heure du lancement
+    assert len(Banc().o.marque) == 8
+
+
+def test_choix_juste_apres_le_silence_du_guide_refuse(banc):
+    """
+    Un choix juste après 3 s de silence du guide est refusé.
+
+    Corrections de la vague 6 (revue du code, défaut 5) : entre le passage aux 3 s de
+    silence du guide et le pas suivant de la minuterie, un choix était accepté :
+    /guide/aller et /guide/stop partaient dans le même lot (deux sujets sans ordre
+    garanti). Les pauses sont évaluées avant le choix : refusé, et aucun /guide/aller.
+    """
+    banc.demarrer()
+    banc.commande('appui', source='borne')
+    banc.avancer(DUREE_SALUTATION_S + 0.1)
+    assert banc.o.etat_courant == 'choix'
+    dernier_guide = banc.h.t
+    banc.h.t = round(dernier_guide + DELAI_GUIDE_MUET_S + 0.05, 6)      # aucun pas() entre-temps
+    r = banc.choisir('b204')
+    assert r['code'] == 'choix_refuse' and r['raison'] == 'pause', r
+    assert banc.publies('/guide/aller') == [] and banc.o.etat_courant == 'pause'
+    assert banc.o.raison == 'guide_absent'
+    # une commande « appui » au même moment ne fait rien partir non plus
+    assert banc.publies('/guide/aller') == []
 
 
 def test_choix_du_chatbot_en_attente(banc):

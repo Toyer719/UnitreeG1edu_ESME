@@ -77,10 +77,12 @@ def test_choix_refuses_et_accepte(demo):
     demo.pont.rafraichir()
     e = demo.get("/api/borne/etat").json()
     assert e["ecran"] == "suivez_moi" and e["visite"]["salle"] == "b204"
-    # pendant la visite : la borne est occupée
+    # pendant la visite : la borne est occupée (le guide, qui conduit, publie son état ; muet depuis 3 s, la démo
+    # serait en pause : corrections de la vague 6, les pauses sont évaluées avant un choix)
     time.sleep(A.ANTI_REBOND_S + 0.05)
+    demo.pont.guide("en_route", mission="visite", cible="b204", reste_m=18.0)
     r = demo.post("/api/borne/choisir", json={"salle": "cdi"})
-    assert r.status_code == 409 and r.json()["raison"] == "occupe"
+    assert r.status_code == 409 and r.json()["raison"] == "occupe", r.text
 
 
 def test_anti_rebond(demo):

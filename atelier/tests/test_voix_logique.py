@@ -390,6 +390,46 @@ def test_commandes_fausses_refusees(message):
     assert b.v.refusees == 1 and len(b.requetes) == n and b.v.derniere_commande["ok"] is False
 
 
+def test_jamais_deux_sons_du_meme_id(tmp_path):
+    """Corrections de la vague 6 (revue du code, défaut 2) : la voix gardait l'id de /robot/dire ; une démo relancée
+    renumérotait ses phrases depuis 1, la voix réécrivait le même WAV et la borne, qui ne joue qu'une fois chaque id,
+    restait muette. Un id déjà donné dans ce lancement, ou dont le son existe encore (dossier_sons(), qui survit aux
+    relances), reçoit « -2 », « -3 »… ; l'id d'origine reste dans id_demande."""
+    sons = tmp_path / "sons"
+    sons.mkdir()
+
+    def deja_pris(ident):
+        return (sons / f"{ident}.wav").exists()
+    premier = Banc(sortie="borne", deja_pris=deja_pris)
+    premier.dire("Bonjour !", id="accueil-salut-1")
+    premier.avancer(3.0)
+    premier.dire("Re-bonjour !", id="accueil-salut-1")
+    premier.avancer(3.0)
+    ids = [m["id"] for _, m in premier.annonces]
+    assert ids == ["accueil-salut-1", "accueil-salut-1-2"], ids
+    assert [m.get("id_demande") for _, m in premier.annonces] == [None, "accueil-salut-1"]
+    assert premier.v.historique[-1]["id_demande"] == "accueil-salut-1"
+    for i in ids:
+        (sons / f"{i}.wav").write_bytes(b"RIFF")         # le nœud écrit le WAV de chaque phrase
+    # le nœud relancé (nouvelle logique) : les sons d'avant sont encore là, les ids ne reviennent pas
+    second = Banc(sortie="borne", deja_pris=deja_pris)
+    second.dire("Bonjour !", id="accueil-salut-1")
+    second.avancer(3.0)
+    assert second.annonces[-1][1]["id"] == "accueil-salut-1-3"
+    assert second.annonces[-1][1]["url"] == "/api/voix/son/accueil-salut-1-3"
+    # sortie robot : le stream_id suit l'id du son
+    robot = Banc(deja_pris=deja_pris)
+    robot.dire("Bonjour !", id="accueil-salut-1")
+    robot.avancer(5.0)
+    assert {json.loads(r.parametre)["stream_id"] for _, r in robot.lectures()} == {"accueil-salut-1-3"}
+    # un id long garde sa place pour le suffixe (64 signes au plus)
+    long = "a" * 64
+    b = Banc(sortie="borne")
+    b.dire("Un.", id=long)
+    b.dire("Deux.", id=long)
+    assert [p.id for p in b.v._phrases()][-1] == "a" * 62 + "-2" and V.MOTIF_ID_SON.match("a" * 62 + "-2")
+
+
 def test_ids_des_phrases():
     instant = mur()
     assert id_de_phrase("pause-v3", 1, instant) == "pause-v3"
