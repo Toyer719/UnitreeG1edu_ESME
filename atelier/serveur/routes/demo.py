@@ -46,6 +46,12 @@ MESSAGE_SANS_REPONSE = ("La démo n'a pas répondu à temps : vérifiez qu'elle 
                         "puis réessayez.")
 MESSAGE_SANS_GUIDE = ("La démo a besoin du guide : lancez d'abord la simulation (Simuler › Lancer) ou la "
                       "navigation du robot (Naviguer › Lancer).")
+# Corrections de la vague 6 (revue de l'interface, défaut 7) : en Simulation, sans faux visiteur (il vient avec une
+# scène d'essai), le robot part seul vers la salle et l'accompagnement n'est pas essayé ; l'écran Démo le dit
+SUJET_FAUX_VISITEUR = "/faux_visiteur/mode"
+MESSAGE_SANS_FAUX_VISITEUR = ("Pas de faux visiteur dans cette simulation : le robot partira seul vers la salle, sans "
+                              "personne à accompagner. Le faux visiteur vient avec la scène d'essai « Accompagnement "
+                              "d'un visiteur » (Simuler › Avancé › Passants, scènes d'essai).")
 STATUT_REFUS = {"occupe": 409, "pause": 409, "demo_arretee": 409, "action_impossible": 409,
                 "salle_inconnue": 404, "salle_cachee": 422, "autre_etage": 422, "deja_la": 422}
 _numeros = itertools.count(1)
@@ -154,8 +160,17 @@ def _processus(etat, role):
     return None if p is None else p.etat()
 
 
+def faux_visiteur_present(etat):
+    """Vrai si un faux visiteur écoute /faux_visiteur/mode (nœud faux_visiteur de g1_nav, avec une scène d'essai),
+    faux sinon, None si on ne peut pas le savoir (pas de pont ROS 2)."""
+    infos = getattr(etat.pont, "infos_sujet", None)
+    vu = infos(SUJET_FAUX_VISITEUR) if infos is not None and etat.pont.actif else None
+    return None if vu is None else bool(vu.get("abonnes"))
+
+
 def _avertissements(etat):
-    """Ce qui ne va pas avec ce qui a été lancé (la voix qui s'est arrêtée…), en français."""
+    """Ce qui ne va pas avec ce qui a été lancé (la voix qui s'est arrêtée, pas de faux visiteur en Simulation…), en
+    français."""
     messages = []
     voix = etat.gestionnaire.processus.get(ROLE_VOIX)
     demo = etat.gestionnaire.processus.get(ROLE_DEMO)
@@ -164,6 +179,9 @@ def _avertissements(etat):
         messages.append("La démo s'est arrêtée seule" + (f" : {lignes[-1]}" if lignes else "") + ".")
     if voix is not None and not voix.en_cours and not voix.arret_demande:
         messages.append("La voix ne tourne pas (elle s'est arrêtée) : la démo continue en silence.")
+    if (demo is not None and demo.en_cours and etat.mode_navigation() == "simu"
+            and faux_visiteur_present(etat) is False):
+        messages.append(MESSAGE_SANS_FAUX_VISITEUR)
     return messages
 
 
@@ -225,6 +243,8 @@ async def lancer(demande: DemandeLancer, request: Request):
         raise ErreurAtelier(503, f"Impossible de lancer la démo : {e}.") from None
     voix = reglages.get("voix") or {}
     sortie = voix.get("sortie", "robot")
+    if mode == "simu" and faux_visiteur_present(etat) is False:
+        avertissements.append(MESSAGE_SANS_FAUX_VISITEUR)
     if mode == "simu" and sortie != "borne":
         sortie = "borne"
         avertissements.append("En simulation, il n'y a pas de haut-parleur du robot : la voix passe par la borne.")

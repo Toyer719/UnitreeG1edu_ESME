@@ -97,6 +97,36 @@ def test_lancer_et_arreter_en_simulation(demo, fausses):
     assert not e["lancee"] and not e["processus"]["voix"]["en_cours"]
 
 
+def test_simulation_sans_faux_visiteur_dite_dans_l_ecran_demo(demo, fausses):
+    """Corrections de la vague 6 (revue de l'interface, défaut 7) : en Simulation sans faux visiteur (scène d'essai),
+    le robot partait seul à chaque visite (« Je ne vous vois pas derrière moi… ») et l'écran Démo ne disait rien."""
+    from atelier.serveur.routes import demo as D
+    _simulation(demo)
+    demo.pont.recus.pop("/accueil/etat", None)
+    abonnes = []
+    demo.pont.infos_sujet = lambda sujet: {"publieurs": [], "abonnes": list(abonnes)} \
+        if sujet == "/faux_visiteur/mode" else None
+    r = demo.post("/api/demo/lancer", json={"lieu": "essai"})
+    assert r.status_code == 200 and D.MESSAGE_SANS_FAUX_VISITEUR in r.json()["avertissements"]
+    assert "Passants" in D.MESSAGE_SANS_FAUX_VISITEUR and "/faux_visiteur" not in D.MESSAGE_SANS_FAUX_VISITEUR
+    assert D.MESSAGE_SANS_FAUX_VISITEUR in demo.get("/api/demo/etat").json()["avertissements"]
+    abonnes.append("faux_visiteur")                 # le faux visiteur de la scène d'accompagnement écoute
+    assert demo.get("/api/demo/etat").json()["avertissements"] == []
+    abonnes.clear()
+    demo.pont.actif = False                         # sans pont ROS 2 : on ne sait pas, on ne dit rien
+    assert D.faux_visiteur_present(demo.etat) is None
+    assert demo.get("/api/demo/etat").json()["avertissements"] == []
+    demo.pont.actif = True
+    demo.post("/api/demo/arreter")
+    assert demo.get("/api/demo/etat").json()["avertissements"] == []     # démo arrêtée : plus rien à dire
+    _simulation(demo, mode="repetition")            # en Réel ou en répétition, jamais ce message
+    demo.pont.reperage = lambda: {"repere": True, "perime": False}
+    r = demo.post("/api/demo/lancer", json={"lieu": "essai"})
+    assert r.status_code == 200 and D.MESSAGE_SANS_FAUX_VISITEUR not in r.json()["avertissements"]
+    assert D.MESSAGE_SANS_FAUX_VISITEUR not in demo.get("/api/demo/etat").json()["avertissements"]
+    demo.post("/api/demo/arreter")
+
+
 def test_lancer_en_repetition_et_voix_absente(demo, fausses, monkeypatch):
     _simulation(demo, mode="repetition")
     demo.pont.recus.pop("/accueil/etat", None)
