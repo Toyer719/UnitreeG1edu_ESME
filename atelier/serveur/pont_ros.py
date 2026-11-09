@@ -79,7 +79,19 @@ PUBLICATIONS_JSON = {
 }
 # Vague 6 (section 13.2) : requêtes unitree_api du diagnostic (le robot ne les reçoit que de cette liste)
 DELAI_ABONNE_UNITREE_S = 2.0      # attente d'un abonné à /api/<service>/request avant d'envoyer
+# Les nœuds de l'Atelier sur le PC qui ne font qu'écouter ou interroger le robot : ils ne prouvent jamais que le
+# robot est là (corrections de la vague 6 : l'enregistreur de la séance, abonné à /api/sport/request, était pris
+# pour le robot par le diagnostic). Plus les outils « ros2 » en ligne de commande (ros2 topic echo, le démon).
+NOEUDS_ATELIER = frozenset({"atelier_pont", "g1_diagnostic", "atelier_boite_noire"})
+PREFIXES_NOEUDS_OUTILS = ("_ros2cli",)
 PIETONS_FRAIS_S = 1.0     # s : /pietons/etat plus vieux, l'Atelier recalcule les piétons depuis le monde
+
+
+def noeud_observateur(nom):
+    """Vrai pour un nœud de l'Atelier qui écoute ou interroge le robot sans en être un (NOEUDS_ATELIER) et pour les
+    outils ros2 en ligne de commande (PREFIXES_NOEUDS_OUTILS) : le diagnostic ne les compte jamais comme le robot."""
+    nom = str(nom or "").lstrip("/")
+    return nom in NOEUDS_ATELIER or nom.startswith(PREFIXES_NOEUDS_OUTILS)
 
 
 class PontRos:
@@ -420,8 +432,10 @@ class PontRos:
             return {}
 
     def infos_sujet(self, sujet):
-        """{publieurs: [nœuds], abonnes: [nœuds]} d'un sujet, sans le nœud du serveur lui-même (un sujet « vu »
-        par le diagnostic est publié ou écouté par un autre programme) ; None sans pont."""
+        """{publieurs: [nœuds], abonnes: [nœuds]} d'un sujet, sans le nœud du serveur lui-même ni les autres nœuds
+        de l'Atelier qui ne font qu'observer (noeud_observateur : l'enregistreur de la séance, g1-diagnostic,
+        ros2 topic echo) : un sujet « vu » par le diagnostic est publié ou écouté par un autre programme, le
+        robot ou le faux G1 ; None sans pont."""
         if not self.actif or self._noeud is None:
             return None
         try:
@@ -429,8 +443,11 @@ class PontRos:
             abonnes = self._noeud.get_subscriptions_info_by_topic(sujet)
         except Exception:       # noqa: BLE001 : graphe indisponible
             return None
-        return {"publieurs": sorted({i.node_name for i in publieurs if i.node_name != self.nom_noeud}),
-                "abonnes": sorted({i.node_name for i in abonnes if i.node_name != self.nom_noeud})}
+
+        def autres(infos):
+            return sorted({i.node_name for i in infos
+                           if i.node_name != self.nom_noeud and not noeud_observateur(i.node_name)})
+        return {"publieurs": autres(publieurs), "abonnes": autres(abonnes)}
 
     def attendre_message(self, sujet, type_message, delai=2.0):
         """Le prochain message d'un sujet typé (ex. « unitree_hg/msg/BmsState » sur /lf/bmsstate, la batterie),

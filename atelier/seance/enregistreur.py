@@ -43,6 +43,7 @@ from atelier.lieu.seance import FICHIERS_SEANCE, SUJETS_JAMAIS, SUJETS_SEANCE, T
 from .manifeste import heure_iso
 
 FICHIER_ETAT = "enregistrement.json"
+NOEUD_ENREGISTREUR = "atelier_boite_noire"   # dans NOEUDS_ATELIER du pont : le diagnostic ne le prend pas pour le robot
 PERIODE_GRAPHE_S = 2.0            # relecture du graphe ROS 2 (sujets apparus, éditeurs nouveaux)
 PERIODE_ETAT_S = 1.0              # enregistrement.json et surveillance de l'Atelier
 PERIODE_RELEVE_S = 0.05           # sujets gardés en entier : relevés 20 fois par seconde
@@ -401,7 +402,7 @@ class Enregistreur:
             from rclpy.signals import SignalHandlerOptions
             self.contexte = rclpy.Context()
             rclpy.init(context=self.contexte, signal_handler_options=SignalHandlerOptions.NO)
-            self.noeud = rclpy.create_node("atelier_boite_noire", context=self.contexte,
+            self.noeud = rclpy.create_node(NOEUD_ENREGISTREUR, context=self.contexte,
                                            start_parameter_services=False, enable_rosout=False)
             self._ouvrir_bag()
         except Exception as e:      # noqa: BLE001 : ROS 2 absent, bag impossible à créer…

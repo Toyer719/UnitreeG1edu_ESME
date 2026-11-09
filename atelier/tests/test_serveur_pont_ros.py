@@ -162,3 +162,58 @@ def test_websocket_alimente_par_le_pont(faux_robot, lieux, faux_bin):
         assert c.post("/api/guide/stop").json()["envoye"] == "stop"
         assert faux_robot.tourner(5, lambda: faux_robot.stops == 1)
     assert not etat.pont.actif          # arrêté avec le serveur
+
+
+def test_noeud_observateur():
+    """Corrections de la vague 6 : les nœuds de l'Atelier qui ne font qu'écouter le robot ne sont jamais le robot."""
+    from atelier.seance.enregistreur import NOEUD_ENREGISTREUR
+    from atelier.serveur.pont_ros import noeud_observateur
+    from atelier.diagnostic import NOEUD_COMMANDE
+    for nom in (NOEUD_ENREGISTREUR, NOEUD_COMMANDE, "atelier_pont", "/atelier_boite_noire", "_ros2cli_12345",
+                "_ros2cli_daemon_0_9c1d"):
+        assert noeud_observateur(nom), nom
+    for nom in ("g1_jumeau", "faux_slam", "guide", "", None, "atelier_boite_noire_2"):
+        assert not noeud_observateur(nom), nom
+
+
+def test_l_enregistreur_de_la_seance_n_est_pas_le_robot(faux_robot, tmp_path, monkeypatch):
+    """Corrections de la vague 6 (revue de l'interface, défaut 1) : l'enregistreur de la séance (atelier_boite_noire)
+    écoute /api/sport/request ; sans robot ni faux G1, le diagnostic disait « Le PC voit le faux G1, mais pas tout
+    (1 sur 2) ». infos_sujet ne le compte plus, et la vérification « sujets » est en Problème en Réel comme en
+    répétition ; un vrai abonné (le faux G1) compte toujours."""
+    from unitree_api.msg import Request
+    from atelier.diagnostic import diagnostiquer
+    from atelier.seance.enregistreur import NOEUD_ENREGISTREUR
+    faux = tmp_path / "faux_vide.json"
+    faux.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("ATELIER_DIAGNOSTIC_FAUX", str(faux))
+    pont = PontRos("atelier_pont_test")
+    assert pont.demarrer(), pont.erreur
+    enregistreur = rclpy.create_node(NOEUD_ENREGISTREUR, context=faux_robot.contexte)
+    enregistreur.create_subscription(Request, "/api/sport/request", lambda m: None, 10)
+    outil = rclpy.create_node("_ros2cli_4242", context=faux_robot.contexte)
+    outil.create_subscription(Request, "/api/sport/request", lambda m: None, 10)
+    try:
+        # le nœud du test voit bien les deux abonnés dans le graphe…
+        assert faux_robot.tourner(10, lambda: len(faux_robot.noeud.get_subscriptions_info_by_topic(
+            "/api/sport/request")) >= 2)
+        time.sleep(1.0)
+        # … mais le pont de l'Atelier ne les compte pas
+        assert pont.infos_sujet("/api/sport/request") == {"publieurs": [], "abonnes": []}
+        for mode in ("repetition", "reel"):
+            r = diagnostiquer(mode, pont, source="atelier", rapide=True)
+            sujets = next(v for v in r["verifications"] if v["id"] == "sujets")
+            assert sujets["etat"] == "probleme", (mode, sujets)
+            assert "mais pas tout" not in sujets["detail"], sujets
+        # un vrai abonné (le faux G1) compte toujours
+        jumeau = rclpy.create_node("g1_jumeau", context=faux_robot.contexte)
+        jumeau.create_subscription(Request, "/api/sport/request", lambda m: None, 10)
+        try:
+            assert faux_robot.tourner(10, lambda: (pont.infos_sujet("/api/sport/request") or {}).get("abonnes")
+                                      == ["g1_jumeau"]), pont.infos_sujet("/api/sport/request")
+        finally:
+            jumeau.destroy_node()
+    finally:
+        enregistreur.destroy_node()
+        outil.destroy_node()
+        pont.arreter()
