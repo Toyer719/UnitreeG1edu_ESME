@@ -298,15 +298,17 @@ def test_services():
         return {"code": 0, "services": [{"name": n, "status": s, "protect": False} for n, s in zip(noms, statuts)]}
     v = par_id(juger(faits_robot(services=services(1, 1))))["services"]
     assert v["etat"] == "probleme" and v["action"] == "demarrer-services"
-    assert v["detail"].startswith("lidar_driver et unitree_slam sont arrêtés")            # pas de majuscule
+    # corrections de la vague 6 (revue de l'interface, défaut 16) : le nom en français, puis celui de l'appli
+    # Unitree, une seule fois
+    assert v["detail"] == "Le LiDAR et la cartographie d'Unitree (lidar_driver, unitree_slam) sont arrêtés."
     assert v["donnees"]["services"][0]["name"] == "lidar_driver" and "lidar_driver 1" in v["technique"]
     v = par_id(juger(faits_robot(services=services(0, 1))))["services"]
-    assert v["detail"] == "unitree_slam est arrêté." and v["action"] == "demarrer-services"
+    assert v["detail"] == "La cartographie d'Unitree (unitree_slam) est arrêtée." and v["action"] == "demarrer-services"
     v = par_id(juger(faits_robot(services=services(0, noms=("lidar_driver",)))))["services"]
     assert v["etat"] == "probleme" and v["action"] is None and "« unitree_slam »" in v["detail"].replace(" ", " ")
     v = par_id(juger(faits_robot(services=services(1, noms=("lidar_driver",)))))["services"]
     assert v["action"] == "demarrer-services"
-    assert v["detail"].replace("\u00a0", " ").startswith("lidar_driver est arrêté ; le robot")
+    assert v["detail"].replace("\u00a0", " ").startswith("Le LiDAR (lidar_driver) est arrêté ; le robot")
     for fait in ({"sans_reponse": True, "erreur": "personne n'écoute"}, {"delai_depasse": True},
                  {"code": 3203, "data": ""}, {"code": 0, "data": "x", "illisible": "liste"},
                  {"erreur": "messages unitree_api introuvables"}):
@@ -488,14 +490,18 @@ def test_demarrer_les_services_liste_blanche_seulement():
     assert r["ok"] is True and r["action"] == "demarrer-services"
     assert r["services"] == {"lidar_driver": 0, "unitree_slam": 0}
     assert pont.switchs() == [{"name": "lidar_driver", "switch": 1}, {"name": "unitree_slam", "switch": 1}]
-    assert "démarrés" in r["message"] and pont.robot_state.nombre_interdits == 0
+    assert r["message"].startswith("Les services de cartographie ont démarré en ")
+    assert r["message"].endswith(" s : le scan et le repérage peuvent marcher.")
+    assert "lidar_driver" not in r["message"] and pont.robot_state.nombre_interdits == 0
     # déjà actifs : rien n'est envoyé
     r = faire_action("demarrer-services", "reel", pont=pont)
-    assert r["ok"] is True and "déjà actifs" in r["message"] and len(pont.switchs()) == 2
+    assert r["ok"] is True and len(pont.switchs()) == 2
+    assert r["message"] == "Les services de cartographie sont déjà actifs : rien n'a été envoyé."
     # un seul arrêté, ou un sous-ensemble demandé : seulement celui-là
     pont = FauxPont(arretes=("unitree_slam",), delai_demarrage_s=0.1)
-    faire_action("demarrer-services", "reel", pont=pont)
+    r = faire_action("demarrer-services", "reel", pont=pont)
     assert pont.switchs() == [{"name": "unitree_slam", "switch": 1}]
+    assert r["message"].startswith("La cartographie d'Unitree a démarré en ")
     pont = FauxPont(arretes=("lidar_driver", "unitree_slam"), delai_demarrage_s=0.1)
     faire_action("demarrer-services", "reel", pont=pont, services=["unitree_slam"])
     assert pont.switchs() == [{"name": "unitree_slam", "switch": 1}]
@@ -645,3 +651,21 @@ def test_copies_du_contrat_dans_le_module_de_la_page():
     assert dict(_table(js, "GROUPES_DIAGNOSTIC")) == G.GROUPES_DIAGNOSTIC
     css = (atelier.RACINE / "atelier" / "web" / "css" / "diagnostic.css").read_text(encoding="utf-8")
     assert "z-index: 4000" in css and "var(--h-barre-outils)" in css      # sous la barre d'outils : jamais sur l'ARRÊT
+
+
+def test_noms_des_services_en_francais():
+    """Corrections de la vague 6 (revue de l'interface, défaut 16) : « Démarrer lidar_driver et unitree_slam… » dans la
+    confirmation et « lidar_driver et unitree_slam démarrés en 2 s » après l'action : le nom technique n'est plus écrit
+    qu'une fois, dans le détail de la vérification."""
+    from atelier.lieu.diagnostic import accord_services, majuscule, noms_services
+    assert noms_services(["lidar_driver", "unitree_slam"]) == "le LiDAR et la cartographie d'Unitree"
+    assert noms_services(["unitree_slam"], technique=True) == "la cartographie d'Unitree (unitree_slam)"
+    assert noms_services(["voice"], technique=True) == "« voice »"
+    groupes = (["lidar_driver"], ["unitree_slam"], ["lidar_driver", "unitree_slam"])
+    assert [accord_services(n, "arrêté", "arrêtée", "arrêtés") for n in groupes] == ["arrêté", "arrêtée", "arrêtés"]
+    assert majuscule("le LiDAR") == "Le LiDAR" and majuscule("") == ""
+    assert "lidar_driver" not in G.ACTIONS_DIAGNOSTIC["demarrer-services"]["confirmation"]
+    # un service qui ne démarre pas : le nom de l'appli Unitree, pour le chercher
+    pont = FauxPont(arretes=("lidar_driver",), delai_demarrage_s=60.0)
+    r = A.demarrer_services(pont, delai=0.3)
+    assert r["ok"] is False and r["message"].startswith("Le LiDAR (lidar_driver) n'est pas encore actif après "), r

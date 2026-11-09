@@ -84,7 +84,7 @@ def resultats(etat_services):
 
 def poser_faux_fetch(nav):
     action = {"action": "demarrer-services", "ok": True, "services": {"lidar_driver": 0, "unitree_slam": 0},
-              "message": "lidar_driver et unitree_slam démarrés en 2 s : le scan et le repérage peuvent marcher.",
+              "message": "Les services de cartographie ont démarré en 2 s : le scan et le repérage peuvent marcher.",
               "diagnostic": resultats("actifs")}
     nav.js(FAUX_FETCH, {"diagnostic": resultats("arretes"), "action": action})
 
@@ -122,7 +122,8 @@ def test_accueil_verifier_puis_demarrer_les_services(sans_ros_lo, serveur, navig
     nav.clic("[data-role=diagnostic] [data-action=demarrer-services]")
     nav.attendre("return !!document.querySelector('[data-role=confirmation]')", message="confirmation dans la page")
     confirmation = nav.js("return document.querySelector('[data-role=confirmation]').textContent")
-    assert "lidar_driver et unitree_slam" in confirmation and "ne bouge pas" in confirmation
+    assert "le LiDAR et la cartographie d'Unitree" in confirmation and "ne bouge pas" in confirmation
+    assert "lidar_driver" not in confirmation              # corrections de la vague 6 (défaut 16)
     nav.clic("[data-role=confirmation] [data-role=renoncer]")
     assert not [a for a in nav.js(APPELS) if a["methode"] == "POST"]
     nav.clic("[data-role=diagnostic] [data-action=demarrer-services]")
@@ -135,7 +136,7 @@ def test_accueil_verifier_puis_demarrer_les_services(sans_ros_lo, serveur, navig
                       "corps": {"confirme": True, "mode": "repetition"}}]
     retour = nav.js("const r = document.querySelector('[data-role=diagnostic-retour]');"
                     "return [r.hidden, r.getAttribute('data-genre'), r.textContent]")
-    assert retour[0] is False and retour[1] == "succes" and "démarrés" in retour[2]
+    assert retour[0] is False and retour[1] == "succes" and "ont démarré" in retour[2]
     resume = nav.js("return document.querySelector('[data-role=diagnostic-resume]').getAttribute('data-etat')")
     assert resume in ("attention", "ok")                  # le résumé de l'accueil suit le dernier diagnostic
     # Échap ferme la fenêtre (rien ne tourne : pas d'ARRÊT)

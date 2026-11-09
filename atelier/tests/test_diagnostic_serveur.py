@@ -127,7 +127,7 @@ def test_demarrer_les_services_confirme(client):
     r = client.post("/api/robot/diagnostic/demarrer-services", json={"confirme": True, "mode": "repetition"})
     assert r.status_code == 200, r.text
     reponse = r.json()
-    assert reponse["action"] == "demarrer-services" and reponse["ok"] is True and "démarrés" in reponse["message"]
+    assert reponse["action"] == "demarrer-services" and reponse["ok"] is True and "ont démarré" in reponse["message"]
     assert pont.switchs() == [{"name": "lidar_driver", "switch": 1}, {"name": "unitree_slam", "switch": 1}]
     assert pont.robot_state.nombre_interdits == 0
     d = reponse["diagnostic"]

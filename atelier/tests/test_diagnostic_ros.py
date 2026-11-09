@@ -138,7 +138,8 @@ def test_diagnostic_contre_le_faux_g1(montage):
     assert valider_donnees("diagnostic", d) == [], valider_donnees("diagnostic", d)
     v = par_id(d)
     assert v["services"]["etat"] == "probleme" and v["services"]["action"] == "demarrer-services"
-    assert v["services"]["detail"] == "lidar_driver et unitree_slam sont arrêtés."
+    assert v["services"]["detail"] == ("Le LiDAR et la cartographie d'Unitree (lidar_driver, unitree_slam) sont "
+                                       "arrêtés.")
     assert v["mode"]["etat"] == "ok" and v["mode"]["donnees"]["fsm"] == 501
     assert v["batterie"]["etat"] == "ok" and 80 <= v["batterie"]["donnees"]["soc"] <= 87
     assert v["sujets"]["etat"] == "ok" and v["ros"]["etat"] == "ok"
@@ -175,7 +176,8 @@ def test_g1_diagnostic_en_ligne_de_commande(montage):
     assert r.returncode == 1, r.stderr[-800:]
     d = json.loads(r.stdout)
     assert valider_donnees("diagnostic", d) == [] and d["source"] == "g1-diagnostic"
-    assert par_id(d)["services"]["detail"] == "lidar_driver est arrêté." and par_id(d)["mode"]["etat"] == "ok"
+    assert par_id(d)["services"]["detail"] == "Le LiDAR (lidar_driver) est arrêté."
+    assert par_id(d)["mode"]["etat"] == "ok"
     assert [v["id"] for v in d["verifications"]] == ["ros", "sujets", "services", "mode", "batterie"]
     texte = _g1_diagnostic("--mode", "repetition")
     assert texte.returncode == 1 and "PROBLÈME" in texte.stdout and "g1-diagnostic --action demarrer-services" in \
@@ -192,7 +194,7 @@ def test_g1_diagnostic_action_avec_oui(montage):
     assert r.returncode == 1 and "Rien n'a été envoyé" in r.stdout
     assert len(temoin.services_du_faux_g1(apres=time.monotonic())["switchs"]) == len(avant["switchs"])
     r = _g1_diagnostic("--action", "demarrer-services", "--mode", "repetition", entree="oui\n")
-    assert r.returncode == 0 and "unitree_slam démarré" in r.stdout, r.stdout + r.stderr[-800:]
+    assert r.returncode == 0 and "La cartographie d'Unitree a démarré" in r.stdout, r.stdout + r.stderr[-800:]
     apres = temoin.services_du_faux_g1(apres=time.monotonic())
     assert [(s["name"], s["switch"]) for s in apres["switchs"][len(avant["switchs"]):]] == [("unitree_slam", 1)]
     assert apres["nombre_interdits"] == 0

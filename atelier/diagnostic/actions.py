@@ -15,8 +15,9 @@ Jamais sudo ; pendant les essais (G1_SLAM_FAUX=1), les deux actions du câble ne
 import time
 
 from atelier.lieu.diagnostic import (ACTIONS_DIAGNOSTIC, COMMANDES_ACTIONS, DELAI_APPEL_S, DELAI_SERVICES_S,
-                                     PROFIL_RESEAU, SERVICES_CARTOGRAPHIE, STATUT_ACTIF, lire_liste_services,
-                                     lire_reponse_switch, parametre_service_list, parametre_service_switch)
+                                     PROFIL_RESEAU, SERVICES_CARTOGRAPHIE, STATUT_ACTIF, accord_services,
+                                     lire_liste_services, lire_reponse_switch, majuscule, noms_services,
+                                     parametre_service_list, parametre_service_switch)
 
 from .contexte import EssaisInterdits
 from .verdicts import liste_noms, nombre
@@ -133,14 +134,16 @@ def demarrer_services(pont, services=None, delai=DELAI_SERVICES_S, horloge=time.
     pas_actifs = [n for n in attendus if statuts.get(n) != STATUT_ACTIF]
     resultat = {"services": {n: statuts.get(n) for n in demandes}, "envoyes": envoyes, "duree_s": round(duree, 2)}
     if not a_demarrer and not absents:
-        deja = "sont déjà actifs" if len(demandes) > 1 else "est déjà actif"
-        return dict(resultat, ok=True, message=f"{liste_noms(demandes)} {deja} : rien n'a été envoyé.")
+        deja = (f"{'sont' if len(demandes) > 1 else 'est'} déjà "
+                f"{accord_services(demandes, 'actif', 'active', 'actifs')}")
+        return dict(resultat, ok=True, message=f"{majuscule(_les_services(demandes))} {deja} : rien n'a été envoyé.")
     morceaux = []
-    if refus:
-        morceaux.append(f"le robot a refusé de démarrer {liste_noms(refus)}")
+    if refus:          # en cas d'échec, les noms de l'appli Unitree aident à chercher (Services)
+        morceaux.append(f"le robot a refusé de démarrer {noms_services(refus, technique=True)}")
     if pas_actifs:
-        morceaux.append(f"{liste_noms(pas_actifs)} pas encore actif{'s' if len(pas_actifs) > 1 else ''} après "
-                        f"{nombre(duree, 0)} s")
+        verbe = "ne sont" if len(pas_actifs) > 1 else "n'est"
+        morceaux.append(f"{noms_services(pas_actifs, technique=True)} {verbe} pas encore "
+                        f"{accord_services(pas_actifs, 'actif', 'active', 'actifs')} après {nombre(duree, 0)} s")
     if absents:
         morceaux.append(f"le robot n'a pas de service {liste_noms(f'« {n} »' for n in absents)}")
     if morceaux:
@@ -148,8 +151,16 @@ def demarrer_services(pont, services=None, delai=DELAI_SERVICES_S, horloge=time.
         return dict(resultat, ok=False, message=(texte[0].upper() + texte[1:] + ". Regardez dans l'appli Unitree "
                                                  "Explore (Services), ou réessayez."))
     demarres = [n for n in a_demarrer if n in actifs]
-    return dict(resultat, ok=True, message=(f"{liste_noms(demarres)} {'démarrés' if len(demarres) > 1 else 'démarré'} "
-                                            f"en {nombre(duree, 0)} s : le scan et le repérage peuvent marcher."))
+    return dict(resultat, ok=True, message=(f"{majuscule(_les_services(demarres))} "
+                                            f"{'ont' if len(demarres) > 1 else 'a'} démarré en {nombre(duree, 0)} s : "
+                                            "le scan et le repérage peuvent marcher."))
+
+
+def _les_services(noms):
+    """« les services de cartographie » s'il s'agit des deux, sinon leurs noms en français (corrections de la vague
+    6, revue de l'interface, défaut 16 : « lidar_driver et unitree_slam démarrés en 2 s » à l'écran)."""
+    noms = list(noms)
+    return "les services de cartographie" if sorted(noms) == sorted(SERVICES_CARTOGRAPHIE) else noms_services(noms)
 
 
 def action_cable(action, contexte):

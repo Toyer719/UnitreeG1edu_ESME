@@ -61,8 +61,8 @@ MOTIF_ID_VERIFICATION = re.compile(r"^[a-z][a-z0-9_]{0,39}$")
 ACTIONS_DIAGNOSTIC = {
     "demarrer-services": {
         "libelle": "Démarrer les services de cartographie",
-        "confirmation": ("Démarrer lidar_driver et unitree_slam sur le robot ? Ils servent au scan et au "
-                         "repérage. Le robot ne bouge pas."),
+        "confirmation": ("Démarrer les services de cartographie du robot (le LiDAR et la cartographie "
+                         "d'Unitree) ? Ils servent au scan et au repérage. Le robot ne bouge pas."),
         "verification": "services"},
     "retablir-cable": {
         "libelle": "Rétablir la connexion du câble",
@@ -75,6 +75,10 @@ ACTIONS_DIAGNOSTIC = {
         "verification": "profil"},
 }
 SERVICES_CARTOGRAPHIE = ("lidar_driver", "unitree_slam")     # les seuls que l'Atelier démarre
+# Leurs noms en français, et le genre pour l'accord (corrections de la vague 6, revue de l'interface, défaut 16 :
+# « Démarrer lidar_driver et unitree_slam… » à l'écran) ; le nom technique n'est écrit qu'une fois, dans le détail
+# de la vérification (c'est celui de l'appli Unitree Explore)
+NOMS_SERVICES = {"lidar_driver": ("le LiDAR", "m"), "unitree_slam": ("la cartographie d'Unitree", "f")}
 SERVICE_ROBOT_STATE = "robot_state"                         # /api/robot_state/request et /response
 SUJET_ROBOT_STATE = "/api/robot_state"
 VERSION_API_ROBOT_STATE = "1.0.0.1"
@@ -126,6 +130,29 @@ def parametre_service_switch(nom):
         raise ValueError(f"service « {nom} » interdit : l'Atelier ne démarre que "
                          f"{' et '.join(SERVICES_CARTOGRAPHIE)}")
     return json.dumps({"name": nom, "switch": 1})
+
+
+def noms_services(noms, technique=False):
+    """« le LiDAR et la cartographie d'Unitree » (en minuscule : majuscule() pour un début de phrase) ; avec
+    technique, les noms de l'appli Unitree en plus : « … (lidar_driver, unitree_slam) ». Un service inconnu garde son
+    nom entre guillemets."""
+    noms = list(noms)
+    textes = [NOMS_SERVICES[n][0] if n in NOMS_SERVICES else f"« {n} »" for n in noms]
+    phrase = textes[0] if len(textes) <= 1 else ", ".join(textes[:-1]) + " et " + textes[-1]
+    connus = [n for n in noms if n in NOMS_SERVICES]
+    return phrase + (f" ({', '.join(connus)})" if technique and connus else "")
+
+
+def accord_services(noms, masculin, feminin, pluriel):
+    """Le mot accordé avec ces services : plusieurs, le pluriel ; un seul, son genre (NOMS_SERVICES)."""
+    noms = list(noms)
+    if len(noms) > 1:
+        return pluriel
+    return feminin if noms and NOMS_SERVICES.get(noms[0], ("", "m"))[1] == "f" else masculin
+
+
+def majuscule(texte):
+    return texte[:1].upper() + texte[1:]
 
 
 def verifier_appel_unitree(service, api_id, parametre):
@@ -286,7 +313,8 @@ EXEMPLE_DIAGNOSTIC = diagnostic([
                  action="cable-automatique", technique="nmcli : connection.autoconnect no", duree_s=0.08),
     verification("pc1", "ok", "Le PC1 répond en 0,6 ms.", duree_s=0.01),
     verification("sujets", "ok", "Le PC voit les sujets du robot (marche, odométrie).", duree_s=0.02),
-    verification("services", "probleme", "lidar_driver et unitree_slam sont arrêtés.",
+    verification("services", "probleme",
+                 "Le LiDAR et la cartographie d'Unitree (lidar_driver, unitree_slam) sont arrêtés.",
                  conseil="Cliquez sur « Démarrer les services de cartographie » : sans eux, ni scan ni repérage.",
                  action="demarrer-services", technique="robot_state 1003 : lidar_driver 1, unitree_slam 1",
                  duree_s=0.41, donnees={"services": [{"name": "lidar_driver", "status": 1, "protect": False},

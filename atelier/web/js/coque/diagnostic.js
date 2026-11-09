@@ -33,8 +33,8 @@ export const GROUPES_DIAGNOSTIC = [['reseau', 'Câble et réseau'], ['robot', 'R
 export const ACTIONS_DIAGNOSTIC = {
   'demarrer-services': {
     libelle: 'Démarrer les services de cartographie',
-    confirmation: 'Démarrer lidar_driver et unitree_slam sur le robot ? Ils servent au scan et au repérage. '
-      + 'Le robot ne bouge pas.',
+    confirmation: 'Démarrer les services de cartographie du robot (le LiDAR et la cartographie d\'Unitree) ? Ils '
+      + 'servent au scan et au repérage. Le robot ne bouge pas.',
     ok: 'Démarrer', attente: 'Démarrage… (20 s au plus)',
   },
   'retablir-cable': {

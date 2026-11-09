@@ -11,8 +11,8 @@ Jetson ; sans câble : l'adresse et les pings ; sans réponse du Jetson ou en v�
 """
 from atelier.lieu.diagnostic import (ADRESSES_ROBOT, BATTERIE_ATTENTION, BATTERIE_PROBLEME, ECART_HORLOGE_MAX_S,
                                      PLACE_JETSON_MIN_GO, PROFIL_RESEAU, SERVICES_CARTOGRAPHIE, STATUT_ACTIF,
-                                     SUJETS_SLAM, VERIFICATIONS, VERIFICATIONS_REPETITION, services_arretes,
-                                     verification)
+                                     SUJETS_SLAM, VERIFICATIONS, VERIFICATIONS_REPETITION, accord_services,
+                                     majuscule, noms_services, services_arretes, verification)
 from atelier.lieu.pilotage import DANSE_PREFIXE, MODES_COURSE, MODES_MARCHE, nom_mode
 
 from .sondes import COTES_SUJETS, SUJETS_PAR_MODE
@@ -333,7 +333,8 @@ class Juge:
             self.ajouter("services", "inconnu", f"{qui} ne répond pas quand on lui demande ses services.",
                          conseil=self.conseil_robot_muet(), technique=f.get("erreur"), fait=f)
             return
-        unitree = "Regardez dans l'appli Unitree Explore si lidar_driver et unitree_slam sont actifs."
+        unitree = ("Regardez dans l'appli Unitree Explore (Services) si le LiDAR et la cartographie (lidar_driver, "
+                   "unitree_slam) sont actifs.")
         if f.get("code") != 0:
             self.ajouter("services", "inconnu",
                          f"{qui} refuse de donner la liste de ses services (code {f.get('code')}).",
@@ -352,16 +353,18 @@ class Juge:
         absents = [n for n in SERVICES_CARTOGRAPHIE if n not in statuts]
         arretes = [n for n in services_arretes(services) if n in statuts]
         if not absents and not arretes:
-            self.ajouter("services", "ok", f"{liste_noms(SERVICES_CARTOGRAPHIE)} sont actifs.", technique=technique,
-                         fait=f, donnees=donnees)
+            self.ajouter("services", "ok", f"{majuscule(noms_services(SERVICES_CARTOGRAPHIE, technique=True))} sont "
+                                           "actifs.", technique=technique, fait=f, donnees=donnees)
             return
         morceaux = []
-        if arretes:
-            morceaux.append(f"{liste_noms(arretes)} {'sont arrêtés' if len(arretes) > 1 else 'est arrêté'}")
+        if arretes:     # le nom en français, puis celui de l'appli Unitree (une seule fois, ici)
+            morceaux.append(f"{majuscule(noms_services(arretes, technique=True))} "
+                            f"{'sont' if len(arretes) > 1 else 'est'} "
+                            f"{accord_services(arretes, 'arrêté', 'arrêtée', 'arrêtés')}")
         if absents:
             sujet = qui if not morceaux else qui[0].lower() + qui[1:]
             morceaux.append(f"{sujet} n'a pas de service {liste_noms(f'« {n} »' for n in absents)}")
-        detail = " ; ".join(morceaux) + "."          # les noms des services gardent leur minuscule
+        detail = " ; ".join(morceaux) + "."
         if arretes:
             conseil = "Cliquez sur « Démarrer les services de cartographie » : sans eux, ni scan ni repérage."
         else:
