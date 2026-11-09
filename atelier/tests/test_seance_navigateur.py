@@ -175,7 +175,8 @@ def test_simulation_termine_la_seance_et_nouvelle_seance(seances, serveur, navig
     premiere = _api(base, "/api/seance")["seance"]["id"]
     C.ouvrir_espace(nav, base, "simu")
     nav.attendre("return !!document.querySelector('[data-role=rapport-seance]') && "
-                 "!document.querySelector('[data-role=rapport-seance]').hidden", message="lien du rapport en Simulation")
+                 "!document.querySelector('[data-role=rapport-seance]').hidden",
+                 message="lien du rapport en Simulation")
     assert nav.js(BADGE) is None and _api(base, "/api/seance")["seance"] is None
     m = _api(base, "/api/seances/" + premiere)
     assert m["etat"] == "fermee" and m["fermeture"] == "simulation", m

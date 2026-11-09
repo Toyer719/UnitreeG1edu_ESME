@@ -7,6 +7,7 @@ la batterie, le repérage, les erreurs, les anomalies détectées toutes seules,
 mouvement à la télécommande, scan, pilotage).
 """
 import math
+import re
 from types import SimpleNamespace
 
 import pytest
@@ -141,12 +142,15 @@ def test_erreurs():
                                                ("journaux/serveur.log", "ERROR boom")])
     textes = [e["texte"] for e in liste]
     assert any("refusé (422)" in t and "salles.yaml" in t for t in textes)
-    assert "Failed to make progress" in textes                      # /rosout ERROR ; l'INFO n'y est pas
-    assert not any("Begin navigating" in t for t in textes)
-    (journal,) = [e for e in liste if e["source"] == "journaux/serveur.log"]
+    (nav2,) = [e for e in liste if "Failed to make progress" in (e.get("technique") or "")]   # /rosout ERROR
+    assert nav2["source"] == "La navigation (Nav2)" and nav2["texte"].startswith("La navigation n'avançait plus")
+    assert nav2["technique"] == "nœud controller_server : Failed to make progress"
+    assert not any("Begin navigating" in (e.get("technique") or "") for e in liste)       # l'INFO n'y est pas
+    (journal,) = [e for e in liste if e["source"] == "Journal du serveur de l'Atelier"]
     assert journal["nombre"] == 2                                   # lignes identiques regroupées
+    assert journal["technique"] == "journaux/serveur.log : ERROR boom"
     assert A.lignes_erreur("ok\n[ERROR] [x]: boum\nTraceback (most recent call last):\nrien", "f") == [
-        ("f", "[ERROR] [x]: boum"), ("f", "Traceback (most recent call last):")]
+        ("f", "[ERROR] [x]: boum", False), ("f", "Traceback (most recent call last):", False)]
 
 
 def test_anomalies_de_la_seance_d_essai(lieu):
@@ -323,8 +327,107 @@ def test_erreur_d_un_noeud_recopiee_dans_un_journal_comptee_une_fois():
               SimpleNamespace(level=40, name="bt_navigator", msg="Failed to get result for follow_path"))
     ligne = "[bt_navigator-11] [ERROR] [1794183646.4] [bt_navigator]: Failed to get result for follow_path"
     liste = A.erreurs(d, [], [("journaux/atelier_navigation.log", ligne), ("journaux/serveur.log", "ERROR autre")])
-    assert [(e["source"], e["texte"]) for e in liste] == [
-        ("nœud bt_navigator", "Failed to get result for follow_path"), ("journaux/serveur.log", "ERROR autre")]
+    assert [(e["source"], e["technique"]) for e in liste] == [
+        ("La navigation (Nav2)", "nœud bt_navigator : Failed to get result for follow_path"),
+        ("Journal du serveur de l'Atelier", "journaux/serveur.log : ERROR autre")]
+
+
+# ------------------------------------------------ corrections de la vague 6 (revue de l'interface, défaut 6)
+# Les messages normaux d'un arrêt étaient comptés comme « Erreurs », en anglais, avec les noms des nœuds : la fin du
+# journal de la navigation arrêtée par Simuler › Arrêter (séance 2026-11-09_20h38 du relecteur, raccourcie), et le
+# message de Nav2 juste après « Bloquer » (séance 2026-11-09_06h34).
+JOURNAL_ARRET = """[guide-15] [INFO] [1794254400.1] [guide]: en route
+[ERROR] [faux_lidar-3]: process has died [pid 6800, exit code -11, cmd '/x/faux_lidar'].
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[controller_server-6] [INFO] [1794254427.911022851] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [guide-15]: sending signal 'SIGINT' to process[guide-15]
+[INFO] [detecteur_personnes-14]: sending signal 'SIGINT' to process[detecteur_personnes-14]
+[ERROR] [detecteur_personnes-14]: process has died [pid 6890, exit code -2, cmd '/x/detecteur_personnes --ros-args'].
+[ERROR] [static_transform_publisher-5]: process has died [pid 6872, exit code -2, cmd '/opt/ros/humble/lib/tf2_ros/x'].
+[pilotage-9] Traceback (most recent call last):
+[pilotage-9]   File "/x/pilotage", line 33, in <module>
+[controller_server-6] [INFO] [1794254427.95] [controller_server]: Destroying
+[pilotage-9]     rclpy.spin(noeud)
+[pilotage-9] KeyboardInterrupt
+[ERROR] [pilotage-9]: process has died [pid 6895, exit code 1, cmd '/x/pilotage'].
+[guide-16] Traceback (most recent call last):
+[guide-16]   File "/x/guide", line 33, in <module>
+[guide-16] RuntimeError: Unable to convert call argument to Python object
+[ERROR] [guide-16]: process has died [pid 6896, exit code 1, cmd '/x/guide'].
+[ERROR] [gazebo-1]: process[gazebo-1] failed to terminate '5' seconds after receiving 'SIGINT', escalating to 'SIGTERM'
+[ERROR] [launch]: using SIGTERM can result in orphaned processes
+[INFO] [guide-15]: process has finished cleanly [pid 6892]
+"""
+
+
+def test_un_arret_demande_n_est_pas_une_erreur_dans_les_journaux():
+    lignes = A.lignes_erreur(JOURNAL_ARRET, "journaux/atelier_navigation_2026-11-09_20h4409.log")
+    assert [(re.search(r"\[([a-z_]+-\d+)\]", ligne).group(1), pendant) for _, ligne, pendant in lignes] == [
+        ("faux_lidar-3", False),                     # planté avant l'arrêt : une vraie erreur
+        ("guide-16", True), ("guide-16", True)]      # mal fini pendant l'arrêt (RuntimeError, code 1) : gardé
+    erreurs = A.erreurs(Donnees(), [], lignes)
+    assert [(e["source"], e["texte"]) for e in erreurs] == [
+        ("Journal de la navigation", "Le programme « faux_lidar » s'est arrêté seul (code -11)."),
+        ("Journal de la navigation", "Erreur Python dans le programme « guide » pendant l'arrêt demandé (la suite du "
+                                     "journal dit laquelle)."),
+        ("Journal de la navigation", "Le programme « guide » a mal fini pendant l'arrêt demandé (code 1).")]
+    assert all(e["technique"].startswith("journaux/atelier_navigation_2026-11-09_20h4409.log : [") for e in erreurs)
+    # sans arrêt demandé, le même programme mort de SIGINT reste une erreur
+    seul = "[ERROR] [detecteur_personnes-14]: process has died [pid 6890, exit code -2, cmd 'x']."
+    assert A.lignes_erreur(seul, "f") == [("f", seul, False)]
+
+
+def test_le_message_de_nav2_juste_apres_un_arret_n_est_pas_une_erreur():
+    halt = "Failed to get result for follow_path in node halt!"
+    noeud = "bt_navigator_navigate_through_poses_rclcpp_node"
+    for cause in ("bloquer", "arret", "stop", "guide_stop", "pont_arret", "nouveau_but"):
+        d, actions = Donnees(), []
+        if cause in ("bloquer", "arret", "stop"):
+            actions = [{"genre": cause, "texte": cause, "statut": 200, "t": heure_iso(T0 + 10.0, ms=True)}]
+        elif cause == "guide_stop":
+            d.ajouter("/guide/stop", "std_msgs/msg/Empty", T0 + 10.0, SimpleNamespace())
+        elif cause == "pont_arret":
+            d.ajouter("/pont/arret", "std_msgs/msg/Bool", T0 + 10.0, SimpleNamespace(data=True))
+        else:
+            d.ajouter("/guide/aller", "std_msgs/msg/String", T0 + 10.0, _string({"cible": "cdi"}))
+        # le journal de la navigation seul (ros2 launch date ses lignes) : 0,5 s après l'arrêt, rien ; 50 s après,
+        # sans arrêt, une erreur en français
+        lignes = [("journaux/atelier_navigation.log", f"[bt_navigator-10] [ERROR] [{T0 + s:.6f}] [{noeud}]: {halt}")
+                  for s in (10.5, 60.0)]
+        liste = A.erreurs(d, actions, lignes)
+        assert [(lire_heure(e["t"]), e["source"], e["texte"]) for e in liste] == [
+            (T0 + 60.0, "La navigation (Nav2)", "La navigation a mis du temps à annuler un trajet.")], cause
+        # /rosout : 0,4 s après l'arrêt, rien (ni sa copie dans le journal) ; 30 s après, une erreur
+        d.ajouter("/rosout", "rcl_interfaces/msg/Log", T0 + 10.4, SimpleNamespace(level=40, name=noeud, msg=halt))
+        assert A.erreurs(d, actions, lignes[:1]) == [], cause
+        d.ajouter("/rosout", "rcl_interfaces/msg/Log", T0 + 40.0, SimpleNamespace(level=40, name=noeud, msg=halt))
+        (e,) = A.erreurs(d, actions, lignes[:1])
+        assert (lire_heure(e["t"]), e["technique"]) == (T0 + 40.0, f"nœud {noeud} : {halt}"), cause
+
+
+def test_une_ligne_d_un_journal_d_avant_la_seance_n_est_pas_comptee():
+    avant = f"[controller_server-6] [ERROR] [{T0 - 30.0:.3f}] [controller_server]: Failed to make progress"
+    pendant = f"[controller_server-6] [ERROR] [{T0 + 5.0:.3f}] [controller_server]: Failed to make progress (2)"
+    liste = A.erreurs(Donnees(), [], [("journaux/atelier_navigation.log", avant),
+                                      ("journaux/atelier_navigation.log", pendant)], debut=T0)
+    assert [lire_heure(e["t"]) for e in liste] == [T0 + 5.0]
+
+
+def test_phrases_des_erreurs_en_francais():
+    assert A.de("le serveur de l'Atelier") == "du serveur de l'Atelier" and A.de("la voix") == "de la voix"
+    assert A.de("les programmes") == "des programmes" and A.de("l'Atelier") == "de l'Atelier"
+    assert A.partie_du_journal("journaux/atelier_demo_2026-11-09_20h5129.log") == "la démo d'accueil"
+    assert A.partie_du_journal("journaux/jetson/conteneur_x_avant_arret.log") == "le conteneur du Jetson"
+    assert A.partie_du_journal("journaux/atelier_autre_x.log") == "un programme lancé par l'Atelier"
+    assert A.programme("bt_navigator_navigate_through_poses_rclcpp_node") == "La navigation (Nav2)"
+    assert A.programme("pont_g1") == "Le pont vers la marche" and A.programme("inconnu") == "Un programme"
+    assert A.phrase_erreur("Traceback (most recent call last):", source="journaux/serveur.log") == (
+        "Journal du serveur de l'Atelier", "Erreur Python dans le serveur de l'Atelier (la suite du journal dit "
+                                           "laquelle).")
+    assert A.phrase_erreur("[voix-3] [ERROR] [1.0] [voix]: boum", source="journaux/atelier_voix_x.log") == (
+        "La voix", "Une erreur a été signalée (voir le détail technique).")
+    assert A.phrase_erreur("Planning algorithm GridBased failed to generate a valid path", noeud="planner_server") \
+        == ("La navigation (Nav2)", "La navigation n'a pas trouvé de chemin.")
 
 
 def test_un_etat_de_passage_du_pont_n_a_pas_de_duree():

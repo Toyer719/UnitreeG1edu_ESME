@@ -504,8 +504,8 @@ class GestionnaireSeance:
             if o.journal is not None and fermeture in FERMETURES_NOTEES:
                 try:
                     o.journal.noter({"t": M.heure_iso(ms=True), "methode": "POST", "chemin": "/api/seance/arreter",
-                                      "requete": {"fermeture": fermeture}, "statut": 200, "reponse": None,
-                                      "duree_ms": 0.0, "client": "local"})
+                                     "requete": {"fermeture": fermeture}, "statut": 200, "reponse": None,
+                                     "duree_ms": 0.0, "client": "local"})
                 except Exception:       # noqa: BLE001
                     pass
             # 1. le journal du conteneur du Jetson, si le robot tourne encore (raison fin)

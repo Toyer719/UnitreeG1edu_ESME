@@ -6,7 +6,8 @@ le manifeste et le lieu de la séance, et rendent le contenu de rapport.json :
                       remplace, en_cours), cause, durée, distance, arrêts et leurs causes ;
   etats_pont(...)     le temps passé dans chaque état du pont vers la marche ;
   modes_robot(...)    les modes du robot vus (7001, lus par le pont) ;
-  erreurs(...)        refus de l'Atelier (4xx, 5xx), erreurs des nœuds (/rosout) et des journaux ;
+  erreurs(...)        refus de l'Atelier (4xx, 5xx), erreurs des nœuds (/rosout) et des journaux, en français
+                      (texte d'origine dans technique), sans les messages d'un arrêt demandé ;
   reperage(...)       la précision du repérage (moyenne et pire), les pertes, les sauts ;
   anomalies(...)      détectées toutes seules : mouvement sans demande, robot qui ne répond plus, arrêts
                       d'urgence, séance interrompue, enregistrement coupé, erreurs du serveur, repérage perdu ;
@@ -64,6 +65,55 @@ EVENEMENTS_DEMO_A_REGARDER = ("pause", "visite_echouee")
 SOURCES_POSITION = ("/reperage/etat", "/g1_jumeau/odom", "/odom")
 SOURCES_VITESSE = ("/g1_jumeau/odom", "/state_estimator/odom_pelvis", "/reperage/etat", "/odom")
 MOTIF_ERREUR_JOURNAL = re.compile(r"\[ERROR\]|\bERROR\b|Traceback|\bErreur\b|\bException\b|process has died")
+# Les messages d'un arrêt demandé ne sont pas des erreurs (corrections de la vague 6, revue de l'interface, défaut 6) :
+# - l'Atelier arrête ros2 launch comme Ctrl+C (SIGINT au groupe) : ros2 launch le dit (« user interrupted with
+#   ctrl-c », « sending signal 'SIGINT' to process[…] ») et un programme qui meurt alors de SIGINT ou de SIGTERM
+#   (code -2 ou -15) s'est arrêté normalement ;
+# - Nav2, juste après un ARRÊT, « Bloquer », /guide/stop, le verrou ou un nouveau but : « Failed to get result for
+#   follow_path in node halt! » (le trajet annulé n'a pas rendu son résultat à temps : c'est l'annulation voulue).
+MOTIF_ARRET_LAUNCH = re.compile(r"user interrupted with ctrl-|sending signal '(SIGINT|SIGTERM|SIGKILL)' to process")
+MOTIF_MESSAGE_ARRET_LAUNCH = re.compile(r"\[launch\]: (user interrupted with ctrl-|using SIG[A-Z]+ can result in "
+                                        r"orphaned processes|make sure no processes launched are still running)"
+                                        r"|failed to terminate '[\d.]+' seconds after receiving 'SIG")
+MOTIF_EXCEPTION_ARRET = re.compile(r"^(KeyboardInterrupt|(rclpy\.executors\.)?ExternalShutdownException)\b")
+MOTIF_TRACEBACK = re.compile(r"^(\[([^\]\s]+?)(-\d+)?\] )?Traceback \(most recent call last\)")
+MOTIF_PROCESSUS_MORT = re.compile(r"\[([^\]\s]+)\]: process has died \[pid \d+, exit code (-?\d+)")
+CODES_ARRET_DEMANDE = (-2, -15)                  # SIGINT, SIGTERM
+MOTIF_HALT_NAV2 = re.compile(r"in node halt\b")
+FENETRE_HALT_S = 2.0                             # après l'arrêt demandé
+MARGE_HALT_S = 0.5                               # avant : les heures du bag et du journal des actions diffèrent un peu
+MOTIF_HEURE_ROS = re.compile(r"\[(\d{10}\.\d+)\]")      # « [1794254427.911] » des journaux de ros2 launch
+MOTIF_NOEUD_JOURNAL = re.compile(r"\[([A-Za-z_][\w./]*)\]: ")
+# « Où » et « ce qui s'est passé » en français (le texte d'origine va dans « Détail technique »)
+PROGRAMMES = (
+    (re.compile(r"^(bt_navigator|controller_server|planner_server|behavior_server|smoother_server|"
+                r"velocity_smoother|collision_monitor|waypoint_follower|lifecycle_manager|map_server|"
+                r"costmap|global_costmap|local_costmap|filter_mask_server|amcl|nav2)"), "La navigation (Nav2)"),
+    (re.compile(r"^guide"), "Le guide"),
+    (re.compile(r"^pont_g1"), "Le pont vers la marche"),
+    (re.compile(r"^(odom_vers_tf|relais|lien|repere_|reperage)"), "Le repérage"),
+    (re.compile(r"^accueil"), "La démo d'accueil"),
+    (re.compile(r"^voix"), "La voix"),
+    (re.compile(r"^pilotage"), "Le pilotage"),
+    (re.compile(r"^(g1_jumeau|jumeau|moteur_unitree)"), "Le faux G1"),
+    (re.compile(r"^(detecteur_personnes|nuage_vers_scan)"), "La détection des personnes"),
+    (re.compile(r"^(gazebo|gz|ign|pont_gz|pont_pietons|pietons|faux_visiteur|apparition_)"), "La simulation"),
+    (re.compile(r"^camera"), "La caméra"),
+    (re.compile(r"^dialogue"), "Le dialogue de l'équipe"),
+    (re.compile(r"^atelier"), "L'Atelier"),
+)
+JOURNAUX_ROLES = {"navigation": "la navigation", "simulation": "la simulation", "demo": "la démo d'accueil",
+                  "voix": "la voix", "seance": "l'enregistrement de la séance", "pilotage": "le pilotage",
+                  "scan": "le scan", "camera": "la caméra", "visiteurs": "la détection des visiteurs",
+                  "equipe": "l'équipe"}
+MESSAGES_CONNUS = (
+    (re.compile(r"Failed to make progress"), "La navigation n'avançait plus (robot bloqué ou passage encombré)."),
+    (re.compile(r"in node halt\b"), "La navigation a mis du temps à annuler un trajet."),
+    (re.compile(r"Failed to cancel action server"), "La navigation n'a pas pu annuler un trajet à temps."),
+    (re.compile(r"(?i)failed to create (a )?plan|no valid path|planning algorithm .* failed"),
+     "La navigation n'a pas trouvé de chemin."),
+    (re.compile(r"(?i)goal (failed|was aborted)|\baborting\b"), "La navigation a abandonné un trajet."),
+)
 
 
 def heure(t):
@@ -373,9 +423,93 @@ def _detail(reponse):
     return ""
 
 
-def erreurs(donnees, actions, lignes_journaux=()):
-    """[{t, source, texte, nombre}] : refus de l'Atelier (4xx, 5xx), erreurs des nœuds (/rosout, ERROR et FATAL,
-    regroupées), lignes d'erreur des journaux (regroupées) ; ERREURS_MAX au plus."""
+def programme(noeud):
+    """Le nom en français du programme d'un nœud ROS (« bt_navigator… » → « La navigation (Nav2) »)."""
+    for motif, nom in PROGRAMMES:
+        if motif.search(noeud or ""):
+            return nom
+    return "Un programme"
+
+
+def de(groupe):
+    """« de » devant un groupe nominal : « le serveur » → « du serveur », « la navigation » → « de la navigation »."""
+    if groupe.startswith("le "):
+        return "du " + groupe[3:]
+    if groupe.startswith("les "):
+        return "des " + groupe[4:]
+    return "de " + groupe
+
+
+def partie_du_journal(source):
+    """De quoi parle un journal de la séance, en français (« journaux/atelier_navigation_….log » → « la
+    navigation »)."""
+    nom = str(source).rsplit("/", 1)[-1]
+    if str(source).startswith("journaux/jetson/"):
+        return "le conteneur du Jetson"
+    if nom.startswith("serveur"):
+        return "le serveur de l'Atelier"
+    if nom.startswith("rapport"):
+        return "le rapport"
+    m = re.match(r"atelier_([a-z]+)_", nom)
+    if m:
+        return JOURNAUX_ROLES.get(m.group(1), "un programme lancé par l'Atelier")
+    return "un programme"
+
+
+def phrase_erreur(message, noeud=None, source=None, pendant_arret=False):
+    """(où, ce qui s'est passé) en français d'une erreur d'un nœud (/rosout) ou d'une ligne d'un journal (fonction
+    pure) ; pendant_arret : la ligne vient après l'arrêt demandé du programme (lignes_erreur). Le texte d'origine
+    reste dans « Détail technique »."""
+    partie = partie_du_journal(source) if source else None
+    ou_journal = ("Journal " + de(partie)) if partie else "Un programme"
+    mort = MOTIF_PROCESSUS_MORT.search(message)
+    if mort:
+        nom = re.sub(r"-\d+$", "", mort.group(1))
+        if pendant_arret:
+            return ou_journal, f"Le programme « {nom} » a mal fini pendant l'arrêt demandé (code {mort.group(2)})."
+        return ou_journal, f"Le programme « {nom} » s'est arrêté seul (code {mort.group(2)})."
+    tb = MOTIF_TRACEBACK.search(message)
+    if tb or "Traceback" in message:
+        qui = (f"le programme « {tb.group(2)} »" if tb and tb.group(2)
+               else (partie if partie == "le serveur de l'Atelier" else "un programme"))
+        quand = " pendant l'arrêt demandé" if pendant_arret else ""
+        return ou_journal, f"Erreur Python dans {qui}{quand} (la suite du journal dit laquelle)."
+    if noeud is None and source:
+        n = MOTIF_NOEUD_JOURNAL.findall(message)
+        noeud = n[-1] if n else None
+    qui = programme(noeud) if noeud else ou_journal
+    for motif, phrase in MESSAGES_CONNUS:
+        if motif.search(message):
+            return qui, phrase
+    if pendant_arret:
+        return qui, "Une erreur a été signalée pendant l'arrêt demandé (voir le détail technique)."
+    return qui, "Une erreur a été signalée (voir le détail technique)."
+
+
+def moments_d_arret(donnees, actions):
+    """[t] où un trajet de Nav2 est annulé exprès : ARRÊT, « Bloquer », « Arrêter le trajet » (journal des actions),
+    /guide/stop, /pont/arret vrai, un nouveau /guide/aller (le but d'avant est remplacé)."""
+    moments = [t for t, _ in _actions(actions, ("arret", "bloquer", "stop"))]
+    moments += list(donnees.serie("vides", "/guide/stop"))
+    moments += [t for t, v in donnees.serie("booleens", "/pont/arret") if v]
+    moments += [t for t, _ in donnees.serie("json", "/guide/aller")]
+    moments += [t for t, _ in donnees.serie("textes", "/guide/aller")]
+    return sorted(moments)
+
+
+def arret_demande_nav2(t, message, moments):
+    """Vrai pour le message de Nav2 d'un trajet annulé exprès (« … in node halt! » au plus FENETRE_HALT_S après un
+    arrêt demandé) : ce n'est pas une erreur."""
+    return (t is not None and bool(MOTIF_HALT_NAV2.search(message))
+            and any(m - MARGE_HALT_S <= t <= m + FENETRE_HALT_S for m in moments))
+
+
+def erreurs(donnees, actions, lignes_journaux=(), debut=None):
+    """[{t, source, texte, nombre, technique}] : refus de l'Atelier (4xx, 5xx), erreurs des nœuds (/rosout, ERROR et
+    FATAL, regroupées), lignes d'erreur des journaux (regroupées ; lignes_journaux : (source, ligne) ou (source,
+    ligne, pendant_arret) de lignes_erreur) ; ERREURS_MAX au plus. source et texte sont en français, technique garde
+    le message d'origine ; les messages d'un arrêt demandé n'y sont pas (arret_demande_nav2, lignes_erreur), ni les
+    lignes datées d'avant le début de la séance (debut : un journal copié commence au lancement de sa commande)."""
     liste = []
     for a in actions:
         statut = a.get("statut")
@@ -384,33 +518,83 @@ def erreurs(donnees, actions, lignes_journaux=()):
             liste.append({"t": a.get("t"), "source": "Atelier", "nombre": 1, "statut": statut,
                           "texte": f"{a.get('texte', '?')} : {genre} ({statut})"
                                    + (f" : {_detail(a.get('reponse'))}" if _detail(a.get("reponse")) else "")})
-    vus = {}
+    moments = moments_d_arret(donnees, actions)
+    avant = (lambda t: debut is not None and t is not None and t < debut - 1.0)     # noqa: E731
+    vus, ignores = {}, []
     for t, niveau, noeud, message in donnees.journal:
         if niveau < 40:
+            continue
+        if arret_demande_nav2(t, message, moments) or avant(t):
+            ignores.append(message)
             continue
         cle = (noeud, message[:160])
         if cle in vus:
             vus[cle]["nombre"] += 1
             continue
-        vus[cle] = {"t": heure(t), "source": f"nœud {noeud}", "nombre": 1, "texte": message[:300]}
+        ou, texte = phrase_erreur(message, noeud=noeud)
+        vus[cle] = {"t": heure(t), "source": ou, "nombre": 1, "texte": texte,
+                    "technique": f"nœud {noeud} : {message[:300]}"}
         liste.append(vus[cle])
-    deja = [m for (_, m) in vus]               # messages des nœuds : la même erreur recopiée dans un journal
-    for source, ligne in lignes_journaux:
+    deja = [m for (_, m) in vus] + ignores      # messages des nœuds : la même erreur recopiée dans un journal
+    for source, ligne, *reste in lignes_journaux:
         cle = (source, ligne[:160])
         if cle in vus:
             vus[cle]["nombre"] += 1
             continue
         if any(m and m in ligne for m in deja):
             continue
-        vus[cle] = {"t": None, "source": source, "nombre": 1, "texte": ligne[:300]}
+        h = MOTIF_HEURE_ROS.search(ligne)
+        t = float(h.group(1)) if h else None
+        if arret_demande_nav2(t, ligne, moments) or avant(t):
+            continue
+        ou, texte = phrase_erreur(ligne, source=source, pendant_arret=bool(reste and reste[0]))
+        vus[cle] = {"t": heure(t) if t else None, "source": ou, "nombre": 1, "texte": texte,
+                    "technique": f"{source} : {ligne[:300]}"}
         liste.append(vus[cle])
     liste.sort(key=lambda e: lire_heure(e["t"]) or float("inf"))
     return liste[:ERREURS_MAX]
 
 
+def _exception_du_traceback(lignes, i):
+    """La ligne de l'exception (« KeyboardInterrupt », « RuntimeError: … ») du Traceback de la ligne i, en suivant les
+    lignes du même programme (préfixe « [guide-16] » de ros2 launch : les sorties des programmes se mêlent)."""
+    prefixe = re.match(r"^(\[[^\]\s]+\] )?", lignes[i]).group(0)
+    for x in lignes[i + 1:i + 400]:
+        if not x.startswith(prefixe):
+            continue
+        contenu = x[len(prefixe):]
+        if not contenu.strip() or contenu[0] in " \t" or contenu.startswith(("Traceback", "During handling",
+                                                                             "The above exception")):
+            continue
+        return contenu.strip()
+    return None
+
+
 def lignes_erreur(texte, source):
-    """[(source, ligne)] des lignes d'erreur d'un journal (fonction pure)."""
-    return [(source, x.strip()) for x in texte.splitlines() if MOTIF_ERREUR_JOURNAL.search(x)]
+    """[(source, ligne, pendant_arret)] des lignes d'erreur d'un journal (fonction pure). Une fois que ros2 launch a
+    reçu Ctrl+C ou envoie un signal à ses programmes (MOTIF_ARRET_LAUNCH, pendant_arret vrai ensuite), ne sont pas
+    des erreurs : les messages de ros2 launch sur cet arrêt, un programme qui meurt de SIGINT ou de SIGTERM
+    (CODES_ARRET_DEMANDE) ou après un Traceback de KeyboardInterrupt (ou ExternalShutdownException), et ce
+    Traceback."""
+    lignes, arret, finis = [], False, set()
+    textes = texte.splitlines()
+    for i, x in enumerate(textes):
+        if MOTIF_ARRET_LAUNCH.search(x):
+            arret = True
+        if not MOTIF_ERREUR_JOURNAL.search(x):
+            continue
+        if arret and MOTIF_MESSAGE_ARRET_LAUNCH.search(x):
+            continue
+        tb = MOTIF_TRACEBACK.search(x)
+        if arret and tb and MOTIF_EXCEPTION_ARRET.search(_exception_du_traceback(textes, i) or ""):
+            finis.add(tb.group(2))
+            continue
+        mort = MOTIF_PROCESSUS_MORT.search(x)
+        if arret and mort and (int(mort.group(2)) in CODES_ARRET_DEMANDE
+                               or re.sub(r"-\d+$", "", mort.group(1)) in finis):
+            continue
+        lignes.append((source, x.strip(), arret))
+    return lignes
 
 
 # ---------------------------------------------------------------- demandes et anomalies
@@ -719,7 +903,7 @@ def analyser(manifeste, actions, donnees, lieu=None, lignes_journaux=(), infos_b
     fin = lire_heure(m.get("fin")) or donnees.fin
     trajets_vus = trajets(donnees, actions, lieu, fin_seance=fin)
     anomalies_vues = anomalies(donnees, actions, m, trajets_vus)
-    erreurs_vues = erreurs(donnees, actions, lignes_journaux)
+    erreurs_vues = erreurs(donnees, actions, lignes_journaux, debut=debut)
     source, pts = positions(donnees)
     rapport = {
         "version": VERSION_RAPPORT, "seance": m.get("id"), "mode": m.get("mode"), "lieu": m.get("lieu"),

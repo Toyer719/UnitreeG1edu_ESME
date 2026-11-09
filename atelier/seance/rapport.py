@@ -390,7 +390,7 @@ def en_bref(r):
              f"pendant les trajets ; {nombre(s.get('distance_totale_m', 0.0))} m en tout"),
             ("Arrêts d'urgence", nombre(s.get("arrets_urgence", 0), 0), "ARRÊT et verrous du pont"),
             ("Anomalies", nombre(a_regarder, 0), "à regarder" if a_regarder else "rien d'anormal"),
-            ("Erreurs", nombre(s.get("erreurs", 0), 0), "refus, erreurs des nœuds et des journaux"),
+            ("Erreurs", nombre(s.get("erreurs", 0), 0), "refus de l'Atelier, erreurs des programmes"),
             ("Batterie", batt, "début → fin de la séance")]
 
 
@@ -448,6 +448,12 @@ def texte_markdown(r):
         lignes += ["| Heure | Où | Ce qui s'est passé | Fois |", "|---|---|---|---|"]
         lignes += [f"| {heure_courte(e.get('t')) if e.get('t') else '—'} | {e.get('source')} | "
                    f"{str(e.get('texte')).replace('|', '/')} | {e.get('nombre', 1)} |" for e in erreurs]
+        techniques = [e for e in erreurs if e.get("technique")]
+        if techniques:          # le message d'origine, replié (anglais, noms des programmes)
+            lignes += ["", "<details><summary>Détail technique</summary>", ""]
+            lignes += [f"- {heure_courte(e.get('t')) if e.get('t') else '—'} : "
+                       f"{str(e['technique']).replace('<', '‹').replace('>', '›')}" for e in techniques]
+            lignes += ["", "</details>"]
     diag = r.get("diagnostic")
     lignes += ["", "## Diagnostic du début", ""]
     if not diag:
@@ -490,6 +496,8 @@ h2 { font-size: 1.2rem; margin: 32px 0 10px; padding-bottom: 4px; border-bottom:
 .anomalie[data-gravite=attention] { border-left-color: var(--attention); }
 .anomalie-tete { font-weight: 600; }
 .technique { color: var(--encre-3); font-size: 0.8rem; }
+details.technique { margin-top: 2px; overflow-wrap: anywhere; }
+details.technique summary { cursor: pointer; }
 .rien { color: var(--encre-2); }
 figure { margin: 0 0 12px; }
 figure img { width: 100%; height: auto; border: 1px solid var(--trait); border-radius: 12px;
@@ -630,8 +638,10 @@ def texte_html(r, png=None):
         ajouter("<table data-role=\"erreurs\"><thead><tr><th>Heure</th><th>Où</th><th>Ce qui s'est passé</th>"
                 "<th class=\"nombre\">Fois</th></tr></thead><tbody>")
         for e in erreurs:
+            technique = (f"<details class=\"technique\"><summary>Détail technique</summary>{_e(e['technique'])}"
+                         "</details>" if e.get("technique") else "")
             ajouter(f"<tr><td class=\"heure\">{_e(heure_courte(e.get('t')) if e.get('t') else '—')}</td>"
-                    f"<td>{_e(e.get('source'))}</td><td>{_e(e.get('texte'))}</td>"
+                    f"<td>{_e(e.get('source'))}</td><td>{_e(e.get('texte'))}{technique}</td>"
                     f"<td class=\"nombre\">{_e(e.get('nombre', 1))}</td></tr>")
         ajouter("</tbody></table>")
     ajouter("<h2>Diagnostic du début</h2>")

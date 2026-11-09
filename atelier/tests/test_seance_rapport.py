@@ -96,12 +96,32 @@ def test_les_donnees_sont_echappees_dans_le_html(tmp_path):
                       "resultat": "arrive", "cause": None, "debut": M.heure_iso(T0), "duree_s": 3, "distance_m": 1.0,
                       "arrets": [{"t": M.heure_iso(T0), "cause": "<i>c</i>"}]}],
          "anomalies": [{"t": None, "genre": "x", "gravite": "probleme", "texte": "<script>x</script>"}],
-         "erreurs": [{"t": None, "source": "<u>s</u>", "texte": "<a>t</a>", "nombre": 1}],
+         "erreurs": [{"t": None, "source": "<u>s</u>", "texte": "<a>t</a>", "nombre": 1,
+                      "technique": "<iframe src=x>"}],
          "chronologie": [{"t": M.heure_iso(T0), "depuis_s": 0, "genre": "action", "texte": "<svg onload=x>",
                           "gravite": "info"}], "fichiers": ["<f>"], "resume": {}, "etats_pont": {"<e>": 3.0}}
     page = R.texte_html(r)
     assert "<script>" not in page and "<img" not in page and "<svg" not in page and "<b>x" not in page
+    assert "<iframe" not in page and "&lt;iframe src=x&gt;" in page
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
+    assert "<iframe" not in R.texte_markdown(r)
+
+
+def test_erreurs_en_francais_et_detail_technique_replie():
+    """Corrections de la vague 6 (revue de l'interface, défaut 6) : la phrase française dans le tableau, le message
+    d'origine (anglais, noms des programmes) replié sous « Détail technique », dans le HTML et le Markdown."""
+    r = {"seance": "2026-11-12_14h03", "debut": M.heure_iso(T0), "mode": "repetition", "resume": {"erreurs": 1},
+         "erreurs": [{"t": M.heure_iso(T0 + 5), "source": "Journal de la navigation", "nombre": 1,
+                      "texte": "Le programme « guide » s'est arrêté seul (code -11).",
+                      "technique": "journaux/atelier_navigation.log : [ERROR] [guide-16]: process has died"}]}
+    page = R.texte_html(r)
+    assert ("<td>Le programme « guide » s&#x27;est arrêté seul (code -11).<details class=\"technique\"><summary>"
+            "Détail technique</summary>journaux/atelier_navigation.log : [ERROR] [guide-16]: process has died"
+            "</details></td>" in page)
+    md = R.texte_markdown(r)
+    assert "| Journal de la navigation | Le programme « guide » s'est arrêté seul (code -11). | 1 |" in md
+    assert "<details><summary>Détail technique</summary>" in md and "[guide-16]: process has died" in md
+    assert ("Erreurs", "1", "refus de l'Atelier, erreurs des programmes") in R.en_bref(r)
 
 
 def test_bag_d_un_atelier_qui_a_plante(tmp_path):
