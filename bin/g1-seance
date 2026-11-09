@@ -10,4 +10,9 @@ source "$HOME/robot-g1/setup/env.sh"
 PY="$RACINE/.venv-projet/bin/python"
 [ -x "$PY" ] || PY="$HOME/robot-g1/.venv-projet/bin/python"
 export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+# L'enregistreur et le rapport ne travaillent que dans le dossier de la séance : ils ne gardent pas le dossier des
+# lieux de l'Atelier qui les lance (les essais comptent les programmes restés lancés avec leurs lieux)
+case "$1" in
+  enregistrer|rapport) unset ATELIER_LIEUX ;;
+esac
 exec "$PY" -m atelier.seance "$@"
