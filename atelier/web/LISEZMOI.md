@@ -73,8 +73,10 @@ le robot** (le diagnostic) et son menu Avancé a **Terminer la séance** et **Ra
   (`[data-role=seance]`, un point rouge qui bat pendant l'enregistrement ; son menu : Terminer la séance, rapports des
   dernières séances) et **Vérifier le robot** (`[data-role=verifier-robot]`, l'icône et la pastille du dernier
   diagnostic). Les pastilles d'état ne rétrécissent jamais : les listes du lieu et de l'étage d'abord, puis la marque
-  (sous 1440 px), le texte d'« Enregistrer » et de ROS 2 (sous 1366 px) ; le texte du badge et de « Vérifier »
-  n'apparaît qu'à partir de 1800 px.
+  (sous 1600 px), le texte d'« Enregistrer » (sous 1440 px en Réel, 1366 px en Simulation) et de ROS 2 (sous
+  1366 px) ; le badge dit « Séance » de 1366 à 1799 px et « Enregistrement » à partir de 1800 px, « Vérifier » écrit
+  son texte dès 1700 px (corrections de la vague 6, plan 13.14). En Réel sans séance ouverte (après « Terminer la
+  séance »), « Nouvelle séance » (`[data-role=nouvelle-seance]`) en ouvre une.
 - **Échap et les fenêtres des modules** : une fenêtre ou une incrustation qu'Échap ferme porte `data-ferme-echap`
   (fenêtre du diagnostic, adresse de la borne en grand) ; la coque la compte comme un menu (`echapServi`) : Échap la
   ferme sans ARRÊT tant que le robot ne bouge pas.
