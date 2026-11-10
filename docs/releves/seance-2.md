@@ -5,14 +5,17 @@ c'est un message, et OK ou NON. Pour les mesures (étape M), **copie la sortie d
 notes libres, en bas.
 
 **Version du robot (appli Unitree Explore) :**
-**Services `unitree_slam` et `lidar_driver` actifs :**
+**Services `unitree_slam` et `lidar_driver` : arrêtés au début ? démarrés par « Vérifier le robot » (A2) ? :**
 **Batterie au début / à la fin :**
 **Lieu : même croix que le 27/10 ? (oui / non) :**
+**Heures de début des étapes** (pour retrouver chaque essai dans le rapport de séance) : A … · M … · C … ·
+D … · E … · F … · G … · H … · P … · V … · Fin …
 
 | N° | Point vérifié | Attendu | Constaté | OK ? |
 |---|---|---|---|---|
-| A | Branchement, `g1-etat` | « Connecté », batterie | | |
-| A2 | Vérifier le robot (accueil Robot réel, ou `g1-diagnostic`) | tout OK, ou l'action proposée faite (services de cartographie) ; durée (moins de 10 s) ; lignes pas OK et leur texte | | |
+| A1 | Branchement, `robot.sh`, l'Atelier lancé pour la journée | « le robot répond » ; l'Atelier s'ouvre | | |
+| A2 | Vérifier le robot (accueil Robot réel ; secours : `g1-diagnostic`) | durée (10 s environ) ; batterie ; lignes pas OK et leur texte ; « Démarrer les services de cartographie » : démarrés en … s, puis tout OK | | |
+| A3 | Ouvrir la séance (lieu « Séance robot ») | badge « ● Enregistrement » (ou « Séance ») ; heure | | |
 | M0 | Pont en consignes brutes, `/pont/etat` | `pret`, `mode_robot.fsm` 501 en marche | | |
 | M1 | Seuil en avant : 0,12, 0,15, 0,18, 0,2 m/s | vitesse atteinte de chaque essai ; seuil | | |
 | M2 | Seuil de côté : 0,12 à 0,2 m/s, et −0,15 | vitesse atteinte ; seuil | | |
@@ -26,7 +29,7 @@ notes libres, en bas.
 | C5 | Télécommande pendant que le pont envoie | **la télécommande gagne** | | |
 | C6 | Robot assis, ordre de marche | `pas_en_marche` (« assis »), aucun pas ; retour en marche : `pret` sans mouvement | | |
 | C7 | `/guide/stop`, puis verrou `/pont/arret` | arrêt net ; immobile sous verrou | | |
-| D | `g1-jetson verifier`, `envoyer` | OK ; durée d'`envoyer` ; caméra « USB 5000 Mbit/s », groupe ; sujets du robot vus du conteneur | | |
+| D | `g1-jetson envoyer`, `verifier`, puis Vérifier le robot | durée d'`envoyer` ; caméra « USB 5000 Mbit/s », groupe ; sujets du robot vus du conteneur ; lignes du Jetson et de la caméra OK | | |
 | E1 | Repérer (1804) depuis l'Atelier | « Repéré » en moins de 20 s ; texte de la réponse | | |
 | E2 | `/unitree/slam_relocation/odom` et `/points` | fréquences | | |
 | E3 | Précision, 3 mesures au mètre ruban | moins de 10 cm | | |
@@ -42,14 +45,17 @@ notes libres, en bas.
 | G4 | `g1-visiteurs` : cadres sur l'image | un cadre par personne | | |
 | G5 | Distances à 1, 2, 3 et 4 m | distances affichées ; correction calculée | | |
 | G6 | Champ de vision à 1 m | largeur vue (m) ; champ (°) | | |
-| H | Nouveau scan lent (sans l'adopter) | durée, distance, points ; murs, tables ; ni dédoublé ni tourné | | |
+| H | Naviguer › Arrêter, puis nouveau scan lent (sans l'adopter) | journal du conteneur gardé par la boîte noire (`conteneur_…_avant_arret.log`) ; durée, distance, points ; murs, tables ; ni dédoublé ni tourné | | |
 | P1 | Pilotage : prendre la main, Démarrer | mode lu | | |
 | P2 | Joystick à peine incliné | marche à 0,2 m/s | | |
 | P3 | ARRÊT, joystick toujours tenu | arrêt ; le manche tenu ne relance pas le robot | | |
 | P4 | Danse 604 depuis 501, au portique | durée ; mode à la fin (501 ou 801) | | |
-| V | Option : voix du robot (Essayer, haut-parleur) et démo d'accueil (borne sur un téléphone) | son net, délai, volume ; français de la synthèse d'Unitree ; une visite ; pause sur ARRÊT, rien ne repart seul | | |
-| Fin | Journaux du conteneur gardés, `g1-jetson arreter` | journal enregistré ; arrêt propre, conteneur retiré | | |
-| Z | Terminer la séance, rapport, `g1-seance exporter derniere` | rapport écrit ; `.zip` dans `docs/releves/` | | |
+| P5 | Journal du pilotage gardé, `g1-jetson arreter` | `seance-2_pilotage.log` écrit ; arrêt propre, conteneur retiré | | |
+| V1 | Option : la voix par le haut-parleur du robot, à 20 % puis de 10 en 10 ; la synthèse du robot | son net (sans craquement) ; délai avant le son ; volume retenu ; la synthèse du robot parle-t-elle français ? | | |
+| V2 | Option : démo d'accueil (borne sur le PC ou le téléphone), une visite « Essai à 2,5 m », puis ARRÊT pendant une visite | salutation, accompagnement, arrivée, retour seul ; pause sur ARRÊT ; rien ne bouge au « Débloquer » ; « Ramener à l'accueil » | | |
+| Fin | Plus rien sur le Jetson (`g1-jetson etat`) | « aucun conteneur g1-jetson » (sinon journal gardé, puis `g1-jetson arreter`) | | |
+| Z1 | Terminer la séance, rapport de séance | rapport en moins d'une minute ; « À regarder en premier » : ce qui étonne (les mouvements à la main de M, C, E3 et H sont attendus) | | |
+| Z2 | `g1-seance exporter derniere --sortie …` | `seance-2_boite_noire.zip` dans `docs/releves/` (une par séance du jour) ; taille | | |
 
 ## Notes libres
 
