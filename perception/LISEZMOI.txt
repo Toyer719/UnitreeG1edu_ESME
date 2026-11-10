@@ -1,0 +1,80 @@
+LE PROJET - G1 robot d'accueil JPO : perception
+================================================
+
+Test 1 : detection de personnes YOLO (yolo11n, COCO classe "person") sur webcam.
+
+Lancer (fenetre, webcam 0) :
+    cd ~/unitree/perception && .venv/bin/python detect_personnes.py
+Touches : q/Echap quitter, s capture.
+Options : --model yolo11s.pt (plus precis), --conf 0.5, --imgsz 416, --no-track,
+          --source 2 (autre camera), --headless 60 (test sans fenetre).
+
+Environnement (installe le 2026-11-10) :
+- venv .venv cree avec --without-pip --system-site-packages (python3-venv absent),
+  pip amorce depuis ~/.local. Reutilise torch 2.14.1+cpu / numpy 2.2.6 de ~/.local.
+- ultralytics 8.4.208 dans le venv.
+- PIEGE : pip installe torchvision CUDA -> "operator torchvision::nms does not exist".
+  Correctif : .venv/bin/python -m pip install --force-reinstall --no-deps \
+      torchvision==0.29.2 --index-url https://download.pytorch.org/whl/cpu
+
+Resultat test headless : ~31 FPS sur l'Iris Xe (CPU), 640x480, imgsz 416.
+
+Test 2 : memoire des personnes (2026-11-10)
+-------------------------------------------
+Probleme : l'id du tracker (ByteTrack) meurt quand la personne sort du champ -> nouvel id au retour.
+Solution : reconnaissance faciale OpenCV (memoire_visages.py)
+  - YuNet trouve le visage dans la boite de la personne, SFace en fait une signature (128 nombres)
+  - comparaison cosinus a la galerie -> identifiant persistant P1, P2... (seuil --seuil 0.42)
+  - plusieurs signatures par personne (angles/eclairages differents, max 20)
+  - re-verification toutes les 15 images (si le tracker echange deux personnes)
+  - tracker_accueil.yaml : track_buffer 90 (3 s) au lieu de 30 -> tolere les courtes occultations
+Affichage : vert "P3" = reconnu ; orange "?" = visage pas encore vu (de dos, trop loin).
+Touche r = oublier tout le monde.
+Limites : il faut voir le visage (de face, > 40 px ≈ moins de 3-4 m avec la webcam).
+VIE PRIVEE (RGPD, donnees biometriques) : galerie en RAM seulement, rien sur disque, effacee a la
+fermeture. Ne PAS ajouter de sauvegarde de la galerie sans consentement des visiteurs.
+Tests : vue miroir + nouvelles pistes -> meme P (sim 0.84-0.95) ; deux personnes differentes sim 0.06.
+
+Modeles (non suivis par git, a retelecharger sur un nouveau PC) :
+  cd ~/unitree/perception && mkdir -p models && cd models
+  for u in face_detection_yunet/face_detection_yunet_2023mar.onnx face_recognition_sface/face_recognition_sface_2021dec.onnx; do
+    curl -sSL -o $(basename $u) https://media.githubusercontent.com/media/opencv/opencv_zoo/main/models/$u; done
+
+Test 3 : reconnaissance de plus loin (2026-11-10)
+------------------------------------------------
+Retour utilisateur : "si t'es un peu loin il ne te reconnait pas" (visage < 40 px ignore).
+- Camera en 1280x720 MJPG (--largeur/--hauteur). PIEGE : en YUYV la webcam tombe a 10 FPS
+  des 1280x720 ; en MJPG elle reste a 30 FPS.
+- YOLO imgsz 640 par defaut (416 perdait les personnes lointaines).
+- Zone visage agrandie (jusqu'a x4) avant YuNet ; visages exploites des 16 px.
+- Anti-doublons : visage < 48 px peut RECONNAITRE mais pas CREER une personne ; seules les vues
+  >= 48 px enrichissent la galerie.
+- Bug corrige : le visage d'un voisin dans la boite creait un faux doublon -> on prend le visage
+  le plus proche du centre-haut de la boite, et on ignore un visage deja porte par une autre piste.
+- Re-verification en secondes (0.5 s) et non en images -> meme comportement a 10 ou 30 FPS.
+Test (photo reduite pour simuler la distance) : reconnaissance jusqu'a des visages de ~20 px
+(sim 0.61-0.86), 0 doublon.
+A FAIRE : re-identification par l'apparence du corps (OSNet, torchreid MIT, poids MSMT17 dans
+models/osnet_x0_25_msmt17.pt, definition dans osnet.py) pour reconnaitre de dos / tres loin.
+Bloque : l'execution de code/poids telecharges demande l'accord explicite de l'utilisateur.
+
+Test 4 : 10 FPS (cameras du G1) + doublons d'identite (2026-11-10)
+------------------------------------------------------------------
+--fps 10 par defaut : simule la cadence des cameras du G1 (on lit toutes les images, on n'en
+traite qu'une toutes les 0.1 s). --fps 0 = aussi vite que possible.
+tracker_accueil.yaml : track_buffer est en IMAGES -> 30 = 3 s a 10 FPS.
+Causes trouvees des "ids differents pour la meme personne" :
+ 1. une nouvelle personne etait creee sur UNE seule vue ratee (profil, flou) dont la signature
+    ne ressemble pas a la vue de face -> au retour de face : nouveau P.
+ 2. a 10 FPS le tracker decroche plus souvent -> plus d'occasions de tomber dans 1.
+ 3. seuil 0.42 un peu strict.  4. aucun moyen de corriger un doublon apres coup.
+Corrections (memoire_visages.py v3) :
+ - creation seulement apres 3 BONNES vues inconnues (visage >= 48 px, score YuNet >= 0.85,
+   quasi de face : nez entre les yeux, ratio 0.3-0.7) ; une vue faible ne cree rien ;
+ - seules les bonnes vues enrichissent la galerie (max 30 signatures / personne) ;
+ - fusion automatique : visage tres proche de deux personnes -> "[~] fusion : P5 etait un
+   doublon de P2" ;
+ - seuil par defaut 0.38 (OpenCV recommande 0.363).
+ - --debug : affiche pour chaque verification taille / score / "face" / similarites.
+Test webcam reel : profils refuses (face 0.90-1.01), P1 cree sur 3 vues de face, puis sim 0.84-0.90.
+Bug FPS corrige : le compteur mesurait la fin du traitement (biais) -> mesure au debut.
