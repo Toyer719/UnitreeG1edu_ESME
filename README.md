@@ -435,7 +435,9 @@ l'y accompagne (« Suivez-moi ! », la distance restante sur la borne), annonce 
 seul à l'accueil et attend le visiteur suivant.
 
 1. Lancer le guide : en Simulation, **Simuler › Lancer** ; avec le robot, **Naviguer › Lancer**, puis
-   **Repérer**.
+   **Repérer**. En Simulation, le visiteur à accompagner est le faux visiteur de la scène d'essai
+   « Accompagnement d'un visiteur » (Simuler › Avancé › Passants) ; sans lui, le robot part seul et le
+   panneau de la démo le signale.
 2. **Équipe › Démo › Lancer la démo** : le panneau montre l'état de la démo (« Attend un visiteur »),
    la visite en cours, les statistiques et ce que dit la voix ; Pause, Reprendre et Ramener à
    l'accueil.
@@ -456,8 +458,8 @@ sans lancer la démo), les visiteurs (caméra, LiDAR ou borne seule, distance), 
 l'accompagnement, le retour seul, le titre et la langue de la borne, le code opérateur, et les salles
 cachées de la borne.
 
-**La voix du robot** (`g1-voix`, lancée avec la démo) dit les phrases du robot (salutation, « Je vous
-accompagne à … », arrivée, retour, pause, phrases des personnalités et, plus tard, du chatbot) par
+**La voix du robot** (`g1-voix`, lancée avec la démo) dit les phrases du robot (salutation, « Direction
+… : suivez-moi ! », arrivée, retour, pause, phrases des personnalités et, plus tard, du chatbot) par
 l'une de trois sorties : **robot** (voix française de Piper calculée sur le PC, jouée par le
 haut-parleur du robot), **borne** (la tablette joue le son ; c'est la sortie de la simulation) ou
 **robot_tts** (la synthèse intégrée d'Unitree, dont le français est à vérifier à la séance 2). Une
@@ -628,7 +630,7 @@ g1-diagnostic --mode repetition            # contre le faux G1 de la répétitio
 ### La boîte noire : chaque séance est enregistrée
 
 Dès qu'on ouvre l'espace en **Réel** (vrai robot ou répétition), une **séance** s'ouvre (badge
-« ● Enregistrement » dans la barre d'outils) et l'Atelier garde tout dans
+« ● Enregistrement » dans la barre d'outils, « Séance » sur un écran plus étroit) et l'Atelier garde tout dans
 `~/robot-g1/journaux/seances/<date>_<heure>/` : le diagnostic du début, chaque action (ARRÊT, Bloquer,
 Y aller, Repérer, postures…), un enregistrement ROS 2 léger (états du guide, du pont et du repérage,
 ordres de marche, odométrie à 10 Hz, batterie, démo, voix, journaux des nœuds ; jamais les nuages de
@@ -638,7 +640,11 @@ arrêt. **Terminer la séance** (menu du badge, ou Naviguer › ⚙ Avancé) éc
 (page HTML : durée, batterie, chaque trajet sur la carte avec son résultat et la cause des arrêts,
 états du pont, erreurs, et « À regarder en premier » : les anomalies trouvées toutes seules, comme
 un mouvement sans demande). Après un plantage, la séance est marquée interrompue et son rapport est
-fait au redémarrage.
+fait au redémarrage. Une séance va avec le mode Réel : rouvrir l'espace en Simulation la termine (une
+fois la navigation du robot arrêtée) ; après « Terminer la séance », le bouton **Nouvelle séance** de la
+barre d'outils en ouvre une autre. Si la navigation n'était pas encore lancée à l'ouverture, un second
+diagnostic, en lecture seule, est pris une fois la navigation prête (« Diagnostic après le lancement »
+dans le rapport).
 
 ```bash
 g1-seance liste                           # les séances, la plus récente d'abord
