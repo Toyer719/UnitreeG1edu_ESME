@@ -1405,3 +1405,15 @@ Travail de l'agent Passants, coupé par la limite d'utilisation juste avant la f
 - **À la fin** : plus aucun processus de la recette (Atelier, Gazebo, Nav2, faux G1, nœuds accueil et voix, faux visiteur, Firefox), aucun conteneur (`docker ps -a` vide) ; `git status` propre sauf `lieux/seance` (hors Git).
 - **À vérifier sur le robot** (séance 2 ; 13.10, et 12.12 pour la vague 5) : rien de la vague 6 n'a tourné sur le vrai G1 ; envoyer les images refaites (`g1-jetson envoyer`) ; « Vérifier le robot » sur le vrai G1 (réponses de robot_state 1003 et 1001, statut 0 = actif, temps de démarrage de `unitree_slam`, `nmcli connection up robot-g1` sans sudo, batterie sur `/lf/bmsstate`, le diagnostic après le lancement) ; la boîte noire pendant une vraie navigation (coût, rapport sans « Erreur » pour un arrêt normal, journal du Jetson) ; la voix (PCM 16 kHz par 1003 : son net, latence, 1004, volume 1005 et 1006 ; 1001 en français, sans doute non) ; la borne sur une vraie tablette par le Wi-Fi (adresse, son, garde des origines, anti-rebond) ; une démo avec un vrai visiteur, la caméra et l'accompagnement.
 - **Reste** : la séance 2 (ci-dessus) ; les documents Word (fiches de la séance 2, chapitre « vague 6 » : agent Documents) ; sur l'accueil en répétition, la fenêtre du diagnostic peut recouvrir de quelques pixels le haut d'« Ouvrir » (le bouton reste visible et cliquable) ; en Simulation, le faux visiteur ne se lance pas depuis le panneau de la démo (alerte seulement) ; les phrases des personnalités des lieux gardent leurs tournures (« Suivez-moi jusqu'à {nom} ») ; dans la chronologie du rapport, l'ouverture automatique de la séance tient sur deux lignes à la même seconde (« Séance ouverte » et « Ouvrir la séance ») ; marges proches des seuils, comme à la vague 5 : critère 26 (56 % pour 60 %), critère 6 (19 trajets sur 20).
+
+## 10/11/2026, 5 h : fin de la vague 6 (documents)
+
+- Documents mis à jour et commités (d46e8b0, 3ed2468, 09a01e5) : tutoriel et feuille de la séance 2
+  (« Vérifier le robot » au début, boîte noire pendant toute la journée, étape V facultative pour la
+  voix et la démo, Atelier lancé une seule fois), fiches Word (26 et 14 pages), document du logiciel
+  avec le chapitre de la vague 6 (82 pages).
+- Avancement du projet recalculé : environ 55 % (57,25 % pondéré ; la démo d'accueil et la voix font
+  avancer les parties « caméra, détection et équipe » et « démo finale »). Le reste est surtout
+  l'essai sur le vrai robot.
+- Bilan de la vague 6 : 42 / 42 (critère 27 rejoué après la correction de son outil), 2 885 tests,
+  28 défauts des revues corrigés, images du Jetson refaites (à envoyer à la séance 2).
