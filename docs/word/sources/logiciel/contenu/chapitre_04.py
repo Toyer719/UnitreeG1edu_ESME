@@ -7,17 +7,18 @@ BLOCS = [
                 "commande pour la voir de ses yeux (dans un terminal où `setup/env.sh` est chargé)."),
 
     ("h2", "Nœud, sujet et message"),
-    ("p", "Un **nœud** est un programme ROS 2 qui a un nom. Le projet en a une douzaine : `guide` (le guide), "
+    ("p", "Un **nœud** est un programme ROS 2 qui a un nom. Le projet en a une quinzaine : `guide` (le guide), "
           "`pont_g1` (le pont vers la marche), `odom_vers_tf` (le relais de position), `atelier_pont` (dans "
           "le serveur de l'Atelier), `pilotage`, `camera_poitrine`, `g1_jumeau` (le faux G1), "
-          "`detecteur_personnes`, `faux_visiteur`, `pietons`, `dialogue`… Nav2, lui, en lance une quinzaine."),
+          "`detecteur_personnes`, `faux_visiteur`, `pietons`, `dialogue`, et depuis la vague 6 `accueil` (la démo "
+          "d'accueil) et `voix`… Nav2, lui, en lance une quinzaine."),
     ("p", "Un **sujet** (__topic__ en anglais) est un canal nommé : des nœuds y **publient** des messages, "
           "d'autres s'y **abonnent** et les reçoivent. Personne n'a besoin de savoir qui est à l'autre bout. "
           "Un **message** a un type fixe : `std_msgs/String` (un texte ; chez nous souvent du JSON), "
           "`geometry_msgs/Twist` (les vitesses vx, vy, wz), `nav_msgs/Odometry` (une position et une vitesse), "
           "`sensor_msgs/PointCloud2` (un nuage de points), `sensor_msgs/CompressedImage` (une image JPEG), "
           "`unitree_api/Request` (un ordre au robot)."),
-    ("schema", "ros2_noeuds", "Quelques nœuds et sujets du projet, autour du guide", 12.0, 15.0),
+    ("schema", "ros2_noeuds", "Quelques nœuds et sujets du projet, autour du guide", 12.0, 14.0),
     ("p", "Exemple réel : l'Atelier publie « b204 » sur `/guide/aller` ; le guide, abonné, reçoit la demande, "
           "calcule l'itinéraire, lance Nav2, et publie son avancement sur `/guide/etat`, que l'Atelier affiche. "
           "Nav2 publie les vitesses sur `/cmd_vel`, que le pont transforme en ordres de marche. Pour le voir :"),
@@ -46,8 +47,8 @@ BLOCS = [
 
     ("h2", "Paquet, lancement et compilation"),
     ("p", "Un **paquet** regroupe le code d'une fonction, avec un fichier `package.xml` (nom, dépendances) et "
-          "un `setup.py` (Python) ou un `CMakeLists.txt` (C++). Le projet en écrit six (`g1_sim`, `g1_nav`, "
-          "`g1_bridge`, `g1_jumeau`, `g1_pilotage`, `g1_equipe`) et en utilise deux d'ailleurs "
+          "un `setup.py` (Python) ou un `CMakeLists.txt` (C++). Le projet en écrit sept (`g1_sim`, `g1_nav`, "
+          "`g1_bridge`, `g1_jumeau`, `g1_pilotage`, `g1_equipe`, `g1_accueil`) et en utilise deux d'ailleurs "
           "(`livox_ros_driver2`, `FAST_LIO`). Un **fichier de lancement** (__launch__, en Python) démarre "
           "plusieurs nœuds d'un coup, avec des arguments :"),
     ("code", "ros2 launch g1_sim simulation.launch.py lieu:=demo etage:=rdc sans_fenetre:=true\n"
@@ -65,7 +66,8 @@ BLOCS = [
         "Le **domaine** (`ROS_DOMAIN_ID`) est un numéro qui sépare des groupes de nœuds : deux nœuds de "
         "domaines différents ne se voient pas. Le robot publie sur le **domaine 0**. Les tests et les agents "
         "travaillent sur d'autres numéros (36 pour la recette, puis un numéro par agent : 50 à 54, 60 à 63, "
-        "70 à 75, 100 à 106, puis 112 et 113 pour la revue et la recette de la vague 5) pour ne jamais se gêner, "
+        "70 à 75, 100 à 106, 112 et 113 pour la revue et la recette de la vague 5, 140 à 149 pour la vague 6) pour ne "
+        "jamais se gêner, "
         "et souvent avec `ROS_LOCALHOST_ONLY=1` (rien ne sort du PC).",
         "Conséquence pratique, et règle des séances : **aucune simulation ne doit tourner sur le PC quand le "
         "robot est branché**, car un faux G1 sur le domaine 0 pourrait répondre à la place du vrai. Le plus "

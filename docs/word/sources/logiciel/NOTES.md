@@ -1,9 +1,10 @@
 # Document Word « Atelier G1 : le logiciel, de A à Z » : notes
 
 Dossier : `~/robot-g1-donnees/vague5/documents/logiciel/` (hors de `/tmp` : il survit à un redémarrage).
-Le document : `Atelier_G1_documentation_logiciel.docx` (15 chapitres, 14 schémas, 9 captures, 66 pages dans le
-PDF de contrôle). Version finale de la vague 5 : 01/11/2026, après la recette (36 / 36), relue le soir même (point 16),
-puis complétée après la correction du verrou et sa relecture (point 19).
+Le document : `Atelier_G1_documentation_logiciel.docx` (16 chapitres, 17 schémas, 17 captures en 16 figures, 82 pages
+dans le PDF de contrôle). Version de la vague 6 : 10/11/2026, après la recette (42 / 42) ; elle reprend la version
+finale de la vague 5 (01/11, relue le soir même, point 16, puis complétée après la correction du verrou, point 19)
+et lui ajoute le chapitre 12 (vague 6) et la mise à jour de tout le reste (point 20).
 
 ## Regénérer
 
@@ -36,7 +37,14 @@ Dernier passage : « All validations PASSED! ».
 
 ## Où mettre les captures
 
-Mettre les PNG dans `~/robot-g1-donnees/vague5/captures/` (sous-dossiers permis), puis regénérer. Le
+Deux dossiers, cherchés dans cet ordre pour chaque motif : `~/robot-g1-donnees/vague5/captures/` (chapitre 11) puis
+`~/robot-g1-donnees/vague6/captures/` (chapitre 12) ; `--captures DOSSIER`, plusieurs fois, en donne d'autres.
+Chapitre 12 : `10_diagnostic.png`, `11_diagnostic_problemes.png`, `12_seance_badge.png`, `13_rapport_seance.png`,
+`14_demo.png`, `15_borne_telephone_choix.png` et `16_borne_telephone_suivi.png` (réunies côte à côte par le bloc
+`captures`, en un JPEG `controle/captures_jpeg/montage_*.jpg`), `17_borne_tablette.png` : les captures finales de
+la recette du 10/11 ; leurs légendes décrivent ces images-là.
+
+Chapitre 11 : mettre les PNG dans `~/robot-g1-donnees/vague5/captures/` (sous-dossiers permis), puis regénérer. Le
 chapitre 11 (`contenu/chapitre_11.py`) a 9 emplacements ; chacun essaie des motifs de noms, dans l'ordre,
 et prend le premier fichier trouvé (jamais deux fois le même). Sans fichier, l'emplacement est omis : ni
 trou, ni mention. Le seul texte qui dépend des captures est une phrase d'introduction (bloc `si_captures`) ;
@@ -65,12 +73,13 @@ Essai avec d'autres captures, sans toucher au document :
 
 ## Comment le contenu est rangé
 
-- `contenu/couverture.py` (dictionnaire `COUVERTURE`) et `contenu/chapitre_01.py` à `chapitre_15.py`
+- `contenu/couverture.py` (dictionnaire `COUVERTURE`) et `contenu/chapitre_01.py` à `chapitre_16.py`
   (liste `BLOCS`). Blocs : `("h1"|"h2"|"h3", titre)`, `("p", texte)`, `("chapeau", texte)`,
   `("puces", [..])` (un élément peut être `(texte, [sous-éléments])`), `("num", [..])`,
   `("table", {entetes, lignes, largeurs (cm), taille, legende, premiere_col_gras})`, `("code", texte)`,
   `("encadre", titre, texte ou [lignes ; « - » = puce], "retenir"|"attention"|"info")`,
   `("schema", nom, légende, largeur_cm, hauteur_max_cm)`, `("capture", [motifs], légende, largeur, hauteur)`,
+  `("captures", [[motifs], [motifs]], légende, largeur, hauteur)` (plusieurs captures côte à côte, une figure),
   `("si_captures", [blocs])`, `("fiche", {nom, quoi, pourquoi, ici, exemple})`, `("saut",)`.
 - Dans le texte : `**gras**`, `` `code` ``, `__italique__` ; `[[cle]]` = chiffre mesuré (voir `chiffres()`).
   Les espaces insécables du français (avant `: ; ! ? »`, après `«`, entre un nombre et son unité, dans
@@ -92,11 +101,12 @@ Essai avec d'autres captures, sans toucher au document :
 
 ## Points incertains, à faire vérifier
 
-1. **État décrit : la vague 5 finie** (recette du 01/11 : 36 / 36, 2 281 tests réussis, 0 échec). Les
-   chiffres « vivants » (commits, lignes, tests collectés, routes) se mettent à jour en regénérant ; ceux de
-   la recette (chapitres 10 et 12 : suites, durées, critères, revue) sont écrits à la main, d'après le journal
-   de l'Atelier (entrée « Recette finale ») et `~/robot-g1-donnees/vague5/recette/` (`ETAT.md`,
-   `durees_criteres.txt`, journaux) ; la somme des 36 durées fait bien 7 662 s.
+1. **État décrit : la vague 6 finie** (recette du 10/11 : 42 / 42, 2 885 tests réussis, 0 échec ; point 20 ; avant,
+   la vague 5 : recette du 01/11, 36 / 36, 2 281 tests). Les chiffres « vivants » (commits, lignes, tests collectés,
+   routes) se mettent à jour en regénérant ; ceux des recettes (chapitres 10 et 13 : suites, durées, critères, revues)
+   sont écrits à la main, d'après le journal de l'Atelier (entrées « Recette finale ») et
+   `~/robot-g1-donnees/vague6/travail/recette/` (`journaux/tout_bilan.txt`, `suites_ros_bilan.txt`, `avancement.md`) ;
+   la somme des 42 durées fait bien 8 323 s (celle des 36 de la vague 5 : 7 662 s).
 2. **Le chapitre 11 décrit l'interface des captures finales** (01/11), vérifiée dans le code (`js/coque/`,
    `js/ecrans/`, `js/carte3d/`, `js/camera/`) : libellés du ruban, pastilles, Échap, couleurs du nuage et des
    cadres. Ses légendes sont propres à ces captures.
@@ -161,3 +171,19 @@ Essai avec d'autres captures, sans toucher au document :
     L'annexe C dit que le guide et le pilotage écoutent `/pont/arret` et `/pont/etat`. Les deux titres de plus
     faisaient déborder la table des matières de deux lignes sur une troisième page : l'espace après une ligne de
     niveau 2 passe de 2 à 1,5 point (`generer.py`, style « toc 2 ») ; 66 pages au lieu de 64.
+20. **Vague 6 (10/11/2026)**, par l'agent Documents, après la recette (42 / 42, 2 885 tests réussis) : chapitre 12
+    nouveau (« Diagnostic, boîte noire et démo d'accueil » : pièces, « Vérifier le robot », boîte noire et rapport,
+    démo d'accueil, borne, voix, ce qui reste à vérifier ; 3 schémas nouveaux, `demo_accueil`, `boite_noire`,
+    `voix`, et les 8 captures de la recette) ; les anciens chapitres 12 à 15 deviennent 13 à 16 (fichiers renommés,
+    renvois corrigés). Mis à jour : couverture et chapitre 1 (état, chiffres, avancement), 2 (pièces, modes, schéma
+    `vue_ensemble`), 3 (Piper, SciPy, rosbag2, Matplotlib ; 41 schémas ; 9 paquets), 4 (domaines), 5 (arborescence,
+    hors Git), 6 (`demo.yaml`), 7 (modules, 20 fichiers de routes, gardes, 7 paquets ROS 2, 4 commandes), 8 (renvoi),
+    9 (trois barrières, « La vague 6 et la sécurité », schéma `securite`), 10 (chronologie, schéma `vagues`, la vague 6,
+    décisions, problèmes), 11 (renvois), 13 (suites et 42 critères du 10/11), 14 (onze recettes : la démo et la voix),
+    15 (17 mots), 16 (commandes, routes, sujets, réglages, variables, ordres de la voix et de robot_state). Sources :
+    `docs/journal-atelier.md` (entrées « Correcteur » et « Recette finale » de la vague 6), plan § 13,
+    `~/robot-g1-donnees/vague6/` (DECISIONS.md, travail/recette/ : bilan de `tout.sh`, suites, revues).
+    **L'avancement** (section 1.4 et fiches) est recalculé avec la méthode et les poids de l'intégrateur : quatre parts
+    faites changent (interface 85 → 90, liaison 25 → 30, caméra et voix 40 → 55, démo 30 → 60) : 57,25 %, « environ
+    55 % » ; c'est une estimation de l'agent Documents, à confirmer par l'intégrateur. La table des matières (112
+    titres) tient sur deux pages grâce à des lignes de niveau 2 en 9,5 pt (style « toc 2 »).

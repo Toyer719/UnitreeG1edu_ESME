@@ -7,7 +7,7 @@
 Ce que fait le script, dans l'ordre :
   1. il dessine les schémas : chaque schemas/<nom>.dot (Graphviz) devient schemas/png/<nom>.png
      (200 dpi, police DejaVu Sans), seulement s'il a changé ;
-  2. il lit le contenu : contenu/couverture.py, puis contenu/chapitre_01.py à chapitre_15.py
+  2. il lit le contenu : contenu/couverture.py, puis contenu/chapitre_01.py à chapitre_16.py
      (chacun définit BLOCS, une liste de blocs : titres, paragraphes, listes, tableaux, schémas,
      captures…) ;
   3. il écrit Atelier_G1_documentation_logiciel.docx (python-docx) : styles, titres numérotés,
@@ -16,9 +16,10 @@ Ce que fait le script, dans l'ordre :
      réécrit la table des matières avec ces numéros (deux ou trois passes), pour que la table
      s'affiche aussi dans LibreOffice ; Word la met de toute façon à jour à l'ouverture.
 
-Options : --captures DOSSIER (défaut ~/robot-g1-donnees/vague5/captures ; les captures absentes
-sont simplement omises), --sans-pdf (pas de LibreOffice : table des matières sans numéros de
-page), --images (pages du PDF en PNG à 60 dpi dans controle/pages/, pour les relire).
+Options : --captures DOSSIER, plusieurs fois possible (défaut : ~/robot-g1-donnees/vague5/captures pour le
+chapitre 11, puis ~/robot-g1-donnees/vague6/captures pour le chapitre 12 ; les captures absentes sont
+simplement omises), --sans-pdf (pas de LibreOffice : table des matières sans numéros de page), --images
+(pages du PDF en PNG à 60 dpi dans controle/pages/, pour les relire).
 
 Notation dans le contenu : **gras**, `code`, __italique__ ; [[cle]] est remplacé par un chiffre
 mesuré dans le dépôt au moment de la génération (voir chiffres()).
@@ -45,14 +46,15 @@ from docx.shared import Cm, Pt, RGBColor
 
 ICI = Path(__file__).resolve().parent
 DEPOT = Path.home() / "robot-g1"
-CAPTURES_DEFAUT = Path.home() / "robot-g1-donnees" / "vague5" / "captures"
+CAPTURES_DEFAUT = [Path.home() / "robot-g1-donnees" / "vague5" / "captures",     # chapitre 11 (vague 5)
+                   Path.home() / "robot-g1-donnees" / "vague6" / "captures"]     # chapitre 12 (vague 6)
 SORTIE = ICI / "Atelier_G1_documentation_logiciel.docx"
 CONTROLE = ICI / "controle"
 SCHEMAS = ICI / "schemas"
 PNG_SCHEMAS = SCHEMAS / "png"
 CACHE_CAPTURES = CONTROLE / "captures_jpeg"
 
-NB_CHAPITRES = 15
+NB_CHAPITRES = 16
 
 # Mise en page (A4)
 LARGEUR_PAGE_CM = 21.0
@@ -90,12 +92,12 @@ def _milliers(n):
 
 
 def chiffres():
-    """Chiffres du dépôt au moment de la génération (valeurs du 31/10 au soir si une mesure échoue)."""
-    c = {"commits": "42", "dernier_commit": "d0730c1", "date_commit": "31/10/2026 17:52",
-         "fichiers": "619", "lignes_python": "79\u202f250", "lignes_python_code": "38\u202f070",
-         "lignes_python_tests": "41\u202f070", "lignes_js": "17\u202f750", "lignes_css": "1\u202f940",
-         "lignes_shell": "2\u202f870", "commandes": "26", "routes": "102", "tests_atelier": "1\u202f454",
-         "tests_docker": "71", "fonctions_test_ros": "561", "criteres": "36", "paquets_ros": "6"}
+    """Chiffres du dépôt au moment de la génération (valeurs du 10/11 si une mesure échoue)."""
+    c = {"commits": "101", "dernier_commit": "1f73bdf", "date_commit": "10/11/2026 04:16",
+         "fichiers": "830", "lignes_python": "131\u202f000", "lignes_python_code": "60\u202f000",
+         "lignes_python_tests": "71\u202f000", "lignes_js": "26\u202f000", "lignes_css": "2\u202f900",
+         "lignes_shell": "3\u202f600", "commandes": "30", "routes": "136", "tests_atelier": "1\u202f960",
+         "tests_docker": "71", "fonctions_test_ros": "760", "criteres": "42", "paquets_ros": "7"}
     sortie = _sortie(["git", "rev-list", "--count", "HEAD"])
     if sortie.strip():
         c["commits"] = sortie.strip()
@@ -159,7 +161,7 @@ def chiffres():
                 c[cle] = _milliers(int(m.group(1)))
         code = ("import importlib\n"
                 "mods='lieux monde plan simulation scan robot principal passants guide pilotage equipe "
-                "arret liaison nuage camera'.split()\n"
+                "arret liaison nuage camera diagnostic seance borne demo voix'.split()\n"
                 "print(sum(len(importlib.import_module('atelier.serveur.routes.'+m).routeur.routes) for m in mods))")
         sortie = _sortie([str(python_projet), "-c", code], timeout=120, env=env)
         if sortie.strip().isdigit():
@@ -407,8 +409,9 @@ class Generateur:
         self._style_paragraphe("Cellule", taille=9.5, apres=0, interligne=1.0)
         self._style_paragraphe("Titre TDM", taille=17, gras=True, couleur=BLEU, apres=10)
         for niveau in (1, 2):
-            st = self._style_paragraphe(f"toc {niveau}", taille=10.5 if niveau == 1 else 10, gras=niveau == 1,
-                                        apres=1.5 if niveau == 2 else 1, avant=5 if niveau == 1 else 0,
+            # vague 6 : 112 titres ; 9,5 pt et peu d'espace pour que la table tienne sur deux pages
+            st = self._style_paragraphe(f"toc {niveau}", taille=10.5 if niveau == 1 else 9.5, gras=niveau == 1,
+                                        apres=1 if niveau == 1 else 0.5, avant=2.5 if niveau == 1 else 0,
                                         interligne=1.0, retrait_gauche=0 if niveau == 1 else 0.6)
             st.element.set(qn("w:styleId"), f"TOC{niveau}")
             tabs = st.paragraph_format.tab_stops
@@ -803,15 +806,19 @@ class Generateur:
         self.schemas_utilises.append(nom)
         self.image(chemin, largeur_cm, legende_texte, hauteur_max_cm)
 
+    def dossiers_captures(self):
+        """Les dossiers de captures qui existent, dans l'ordre donné (vague 5, puis vague 6)."""
+        dossiers = self.captures if isinstance(self.captures, (list, tuple)) else [self.captures]
+        return [d for d in dossiers if d and Path(d).is_dir()]
+
     def trouver_capture(self, motifs):
-        if not self.captures or not self.captures.is_dir():
-            return None
         for motif in motifs:
-            trouves = sorted(self.captures.rglob(motif))
-            trouves = [t for t in trouves if t.suffix.lower() in (".png", ".jpg", ".jpeg")
-                       and t not in self.captures_utilisees]
-            if trouves:
-                return trouves[0]
+            for dossier in self.dossiers_captures():
+                trouves = sorted(Path(dossier).rglob(motif))
+                trouves = [t for t in trouves if t.suffix.lower() in (".png", ".jpg", ".jpeg")
+                           and t not in self.captures_utilisees]
+                if trouves:
+                    return trouves[0]
         return None
 
     def capture(self, motifs, legende_texte, largeur_cm=LARGEUR_TEXTE_CM, hauteur_max_cm=12.5):
@@ -821,8 +828,22 @@ class Generateur:
         self.captures_utilisees.append(chemin)
         self.image(jpeg_de(chemin), largeur_cm, legende_texte, hauteur_max_cm)
 
+    def captures_cote_a_cote(self, liste_motifs, legende_texte, largeur_cm=LARGEUR_TEXTE_CM, hauteur_max_cm=12.5):
+        """Plusieurs captures (une liste de motifs par image) réunies côte à côte en une seule figure (la borne au
+        téléphone : deux écrans étroits). Les images absentes sont sautées ; s'il n'en reste qu'une, elle seule."""
+        chemins = []
+        for motifs in liste_motifs:
+            chemin = self.trouver_capture(motifs)
+            if chemin is not None:
+                self.captures_utilisees.append(chemin)
+                chemins.append(chemin)
+        if not chemins:
+            return
+        image = montage_de(chemins) if len(chemins) > 1 else jpeg_de(chemins[0])
+        self.image(image, largeur_cm, legende_texte, hauteur_max_cm)
+
     def a_des_captures(self):
-        return bool(self.captures and self.captures.is_dir() and any(self.captures.rglob("*.png")))
+        return any(any(Path(d).rglob("*.png")) for d in self.dossiers_captures())
 
     # ---------------------------------------------------------------- table des matières
 
@@ -884,6 +905,10 @@ class Generateur:
             largeur = b[3] if len(b) > 3 and b[3] else LARGEUR_TEXTE_CM
             hauteur = b[4] if len(b) > 4 and b[4] else 12.5
             self.capture(b[1], b[2], largeur, hauteur)
+        elif genre == "captures":
+            largeur = b[3] if len(b) > 3 and b[3] else LARGEUR_TEXTE_CM
+            hauteur = b[4] if len(b) > 4 and b[4] else 12.5
+            self.captures_cote_a_cote(b[1], b[2], largeur, hauteur)
         elif genre == "si_captures":
             if self.a_des_captures():
                 for sous in b[1]:
@@ -977,6 +1002,29 @@ def jpeg_de(chemin):
     return cible if r.returncode == 0 and cible.exists() else chemin
 
 
+def montage_de(chemins, hauteur=1100, marge=36):
+    """Des captures mises à la même hauteur, côte à côte sur fond blanc, en un JPEG de controle/captures_jpeg
+    (Pillow du système) ; sans Pillow, la première capture seule."""
+    chemins = [Path(c) for c in chemins]
+    CACHE_CAPTURES.mkdir(parents=True, exist_ok=True)
+    nom = "montage_" + "_".join(re.sub(r"[^\w.-]", "_", c.stem) for c in chemins) + ".jpg"
+    cible = CACHE_CAPTURES / nom
+    if cible.exists() and all(cible.stat().st_mtime >= c.stat().st_mtime for c in chemins):
+        return cible
+    code = ("import sys\nfrom PIL import Image\n"
+            "h, m = int(sys.argv[1]), int(sys.argv[2])\n"
+            "ims = [Image.open(p).convert('RGB') for p in sys.argv[4:]]\n"
+            "ims = [i.resize((round(i.width * h / i.height), h), Image.LANCZOS) for i in ims]\n"
+            "w = sum(i.width for i in ims) + m * (len(ims) - 1)\n"
+            "out = Image.new('RGB', (w, h), (255, 255, 255))\n"
+            "x = 0\n"
+            "for i in ims:\n    out.paste(i, (x, 0))\n    x += i.width + m\n"
+            "out.save(sys.argv[3], 'JPEG', quality=90, optimize=True)\n")
+    r = subprocess.run(["/usr/bin/python3", "-I", "-c", code, str(hauteur), str(marge), str(cible)]
+                       + [str(c) for c in chemins], capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"})
+    return cible if r.returncode == 0 and cible.exists() else jpeg_de(chemins[0])
+
+
 # ------------------------------------------------------------------ contenu
 
 def charger_contenu():
@@ -1059,8 +1107,9 @@ def generer(valeurs, captures, pages_titres, titres_prevus):
 def main():
     global SORTIE
     parser = argparse.ArgumentParser(description="Génère le document Word du logiciel de l'Atelier G1.")
-    parser.add_argument("--captures", default=str(CAPTURES_DEFAUT),
-                        help="dossier des captures de l'interface (défaut : %(default)s)")
+    parser.add_argument("--captures", action="append",
+                        help="dossier des captures de l'interface, plusieurs fois possible (défaut : "
+                             + " puis ".join(str(d) for d in CAPTURES_DEFAUT) + ")")
     parser.add_argument("--sans-pdf", action="store_true", help="ne pas passer par LibreOffice")
     parser.add_argument("--images", action="store_true", help="pages du PDF en PNG (60 dpi) dans controle/pages/")
     parser.add_argument("--schemas", action="store_true", help="redessiner tous les schémas")
@@ -1075,7 +1124,7 @@ def main():
     dessiner_schemas(forcer=args.schemas)
     print("Chiffres du dépôt…")
     valeurs = chiffres()
-    captures = Path(args.captures).expanduser()
+    captures = [Path(d).expanduser() for d in (args.captures or CAPTURES_DEFAUT)]
 
     # Passe 1 : liste des titres (numéros de page inconnus)
     g = generer(valeurs, captures, {}, None)

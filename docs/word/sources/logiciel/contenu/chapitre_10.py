@@ -3,14 +3,15 @@
 BLOCS = [
     ("h1", "Comment le logiciel a été construit"),
     ("chapeau", "Le logiciel n'a pas été écrit ligne par ligne par une seule personne : Claude, une IA, l'a "
-                "construit avec une équipe d'autres instances de Claude (les « agents »), en cinq vagues, du "
-                "25/10 au 01/11/2026. Ce chapitre explique la méthode, la chronologie, la revue et la recette de la "
-                "vague 5, la correction de sécurité du 01/11 au soir, les décisions et les problèmes rencontrés."),
+                "construit avec une équipe d'autres instances de Claude (les « agents »), en six vagues, du "
+                "25/10 au 10/11/2026. Ce chapitre explique la méthode, la chronologie, la revue et la recette des "
+                "vagues 5 et 6, la correction de sécurité du 01/11 au soir, les décisions et les problèmes "
+                "rencontrés."),
 
     ("h2", "La méthode : un plan, des contrats, des agents, une recette"),
     ("schema", "methode", "Le déroulé d'une vague", 10.5, 13.0),
     ("puces", [
-        "**Le plan** (`docs/plan-atelier-multi-agents.md`, sections 1 à 12) est la référence commune : le but, "
+        "**Le plan** (`docs/plan-atelier-multi-agents.md`, sections 1 à 13) est la référence commune : le but, "
         "les contraintes, l'architecture, les formats, et une fiche par agent. Chaque vague y ajoute sa section.",
         "**Les contrats** sont figés avant le travail en parallèle : les formats de fichiers (schémas JSON), "
         "les sujets ROS 2 et leurs messages, les routes de l'API, les arguments des lancements, et du **code "
@@ -22,21 +23,23 @@ BLOCS = [
         "autre, il ne le fait pas : il le note, et fait sans, avec un bouchon.",
         "**L'intégrateur** (Claude, dans la session de l'utilisateur) écrit le plan et les contrats, puis "
         "**assemble** : il compile tout, corrige les écarts entre les modules, relance tous les tests, écrit le "
-        "journal (`docs/journal-atelier.md`) et le README ; lui seul fait les commits.",
+        "journal (`docs/journal-atelier.md`) et le README. Les agents qui travaillent en parallèle ne font aucun "
+        "commit ; depuis la vague 6, toute la vague est enchaînée par un seul script (contrats, modules, "
+        "assemblage, revues, corrections, recette, documents), et chacune de ces étapes commite son travail.",
         "**La revue** (depuis la vague 5) : après l'assemblage, deux relecteurs (d'autres instances de Claude) "
         "relisent, l'un l'interface, dans Firefox, l'autre le code ; un correcteur reproduit chaque défaut, le "
         "corrige et ajoute un test qui l'aurait vu.",
         "**La recette** : des critères mesurables, tous joués sans robot ni écran (« le robot arrive à moins de "
         "0,3 m en moins de 180 s », « zéro contact causé par le robot »). `tests_e2e/tout.sh` les lance tous et "
-        "affiche « N / 36 ». Avant, toutes les suites de tests tournent, et chaque défaut de la revue est vérifié. "
+        "affiche « N / 42 ». Avant, toutes les suites de tests tournent, et chaque défaut de la revue est vérifié. "
         "Une vague n'est finie que quand tout passe.",
         "**Les précisions de l'assemblage** : les écarts acceptés à l'assemblage sont écrits dans le plan "
-        "(sections 10.12, 11.12, 12.13), ainsi que les corrections après la revue (12.14) ; ils font foi comme "
-        "les contrats.",
+        "(sections 10.12, 11.12, 12.13, 13.13), ainsi que les corrections après la revue (12.14, 13.14) ; ils "
+        "font foi comme les contrats.",
     ]),
 
     ("h2", "La chronologie"),
-    ("schema", "vagues", "Du PC installé à la vague 5", 14.0, 12.0),
+    ("schema", "vagues", "Du PC installé à la vague 6", 14.0, 13.0),
     ("table", {
         "legende": "Les vagues de construction",
         "entetes": ["Vague", "Quand", "Ce qui a été construit", "Recette", "Commits"],
@@ -67,12 +70,17 @@ BLOCS = [
              "trajet du guide (vu en relisant la séance n° 2). Un correcteur ; puis deux relecteurs (en répétition et "
              "dans le code) et un finisseur, qui a vérifié et corrigé chacune de leurs trouvailles (chapitre 9)",
              "12 critères : 11 / 12, puis le 29 rejoué : réussi", "2385386, 9650d0c, c554ea2 et les documents"],
+            ["6", "08/11, 23 h → 10/11, 4 h 20", "« Vérifier le robot », boîte noire et rapport de séance, borne "
+             "visiteur, démo d'accueil, voix du robot ; contrats, 4 agents en parallèle, assemblage ; deux revues "
+             "(28 défauts, tous corrigés), puis recette ; deux coupures (limite d'utilisation, puis le PC éteint "
+             "faute de batterie), chaque fois reprises", "41 / 42 au passage complet, puis le 27 (son outil) : 42 / 42",
+             "bdf9346 → 1f73bdf (35 commits)"],
         ],
     }),
     ("p", "Le nombre de tests de `atelier/tests` montre la croissance : 408 à la vague 1, 609 à la vague 2, 694 "
           "à la vague 3, 1 131 à la vague 4, 1 265 avec les contrats de la vague 5, 1 466 réussis à la recette "
-          "du 01/11 (plus 3 sautés, et les 4 du repérage ROS, lancés à part), et [[tests_atelier]] au moment de "
-          "la génération de ce document."),
+          "du 01/11 (plus 3 sautés, et les 4 du repérage ROS, lancés à part), 1 957 à la recette de la vague 6, "
+          "le 10/11, et [[tests_atelier]] au moment de la génération de ce document."),
 
     ("h2", "La revue et la recette de la vague 5"),
     ("p", "Le 31/10 au soir, après l'assemblage, deux relecteurs ont relu la vague 5 : l'un dans Firefox, avec la "
@@ -148,6 +156,34 @@ BLOCS = [
           "réussi trois fois de suite ensuite) ; les images du Jetson ont été refaites. Rien de tout cela n'a "
           "encore tourné sur le vrai G1 : à vérifier à la séance n° 2 (étapes F3 et P3)."),
 
+    ("h2", "La vague 6 : revues, corrections et recette (09-10/11)"),
+    ("p", "La vague 6 a suivi la même méthode, enchaînée cette fois par un seul script : les contrats (section 13 "
+          "du plan, 13 schémas nouveaux, 119 tests de contrat) le 09/11 à minuit, quatre agents en parallèle "
+          "(Diagnostic, Boîte noire, Borne et orchestrateur, Voix) jusqu'à 2 h, puis l'assemblage (la touche Échap "
+          "et la fenêtre du diagnostic, la barre d'outils à toutes les largeurs, les réglages de la voix dans l'écran "
+          "Démo, des tests isolés qui n'écrivent plus de séance dans le dossier de l'utilisateur ni n'approchent le "
+          "réseau du robot)."),
+    ("p", "**Deux revues**, le 09/11 : l'interface dans Firefox, la démo jouée en simulation (18 défauts, dont 1 "
+          "grave), et le code avec la sécurité (10 défauts, dont 2 moyens). Le grave : le diagnostic prenait "
+          "l'enregistreur de la boîte noire pour le robot (« le PC voit le faux G1, mais pas tout » alors que rien "
+          "ne tournait). Les moyens : une page d'un autre site pouvait agir sur l'Atelier (chapitre 9), et une "
+          "démo relancée restait muette sur une borne déjà ouverte. Le reste : « Ouvrir » sous le bas de l'écran "
+          "en Réel, des réglages coupés, « Ramener à l'accueil » qui disait « Suivez-moi », une séance qui "
+          "continuait en Simulation, un arrêt normal compté comme une erreur dans le rapport, des phrases avec le "
+          "nom d'une salle qui se disaient mal… Le correcteur a reproduit chaque défaut avant de le corriger : "
+          "**aucun n'était faux, les 28 sont corrigés**, chacun avec un test, quatre d'une autre façon que "
+          "proposé, avec la raison écrite (section 13.14 du plan) ; par exemple, plutôt qu'un article devant le "
+          "nom des salles, des tournures qui se disent bien avec tous les noms (« Direction Infirmerie : "
+          "suivez-moi ! »)."),
+    ("p", "**La recette**, le 10/11 : les scripts des relecteurs rejoués sur le code final ; la compilation "
+          "(9 paquets en 3 s) ; les images du Jetson, refaites (le guide et `atelier/lieu` avaient changé) ; "
+          "toutes les suites (**2 885 tests réussis, 14 sautés, 0 échec**, chapitre 13) ; puis les 42 critères en "
+          "un passage de 2 h 19 : **41 / 42**. Le seul échec, le critère 27, ne venait pas du robot : son outil "
+          "attendait encore l'annonce « départ » pour un trajet seul vers l'accueil, devenue « Je retourne à "
+          "l'accueil » après la revue ; l'outil corrigé, le critère a réussi deux fois, sans que le produit change : "
+          "**42 / 42**. Les captures du chapitre 12 ont été prises pendant la recette. Rien de la vague 6 n'a "
+          "encore tourné sur le vrai G1."),
+
     ("h2", "Les décisions et leurs raisons"),
     ("table", {
         "legende": "Les principales décisions",
@@ -184,11 +220,23 @@ BLOCS = [
              "lieu de 580 Mo pour OpenCV ; la carte graphique du PC ; une balise `<img>` affiche le flux."],
             ["Interface « à la SolidWorks », habillée comme Unitree Explore (vague 5)", "La demande de l'utilisateur ; "
              "l'ancienne avait 12 onglets, des panneaux écrasés et des pages qui ne défilaient pas."],
+            ["Un diagnostic qui ne fait qu'observer, avec trois actions confirmées (vague 6)", "Gagner du temps au début "
+             "de chaque séance sans jamais risquer un mouvement ; la séance n° 1 avait perdu du temps sur des services "
+             "arrêtés et un câble à rebrancher."],
+            ["Une boîte noire légère, sans nuages ni images (vague 6)", "Comprendre une séance après coup (les journaux "
+             "du conteneur partaient avec lui) sans ralentir le PC : 2 % d'un cœur, 150 Mo par heure."],
+            ["Une démo qui se met en pause et attend une demande (vague 6)", "La règle « rien ne repart seul » de la "
+             "vague 5, étendue à la démo : une visite interrompue ne reprend jamais d'elle-même."],
+            ["La voix fabriquée sur le PC, par Piper (vague 6)", "Une voix française naturelle sans Internet ; la synthèse "
+             "du robot ne parle sans doute pas français ; le son part en morceaux, comme dans les exemples d'Unitree."],
+            ["Une borne qui ne peut rien faire d'autre (vague 6)", "Une tablette posée dans un hall est à tout le monde : "
+             "depuis le réseau, seules les pages de la borne répondent."],
         ],
     }),
-    ("p", "Pour la vague 5, l'utilisateur dormait et avait délégué toutes les décisions : elles sont écrites, "
+    ("p", "Pour les vagues 5 et 6, l'utilisateur avait délégué toutes les décisions : elles sont écrites, "
           "avec leurs raisons, dans `~/robot-g1-donnees/vague5/DECISIONS.md` (interface I1 à I10, scan S1 à S7, "
-          "robot R1 à R4)."),
+          "robot R1 à R4) et `~/robot-g1-donnees/vague6/DECISIONS.md` (diagnostic D, boîte noire B, borne K, "
+          "orchestrateur O, voix V)."),
 
     ("h2", "Les problèmes rencontrés et leurs solutions"),
     ("table", {
@@ -237,12 +285,19 @@ BLOCS = [
              "le but du guide ; le pilotage ignorait le verrou", "Le guide et le pilotage écoutent le verrou et l'état "
              "du pont ; rien ne repart sans nouvelle demande (12.15) ; puis 6 failles de plus, trouvées par la "
              "relecture, corrigées"],
+            ["Les tests écrivaient des séances dans le dossier de l'utilisateur (vague 6)", "Chaque test qui ouvrait "
+             "l'espace en Réel ouvrait une vraie séance : 21 séances d'essai en une nuit", "Séances et sons des tests "
+             "dans un dossier à part ; un faux contexte vide pour le diagnostic (jamais de ping ni de ssh)"],
+            ["Le diagnostic voyait un robot qui n'était pas là (vague 6)", "L'enregistreur de la boîte noire écoute les "
+             "sujets du robot, et comptait comme lui", "Les nœuds de l'Atelier qui observent ne comptent plus"],
+            ["Vague 6 coupée deux fois (09/11)", "La limite d'utilisation, puis le PC éteint, batterie presque vide",
+             "Le script de la vague reprend chaque étape depuis son travail ; sauvegarde toutes les 20 minutes"],
         ],
     }),
 
     ("h2", "Ce que la méthode apporte, et ses limites"),
     ("puces", [
-        "**Ce qu'elle apporte** : beaucoup de travail en peu de temps (cinq agents en parallèle), sans conflit "
+        "**Ce qu'elle apporte** : beaucoup de travail en peu de temps (quatre ou cinq agents en parallèle), sans conflit "
         "grâce aux contrats ; tout est testé et retesté à chaque vague ; tout est essayé sans robot avant chaque "
         "séance ; le journal et le plan gardent la trace de chaque décision.",
         "**Ses limites** : rien n'est sûr tant que le vrai robot ne l'a pas confirmé (plusieurs formats d'Unitree "
@@ -251,6 +306,6 @@ BLOCS = [
         "déroulé de la séance n° 2) ; les sessions longues sont coupées par la limite d'utilisation ; ce que l'IA garde dans un dossier temporaire peut se perdre ; et "
         "l'utilisateur doit "
         "relire, essayer et dire ce qui ne lui convient pas : c'est ainsi que sont nées la vague 4 (le point "
-        "principal), la vague 5 (l'interface, le scan) et ce document.",
+        "principal), la vague 5 (l'interface, le scan), la vague 6 (une séance efficace, la démo) et ce document.",
     ]),
 ]

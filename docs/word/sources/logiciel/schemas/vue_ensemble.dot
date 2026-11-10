@@ -6,13 +6,17 @@ digraph vue_ensemble {
 
   subgraph cluster_pc {
     label="PC portable : Ubuntu 22.04, ROS 2 Humble"; labeljust=l; style="rounded"; color="#2F5597"; fontcolor="#1F3A5F";
-    navigateur [label="Navigateur (ou tablette)\nl'interface de l'Atelier\nHTML, CSS, JavaScript"];
+    navigateur [label="Navigateur\nl'interface de l'Atelier\nHTML, CSS, JavaScript"];
     serveur [label="Serveur de l'Atelier (Python)\nFastAPI + uvicorn, port 8000\n+ nœud ROS 2 « atelier_pont »"];
     commandes [label="Commandes g1-*\ng1-lieu, g1-monde, g1-scan,\ng1-guide, g1-jetson…"];
     visiteurs [label="g1-visiteurs\nYOLO sur la carte\ngraphique du PC"];
     lieux [label="Fichiers des lieux\nlieux/<id>/ : YAML,\ncartes, nuages, scans", shape=folder, fillcolor="#FFF6D5", color="#BF9000"];
     simu [label="Simulation sans robot\nGazebo : monde, robot\nproxy, piétons ; Nav2,\nguide ; faux G1", fillcolor="#EFEFEF", color="#7F7F7F"];
+    demo [label="Démo d'accueil (vague 6)\nnœuds accueil et voix\n(voix Piper sur le PC)"];
+    seances [label="Boîte noire (vague 6)\njournaux/seances/<date>/ :\nactions, bag, rapport", shape=folder, fillcolor="#FFF6D5", color="#BF9000"];
   }
+
+  borne [label="Borne visiteur\n(tablette ou téléphone,\npage /borne, Wi-Fi)", fillcolor="#FFFFFF", color="#2F5597"];
 
   cable [label="Câble Ethernet\nréseau 192.168.123.x, PC en .99\nROS 2 (DDS, domaine 0) et HTTP", shape=box, style="filled", fillcolor="#FFFFFF", color="#4A4A4A"];
 
@@ -26,12 +30,15 @@ digraph vue_ensemble {
   }
 
   navigateur -> serveur [label=" HTTP +\n WebSocket", dir=both];
+  borne -> serveur [label=" seulement\n la borne", dir=both, style=dashed];
+  serveur -> demo [label=" lance"];
+  serveur -> seances [label=" enregistre"];
   serveur -> commandes [label=" lance"];
   visiteurs -> serveur [style=dashed, label=" visiteurs"];
   commandes -> lieux [label=" écrivent"];
   commandes -> simu [label=" lancent"];
-  lieux -> cable [style=invis];
-  simu -> cable [style=invis];
+  demo -> cable [style=invis];
+  seances -> cable [style=invis];
   serveur -> cable [dir=both, constraint=false, label=" ROS 2"];
   cable -> conteneur [dir=both];
   cable -> pc1 [dir=both, label=" scan, état"];
@@ -40,7 +47,10 @@ digraph vue_ensemble {
   pc1 -> lidar [label=" nuages", dir=back];
   pc1 -> tele [label=" radio", dir=back];
   {rank=same; commandes; visiteurs}
+  {rank=same; navigateur; borne}
   {rank=same; lieux; simu}
+  {rank=same; demo; seances}
+  lieux -> demo [style=invis]; simu -> seances [style=invis];
   {rank=same; conteneur; pc1}
   {rank=same; camera; lidar; tele}
 }

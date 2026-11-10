@@ -13,8 +13,8 @@ digraph methode {
   a4 [label="agent …", fillcolor="#E2F0D9", color="#548235"];
   assemblage [label="Assemblage (l'intégrateur) : compiler,\ncorriger les écarts, relancer les tests"];
   revue [label="Revue (depuis la vague 5) : deux relecteurs,\npuis un correcteur (un test par défaut)", fillcolor="#FBE5D6", color="#C55A11"];
-  recette [label="Recette : toutes les suites de tests,\npuis les critères, sans robot ni écran (« N / 36 »)"];
-  livraison [label="Commits, journal, README, plan\n(« Précisions de l'assemblage »)", fillcolor="#FFF6D5", color="#BF9000"];
+  recette [label="Recette : toutes les suites de tests,\npuis les critères, sans robot ni écran (« N / 42 »)"];
+  livraison [label="Commits, journal, README, plan, documents\n(« Précisions de l'assemblage »)", fillcolor="#FFF6D5", color="#BF9000"];
 
   demande -> comprendre -> contrats;
   contrats -> a1; contrats -> a2; contrats -> a3; contrats -> a4;

@@ -13,8 +13,11 @@ BLOCS = [
      "│   ├── monde/             monde.yaml → Gazebo, carte 2D, masques ; piétons\n"
      "│   ├── scan/              session, aperçu, cartes 3D et 2D, nuage, faux SLAM\n"
      "│   ├── serveur/           serveur FastAPI : routes/, pont ROS 2, processus\n"
-     "│   ├── web/               l'interface : index.html, js/, css/, vendor/\n"
+     "│   ├── web/               l'interface : index.html, borne.html, js/, css/, vendor/\n"
      "│   ├── equipe/            chatbot, relais des phrases, géométrie caméra\n"
+     "│   ├── diagnostic/        « Vérifier le robot » et g1-diagnostic (vague 6)\n"
+     "│   ├── seance/            la boîte noire : enregistreur, rapport, export (vague 6)\n"
+     "│   ├── voix/              la voix du robot : Piper, file, sorties (vague 6)\n"
      "│   └── tests/             tests pytest (unitaires, API, navigateur)\n"
      "├── ws/src/                l'espace de travail ROS 2\n"
      "│   ├── g1_sim/            simulation Gazebo : robot proxy, piétons\n"
@@ -23,10 +26,11 @@ BLOCS = [
      "│   ├── g1_jumeau/         le faux G1 de la répétition\n"
      "│   ├── g1_pilotage/       le pilotage depuis l'Atelier (conteneur)\n"
      "│   ├── g1_equipe/         chatbot, relais, caméra de poitrine\n"
+     "│   ├── g1_accueil/        la démo d'accueil : le nœud accueil (vague 6)\n"
      "│   └── livox_ros_driver2/, FAST_LIO/    LiDAR et SLAM de secours (tiers, hors Git)\n"
      "├── docker/                le conteneur du Jetson et g1-jetson\n"
      "├── bin/                   les commandes g1-* et leurs alias gl-*\n"
-     "├── tests_e2e/             les 36 critères de recette et tout.sh\n"
+     "├── tests_e2e/             les 42 critères de recette et tout.sh\n"
      "├── lieux/                 demo (tests), demo_scan, bomboclat, seance\n"
      "├── docs/                  plan, journal, séances, tutoriels, équipe, relevés\n"
      "├── choregraphies/         chorégraphies du G1 (musique/ : hors Git)\n"
@@ -46,7 +50,11 @@ BLOCS = [
              "`setup/installer_utilisateur.sh`"],
             ["`modeles/`", "YOLO, Vosk, Piper, Whisper", "téléchargés par l'installation"],
             ["`opt/`", "SDK compilés, archive de l'image du Jetson, jeton du pilotage", "installation, `g1-jetson`"],
-            ["`journaux/`", "journaux des programmes et des recettes (`e2e_<date>/`)", "recréés à chaque lancement"],
+            ["`journaux/`", "journaux des programmes et des recettes (`e2e_<date>/`), séances de la boîte noire "
+             "(`seances/<date>/`), sons de la voix (`voix/sons/`)", "recréés à chaque lancement ; une séance se donne "
+             "par `g1-seance exporter`"],
+            ["`docs/releves/*.zip`", "le .zip d'une séance (`g1-seance exporter`), parfois des centaines de Mo",
+             "il reste sur le PC"],
             ["`lieux/*/scans/*/enregistrement/`", "enregistrements bruts du LiDAR (environ 100 Mo par minute)",
              "copie dans `~/robot-g1-donnees/2026-10-27_seance1/`"],
             ["`lieux/seance/`", "le lieu du vrai scan du 27/10 (pas encore ajouté à Git)",
@@ -59,7 +67,7 @@ BLOCS = [
         ],
     }),
     ("p", "En dehors du dépôt, `~/robot-g1-donnees/` garde ce qui ne doit pas se perdre : les copies du scan "
-          "du 27/10, les décisions et les résumés de la vague 5, les documents Word, et le script de "
+          "du 27/10, les décisions et les résumés des vagues 5 et 6, les captures, les documents Word, et le script de "
           "sauvegarde qui pousse le travail en cours dans la branche Git `sauvegarde-vague5`."),
 
     ("h2", "Les conventions communes"),

@@ -5,7 +5,7 @@ BLOCS = [
     ("chapeau", "Un robot humanoïde qui marche au milieu de personnes : la sécurité passe avant tout. Elle "
                 "est faite de plusieurs barrières indépendantes ; si l'une manque, les autres tiennent. "
                 "Chacune est vérifiée par des tests sans robot, puis à vérifier sur le vrai robot."),
-    ("schema", "securite", "Les barrières entre une demande de mouvement et les jambes du robot", 11.5, 15.0),
+    ("schema", "securite", "Les barrières entre une demande de mouvement et les jambes du robot", 11.5, 16.0),
 
     ("h2", "Les barrières, une par une"),
     ("table", {
@@ -62,6 +62,18 @@ BLOCS = [
              "critères 23 à 25"],
             ["Conteneur", "Il ne redémarre jamais seul : on ne relance pas une navigation sans un humain.",
              "`docker/jetson.py` (`--restart no`)", "critère 16"],
+            ["Démo en pause (vague 6)", "ARRÊT, verrou, robot assis ou muet, pont absent, échec, pilotage ou guide "
+             "muet : la démo d'accueil se met en pause, n'envoie plus aucun « Y aller » et ne repart jamais seule : "
+             "« Reprendre » (robot à l'accueil) ou « Ramener à l'accueil », une demande explicite.",
+             "`g1_accueil/logique.py`", "critère 42"],
+            ["Diagnostic sans danger (vague 6)", "« Vérifier le robot » ne fait jamais bouger le robot ; ses actions "
+             "ne partent qu'après une confirmation ; une liste blanche, vérifiée avant chaque requête, ne permet que "
+             "de lire et de démarrer `lidar_driver` et `unitree_slam` (jamais un arrêt, jamais la marche).",
+             "`atelier/diagnostic/`, `pont_ros.py`", "critère 37"],
+            ["Gardes du serveur (vague 6)", "Depuis le réseau, seule la borne est permise (ni l'Atelier, ni "
+             "« Débloquer », ni « Y aller ») ; une page d'un autre site ne peut rien demander ; le code opérateur "
+             "de la borne n'ouvre que pause, reprendre et ramener.",
+             "`main.py` (`GardeBorne`, `GardeOrigine`)", "critère 39, tests"],
         ],
     }),
 
@@ -124,6 +136,31 @@ BLOCS = [
       "- Tout cela a été vérifié en répétition, contre le faux G1 : à refaire sur le vrai robot (étapes F3 et P3)."],
      "attention"),
 
+    ("h2", "La vague 6 et la sécurité"),
+    ("p", "La vague 6 a apporté des pièces qui demandent des mouvements (la démo d'accueil, la borne) ou parlent "
+          "au robot (le diagnostic, la voix). La règle de 12.15 y vaut partout, et le critère 42 la vérifie en "
+          "répétition, une visite à chaque cas : ARRÊT, « Bloquer », faux G1 assis puis remis en marche, pont tué, "
+          "pilotage qui prend la main. Chaque fois, la démo s'est mise en pause en 0,2 à 1,8 s, et le robot a "
+          "parcouru **0,0 cm** dans les 15 s qui ont suivi la levée ; aucun « Y aller » de la démo n'est parti "
+          "pendant une pause, sauf « Ramener à l'accueil », demandé exprès."),
+    ("p", "La revue du code de la vague 6 (09/11) a trouvé des failles plus discrètes, toutes corrigées avec un "
+          "test :"),
+    ("puces", [
+        "**une page d'un autre site**, ouverte dans le navigateur du PC, pouvait envoyer des demandes à l'Atelier "
+        "(lancer une action du diagnostic, faire parler le robot, retirer le verrou) : la **garde des origines** "
+        "les refuse (403), sauf l'ARRÊT, qui passe toujours ;",
+        "**un détour par « .. »** dans une adresse permise depuis la borne servait l'interface entière : refusé ;",
+        "**la liste blanche** des requêtes au robot ne regardait que leur numéro : elle vérifie aussi leur "
+        "paramètre (jamais `switch: 0`, jamais `ai_sport` ni `motion_switcher`) ;",
+        "**un choix fait à la borne** pendant le silence du guide (3 s sans nouvelles) partait, puis la pause "
+        "l'arrêtait aussitôt : la pause est maintenant évaluée avant le choix ;",
+        "**le code opérateur** de la borne apparaissait en clair dans la boîte noire : il est masqué.",
+    ]),
+    ("p", "La **boîte noire** est aussi un témoin : son rapport signale tout seul un **mouvement sans demande** (le "
+          "robot avance de plus de 5 cm/s sans mission du guide, sans joystick ni pilotage depuis 2 s), un robot "
+          "qui ne répond plus et chaque arrêt d'urgence. À la séance n° 2, les marches lancées à la main (étapes M "
+          "et C) et la télécommande y apparaîtront : c'est attendu."),
+
     ("h2", "Ce que la séance n° 1 a appris (27/10)"),
     ("p", "La première séance avec le robot a validé le scan et l'ordre de marche 7105. Elle a surtout appris "
           "des choses qu'aucune simulation ne pouvait dire, et la vague 5 en a tiré les corrections :"),
@@ -138,7 +175,8 @@ BLOCS = [
         "le pont ne compte que les réponses qui portent ses propres numéros.",
         "**Le scan échouait d'abord (erreur 3104, délai dépassé)** : les services `lidar_driver` et "
         "`unitree_slam` du robot étaient arrêtés. Ils ont été démarrés depuis le PC (service `robot_state`). "
-        "Reste à savoir s'ils le restent après un redémarrage du robot.",
+        "Reste à savoir s'ils le restent après un redémarrage du robot ; depuis la vague 6, « Vérifier le "
+        "robot » les voit et les démarre en un clic.",
         "**Le port `eno2` perd son adresse à chaque débranchement** : `source ~/robot-g1/setup/robot.sh` la remet.",
         "Les vérifications de sécurité du pont (télécommande prioritaire, robot qui s'arrête seul quand le pont "
         "est tué, verrou) n'ont pas été notées : elles sont refaites en premier à la séance n° 2.",
@@ -148,6 +186,7 @@ BLOCS = [
       "- Aucune simulation sur le PC pendant que le robot est branché (même domaine 0) : redémarrer le PC avant.",
       "- `source ~/robot-g1/setup/robot.sh` dans chaque terminal qui parle au robot (« le robot répond »).",
       "- Vitesses réduites : `G1_VITESSE_MAX=0.2` pour les premiers trajets ; d'abord au portique.",
+      "- « Vérifier le robot » au début ; l'Atelier reste ouvert toute la séance (la boîte noire enregistre).",
       "- On arrête tout si la télécommande ne reprend pas la main, si le robot ne s'arrête pas seul quand on "
       "coupe le pont, ou si un mouvement part sans qu'on l'ait demandé."],
      "attention"),

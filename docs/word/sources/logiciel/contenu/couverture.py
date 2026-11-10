@@ -14,12 +14,12 @@ COUVERTURE = {
     "fiche": [
         ["Projet", "Faire d'un robot humanoïde Unitree G1 EDU un robot d'accueil qui scanne un bâtiment, "
                    "connaît ses salles, y accompagne les visiteurs et contourne la foule."],
-        ["Durée", "Deux mois, du 21/10 au 18/12/2026. Le 01/11, on est au jour 12 sur 59."],
+        ["Durée", "Deux mois, du 21/10 au 18/12/2026. Le 10/11, on est au jour 21 sur 59."],
         ["Logiciel", "« Atelier G1 », dépôt Git `~/robot-g1` : [[commits]] commits, le dernier ([[dernier_commit]]) "
                      "du [[date_commit]]."],
-        ["État décrit", "Vagues 1 à 5 faites et vérifiées sans robot : à la recette de la vague 5, le 01/11, "
-                        "36 critères sur 36 et 2 281 tests réussis, sans échec. Avancement du projet estimé à "
-                        "environ 50 % (section 1.4) ; prochaine étape : la séance robot n° 2."],
+        ["État décrit", "Vagues 1 à 6 faites et vérifiées sans robot : à la recette de la vague 6, le 10/11, "
+                        "42 critères sur 42 et 2 885 tests réussis, sans échec. Avancement du projet estimé à "
+                        "environ 55 % (section 1.4) ; prochaine étape : la séance robot n° 2."],
         ["Rédaction", "Claude (IA d'Anthropic), à partir du dépôt, du plan, du journal et du code lui-même ; "
                       "document généré le [[date]]."],
         ["Pour le regénérer", "`~/robot-g1-donnees/vague5/documents/logiciel/generer.py` (mode d'emploi dans "
@@ -29,8 +29,10 @@ COUVERTURE = {
     "lecture": [
         "Pour comprendre vite : les chapitres 1 et 2, puis le chapitre 8, qui suit les données de bout en bout.",
         "- Pour apprendre ROS 2 à partir du projet : le chapitre 4.",
-        "- Pour modifier quelque chose : le chapitre 13 (dix recettes), puis les annexes du chapitre 15.",
-        "- Pour un mot inconnu : le glossaire (chapitre 14).",
+        "- Pour la vague 6 (« Vérifier le robot », la boîte noire, la démo d'accueil, la borne, la voix) : le "
+        "chapitre 12.",
+        "- Pour modifier quelque chose : le chapitre 14 (onze recettes), puis les annexes du chapitre 16.",
+        "- Pour un mot inconnu : le glossaire (chapitre 15).",
         "- Dans le texte, `ce style` désigne un nom de fichier, une commande ou un sujet ROS à taper tel quel.",
     ],
 }

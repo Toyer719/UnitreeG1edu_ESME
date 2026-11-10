@@ -23,7 +23,10 @@ BLOCS = [
             ["`robot.py`", "le contrat du pont et du repérage : plafonds, délais, états, `vitesse_effective` (la vitesse minimale)"],
             ["`principal.py`, `passants.py`, `comportement.py`", "le point principal ; les mesures des passants ; les états et événements du guide"],
             ["`pilotage.py`, `equipe.py`", "ordres permis et interdits, gestes, danses, modes du robot ; fichiers et sujets de l'équipe"],
-            ["`commande.py`, `schemas/`, `exemples/`", "la commande `g1-lieu` ; les 28 schémas JSON ; les exemples des fichiers de l'équipe"],
+            ["`diagnostic.py`, `seance.py`, `accueil.py`, `voix.py`", "les contrats de la vague 6 : vérifications, actions et "
+             "liste blanche du diagnostic ; fichiers, sujets enregistrés et garde-fous de la boîte noire ; états, pauses, "
+             "réglages (`demo.yaml`) et textes de la démo et de la borne ; formats des requêtes de la voix"],
+            ["`commande.py`, `schemas/`, `exemples/`", "la commande `g1-lieu` ; les 41 schémas JSON ; les exemples des fichiers de l'équipe"],
         ],
     }),
 
@@ -62,13 +65,20 @@ BLOCS = [
           "seconde). `processus.py` lance et arrête les commandes `g1-*` en **groupes de processus** (tout ce "
           "qu'une commande a lancé s'arrête avec elle), avec un journal chacune. `pont_ros.py` est le nœud "
           "`atelier_pont`, qui tourne dans un fil à part : il écoute `/odom`, `/guide/etat`, `/reperage/etat`, "
-          "`/pont/etat`, les sujets JSON de l'équipe et les images de la caméra, et publie `/guide/aller`, "
-          "`/guide/stop`, `/reperage/demander`, `/pont/arret`. Si ROS 2 n'est pas chargé, l'Atelier marche "
-          "quand même, sans robot."),
-    ("p", "Les routes sont rangées par sujet dans `routes/` (15 fichiers) : `lieux`, `monde`, `plan` (salles, "
+          "`/pont/etat`, les sujets JSON de l'équipe, de la démo et de la voix, et les images de la caméra, et "
+          "publie `/guide/aller`, `/guide/stop`, `/reperage/demander`, `/pont/arret`, `/accueil/choix`, "
+          "`/accueil/commande`, `/voix/commande`. Depuis la vague 6, il peut aussi poser une question au robot "
+          "(`appeler_unitree` : la liste des services, le mode, et le démarrage des deux services de cartographie, "
+          "rien d'autre). Si ROS 2 n'est pas chargé, l'Atelier marche quand même, sans robot."),
+    ("p", "Trois **gardes** entourent toutes les demandes (`main.py`) : celle de la **borne** (depuis le réseau, "
+          "seules les pages de la borne sont permises), celle des **origines** (une page d'un autre site ouverte "
+          "dans le navigateur ne peut rien demander) et le **journal des actions** de la boîte noire, qui note "
+          "chaque demande qui change quelque chose."),
+    ("p", "Les routes sont rangées par sujet dans `routes/` (20 fichiers) : `lieux`, `monde`, `plan` (salles, "
           "itinéraires, zones), `simulation` (lancer, arrêter, téléopérer, « Y aller »), `scan`, `robot` "
           "(repérage, verrou), `principal`, `passants`, `guide`, `pilotage`, `equipe`, `arret`, `liaison`, "
-          "`nuage`, `camera`. La liste complète est en annexe B."),
+          "`nuage`, `camera`, et ceux de la vague 6 : `diagnostic`, `seance`, `borne`, `demo`, `voix`. La liste "
+          "complète est en annexe B."),
 
     ("h2", "atelier/web : l'interface"),
     ("p", "Une page unique (`index.html`) et des modules JavaScript, servis tels quels. `js/app.js` lance la "
@@ -78,11 +88,15 @@ BLOCS = [
         "largeurs": [3.6, 13.0],
         "taille": 9,
         "lignes": [
-            ["`js/coque/`", "12 modules : `coque.js` (accueil ou espace, table des écrans, clavier, mémoire du navigateur), "
+            ["`js/coque/`", "14 modules : `coque.js` (accueil ou espace, table des écrans, clavier, mémoire du navigateur), "
              "`accueil.js`, `ruban.js` (le registre des commandes), `arbre.js`, `vue.js`, `panneau.js`, `barre_etat.js`, "
-             "`arret.js`, `confirmation.js`, `anciens_hash.js`, `ecran.js`, `icones.js`"],
-            ["`js/ecrans/`", "12 écrans : lieux, monde, carte, salles, itineraires, zones, simulation, scan, pilotage, "
-             "personnalites, dialogues, camera"],
+             "`arret.js`, `confirmation.js`, `anciens_hash.js`, `ecran.js`, `icones.js`, et ceux de la vague 6 : "
+             "`diagnostic.js` (la fenêtre « Vérifier le robot »), `seance.js` (le badge et le menu de la séance)"],
+            ["`js/ecrans/`", "13 écrans : lieux, monde, carte, salles, itineraires, zones, simulation, scan, pilotage, "
+             "personnalites, dialogues, camera, demo"],
+            ["`js/borne/`, `js/voix/`", "la borne (page `borne.html`) : `borne.js`, `liaison.js` (WebSocket), `textes.js` "
+             "(français, anglais), `dessins.js` (la mascotte), `son.js`, `qr.js` (le code QR) ; les réglages de la voix "
+             "(`reglages_voix.js`)"],
             ["`js/carte3d/`", "la carte 3D partagée : `carte3d.js` (`creerCarte3D`), `geometrie3d.js` (rayon contre le "
              "sol, accroche à 5 cm et 15°), `reperes.js` (étoile, épingles, couloirs, zones), `monde3d.js` (monde en "
              "volumes, maillage STL), `edition.js` (gestes de placement), `direct3d.js` (robot et piétons en direct)"],
@@ -92,7 +106,7 @@ BLOCS = [
             ["modules communs", "`api.js` (appels), `contexte.js`, `direct.js` (WebSocket), `plan.js` (Leaflet), "
              "`vue3d.js`, `nuage3d.js`, `teleop.js`, `geometrie.js`, `historique.js` (annuler, rétablir), "
              "`formulaire.js`, `messages.js`"],
-            ["`css/`, `vendor/`", "10 feuilles de style (les couleurs dans `theme.css`) ; Leaflet 1.9.4 et three.js r160"],
+            ["`css/`, `vendor/`", "14 feuilles de style (les couleurs dans `theme.css`) ; Leaflet 1.9.4 et three.js r160"],
         ],
     }),
     ("p", "Chaque écran suit le même **contrat** : `ouvrir(racine, options)` rend un objet avec `modifie()` et "
@@ -108,9 +122,29 @@ BLOCS = [
           "visiteur à partir de la taille de son cadre ; `images.py` garde la dernière image et règle la cadence "
           "du flux. Le nœud `dialogue` de `g1_equipe` s'en sert sur le robot, l'écran Dialogues aussi."),
 
+    ("h2", "atelier/diagnostic, atelier/seance, atelier/voix : la vague 6"),
+    ("table", {
+        "entetes": ["Paquet", "Modules", "Rôle"],
+        "largeurs": [3.2, 5.6, 7.8],
+        "taille": 8.5,
+        "premiere_col_gras": True,
+        "lignes": [
+            ["`atelier/diagnostic/`", "`sondes.py`, `contexte.py`, `verdicts.py`, `actions.py`, `texte.py`, "
+             "`__main__.py`", "« Vérifier le robot » : les sondes lancées en parallèle (fichiers, `nmcli`, ping, un "
+             "seul ssh, ROS 2), le vrai contexte ou le faux (tests), les verdicts avec leur conseil, les trois "
+             "actions de la liste blanche, le texte du terminal et `g1-diagnostic`"],
+            ["`atelier/seance/`", "`__init__.py` (le gestionnaire), `enregistreur.py`, `actions.py`, `manifeste.py`, "
+             "`lecture.py`, `analyse.py`, `rapport.py`, `export.py`, `__main__.py`", "la boîte noire : ouvrir et fermer "
+             "une séance, l'enregistreur rosbag2, le journal des actions, la lecture du bag, les trajets et les "
+             "anomalies, le rapport (HTML, Markdown, JSON, carte), le .zip et `g1-seance`"],
+            ["`atelier/voix/`", "`logique.py`, `synthese.py`, `noeud.py`, `__main__.py`", "la voix : la file et les "
+             "priorités (sans ROS, testées à fausse horloge), Piper et le son à 16 kHz, le nœud ROS 2 et `g1-voix`"],
+        ],
+    }),
+
     ("h2", "Les paquets ROS 2 (ws/src)"),
     ("table", {
-        "legende": "Les six paquets ROS 2 du projet",
+        "legende": "Les sept paquets ROS 2 du projet",
         "entetes": ["Paquet", "Nœuds (exécutable)", "Sujets principaux", "Rôle"],
         "largeurs": [2.4, 3.9, 5.2, 5.1],
         "taille": 8.5,
@@ -123,17 +157,22 @@ BLOCS = [
              "la navigation : guide, routeur A*, relais de position et repérage, réglages de Nav2, banc de test"],
             ["g1_bridge", "`pont` (nœud `pont_g1`)", "`/cmd_vel` → `/api/sport/request` ; `/pont/etat`, `/pont/arret`",
              "le pont vers la marche, avec ses sécurités ; outil de mesure `g1_bridge.mesure`"],
-            ["g1_jumeau", "`jumeau` (nœud `g1_jumeau`)", "`/api/sport/*`, `/api/arm/*`, `/api/voice/*`, `/g1_jumeau/*`",
-             "le faux G1 de la répétition : modes, refus, danses, odométrie qui dérive, image de test"],
+            ["g1_jumeau", "`jumeau` (nœud `g1_jumeau`)", "`/api/sport/*`, `/api/arm/*`, `/api/voice/*`, "
+             "`/api/robot_state/*`, `/g1_jumeau/*`",
+             "le faux G1 de la répétition : modes, refus, danses, odométrie qui dérive, image de test ; services du "
+             "robot et voix vérifiée (vague 6)"],
             ["g1_pilotage", "`pilote` (nœud `pilotage`)", "`/api/sport|arm|voice/request`, `/arm_sdk`, `/mouvement/maitre`, `/pilotage/etat`",
              "le pilotage depuis l'Atelier (HTTP et WebSocket, port 8010), dans le conteneur"],
             ["g1_equipe", "`dialogue`, `camera_usb`, `fausse_camera`, `voix_journal`",
              "`/visiteur/texte`, `/robot/dire`, `/camera_poitrine/*`, `/personnalite/active`",
              "le chatbot d'exemple, le relais des phrases, la caméra de poitrine, des bouchons pour essayer"],
+            ["g1_accueil", "`accueil` (vague 6)", "`/accueil/etat`, `/accueil/evenement`, `/accueil/choix`, "
+             "`/accueil/commande` ; `/guide/*`, `/robot/dire`",
+             "la démo d'accueil : la machine d'états, testée sans ROS (`logique.py`), et son nœud, sur le PC"],
         ],
     }),
     ("p", "Le paquet `g1_sim` est déclaré comme un paquet C++ (ament_cmake), mais il ne contient que des "
-          "fichiers de lancement, des modèles et des scripts Python ; les cinq autres sont des paquets Python "
+          "fichiers de lancement, des modèles et des scripts Python ; les six autres sont des paquets Python "
           "(ament_python). "
           "Chaque paquet a son `LISEZMOI.md` et son dossier `test/`."),
 
@@ -178,6 +217,10 @@ BLOCS = [
             ["g1-jetson", "le conteneur du Jetson : construire, envoyer, démarrer, arrêter, état, journal, vérifier", "`docker/jetson.py`"],
             ["g1-pilotage", "le pilotage en ligne de commande, comme Réel › Piloter", "`g1_pilotage/commande.py`"],
             ["g1-visiteurs", "les visiteurs vus par la caméra de poitrine (YOLO)", "`outils/visiteurs.py`"],
+            ["g1-diagnostic", "« Vérifier le robot » dans un terminal ; ses actions, après « oui »", "`atelier/diagnostic`"],
+            ["g1-seance", "la boîte noire : séance, rapport, export, liste", "`atelier/seance`"],
+            ["g1-accueil", "la démo d'accueil sans l'Atelier (le guide doit tourner)", "`g1_accueil`"],
+            ["g1-voix", "la voix du robot seule ; `--mesurer` : la vitesse de Piper", "`atelier/voix`"],
             ["g1-sim, g1-sim-marche, g1-sim-demo", "le G1 dans MuJoCo (première semaine)", "`sim/`"],
             ["g1-etat, g1-telecommande, g1-releve, g1-nuage", "lire l'état du robot, sa télécommande, faire un relevé, voir le LiDAR", "`robot/`, `outils/`"],
             ["g1-premiers-pas, g1-manette, g1-manette-virtuelle", "premiers essais du vrai robot ; piloter à la manette", "`robot/`, `outils/`"],

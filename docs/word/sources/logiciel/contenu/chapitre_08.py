@@ -4,7 +4,8 @@ BLOCS = [
     ("h1", "Les chemins des données"),
     ("chapeau", "Six trajets suivis de bout en bout, dans l'ordre où les choses se passent : le scan, un "
                 "trajet vers une salle, le repérage au démarrage, le pilotage, la caméra, et la simulation "
-                "avec la répétition."),
+                "avec la répétition. Ceux de la vague 6 (le diagnostic, la boîte noire, la démo d'accueil et "
+                "la voix) sont au chapitre 12."),
 
     ("h2", "Du scan à la carte et au nuage"),
     ("schema", "chaine_scan", "Du scan au lieu : enregistrement, traitement en trois étapes, adoption", 13.5, 14.5),

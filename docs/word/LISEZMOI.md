@@ -2,9 +2,32 @@
 
 | Fichier | Contenu | Pages |
 |---|---|---|
-| `Seance2_A_faire.docx` | Séance robot n° 2 : ce qu'il faut faire (préparation, étapes, commandes, cases à cocher), avec l'avancement du projet | 22 |
-| `Seance2_A_remplir.docx` | Séance robot n° 2 : feuille de résultats à remplir (mêmes lignes que `docs/releves/seance-2.md`, mesures des seuils, notes) | 12 |
-| `Atelier_G1_documentation_logiciel.docx` | Document complet sur le logiciel : technologies, code, construction, revue et recette de la vague 5, nouvelle interface avec ses captures | 66 |
+| `Seance2_A_faire.docx` | Séance robot n° 2 : ce qu'il faut faire (préparation, étapes, commandes, cases à cocher), avec l'avancement du projet | 26 |
+| `Seance2_A_remplir.docx` | Séance robot n° 2 : feuille de résultats à remplir (mêmes lignes que `docs/releves/seance-2.md`, mesures des seuils, voix, notes) | 14 |
+| `Atelier_G1_documentation_logiciel.docx` | Document complet sur le logiciel : technologies, code, sécurité, construction, revues et recettes des vagues 5 et 6, interface (vague 5) et chapitre de la vague 6, avec leurs captures | 82 |
+
+**Version de la vague 6, du 10/11/2026**, après la recette (42 / 42, 2 885 tests réussis, 0 échec) ; agent Documents :
+
+- **la fiche « à faire »** suit `docs/tutoriel-seance-2.md` mis à jour le même jour : « Vérifier le robot » remplace les
+  vérifications à la main (`g1-etat`, la liste de l'accueil, les services dans l'appli, le premier `g1-jetson verifier`)
+  et démarre les services de cartographie (l'appli en secours) ; l'Atelier est lancé une seule fois, à l'étape A
+  (`G1_VITESSE_MAX=0.2 G1_PILOTAGE_URL=http://192.168.123.164:8010 g1-atelier`, `--hote 0.0.0.0` en variante pour la
+  borne sur un téléphone), et la séance de la boîte noire s'ouvre avec l'espace ; « Naviguer › Arrêter » garde tout seul
+  le journal du conteneur (la commande à la main reste en secours ; seul le journal du pilotage, étape P, se garde à la
+  main) ; nouvelle étape V en option (la voix à 20 %, puis de 10 en 10, enregistrée avant la démo ; la démo avec la
+  borne, une visite, puis la pause sur ARRÊT) ; fin : « Terminer la séance », le rapport, `g1-seance liste` et
+  `exporter` ; veille : 12 critères (37, 38, 40, 42 en plus) et la place libre ; dépannage, lexique et « à me
+  rapporter » à jour ; l'avancement est recalculé (environ 55 %, jour 21 sur 59) ;
+- **la feuille « à remplir »** a les lignes A1 à A3, P5, V1 (avec un tableau volume par volume), V2, Fin, Z1 et Z2,
+  les heures de début des étapes et les services de cartographie démarrés par « Vérifier le robot » ;
+- **le document du logiciel** a un chapitre 12 nouveau, « Diagnostic, boîte noire et démo d'accueil (vague 6) », avec
+  3 schémas et les 8 captures de la recette (`~/robot-g1-donnees/vague6/captures/`) ; les anciens chapitres 12 à 15
+  deviennent 13 à 16 ; tout le reste est mis à jour (chiffres, avancement, technologies, arborescence, pièces du code,
+  sécurité, construction, tests et 42 critères, onze recettes, glossaire, annexes des commandes, routes, sujets,
+  réglages, variables et ordres du robot) ; la table des matières tient sur deux pages ;
+- les trois fichiers sont vérifiés par le validateur OOXML du skill docx (« All validations PASSED! ») ; les pages
+  changées ont été relues dans le PDF de contrôle (mise en page corrigée : tableau de l'avancement, table des matières,
+  schéma d'ensemble moins large, figures du chapitre 12 sans pages à moitié vides).
 
 **Version finale de la vague 5, du 01/11/2026**, après la recette (36 / 36, 2 281 tests réussis, 0 échec) :
 
@@ -57,7 +80,8 @@ champs : répondre **Oui** (table des matières et numéros de page).
 Les documents sont produits par des scripts Python (python-docx) : `sources/` (générateurs, contenu, schémas
 Graphviz, polices et scripts du rendu de contrôle ; mode d'emploi et points incertains dans
 `sources/logiciel/NOTES.md`). Ils se régénèrent depuis `~/robot-g1-donnees/vague5/documents/` (dossier de
-travail, avec le venv `~/robot-g1-donnees/venv-docx`) :
+travail, avec le venv `~/robot-g1-donnees/venv-docx` ; les captures sont lues dans `~/robot-g1-donnees/vague5/captures/`
+et `~/robot-g1-donnees/vague6/captures/`) :
 
 ```bash
 ~/robot-g1-donnees/venv-docx/bin/python ~/robot-g1-donnees/vague5/documents/logiciel/generer.py --images

@@ -14,10 +14,12 @@ BLOCS = [
         "par un **WebSocket** (un canal qui reste ouvert, par lequel le serveur envoie l'état du robot dix "
         "fois par seconde).",
         "**Le serveur de l'Atelier** (Python, FastAPI) lit et écrit les fichiers des lieux, lance les "
-        "commandes `g1-*` (simulation, navigation, scan, conteneur du robot) et contient un petit "
-        "programme ROS 2, `atelier_pont`, qui écoute le robot et lui transmet les demandes (« Y aller », "
+        "commandes `g1-*` (simulation, navigation, scan, conteneur du robot, démo d'accueil et voix) et contient "
+        "un petit programme ROS 2, `atelier_pont`, qui écoute le robot et lui transmet les demandes (« Y aller », "
         "ARRÊT, repérage). Il ne contient aucune logique de robotique : il appelle les bibliothèques et les "
-        "commandes.",
+        "commandes. Depuis la vague 6, il tient aussi la **boîte noire** de chaque séance en Réel (chapitre 12).",
+        "**La borne visiteur** (vague 6) est une page de ce même serveur, ouverte sur une tablette ou un "
+        "téléphone du même Wi-Fi : depuis le réseau, elle seule est permise.",
         "**ROS 2** relie tous les programmes du robot entre eux : la navigation (Nav2), le guide, le pont "
         "vers la marche, la simulation… Le chapitre 4 l'explique en détail.",
         "**Le robot** a deux ordinateurs. Le **PC1** d'Unitree est fermé : il fait marcher et tenir debout "
@@ -56,6 +58,10 @@ BLOCS = [
             ["Nav2, guide, relais, pont", "`g1-guide navigation --simu` (sans pont)",
              "sur le PC (`--localisation unitree`), ou le conteneur en local", "conteneur `g1-jetson` sur le Jetson"],
             ["Atelier", "PC", "PC", "PC, relié par le câble"],
+            ["Démo d'accueil et voix (vague 6)", "PC ; la voix passe par la borne", "PC ; voix vers le faux G1",
+             "PC ; voix vers le haut-parleur du robot"],
+            ["Boîte noire (vague 6)", "aucune", "une séance par ouverture de l'espace", "une séance par ouverture "
+             "de l'espace"],
             ["Domaine ROS 2", "celui du terminal", "celui du terminal", "0 (celui du robot)"],
         ],
     }),
@@ -70,7 +76,8 @@ BLOCS = [
         "largeurs": [4.0, 3.4, 9.2],
         "taille": 9.5,
         "lignes": [
-            ["PC portable du projet", "192.168.123.99", "l'Atelier, la simulation, YOLO ; relié par `eno2`"],
+            ["PC portable du projet", "192.168.123.99", "l'Atelier, la simulation, YOLO, la démo et la voix ; relié "
+             "par `eno2`"],
             ["PC1 d'Unitree", "192.168.123.161", "marche, équilibre, SLAM, services `sport`, `slam_operate`, `voice`, `arm`, `videohub`"],
             ["Jetson (PC2)", "192.168.123.164", "notre conteneur ; Ubuntu 20.04, L4T R35.3.1, Docker 24.0.7, 15 Go de mémoire"],
             ["LiDAR Livox MID-360", "192.168.123.120", "le capteur laser 3D, lu par le SLAM d'Unitree"],

@@ -1,177 +1,263 @@
-"""Chapitre 12 : les tests."""
+"""Chapitre 12 : diagnostic, boîte noire et démo d'accueil (vague 6).
+
+Les captures viennent de ~/robot-g1-donnees/vague6/captures/ (deuxième dossier de --captures) : les captures
+finales de la recette du 10/11 (10_diagnostic.png à 17_borne_tablette.png ; Atelier à 1600 × 900, borne à
+390 × 844 et 1024 × 768). Comme au chapitre 11, une capture absente est simplement omise, et les légendes
+décrivent ces captures-là : une autre capture demande de relire sa légende.
+"""
 
 BLOCS = [
-    ("h1", "Les tests"),
-    ("chapeau", "Tout le logiciel se teste sans robot et sans écran. Cinq sortes de tests, du plus petit (une "
-                "fonction) au plus grand (un scénario complet, du navigateur à Gazebo), et 36 critères de "
-                "recette qui disent si une vague est finie. À la recette de la vague 5, le 01/11/2026 : "
-                "2 281 tests réussis, aucun échec, et 36 / 36."),
-
-    ("h2", "Cinq sortes de tests"),
-    ("table", {
-        "entetes": ["Sorte", "Où", "Outil", "Combien", "Durée (01/11)"],
-        "largeurs": [3.8, 4.0, 3.5, 3.2, 2.1],
-        "taille": 8.5,
-        "premiere_col_gras": True,
-        "lignes": [
-            ["Tests unitaires et de l'API", "`atelier/tests/` (74 fichiers)", "pytest ; client de test de FastAPI",
-             "[[tests_atelier]] tests", "11 min"],
-            ["Tests des paquets ROS 2", "`ws/src/g1_*/test/`", "`colcon test` (pytest et contrôles de style)",
-             "[[fonctions_test_ros]] fonctions (750 tests avec les contrôles de style)", "7 min"],
-            ["Tests du conteneur", "`docker/tests/`", "pytest, Docker", "[[tests_docker]] tests", "30 s"],
-            ["Tests dans le navigateur", "`atelier/tests/test_*_navigateur.py`", "Firefox sans fenêtre, geckodriver",
-             "12 fichiers", "compris ci-dessus"],
-            ["Critères de recette", "`tests_e2e/critere_NN_*.sh`", "bash et outils Python ; Gazebo, Nav2, Atelier",
-             "[[criteres]] critères", "2 h 08"],
-        ],
-    }),
-    ("p", "Les tests dans le navigateur pilotent un vrai Firefox, sans fenêtre, par geckodriver (un petit client "
-          "WebDriver écrit dans `test_serveur_navigateur.py`, sans Selenium ni Playwright) : ils cliquent, "
-          "mesurent la mise en page et lisent la page. Les critères de recette montent tout pour de vrai : "
-          "Gazebo sans fenêtre, Nav2, le serveur de l'Atelier, le faux G1, le conteneur en local."),
-
-    ("h2", "Comment les lancer"),
-    ("code", "cd ~/robot-g1\n"
-             ".venv-projet/bin/python -m pytest atelier/tests -q \\\n"
-             "    --ignore=atelier/tests/test_robot_reperage_ros.py\n"
-             "ROS_LOCALHOST_ONLY=0 .venv-projet/bin/python -m pytest \\\n"
-             "    atelier/tests/test_robot_reperage_ros.py -q\n"
-             ".venv-projet/bin/python -m pytest docker/tests -q\n"
-             "cd ws && colcon test --executor sequential --packages-select \\\n"
-             "    g1_sim g1_nav g1_bridge g1_jumeau g1_pilotage g1_equipe\n"
-             "colcon test-result --all\n"
-             "~/robot-g1/tests_e2e/tout.sh            # les 36 critères, « N / 36 », en 2 h 10\n"
-             "~/robot-g1/tests_e2e/tout.sh 31 32 33   # seulement certains critères"),
-    ("p", "Le fichier `test_robot_reperage_ros.py` se lance à part, avec `ROS_LOCALHOST_ONLY=0`, car ses programmes "
-          "l'imposent. La carte 3D a besoin de WebGL : lancez `tout.sh` depuis un terminal de la session "
-          "graphique (`DISPLAY=:1` ; aucune fenêtre ne s'ouvre), sinon le critère 32 répond « en attente ». Les "
-          "critères passent tous par `tests_e2e/commun.sh`, qui met `ROS_LOCALHOST_ONLY=0` : avec 1, Nav2 lance trop "
-          "de participants pour la seule interface locale, et des nœuds plantent."),
-
-    ("h2", "Les règles des tests"),
-    ("puces", [
-        "**Jamais le vrai robot** : `G1_SLAM_FAUX=1` refuse toute commande vers le robot (ni ssh, ni ping vers "
-        "192.168.123.x) ; le mode robot ne s'essaie qu'en répétition.",
-        "**Jamais d'écran** : Gazebo, Firefox et les nœuds tournent sans fenêtre.",
-        "**Jamais `lieux/demo`** : chaque test travaille sur une copie, dans un dossier temporaire (`ATELIER_LIEUX`).",
-        "**Chacun son domaine ROS 2** (`E2E_DOMAINE`, 36 par défaut) et sa partition Gazebo, pour ne pas se gêner.",
-        "**Tout s'arrête à la fin**, même après une erreur ou un Ctrl+C : Gazebo, Nav2, le serveur, les faux "
-        "services, les enregistrements, les conteneurs.",
-        "**Codes de sortie** : 0 réussi, 1 échoué, 77 « en attente » (une pièce manque, par exemple le modèle YOLO). "
-        "Les journaux vont dans `~/robot-g1/journaux/e2e_<date>/`.",
+    ("h1", "Diagnostic, boîte noire et démo d'accueil (vague 6)"),
+    ("chapeau", "Du 08 au 10/11/2026, la vague 6 a ajouté deux choses. D'abord, de quoi rendre chaque séance avec "
+                "le robot efficace : **« Vérifier le robot »**, un diagnostic en un clic, et la **boîte noire**, qui "
+                "enregistre toute la séance et en écrit le rapport. Ensuite, la **démo d'accueil** complète, essayée "
+                "en simulation : la **borne** où le visiteur choisit sa salle, le nœud **accueil** qui mène la visite, "
+                "et la **voix** du robot. Rien de tout cela n'a encore tourné sur le vrai G1 : c'est pour la séance "
+                "n° 2."),
+    ("si_captures", [
+        ("p", "Les images de ce chapitre ont été prises le 10/11, à la fin de la recette, dans Firefox piloté sans "
+              "fenêtre (avec WebGL), sur des copies du lieu « Lycée démo » : l'Atelier dans une fenêtre de 1 600 × 900 "
+              "pixels, en répétition (le faux G1) ou en simulation ; la borne à la taille d'un téléphone "
+              "(390 × 844) et d'une tablette (1 024 × 768). La démo des captures a été jouée pour de vrai : "
+              "simulation, faux visiteur qui suit, un appui sur la borne, le robot qui salue puis accompagne."),
     ]),
 
-    ("h2", "Les chiffres, vague après vague"),
+    ("h2", "Ce que la vague 6 apporte"),
+    ("p", "Le 08/11 au soir, l'utilisateur a demandé « ok go 1 puis 2 » : **1**, une séance avec le robot qui ne "
+          "perde plus de temps ni de journaux ; **2**, une démo d'accueil complète, testable dès maintenant sans le "
+          "robot. Les choix sont écrits dans `~/robot-g1-donnees/vague6/DECISIONS.md`, les contrats dans la section 13 "
+          "du plan. Cinq pièces nouvelles :"),
     ("table", {
-        "entetes": ["Vague", "Tests de atelier/tests", "Paquets ROS 2 (colcon)", "Conteneur", "Recette"],
-        "largeurs": [2.0, 4.1, 5.0, 2.2, 3.3],
+        "legende": "Les pièces de la vague 6",
+        "entetes": ["Pièce", "Ce qu'elle fait", "Code", "Commande"],
+        "largeurs": [3.0, 7.0, 3.9, 2.7],
         "taille": 8.5,
         "premiere_col_gras": True,
         "lignes": [
-            ["1 (25/10)", "408 réussis", "136 tests (g1_sim, g1_nav)", "—", "10 / 10"],
-            ["2 (25/10)", "609 réussis", "138 tests", "—", "15 / 15"],
-            ["3 (26/10)", "694 réussis", "332 tests (4 paquets)", "54", "18 / 20, puis 20 / 20"],
-            ["4 (26/10)", "1 131 réussis", "6 paquets, sans échec", "58", "30 / 30 en un passage"],
-            ["5, contrats (31/10)", "1 265 réussis", "6 paquets (un test sensible au réglage réseau)", "—",
-             "critères 31 à 36 écrits par les agents"],
-            ["5, recette (01/11)", "1 466 réussis, 3 sautés ; repérage ROS : 4 réussis",
-             "6 paquets, 750 tests : 741 réussis, 9 sautés, 0 échec", "70 réussis, 1 sauté",
-             "36 / 36 en un passage (2 h 08)"],
+            ["Vérifier le robot", "contrôle en quelques secondes le câble, le réseau, les services du robot, son "
+             "mode, sa batterie, le Jetson et la caméra, et dit quoi faire", "`atelier/diagnostic/`, "
+             "`js/coque/diagnostic.js`", "`g1-diagnostic`"],
+            ["Boîte noire", "enregistre chaque séance en Réel (actions, états du robot, journaux), puis écrit son "
+             "rapport", "`atelier/seance/`, `js/coque/seance.js`", "`g1-seance`"],
+            ["Démo d'accueil", "le nœud `accueil` : il attend un visiteur, le salue, lui fait choisir une salle, "
+             "l'y fait accompagner par le guide, puis attend le suivant", "`ws/src/g1_accueil/`, "
+             "`js/ecrans/demo.js`", "`g1-accueil`"],
+            ["Borne visiteur", "une page pour tablette ou téléphone : « Bonjour ! Où voulez-vous aller ? »",
+             "`borne.html`, `js/borne/`", "(`g1-atelier --hote 0.0.0.0`)"],
+            ["Voix du robot", "les phrases du robot, fabriquées sur le PC (Piper) et jouées par son haut-parleur, "
+             "par la borne, ou par sa synthèse intégrée", "`atelier/voix/`, `js/voix/`", "`g1-voix`"],
         ],
     }),
+    ("p", "La règle de sécurité de la vague 5 vaut partout (chapitre 9) : **rien ne repart seul**. La démo se met "
+          "en pause au moindre empêchement et attend une demande explicite ; le diagnostic ne fait jamais bouger "
+          "le robot et n'agit que sur un clic confirmé ; depuis le réseau, la borne ne peut rien faire d'autre que "
+          "proposer les salles."),
 
-    ("h2", "La recette de la vague 5 (01/11/2026)"),
-    ("p", "La recette a tourné sur le PC du projet, sans robot, dans son propre domaine ROS 2 (113), sur des "
-          "copies des lieux `demo` et `seance` ; Firefox, sans fenêtre, avait la 3D par l'affichage de la "
-          "session graphique (`DISPLAY=:1`). D'abord la compilation (`colcon build --symlink-install` : les "
-          "8 paquets en 3 s) et les images du Jetson, refaites parce que le code avait changé depuis leur "
-          "construction (amd64 en 26 s, arm64 en 45 s, avec le cache) ; puis toutes les suites :"),
+    ("h2", "Vérifier le robot : le diagnostic en un clic"),
+    ("p", "Le bouton **Vérifier le robot** est sur l'accueil (carte Robot réel), dans la barre d'outils en Réel et "
+          "dans Naviguer ; `g1-diagnostic` fait la même chose dans un terminal, avec le même code. Les vérifications "
+          "tournent en parallèle, chacune avec son délai : tout tient en 15 s (en général bien moins : 0,3 s en "
+          "répétition). Chaque point dit **OK**, **Attention**, **Problème** ou **Inconnu** (rien pu vérifier), avec "
+          "une phrase qui dit ce qui a été vu et, s'il n'est pas OK, **une phrase qui dit quoi faire**. L'état "
+          "général est le pire des points ; en haut de la fenêtre, le conseil le plus important."),
     ("table", {
-        "legende": "Les suites de tests à la recette du 01/11 (sur le code final)",
-        "entetes": ["Suite", "Résultat", "Durée"],
-        "largeurs": [6.4, 8.0, 2.2],
+        "legende": "Les dix-sept vérifications de « Vérifier le robot »",
+        "entetes": ["Groupe", "Ce qui est vérifié", "Comment"],
+        "largeurs": [2.4, 7.2, 7.0],
         "taille": 8.5,
         "premiere_col_gras": True,
         "lignes": [
-            ["`atelier/tests` (sans le repérage ROS)", "1 466 réussis, 3 sautés (des scans réels dans Gazebo, "
-             "seulement avec `G1_SCAN_SIMULATION=1`)", "673 s"],
-            ["`test_robot_reperage_ros.py` (`ROS_LOCALHOST_ONLY=0`)", "4 réussis", "33 s"],
-            ["`docker/tests` (images refaites)", "70 réussis, 1 sauté (il demande la vraie caméra)", "29 s"],
-            ["`g1_sim`", "57 tests, 0 échec", "130 s"],
-            ["`g1_nav`", "263 tests, 0 échec, 4 sautés", "74 s"],
-            ["`g1_bridge`", "179 tests, 0 échec, 1 sauté", "93 s"],
-            ["`g1_jumeau`", "104 tests, 0 échec, 1 sauté", "63 s"],
-            ["`g1_pilotage`", "104 tests, 0 échec, 1 sauté", "7 s"],
-            ["`g1_equipe`", "43 tests, 0 échec, 2 sautés", "45 s"],
-            ["`fast_lio`, `livox_ros_driver2` (code tiers, hors Git)", "`fast_lio` n'a pas de test ; "
-             "`livox_ros_driver2` : 891 échecs et 1 erreur de style sur le code d'origine, comme à la vague 4 "
-             "(pas une régression)", "7 s"],
-            ["**Total pour le code du projet**", "**2 281 réussis, 13 sautés, 0 échec**", "**20 min environ**"],
+            ["Câble et réseau", "le câble branché ; l'adresse 192.168.123.99 du PC ; la connexion « robot-g1 » "
+             "active (et rallumée seule au branchement) ; les réglages ROS de l'Atelier (domaine 0, DDS sur le "
+             "câble) ; le PC1, le Jetson et le LiDAR qui répondent", "fichiers du système, `nmcli`, un `ping` "
+             "chacun, seulement si le câble est là"],
+            ["Robot", "le robot parle au PC (ses sujets sont vus) ; les **services de cartographie** `lidar_driver` "
+             "et `unitree_slam` actifs ; le mode du robot (lecture seule) ; la batterie (Attention sous 30 %, "
+             "Problème sous 15 %)", "ROS 2 : liste des services (robot_state 1003), mode (7001), `/lf/bmsstate`"],
+            ["Jetson", "la clé SSH ; Docker utilisable sans sudo ; la même image du conteneur que sur le PC ; "
+             "5 Go libres ; l'heure (2 s d'écart au plus) ; la caméra See3CAM branchée en USB 3",
+             "**un seul** `ssh` qui lance un petit script ; `/camera_poitrine/etat` s'il est publié"],
         ],
     }),
-    ("p", "Puis `tests_e2e/tout.sh`, lancé depuis la session graphique (`DISPLAY=:1 E2E_DOMAINE=113 "
-          "tests_e2e/tout.sh`), a joué les 36 critères de 17 h 25 à 19 h 33 (7 662 s) : **36 / 36** au premier "
-          "passage, aucun critère rejoué. La durée de chacun est dans le tableau des critères, ci-dessous. "
-          "Quelques résultats : le chemin de secours « bloqué, détour, arrivé » (critère 5) ; 19 trajets sur 20 "
-          "dans la foule, soit 95 % (6) ; un recouvrement de 99,4 % pour le scan simulé (7) et de 99,6 % pour le "
-          "scan par l'API (11) ; une précision de 99,8 % pour la carte du scan (12), et de 99,8 % avec 99,7 % de "
-          "recouvrement pour le scan corrigé (33) ; 5 arrivées sur 5 devant un passant immobile, toujours à "
-          "0,20 m au moins (23) ; 10 arrivées sur 10 et aucun contact causé par le robot face à des passants qui "
-          "coupent la route (24) ; aucune faute dans les 165 mesures de la mise en page (31) ; la carte 3D avec "
-          "WebGL et 305 820 points (32) ; l'ARRÊT en 0,06 à 0,19 s (36)."),
-    ("encadre", "Les marges à surveiller",
-     ["Tous les critères passent, mais trois passent de peu (le critère 25, lui, a de la marge : le groupe qui "
-      "reste est passé en 174 et 171 s, pour une limite de 300 s par trajet) :",
-      "- **critère 26** (accompagnement) : le robot ralentit à 57 % de sa vitesse, pour un seuil de 60 % ;",
-      "- **critère 6** (foule) : 19 trajets sur 20, pour 18 au moins (90 %) ; le trajet manqué, bloqué par la "
-      "foule, a dépassé 180 s ;",
-      "- **critère 24** (passants croisés) : avec des passants qui s'écartent, un échec sur 5 (bloqué, détour, "
-      "puis bloqué à nouveau), que le critère ne compte pas : il ne compte que les contacts."], "attention"),
+    ("p", "**Trois actions**, proposées par le point concerné, ne partent qu'après une confirmation dans la page : "
+          "**Démarrer les services de cartographie** (seulement `lidar_driver` et `unitree_slam`, s'ils sont "
+          "arrêtés, puis la liste relue chaque seconde jusqu'à ce qu'ils tournent, 20 s au plus), **Rétablir la "
+          "connexion du câble** (`nmcli connection up robot-g1`) et **La rétablir seule à chaque branchement**. "
+          "Jamais un arrêt de service, jamais `ai_sport` ni `motion_switcher` (les services de la marche) : c'est "
+          "une **liste blanche**, vérifiée par le serveur avant toute requête au robot. En répétition, les points "
+          "sans objet (câble, réseau, Jetson) sont rangés dans « Pas vérifiés ici »."),
+    ("capture", ["11_diagnostic_problemes*.png", "*diagnostic*probleme*.png"],
+     "Vérifier le robot en répétition : le faux G1 a ses services de cartographie arrêtés ; un point à régler, "
+     "et le bouton de l'action", 15.5, 9.0),
+    ("capture", ["10_diagnostic.png", "10_diagnostic*.png"],
+     "Après « Démarrer les services de cartographie » : « ont démarré en 2 s », puis « Tout est prêt ! »",
+     15.5, 9.0),
+    ("code", "g1-diagnostic                             # en texte ; code 0 si tout va bien\n"
+             "g1-diagnostic --action demarrer-services  # une action, après la réponse « oui »\n"
+             "g1-diagnostic --mode repetition --json    # contre le faux G1, le résultat brut"),
+    ("p", "**Sans robot**, tout s'essaie : le faux G1 répond à robot_state (liste des services, démarrage avec 2 s "
+          "de délai) et compte toute demande interdite ; les vérifications du système (câble, `nmcli`, ping, ssh) "
+          "lisent un **faux contexte** (`ATELIER_DIAGNOSTIC_FAUX`, un fichier JSON de réponses), qui note ce que "
+          "l'action « aurait » lancé sans rien lancer. Les tests n'envoient jamais de ping, de ssh ni de `nmcli` vers "
+          "le robot. Le format exact de la réponse du vrai G1 à 1003 et 1001 reste à vérifier (sur ce G1, le "
+          "statut 0 veut dire « actif » et 1 « arrêté », d'après la séance n° 1)."),
 
-    ("h2", "Les 36 critères de recette"),
+    ("h2", "La boîte noire et le rapport de séance"),
+    ("p", "Dès qu'on ouvre l'espace de travail en Réel (vrai robot ou répétition), une **séance** s'ouvre : le badge "
+          "« ● Enregistrement » apparaît dans la barre d'outils (« Séance » sur un écran plus étroit). Elle garde tout "
+          "jusqu'à **Terminer la séance** (menu du badge, ou Naviguer › Avancé), ou jusqu'à l'arrêt de l'Atelier. "
+          "Rouvrir l'espace en Simulation la termine ; « Nouvelle séance » en ouvre une autre."),
     ("table", {
-        "legende": "Les critères de recette, tous joués sans robot ni écran, et leur durée à la recette du 01/11",
-        "entetes": ["N°", "Critère", "Ce qui est vérifié", "Vague", "Durée"],
-        "largeurs": [0.9, 3.3, 9.9, 1.1, 1.4],
-        "taille": 8,
+        "legende": "Le dossier d'une séance : journaux/seances/<AAAA-MM-JJ_HHhMM>/",
+        "entetes": ["Fichier", "Contenu"],
+        "largeurs": [4.6, 12.0],
+        "taille": 8.5,
         "lignes": [
-            ["1", "Monde inventé", "lieu « essai » : 6 murs, un passage, 3 objets, 2 piétons ; `g1-lieu valider` sans erreur", "1", "1 s"],
-            ["2", "Carte sans scan", "`g1-monde generer` : monde Gazebo, carte, masque ; des pixels connus vérifiés", "1", "18 s"],
-            ["3", "Simulation", "Gazebo sans fenêtre : `/odom` et `/points` publiés en moins de 30 s", "1", "10 s"],
-            ["4", "Point A → point B", "une salle placée par l'API, « Y aller » : arrivé à moins de 0,3 m", "1", "67 s"],
-            ["5", "Chemin de secours", "une boîte dans le couloir nord : `bloque → detour → arrive`", "1", "178 s"],
-            ["6", "Foule", "5 piétons, 20 trajets tirés au sort : 90 % de réussite au moins, et un CSV", "1", "1 324 s"],
-            ["7", "Scan simulé", "tour des couloirs enregistré, carte 3D puis 2D : 80 % de recouvrement au moins", "1", "180 s"],
-            ["8", "Service du robot simulé", "faux service : 1801 → 1802 → 1804 → 1102 ; `MoteurUnitree` jusqu'à b204", "1", "94 s"],
-            ["9", "Interface", "le parcours complet dans Firefox sans fenêtre", "1", "11 s"],
-            ["10", "Point d'entrée", "`g1-atelier` sert la page et l'API ; compté si les 9 premiers réussissent", "1", "2 s"],
-            ["11", "Scan intégré par l'API", "Scan, aperçu en direct, Fin, `termine` ; 90 % de recouvrement ; rien ne reste", "2", "171 s"],
-            ["12", "Carte du scan", "carte, nuage et nuage d'affichage, sans reconnaissance ; précision 0,98 (réécrit en vague 5)", "2", "2 s"],
-            ["13", "Monde du scan", "adoption, monde maillé, simulation et une salle atteinte (réécrit en vague 5)", "2", "65 s"],
-            ["14", "Répétition du mode robot", "1801 puis 1802 reçus par le faux service, sujets du SLAM enregistrés", "2", "57 s"],
-            ["15", "Robustesse", "refus clairs, jamais d'erreur 500 ; flèches avec homme mort ; écran de scan dans Firefox", "2", "63 s"],
-            ["16", "Conteneur", "image amd64, démarrage en local, nœuds vus de l'hôte, verrou, arrêt propre, jamais de ssh", "3", "19 s"],
-            ["17", "Pont et faux G1", "ordres 7105 bien formés, 10 par seconde ; plafonds, NaN, `/guide/stop`, `/pont/arret`", "3", "70 s"],
-            ["18", "Repérage", "non repéré avant ; « Repérer » ; position à 0,1 m malgré la dérive ; perte puis reprise", "3", "46 s"],
-            ["19", "Niveau 2 complet", "depuis l'Atelier, tout par le pont : b204 à moins de 0,3 m ; détour ; rien ne reste", "3", "243 s"],
-            ["20", "Sécurité", "un témoin : jamais plus de 5 cm hors d'un mouvement permis ; pannes, consignes absurdes", "3", "85 s"],
-            ["21", "Point principal", "un seul et obligatoire ; migration ; simulation et repérage qui en partent", "4", "43 s"],
-            ["22", "Retour automatique", "b204, puis retour seul au point principal, à 0,3 m et 10° près", "4", "195 s"],
-            ["23", "Passant immobile", "5 arrivées, aucun contact, 0,20 m bord à bord au moins à chaque essai", "4", "298 s"],
-            ["24", "Passants croisés", "en face et qui coupent la route : aucun contact causé par le robot", "4", "1 567 s"],
-            ["25", "Groupe qui bouche", "attente, puis passage, ou détour après 20 s ; banc de la foule à 90 %", "4", "1 681 s"],
-            ["26", "Accompagnement", "faux visiteur : ralentir, attendre, retrouvé ; ou perdu, puis retour", "4", "181 s"],
-            ["27", "Perdu en route", "repérage coupé : `perdu` en moins de 4 s, robot arrêté ; reprise, ou échec après 15 s", "4", "113 s"],
-            ["28", "Pilotage", "postures, joystick avec homme mort, gestes, voix, LED, verrou ; interdits jamais envoyés", "4", "52 s"],
-            ["29", "Danses et chorégraphies", "liste, danse 604 avec la zone libre, `exemple_kpop` dans les limites, ARRÊT", "4", "103 s"],
-            ["30", "Équipe", "fichiers valides, écrans ; « je cherche la salle b204 » → le robot y va", "4", "78 s"],
-            ["31", "Coque", "accueil et espace de travail ; 165 mesures sans défilement ni élément coupé ; thème", "5", "108 s"],
-            ["32", "Carte 3D", "accueil et salle posés en 3D, mêmes coordonnées en 2D ; vues, zoom ; sans WebGL", "5", "116 s"],
-            ["33", "Scan corrigé", "sans reconnaissance ; « damier » simulé corrigé ; monde maillé à 0,9 fois le temps réel", "5", "283 s"],
-            ["34", "Pont : vitesse minimale et mode", "0,1 m/s demandé → 0,2 envoyé ; assis → `pas_en_marche` ; 7001 à 1 Hz", "5", "59 s"],
-            ["35", "Caméra", "fausse source → `camera_usb` → flux MJPEG → YOLO → cadres dans Firefox", "5", "25 s"],
-            ["36", "ARRÊT global", "guide, téléopération et pilotage arrêtés en moins d'1 s ; verrou ; touche Échap", "5", "54 s"],
-            ["", "**Recette du 01/11**", "**36 / 36 au premier passage**, de 17 h 25 à 19 h 33 (2 h 08)", "", "**7 662 s**"],
+            ["`seance.json`", "le manifeste : dates, lieu, mode, état de l'enregistrement, journaux du Jetson, rapport"],
+            ["`actions.jsonl`", "une ligne par demande qui change quelque chose (ARRÊT, Bloquer, Débloquer, Y aller, "
+             "Repérer, Lancer, postures, danses, scan, démo, borne, voix…), avec l'heure, le mode, la réponse et "
+             "un texte en français ; le code opérateur de la borne y est masqué"],
+            ["`bag/`", "l'enregistrement ROS 2 (rosbag2) des sujets légers : guide, pont, repérage, ordres de marche "
+             "et leurs réponses, odométries (10 Hz au plus), batterie, pilotage, démo, voix, journaux des nœuds "
+             "(`/rosout`) ; jamais les nuages de points, les images ni le son"],
+            ["`journaux/`", "le journal du serveur, la fin des journaux des programmes lancés, et dans `jetson/` le "
+             "**journal du conteneur du Jetson**, gardé avant chaque « Arrêter » de la navigation et à la fin"],
+            ["`lieu/`, `diagnostic_debut.json`", "la copie du lieu ouvert ; le diagnostic pris à l'ouverture (et "
+             "`diagnostic_lancement.json`, pris une fois la navigation lancée)"],
+            ["`rapport.html`, `.md`, `.json`, `trajets.png`", "le rapport, écrit tout seul en moins d'une minute"],
         ],
     }),
+    ("schema", "boite_noire", "La boîte noire : de l'ouverture de la séance à son rapport", 14.0, 10.0),
+    ("p", "**Ce que ça coûte** : l'enregistreur relève les messages 20 fois par seconde et réduit les sujets rapides "
+          "(une odométrie à 10 Hz) ; mesuré en répétition avec Nav2 : 1,9 % d'un cœur pendant un trajet, environ "
+          "150 Mo par heure ; l'ARRÊT répondait toujours en 0,05 s. **Garde-fous** : au-delà de 1 Go, ou sous 2 Go "
+          "libres sur le disque, l'enregistrement s'arrête proprement (badge orange « Enregistrement coupé ») et la "
+          "séance continue ; un client qui insiste (3 000 demandes refusées) ne laisse qu'une ligne et son résumé. "
+          "**Après un plantage**, la séance est marquée « interrompue » au redémarrage de l'Atelier, son bag est "
+          "réindexé s'il le faut, et son rapport écrit."),
+    ("capture", ["12_seance_badge*.png", "*seance*badge*.png"],
+     "Le badge « Séance » et son menu : enregistrement depuis 01 h 26, 9 actions, 11,6 Mo ; « Terminer la "
+     "séance » ; le rapport de la séance d'avant", 15.5, 9.0),
+    ("p", "**Le rapport** dit, en français simple : **En bref** (durée, trajets, distance, arrêts d'urgence, "
+          "anomalies, erreurs, batterie au début et à la fin) ; **À regarder en premier**, les anomalies trouvées "
+          "toutes seules (un **mouvement sans demande** : le robot avance de plus de 5 cm/s sans mission du guide, "
+          "sans joystick ni pilotage ; un robot qui ne répond plus ; un ARRÊT ou un verrou ; une séance "
+          "interrompue ; un enregistrement coupé ; une erreur du serveur ; un repérage perdu) ; **Les trajets** sur "
+          "la carte, chacun avec son résultat (arrivé, échec, interrompu par un ARRÊT, un blocage ou une panne, "
+          "abandonné) et la cause de ses arrêts ; **Le robot** (temps dans chaque état du pont, modes vus, "
+          "précision du repérage) ; les **erreurs** traduites, le détail technique replié ; les **diagnostics** ; "
+          "la **chronologie** complète. Un arrêt normal (Ctrl+C, « Arrêter ») n'y est pas compté comme une erreur."),
+    ("capture", ["13_rapport_seance*.png", "*rapport*seance*.png"],
+     "Le rapport d'une séance de répétition : 3 trajets (2 arrivés, 1 interrompu par l'ARRÊT), 48,9 m, "
+     "aucune erreur, et la carte des trajets", 15.5, 9.0),
+    ("code", "g1-seance liste                  # les séances, la plus récente d'abord\n"
+             "g1-seance rapport derniere       # refaire le rapport de la dernière\n"
+             "g1-seance exporter derniere      # un .zip pour Claude (--sans-bag : plus petit)"),
+
+    ("h2", "La démo d'accueil"),
+    ("p", "**Équipe › Démo › Lancer la démo** lance deux nœuds sur le PC : `accueil`, qui mène les visites, et "
+          "`voix`. Il faut que le guide tourne (simulation lancée, ou navigation du robot lancée et robot repéré) ; "
+          "sinon la demande est refusée avec la phrase qui dit quoi faire. **Arrêter la démo** arrête ces deux "
+          "nœuds, pas le robot : c'est le rôle de l'ARRÊT."),
+    ("puces", [
+        "**Un visiteur** est vu quand il se tient à 1,5 m au plus, devant le robot, depuis 1 s (par la caméra si "
+        "`g1-visiteurs` tourne, sinon par le LiDAR) ; ou quand il touche la borne. Le robot le salue avec la "
+        "phrase de sa personnalité, et la borne montre les salles (45 s pour choisir).",
+        "**La visite** : le nœud envoie `/guide/aller` avec `accompagner` ; le guide de la vague 4 fait le reste "
+        "(ralentir si le visiteur traîne, l'attendre, retour automatique). La démo suit `/guide/etat` et "
+        "`/guide/evenement`, et relaie les phrases du guide vers la voix.",
+        "**La pause** : ARRÊT, verrou, robot assis ou muet, pont absent, échec ou robot perdu pendant une visite, "
+        "pilotage qui prend la main, guide muet depuis 3 s, ou « Mettre en pause ». En pause, aucun `/guide/aller` "
+        "ne part, la borne dit « Je fais une petite pause » et refuse les choix. **La levée de l'empêchement ne "
+        "fait rien d'autre que rendre « Reprendre » possible** : « Reprendre » (le robot à l'accueil), ou "
+        "« Ramener à l'accueil » (une demande explicite, la seule permise en pause).",
+        "**Pas des pauses** : le délai de choix (retour à l'attente, sans mouvement), le visiteur perdu (le guide "
+        "revient seul, la visite compte comme abandonnée), la borne touchée pendant une visite (« Je suis occupé, "
+        "je reviens dans un instant ! »).",
+        "**Les statistiques** depuis le lancement : visiteurs salués, visites réussies, abandons, échecs, pauses, "
+        "durée moyenne.",
+    ]),
+    ("schema", "demo_accueil", "La démo d'accueil : les états du nœud accueil, et la pause", 16.0, 11.5),
+    ("capture", ["14_demo*.png", "*demo*.png"],
+     "L'écran Démo, en simulation : le robot accompagne un visiteur vers la salle B204 (« encore 16 m ») ; "
+     "l'adresse de la borne et les statistiques", 15.5, 9.0),
+    ("p", "**Les réglages** (**Équipe › Avancé › Réglages de la démo**, fichier facultatif `demo.yaml` du lieu) : "
+          "la personnalité ; la voix (sortie, voix, volume, vitesse) ; qui voit les visiteurs (automatique, caméra, "
+          "LiDAR ou la borne seule) et à quelle distance ; les délais ; l'accompagnement et le retour seul ; le "
+          "titre et la langue de la borne (français ou anglais) ; le **code opérateur** ; les salles proposées par "
+          "la borne (une salle décochée reçoit l'étiquette `hors_borne` ; le point principal n'est jamais proposé). "
+          "Le chatbot de l'équipe pourra choisir la salle à la place de la borne, par le même message "
+          "(`/accueil/choix`, `docs/integration-equipe.md`)."),
+
+    ("h2", "La borne visiteur"),
+    ("p", "La page `/borne` est faite pour le tactile et pour un public : de grandes cartes de 64 pixels de haut au "
+          "moins, aucun mot technique, une page qui ne défile jamais (seule la liste des salles défile). Elle "
+          "suit la démo quatre fois par seconde : « Bonjour ! Où voulez-vous aller ? », la confirmation « Je vous "
+          "accompagne à … ? » Oui / Non, « Suivez-moi ! » avec la distance restante, l'arrivée, « Je retourne à "
+          "l'accueil », « Je suis occupé », la pause. Deux appuis à moins de 0,6 s comptent pour un, même envoyés "
+          "en même temps. Avec la sortie « borne », la page joue aussi la voix du robot."),
+    ("p", "**Sur une tablette du même Wi-Fi**, il faut lancer l'Atelier avec `g1-atelier --hote 0.0.0.0` ; "
+          "**Équipe › Démo › Borne** montre alors l'adresse en grand, avec son code QR (dessiné par un petit "
+          "encodeur écrit pour le projet, sans bibliothèque). Depuis le réseau, **seule la borne est permise** : "
+          "l'Atelier, « Débloquer », « Y aller », les réglages et le pilotage répondent 403 (refusé). Un bouton "
+          "discret et le **code opérateur** ouvrent, pour 5 minutes, trois commandes : pause, reprendre, ramener "
+          "à l'accueil ; cinq mauvais codes en 5 minutes bloquent la saisie. Enfin, **une page d'un autre site** "
+          "ouverte dans le navigateur du PC ne peut plus rien demander à l'Atelier (garde des origines, ajoutée "
+          "après la revue)."),
+
+    ("captures", [["15_borne_telephone_choix*.png"], ["16_borne_telephone_suivi*.png"]],
+     "La borne sur un téléphone (390 × 844) : le choix de la salle, puis « Suivez-moi ! », la distance et les "
+     "trois points qui s'allument tour à tour", 13.0, 10.0),
+    ("capture", ["17_borne_tablette*.png", "*borne*tablette*.png"],
+     "La borne sur une tablette (1 024 × 768)", 13.0, 9.5),
+    ("h2", "La voix du robot"),
+    ("schema", "voix", "La voix : d'une phrase au haut-parleur du robot", 15.0, 9.5),
+    ("p", "Le nœud `voix` (`g1-voix`, lancé avec la démo ou seul, depuis les réglages de la démo) écoute "
+          "`/robot/dire` : la salutation et la pause de la démo, les phrases du guide relayées (« Direction … : "
+          "suivez-moi ! », « Nous sommes arrivés : … », « Je retourne à l'accueil. »), plus tard le chatbot, et "
+          "« Essayer » dans l'Atelier. Une phrase à la fois : une phrase **haute** coupe celle qui est dite, une "
+          "phrase de **sécurité** coupe et vide la file ; jamais deux sons en même temps."),
+    ("table", {
+        "legende": "Les trois sorties de la voix",
+        "entetes": ["Sortie", "Comment", "Où l'entendre"],
+        "largeurs": [3.2, 9.4, 4.0],
+        "taille": 8.5,
+        "premiere_col_gras": True,
+        "lignes": [
+            ["Haut-parleur du robot (`robot`)", "Piper, sur le PC, fabrique la phrase (voix française Siwis ou Tom, "
+             "0,1 s environ par phrase) ; le son est ramené à 16 000 Hz, mono, 16 bits, et envoyé au service voice "
+             "du robot en morceaux de 3 s au plus (ordre 1003), un par seconde ; 1004 coupe ; 1005 et 1006 lisent et "
+             "règlent le volume", "le robot"],
+            ["Borne (`borne`)", "le même son, en fichier WAV, joué par la page de la borne ; c'est la sortie de la "
+             "simulation", "la tablette"],
+            ["Synthèse du robot (`robot_tts`)", "le texte envoyé à la synthèse intégrée d'Unitree (ordre 1001) ; "
+             "réglée sur l'anglais en attendant de savoir si elle parle français", "le robot"],
+        ],
+    }),
+    ("p", "Le nœud n'envoie que ces cinq ordres (jamais le micro, jamais la lumière), chacun vérifié avant de "
+          "partir. Le faux G1 les vérifie aussi (format, morceaux, flux mêlés, trop rapides) et compte les écarts : "
+          "le critère 40 compare la durée reçue à celle du fichier de Piper, à 5 % près. Chaque phrase dite par "
+          "Piper est gardée en WAV (les 200 dernières) : c'est la trace de ce que le robot a dit."),
+
+    ("h2", "Ce qui reste à vérifier avec le robot"),
+    ("puces", [
+        "**Vérifier le robot** sur le vrai G1 : la réponse de robot_state à 1003 et 1001 (noms des services, "
+        "statut 0 = actif), le temps de démarrage de `unitree_slam`, `nmcli connection up robot-g1` sans sudo, la "
+        "batterie lue sur `/lf/bmsstate`.",
+        "**La boîte noire** pendant une vraie navigation : son coût, le journal du conteneur gardé avant « Arrêter », "
+        "un rapport sans « mouvement sans demande » quand le robot debout oscille sur place.",
+        "**La voix** : le son du PC joué par le haut-parleur du robot (net ? délai entre deux phrases ? 1004 coupe-t-il "
+        "tout de suite ?), le volume ; la synthèse du robot parle-t-elle français ?",
+        "**La borne** sur une vraie tablette par le Wi-Fi (adresse, son), et **une démo** avec un vrai visiteur, la "
+        "caméra et l'accompagnement.",
+    ]),
+    ("encadre", "À retenir",
+     ["Une séance avec le robot commence maintenant par **Vérifier le robot** (et ses services démarrés en un "
+      "clic), est enregistrée de bout en bout par la **boîte noire**, et se termine par un **rapport** et un "
+      "`.zip` (`docs/tutoriel-seance-2.md`).",
+      "- La **démo d'accueil** marche en simulation : trois visiteurs de suite, trois visites réussies (critère "
+      "41) ; un ARRÊT, un blocage, un robot assis, un pont tué ou le pilotage la mettent en pause, et rien ne "
+      "repart seul (critère 42).",
+      "- Tout a été vérifié sans robot (critères 37 à 42, et deux revues) : la séance n° 2 dira ce que vaut le "
+      "vrai G1."], "retenir"),
 ]

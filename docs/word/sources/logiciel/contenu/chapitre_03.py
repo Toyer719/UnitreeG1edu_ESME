@@ -8,7 +8,7 @@ BLOCS = [
 
     ("h2", "Le tableau d'ensemble"),
     ("table", {
-        "legende": "Les technologies du projet (versions relevées le 31/10/2026)",
+        "legende": "Les technologies du projet (versions relevées le 31/10/2026, et le 10/11 pour la vague 6)",
         "entetes": ["Technologie", "Version", "Rôle", "Où dans le code"],
         "largeurs": [3.3, 3.6, 4.4, 5.3],
         "taille": 8.5,
@@ -34,8 +34,13 @@ BLOCS = [
             ["YOLO (ultralytics)", "8.4.183, yolo11n-pose ; PyTorch 2.14.1", "voir les visiteurs", "`outils/visiteurs.py`"],
             ["Pillow, OpenCV, numpy, Open3D", "9.0.1 ; 4.11 ; 1.26.4 ; 0.20.0", "images, cartes, calcul, nuages",
              "`g1_equipe/`, `atelier/scan/`, `atelier/monde/`"],
+            ["Piper (piper-tts)", "1.8.0 (onnxruntime 1.23.2) ; voix fr_FR-siwis et fr_FR-tom", "la voix française "
+             "du robot, fabriquée sur le PC", "`atelier/voix/synthese.py`, `modeles/piper/`"],
+            ["SciPy", "1.8.0", "ramener le son à 16 000 Hz pour le robot", "`atelier/voix/synthese.py`"],
+            ["rosbag2 (rosbag2_py)", "Humble (0.15.17)", "l'enregistrement de la boîte noire", "`atelier/seance/`"],
+            ["Matplotlib", "3.5.1", "la carte des trajets du rapport de séance", "`atelier/seance/rapport.py`"],
             ["V4L2 (v4l2-ctl)", "v4l-utils 1.22.1", "lire la caméra USB", "`g1_equipe/camera_usb.py`"],
-            ["YAML et JSON Schema", "PyYAML 5.4.1 ; draft-07", "fichiers des lieux, messages", "`atelier/lieu/schemas/` (28 schémas)"],
+            ["YAML et JSON Schema", "PyYAML 5.4.1 ; draft-07", "fichiers des lieux, messages", "`atelier/lieu/schemas/` (41 schémas)"],
             ["pytest", "7.4.4", "tests automatiques", "`atelier/tests/`, `docker/tests/`, `ws/src/*/test/`"],
             ["colcon", "colcon-core 0.21.3", "compiler les paquets ROS 2", "`ws/`"],
             ["Git", "2.34.1", "historique et sauvegardes", "`~/robot-g1/.git`"],
@@ -44,8 +49,8 @@ BLOCS = [
     }),
     ("p", "Sont aussi installés sur le PC, pour l'équipe ou pour la première semaine : MuJoCo et la politique "
           "de marche d'Unitree (`g1-sim-marche`), FAST-LIO2 et le pilote du LiDAR (plan B de la cartographie), "
-          "Piper (voix française), Vosk et faster-whisper (reconnaissance vocale). Firefox 158 et geckodriver "
-          "0.37 servent aux tests dans le navigateur."),
+          "Vosk et faster-whisper (reconnaissance vocale). Firefox 158 et geckodriver 0.37 servent aux tests dans "
+          "le navigateur."),
 
     ("h2", "Système, ROS 2 et simulation"),
     ("fiche", {
@@ -138,8 +143,9 @@ BLOCS = [
         "pourquoi": "Pas d'outil de compilation (ni npm, ni bundler) : les fichiers sont servis tels quels, "
                     "et l'Atelier marche sans Internet. Le JavaScript reste en ES2017 (lisible par l'outil de "
                     "test esprima).",
-        "ici": "`atelier/web/` : `index.html`, des modules JavaScript (`js/coque/`, `js/ecrans/`, "
-               "`js/carte3d/`…), 10 feuilles de style ; les couleurs sont des « jetons » de `css/theme.css`.",
+        "ici": "`atelier/web/` : `index.html` (et `borne.html`, la page de la borne), des modules JavaScript "
+               "(`js/coque/`, `js/ecrans/`, `js/carte3d/`, `js/borne/`…), 14 feuilles de style ; les couleurs sont "
+               "des « jetons » de `css/theme.css`.",
         "exemple": "`js/app.js` ne fait qu'une chose : `demarrerCoque()`.",
     }),
     ("fiche", {
@@ -231,6 +237,29 @@ BLOCS = [
         "exemple": "`v4l2-ctl -d /dev/g1_camera -C auto_exposure` lit le réglage dans le conteneur.",
     }),
 
+    ("h2", "La voix et la boîte noire (vague 6)"),
+    ("fiche", {
+        "nom": "Piper",
+        "quoi": "Un programme libre de synthèse vocale : il transforme un texte en son, avec des voix entraînées "
+                "(un réseau de neurones exécuté par onnxruntime).",
+        "pourquoi": "Une voix française naturelle, sans Internet, assez rapide sur le processeur du PC ; la "
+                    "synthèse intégrée du robot (1001) ne parle sans doute pas français.",
+        "ici": "Le nœud `voix` (`atelier/voix/`) charge la voix au démarrage, fabrique chaque phrase, la ramène à "
+               "16 000 Hz (SciPy) et l'envoie au haut-parleur du robot en morceaux de 3 s (chapitre 12).",
+        "exemple": "`g1-voix --mesurer` : environ 0,1 s de calcul par phrase sur ce PC.",
+    }),
+    ("fiche", {
+        "nom": "rosbag2",
+        "quoi": "L'outil de ROS 2 qui enregistre des messages dans un fichier (un « bag ») et les relit.",
+        "pourquoi": "Garder ce qui s'est passé pendant une séance avec le robot, pour le comprendre après coup ; "
+                    "`ros2 bag record` seul ne sait pas réduire la fréquence d'un sujet : la boîte noire écrit "
+                    "elle-même son bag (`rosbag2_py`), sujet par sujet.",
+        "ici": "`g1-seance enregistrer` (`atelier/seance/enregistreur.py`) garde les sujets légers (guide, pont, "
+               "repérage, ordres de marche, odométrie à 10 Hz…), jamais les nuages ni les images ; "
+               "`atelier/seance/lecture.py` les relit pour le rapport.",
+        "exemple": "`ros2 bag info journaux/seances/<date>/bag` : environ 150 Mo par heure de séance.",
+    }),
+
     ("h2", "Données, tests et outils"),
     ("fiche", {
         "nom": "YAML et JSON Schema",
@@ -238,7 +267,7 @@ BLOCS = [
                 "fichier doit contenir : les champs obligatoires, leur type, leurs valeurs possibles.",
         "pourquoi": "Les fichiers d'un lieu s'écrivent et se corrigent à la main ; les schémas les vérifient et "
                     "donnent des erreurs en français qui disent quoi corriger.",
-        "ici": "`atelier/lieu/schemas/` : 28 schémas (draft-07) pour les fichiers d'un lieu et pour les messages "
+        "ici": "`atelier/lieu/schemas/` : 41 schémas (draft-07) pour les fichiers d'un lieu et pour les messages "
                "JSON des sujets ROS 2. Le validateur est écrit dans `atelier/lieu/validation.py` (sans "
                "dépendance) et comparé au paquet `jsonschema` par les tests.",
         "exemple": "« salles.yaml, salle « b204 » : il manque theta ».",
@@ -255,7 +284,7 @@ BLOCS = [
         "nom": "colcon",
         "quoi": "L'outil qui compile et installe les paquets ROS 2 d'un espace de travail.",
         "pourquoi": "C'est l'outil standard de ROS 2.",
-        "ici": "`cd ~/robot-g1/ws && colcon build --symlink-install` installe les huit paquets dans `ws/install` "
+        "ici": "`cd ~/robot-g1/ws && colcon build --symlink-install` installe les neuf paquets dans `ws/install` "
                "(le lien symbolique fait voir tout de suite un fichier Python modifié).",
         "exemple": "`colcon test --packages-select g1_bridge && colcon test-result --all`.",
     }),
@@ -263,7 +292,8 @@ BLOCS = [
         "nom": "Git",
         "quoi": "Le gestionnaire de versions : il garde l'historique de chaque fichier, par « commits ».",
         "pourquoi": "Pour revenir en arrière, voir qui a changé quoi, et sauvegarder.",
-        "ici": "Dépôt `~/robot-g1` ([[commits]] commits) ; seul l'intégrateur fait les commits, avec la ligne "
+        "ici": "Dépôt `~/robot-g1` ([[commits]] commits) ; seuls l'intégrateur et quelques agents désignés font "
+               "les commits, avec la ligne "
                "« Co-Authored-By » ; une branche `sauvegarde-vague5` reçoit toutes les 20 minutes le travail en "
                "cours (`~/robot-g1-donnees/sauvegarder.sh`).",
         "exemple": "`git log --oneline` montre les vagues, des contrats aux assemblages.",

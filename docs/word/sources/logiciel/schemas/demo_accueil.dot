@@ -1,0 +1,36 @@
+// La démo d'accueil : la machine d'états du nœud accueil (chapitre 12)
+digraph demo_accueil {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.35, ranksep=0.32, newrank=true];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.10,0.05"];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  demarrage [label="démarrage\n(le guide répond, le robot\nest à l'accueil)", fillcolor="#EFEFEF", color="#7F7F7F"];
+  attente [label="attente\nà l'accueil, la borne\nmontre les salles"];
+  salutation [label="salutation\n« Bonjour ! » (voix, geste)"];
+  choix [label="choix\nle visiteur touche une salle\n(45 s au plus)"];
+  depart [label="départ\n/guide/aller, accompagner"];
+  accompagnement [label="accompagnement\n« Suivez-moi ! », distance\nrestante sur la borne", fillcolor="#E2F0D9", color="#548235"];
+  arrivee [label="arrivée\n« Nous sommes arrivés »", fillcolor="#E2F0D9", color="#548235"];
+  retour [label="retour\n« Je retourne à l'accueil »\n(le guide revient seul)"];
+  occupe [label="occupé\nune mission que la démo\nn'a pas demandée", fillcolor="#EFEFEF", color="#7F7F7F"];
+  pause [label="PAUSE\nARRÊT, verrou, robot assis ou muet,\npont absent, échec, pilotage, guide muet,\nou « Mettre en pause »\naucun /guide/aller ; rien ne repart seul", fillcolor="#FBE3E1", color="#C0392B"];
+
+  demarrage -> attente;
+  attente -> salutation [label=" visiteur vu,\n ou appui sur la borne"];
+  salutation -> choix;
+  choix -> depart [label=" salle choisie"];
+  choix -> attente [label=" délai, ou Annuler", style=dashed];
+  depart -> accompagnement [label=" le guide part"];
+  accompagnement -> arrivee;
+  accompagnement -> retour [label=" visiteur perdu", style=dashed];
+  arrivee -> retour [label=" retour automatique"];
+  retour -> attente [label=" arrivé à l'accueil"];
+  attente -> occupe [style=dashed];
+  occupe -> attente [style=dashed];
+  accompagnement -> pause [color="#C0392B", fontcolor="#C0392B", xlabel="un empêchement", minlen=2];
+  pause -> attente [color="#548235", fontcolor="#548235", label=" « Reprendre »\n(robot à l'accueil)"];
+  pause -> retour [color="#548235", fontcolor="#548235", label=" « Ramener à l'accueil »\n(demande explicite)"];
+  {rank=same; attente; occupe}
+  {rank=same; choix; depart}
+  {rank=same; accompagnement; pause}
+}

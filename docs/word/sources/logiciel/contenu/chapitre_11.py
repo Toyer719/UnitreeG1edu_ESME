@@ -12,7 +12,8 @@ BLOCS = [
     ("chapeau", "Le 31/10, l'interface a été entièrement réorganisée, à la demande de l'utilisateur : "
                 "« que ça fasse à la SolidWorks », simple et ludique, inspirée de l'appli Unitree Explore, et "
                 "où tout défile correctement. Ce chapitre la décrit telle qu'on la voit à la fin de la vague 5, "
-                "après la revue et la recette du 01/11."),
+                "après la revue et la recette du 01/11. La vague 6 y a ajouté « Vérifier le robot », le badge de la "
+                "séance et l'écran Démo : ils sont au chapitre 12."),
     ("si_captures", [
         ("p", "Les images de ce chapitre ont été prises le 01/11, à la fin de la recette, dans Firefox piloté sans "
               "fenêtre (avec WebGL, la 3D du navigateur), dans une fenêtre de 1 600 × 900 pixels, sur des copies des "
@@ -46,7 +47,8 @@ BLOCS = [
           "dessiner les murs et les meubles (la carte se fait seule), placer l'accueil et les salles, lancer "
           "la simulation puis « Y aller ». En Robot réel, il devient « Avant de commencer » : la case "
           "**Répétition sans robot (faux G1)** et les vérifications, relues toutes les 4 s : Atelier lancé avec "
-          "`robot.sh`, câble du robot branché, PC1 et Jetson qui répondent, télécommande en main (à cocher). "
+          "`robot.sh`, câble du robot branché, PC1 et Jetson qui répondent, télécommande en main (à cocher) ; "
+          "dessous, depuis la vague 6, le bouton **Vérifier le robot** (chapitre 12). "
           "Si quelque chose tourne encore (un robot qui marche, une simulation), l'accueil montre aussi le "
           "bouton ARRÊT."),
     ("capture", ["01_accueil*.png", "accueil_reel_sombre*.png", "accueil_reel*.png", "accueil_simulation_sombre*.png",

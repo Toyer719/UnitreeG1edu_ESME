@@ -1,0 +1,23 @@
+// La voix du robot : d'une phrase au haut-parleur (chapitre 12)
+digraph voix {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.35, ranksep=0.3, newrank=true];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.10,0.05"];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  sources [label="/robot/dire : la démo (salutation, pause), le guide relayé\n(départ, arrivée, retour), le chatbot, « Essayer » de l'Atelier", fillcolor="#EFEFEF", color="#7F7F7F"];
+  noeud [label="nœud voix (atelier/voix, sur le PC)\nune phrase à la fois ; « haute » coupe la phrase en cours ;\n« sécurité » coupe et vide la file"];
+  piper [label="Piper (voix française, sur le PC)\nfr_FR-siwis ou fr_FR-tom\n→ son rééchantillonné à 16 kHz,\nmono, 16 bits"];
+  robot [label="sortie « robot »\n1003 START_PLAY : morceaux de 3 s\n(96 000 octets) au plus, un par seconde ;\n1004 pour couper ; volume 1006", fillcolor="#E2F0D9", color="#548235"];
+  borne [label="sortie « borne »\nun WAV, joué par la page\nde la borne (tablette)", fillcolor="#E2F0D9", color="#548235"];
+  tts [label="sortie « robot_tts »\n1001 : la synthèse intégrée\ndu robot (français à vérifier)", fillcolor="#E2F0D9", color="#548235"];
+  hp [label="haut-parleur du robot\n(service voice du PC1)", fillcolor="#FDEBD9", color="#C55A11"];
+
+  sources -> noeud;
+  noeud -> piper;
+  noeud -> tts [label=" texte"];
+  piper -> robot [label=" PCM"];
+  piper -> borne [label=" WAV"];
+  robot -> hp [label=" /api/voice/request"];
+  tts -> hp;
+  {rank=same; robot; borne; tts}
+}

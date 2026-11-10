@@ -1,111 +1,161 @@
-"""Chapitre 14 : glossaire (trié par ordre alphabétique à la génération)."""
-import re
-import unicodedata
-
-TERMES = [
-    ("1801, 1802, 1804", "Numéros d'ordres du service de cartographie d'Unitree : 1801 commence un scan, 1802 le "
-     "termine et enregistre la carte, 1804 repère le robot sur une carte enregistrée (annexe F)."),
-    ("7105 (SetVelocity)", "L'ordre de marche du robot : vitesses vx, vy, wz et une durée (0,5 s chez nous)."),
-    ("Accueil", "Le point principal du lieu : là où le robot attend les visiteurs et revient après chaque visite."),
-    ("Action (ROS 2)", "Une tâche longue avec un suivi et la possibilité d'annuler (ex. `NavigateThroughPoses` de Nav2)."),
-    ("Adopter un scan", "« Utiliser cette carte » : la carte et le nuage d'une session deviennent ceux de l'étage."),
-    ("Agent (IA)", "Une instance de Claude lancée avec une mission précise et ses propres fichiers, pendant une vague."),
-    ("Alias `gl-*`", "Une seconde orthographe de chaque commande (L au lieu du chiffre 1)."),
-    ("API", "L'ensemble des routes qu'un programme offre aux autres ; ici, celles du serveur de l'Atelier (`/api/…`)."),
-    ("api_id", "Le numéro d'un ordre Unitree dans un message `unitree_api/Request`."),
-    ("Assemblage", "La fin d'une vague : l'intégrateur réunit le travail des agents, corrige les écarts et teste tout."),
-    ("base_link", "Le repère du robot, au sol, x vers l'avant."),
-    ("Bag (ros2 bag)", "Un enregistrement de messages ROS 2, que l'on peut rejouer ou relire (le scan)."),
-    ("Carte d'occupation", "Une image vue de dessus : chaque pixel (5 cm) est libre, occupé ou inconnu."),
-    ("Carte des coûts", "La grille de travail de Nav2 : carte, obstacles vus et distance de sécurité (inflation)."),
-    ("Carte extrudée", "La carte 2D d'un étage scanné, montée sur 1,5 m en un seul maillage : le monde de simulation."),
-    ("Chorégraphie", "Une suite de poses des bras, de pas, de gestes, de lumières et de paroles, jouée en sécurité."),
-    ("colcon", "L'outil qui compile les paquets ROS 2."),
-    ("Collision Monitor", "La partie de Nav2 qui ralentit ou arrête le robot quand un obstacle est trop près."),
-    ("Conteneur", "Une boîte qui contient un programme et tout ce dont il a besoin (ici `g1-jetson`, par Docker)."),
-    ("Contrat", "Ce que les pièces du logiciel se promettent (format, sujet, route), figé avant le travail des agents."),
-    ("Couloir", "Dans `itineraires.yaml`, un segment droit entre deux nœuds, 8 m au plus."),
-    ("Critère de recette", "Un scénario complet et mesurable qui doit réussir pour qu'une vague soit finie."),
-    ("CycloneDDS", "La réalisation de DDS choisie pour ROS 2, la même que sur le robot."),
-    ("DDS", "La couche réseau de ROS 2 : découverte automatique et transport des messages."),
-    ("Domaine (ROS_DOMAIN_ID)", "Un numéro qui sépare des groupes de programmes ROS 2 ; le robot est sur le 0."),
-    ("Faux G1", "Le nœud `g1_jumeau`, qui répond comme le vrai robot et fait bouger le robot de Gazebo."),
-    ("FSM (mode du robot)", "L'état de la machine du robot : 0 pas démarré, 1 amorti, 3 assis, 500 démarrage, 501 et 801 marche, 802 course."),
-    ("Gazebo", "Le simulateur 3D du projet (version Fortress)."),
-    ("Homme mort", "Une sécurité : sans ordre récent, le robot s'arrête de lui-même."),
-    ("Inflation", "La zone de coût autour des obstacles dans la carte des coûts, pour garder ses distances."),
-    ("Intégrateur", "Claude, dans la session de l'utilisateur : il écrit le plan et les contrats, assemble et fait les commits."),
-    ("Itinéraire", "Le chemin du guide, de nœud en nœud, calculé par le routeur (A*)."),
-    ("Jetson", "Le deuxième ordinateur du robot (NVIDIA), où tourne notre conteneur."),
-    ("JSON", "Un format de données texte (`{\"cle\": valeur}`), utilisé dans les messages et l'API."),
-    ("JSON Schema", "La description de ce qu'un fichier JSON ou YAML doit contenir ; sert à le vérifier."),
-    ("Keepout (masque)", "L'image des zones interdites, que Nav2 ne traverse jamais."),
-    ("Launch (lancement)", "Un fichier Python qui démarre plusieurs nœuds ROS 2 avec leurs arguments."),
-    ("LiDAR", "Un capteur laser qui mesure les distances tout autour ; sur le G1, un Livox MID-360."),
-    ("Lieu", "Un bâtiment décrit dans un dossier de `lieux/` : étages, salles, itinéraires, zones, cartes."),
-    ("map", "Le repère de la carte de l'étage, fixe."),
-    ("MJPEG", "Une suite d'images JPEG envoyées dans une seule réponse HTTP : la vidéo de la caméra."),
-    ("Mode marche", "Les modes où le robot accepte de marcher : 500, 501 et 801."),
-    ("MPPI", "Le contrôleur de Nav2 qui essaie des milliers de trajectoires et garde la meilleure."),
-    ("Nav2", "La pile de navigation de ROS 2 : chemin, vitesses, évitement des obstacles."),
-    ("Nœud (ROS 2)", "Un programme ROS 2 qui a un nom (ex. `guide`, `pont_g1`)."),
-    ("Nœud (d'itinéraire)", "Un point de passage du graphe du guide ; chaque salle en a un, de même identifiant."),
-    ("Nuage de points", "Un ensemble de points 3D mesurés par le LiDAR."),
-    ("Nuage d'affichage", "Le nuage préparé pour la carte 3D : x, y et hauteur au-dessus du sol, en binaire."),
-    ("odom", "Le repère de l'odométrie : continu, mais qui dérive."),
-    ("Odométrie", "L'estimation du déplacement à partir des pas et de la centrale inertielle."),
-    ("Paramètre (ROS 2)", "Un réglage d'un nœud (ex. `vx_max` du pont)."),
-    ("PC1", "L'ordinateur d'Unitree dans le robot, fermé : marche, équilibre, SLAM."),
-    ("PGM", "Un format d'image en niveaux de gris, celui des cartes de Nav2."),
-    ("Pilotage", "Commander le robot à la main depuis l'Atelier (Réel › Piloter)."),
-    ("Point principal", "La salle étiquetée `principal` : l'accueil, le départ, le point de repérage et le retour."),
-    ("Pont (g1_bridge)", "Le nœud qui traduit les vitesses de Nav2 en ordres de marche 7105, avec ses sécurités."),
-    ("QoS", "La qualité de service d'un sujet : fiable ou au mieux, message gardé ou non."),
-    ("RANSAC", "Une méthode qui trouve une forme (ici le plan du sol) en tirant au hasard et en gardant la meilleure."),
-    ("Repérage", "Dire au robot où il est sur la carte, à son démarrage (ordre 1804)."),
-    ("Relocalisation", "La position que le SLAM d'Unitree recalcule sur sa carte, après le repérage."),
-    ("Répétition", "Le mode qui joue tout le déroulé du vrai robot contre un faux G1, sans robot."),
-    ("Robot proxy", "Le robot de Gazebo : une boîte de la taille du G1, qui glisse, avec un LiDAR simulé."),
-    ("ROS 2", "La boîte à outils qui fait parler les programmes du robot (version Humble)."),
-    ("Route", "Une adresse de l'API et ce qu'elle fait (ex. `POST /api/arret`)."),
-    ("Ruban", "La barre de commandes à onglets de l'interface, comme dans SolidWorks."),
-    ("Salle", "Une destination du guide, avec sa pose devant la porte."),
-    ("Session de scan", "Un scan et ses fichiers, dans `scans/<date>_<heure>/`."),
-    ("SLAM", "Localisation et cartographie simultanées : construire la carte en suivant sa position."),
-    ("Smac 2D", "Le planificateur de Nav2 qui trace le chemin sur la carte."),
-    ("STL", "Un format de maillage 3D (des triangles)."),
-    ("StopMove", "L'ordre d'arrêt : vitesses nulles, pour 1 s."),
-    ("Sujet (topic)", "Un canal nommé de ROS 2 où des nœuds publient et d'autres s'abonnent."),
-    ("TF", "L'arbre des repères de ROS 2 et des transformations entre eux."),
-    ("Vague", "Une étape de construction : contrats, agents en parallèle, assemblage, recette."),
-    ("Verrou du pont", "`/pont/arret` à vrai : plus aucun mouvement jusqu'au déverrouillage."),
-    ("Vitesse minimale", "0,2 m/s : sous ce seuil, le G1 ne fait aucun pas ; le pont monte les petites consignes."),
-    ("WebGL", "La 3D du navigateur, dont la carte 3D a besoin."),
-    ("WebSocket", "Une connexion web qui reste ouverte dans les deux sens."),
-    ("YAML", "Un format de fichier texte lisible, celui des fichiers d'un lieu."),
-    ("YOLO", "Un réseau de neurones qui détecte les personnes dans une image."),
-    ("Zone interdite, zone lente", "Des polygones de `zones.yaml` : le robot n'entre pas dans la première ; la "
-     "seconde est décrite pour ralentir (pas encore appliquée par Nav2)."),
-]
-
-
-
-def _cle(terme):
-    t = terme[0].replace("œ", "oe").replace("Œ", "Oe")
-    t = unicodedata.normalize("NFD", t).encode("ascii", "ignore").decode().lower()
-    return re.sub(r"[^a-z0-9 ]", "", t)
-
-
-TERMES.sort(key=_cle)
+"""Chapitre 14 : se repérer et modifier, onze recettes."""
 
 BLOCS = [
-    ("h1", "Glossaire"),
-    ("chapeau", f"Les {len(TERMES)} mots du projet, en une phrase chacun, par ordre alphabétique."),
+    ("h1", "Se repérer et modifier : onze recettes"),
+    ("chapeau", "Chaque recette dit quand s'en servir, où se trouve ce qu'il faut changer, comment faire, et "
+                "comment vérifier. Règle générale : changer une chose à la fois, lancer les tests de cette "
+                "partie, puis recompiler (ROS 2) ou recharger la page (interface). Et faire un commit quand "
+                "ça marche."),
+
+    ("h2", "Changer le texte, l'aide ou l'icône d'une commande"),
+    ("p", "**Où** : `atelier/web/js/coque/ruban.js`, le registre `COMMANDES`. Chaque commande y a un `libelle` "
+          "(sous l'icône), une phrase d'`aide` (au survol) et une `icone` (dessinée dans `js/coque/icones.js`). "
+          "Les couleurs de toute l'interface sont des jetons dans `atelier/web/css/theme.css`."),
+    ("num", [
+        "Modifier le `libelle` ou l'`aide` de la commande ; ne jamais changer son `id` (les tests et les autres "
+        "écrans s'en servent).",
+        "Recharger la page de l'Atelier (Ctrl+Maj+R) : le serveur n'a pas besoin d'être relancé.",
+        "Vérifier : `.venv-projet/bin/python -m pytest atelier/tests/test_coque.py -q`.",
+    ]),
+
+    ("h2", "Ajouter ou corriger une salle à la main"),
+    ("p", "**Où** : `lieux/<id>/salles.yaml` et `lieux/<id>/itineraires.yaml`. Le plus simple reste l'Atelier "
+          "(Placer › Salle, en 3D ou en 2D), qui écrit les deux fichiers d'un coup."),
+    ("num", [
+        "Dans `salles.yaml`, ajouter une salle : `id`, `nom`, `alias`, `etage`, `pose` (x, y, theta) et "
+        "`phrase_arrivee`.",
+        "Dans `itineraires.yaml`, ajouter un nœud de même `id` à la même position, et au moins un couloir qui "
+        "le relie au graphe (8 m au plus, en ligne droite dans l'espace libre).",
+        "Vérifier : `g1-lieu valider --lieu <id>` dit « Aucune erreur. » ou quoi corriger.",
+    ]),
+    ("p", "Attention : l'Atelier réécrit ces fichiers quand il enregistre ; les commentaires ajoutés à la main ne "
+          "sont pas conservés."),
+
+    ("h2", "Changer ce que dit le robot"),
+    ("p", "**Où** : la phrase d'arrivée de chaque salle (`phrase_arrivee` de `salles.yaml`) ; les phrases du guide "
+          "par personnalité (`phrases` de `personnalites.yaml`, écran Équipe › Personnalités) ; les phrases par "
+          "défaut dans `CODES_EVENEMENT` de `atelier/lieu/comportement.py` (départ, ralentir, attente, retour…)."),
+    ("code", "personnalites:\n"
+             "  - id: accueillant\n"
+             "    phrases:                       # {nom} : le nom de la salle\n"
+             "      depart: \"Avec plaisir ! Suivez-moi jusqu'à {nom}.\"\n"
+             "      arrivee: \"Et voilà : {nom}. Bonne journée !\""),
+    ("p", "**Vérifier** : écran Équipe, ou `g1-lieu valider --lieu <id>` (il vérifie aussi les fichiers de l'équipe). "
+          "Les phrases de la démo d'accueil (« Je fais une petite pause. », « Je suis occupé… », « Direction … : "
+          "suivez-moi ! ») sont en tête de `ws/src/g1_accueil/g1_accueil/logique.py`, celles des écrans de la borne "
+          "dans `TEXTES_BORNE` de `atelier/lieu/accueil.py` ; le titre de la borne se change dans les réglages de "
+          "la démo."),
+
+    ("h2", "Régler les délais du guide"),
+    ("p", "**Où** : la section `guide` de `lieu.yaml`, ou Simuler › Avancé › Réglages du guide, qui l'écrit."),
+    ("code", "guide: {retour_auto: true, delai_avant_retour_s: 15, delai_visiteur_s: 30,\n"
+             "        distance_ralentir_m: 2.0, distance_attendre_m: 3.5, ralenti: 0.5,\n"
+             "        delai_perdu_s: 30, delai_passant_s: 20}"),
+    ("p", "Le guide lit ces valeurs au lancement de la navigation : relancer la simulation (ou Naviguer › Arrêter "
+          "puis Lancer). Trois réglages se changent en marche, sans relancer : "
+          "`ros2 param set /guide tolerance_orientation_rad 0.4` (et `anticipation_rotation_rad`, `pourcentage_min`)."),
+
+    ("h2", "Mettre à jour la vitesse minimale après une mesure"),
+    ("p", "**Quand** : après la séance n° 2, quand les vrais seuils de marche et de rotation auront été mesurés "
+          "(`python3 -m g1_bridge.mesure marche|rotation|cap`). **Où** : la même valeur est à trois endroits, "
+          "qu'un test compare :"),
     ("table", {
-        "entetes": ["Terme", "Définition"],
-        "largeurs": [4.2, 12.4],
-        "taille": 8.5,
-        "premiere_col_gras": True,
-        "lignes": [[t, d] for t, d in TERMES],
+        "entetes": ["Fichier", "Nom"],
+        "largeurs": [8.6, 8.0],
+        "taille": 9,
+        "lignes": [
+            ["`atelier/lieu/robot.py`", "`VITESSES_MIN_PONT = {\"lin\": 0.20, \"rot\": 0.30}`"],
+            ["`ws/src/g1_bridge/g1_bridge/logique.py`", "`VITESSES_MIN = {'lin': 0.20, 'rot': 0.30}`"],
+            ["`ws/src/g1_bridge/config/pont.yaml`", "`vitesse_min_lin: 0.2`, `vitesse_min_rot: 0.3`"],
+        ],
     }),
+    ("num", [
+        "Changer la valeur aux trois endroits.",
+        "Vérifier : `cd ~/robot-g1/ws && colcon test --packages-select g1_bridge && colcon test-result --all`, "
+        "puis `tests_e2e/tout.sh 34`.",
+        "Refaire l'image du Jetson (dernière recette).",
+    ]),
+
+    ("h2", "Changer un réglage de Nav2"),
+    ("p", "**Où** : `ws/src/g1_nav/config/nav2_g1_reel.yaml` (robot réel et répétition) et `nav2_g1_simu.yaml` "
+          "(simulation). Ils doivent rester identiques, sauf les vitesses et l'horloge : un test "
+          "(`ws/src/g1_nav/test/test_reglages.py`) le vérifie. Exemples : `inflation_radius` (la distance gardée "
+          "aux obstacles), les zones du `collision_monitor` (ralentir, arrêter), les hauteurs de la `voxel_layer`."),
+    ("num", [
+        "Modifier les deux fichiers de la même façon.",
+        "Sur le PC, avec `colcon build --symlink-install`, relancer la navigation suffit en général ; pour "
+        "le robot, refaire l'image du Jetson (dernière recette).",
+        "Vérifier sur les scènes de passants : `tests_e2e/tout.sh 23 24 25` (environ une heure), ou "
+        "`g1-banc --scene immobile_couloir` pour un essai rapide.",
+    ]),
+
+    ("h2", "Ajouter une règle au chatbot"),
+    ("p", "**Où** : `lieux/<id>/dialogues.yaml` (écran Équipe › Dialogues ; « Partir de l'exemple » le crée). La "
+          "première règle qui correspond l'emporte ; `{salle}` vaut une salle (identifiant, nom ou alias), `{*}` "
+          "n'importe quels mots ; les motifs s'écrivent sans majuscules, accents ni ponctuation."),
+    ("code", "  - id: toilettes\n"
+             "    motifs: [\"ou sont les toilettes\", \"toilettes\"]\n"
+             "    action: dire\n"
+             "    reponse: \"Les toilettes sont au bout du couloir, à gauche.\""),
+    ("p", "**Vérifier** : bouton « Essayer » de l'écran Dialogues (aucun mouvement), ou "
+          "`POST /api/lieux/<id>/dialogues/essayer` avec la phrase."),
+
+    ("h2", "Refaire le traitement d'un scan"),
+    ("p", "**Quand** : après une amélioration de la chaîne du scan, pour en profiter sur un vieux scan. Rien n'est "
+          "effacé : les résultats d'avant partent dans `ancien_<date>/`."),
+    ("code", "g1-scan traiter --lieu seance --session 2026-10-27_14h22 --refaire\n"
+             "g1-scan adopter --lieu seance --session 2026-10-27_14h22   # la réadopter\n"
+             "g1-lieu valider --lieu seance"),
+    ("p", "Faire une copie du lieu avant (`cp -a ~/robot-g1/lieux/seance <ailleurs>`) : le dossier "
+          "`lieux/seance` n'est pas dans Git."),
+
+    ("h2", "Ajouter une route à l'API"),
+    ("p", "**Où** : `atelier/serveur/routes/<sujet>.py`. Chaque fichier a un `routeur` (FastAPI) ; une erreur se "
+          "dit avec `ErreurAtelier(code, \"message en français\")`, que le serveur transforme en `{\"detail\": …}`. "
+          "Un exemple simplifié :"),
+    ("code", "@routeur.get(\"/api/lieux/{id_lieu}/resume\")\n"
+             "def resume(id_lieu: str):\n"
+             "    \"\"\"Le nom du lieu et son nombre de salles.\"\"\"\n"
+             "    lieu = charger_lieu(chemin_lieu(id_lieu))\n"
+             "    return {\"nom\": lieu.nom, \"salles\": len(lieu.salles)}"),
+    ("p", "Un nouveau fichier de routes doit être ajouté à la liste des modules de `atelier/serveur/main.py`. "
+          "Écrire son test dans `atelier/tests/` (le client de test de FastAPI sur une copie du lieu demo), puis "
+          "relancer `g1-atelier`."),
+
+    ("h2", "Régler la démo d'accueil et la voix"),
+    ("p", "**Où** : Équipe › Avancé › **Réglages de la démo**, qui écrit `lieux/<id>/demo.yaml` (fichier facultatif : "
+          "sans lui, les réglages par défaut, dont un volume de 70 %) ; les salles proposées par la borne y sont des "
+          "cases à cocher (une salle décochée reçoit l'étiquette `hors_borne` dans `salles.yaml`)."),
+    ("code", "version: 1\n"
+             "voix: {sortie: robot, volume: 30, nom: fr_FR-siwis-medium, vitesse: 1.0}\n"
+             "visiteurs: {source: borne, distance_m: 1.5, presence_s: 1.0}   # la borne seule\n"
+             "delais: {choix_s: 45, depart_s: 10, entre_visiteurs_s: 8}\n"
+             "accompagner: true\n"
+             "retour: true\n"
+             "borne:\n"
+             "  langue: fr\n"
+             "  titre: \"Bonjour ! Où voulez-vous aller ?\"\n"
+             "  code_operateur: \"2468\"     # 4 à 8 chiffres ; sans lui, pas de mode opérateur"),
+    ("num", [
+        "Avec le robot, **baisser le volume d'abord** (20 à 30 %), « Enregistrer les réglages », puis « Démarrer la "
+        "voix » et « Essayer » : le volume part au haut-parleur du robot (ordre 1006) ; le monter ensuite de 10 en 10.",
+        "« Arrêter la voix », puis **Lancer la démo** : elle prend les réglages enregistrés (une démo qui tourne "
+        "doit être relancée pour les prendre).",
+        "Vérifier : `g1-lieu valider --lieu <id>` (il vérifie aussi `demo.yaml`) ; sans robot, la démo s'essaie en "
+        "simulation, avec la scène « Accompagnement d'un visiteur » (Simuler › Avancé › Passants) et la borne "
+        "ouverte sur ce PC (`http://localhost:8000/borne`).",
+    ]),
+
+    ("h2", "Mettre à jour le conteneur du Jetson"),
+    ("p", "**Quand** : après toute modification de `ws/src` (`g1_nav`, `g1_bridge`, `g1_pilotage`, `g1_equipe`) "
+          "ou de `atelier/lieu` et `atelier/equipe`, qui sont copiés dans l'image."),
+    ("code", "cd ~/robot-g1/ws && colcon build --symlink-install   # le PC d'abord\n"
+             "g1-jetson construire --arch amd64                     # l'image du PC\n"
+             "~/robot-g1/tests_e2e/tout.sh 16                       # son critère\n"
+             "g1-jetson construire                                  # l'image du Jetson\n"
+             "source ~/robot-g1/setup/robot.sh                      # robot branché\n"
+             "g1-jetson envoyer                                     # 2 à 5 min\n"
+             "g1-jetson demarrer --lieu seance --etage rdc          # ou Naviguer › Lancer"),
+    ("p", "Seules les dernières couches de l'image sont refaites : moins d'une minute pour l'image du PC, "
+          "quelques minutes pour celle du Jetson."),
 ]

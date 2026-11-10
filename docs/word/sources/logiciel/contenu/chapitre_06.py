@@ -111,12 +111,17 @@ BLOCS = [
         "vitesse maximale, phrases du guide) ; **`dialogues.yaml`** : le chatbot à règles ; "
         "**`camera.yaml`** : la See3CAM, sa position sur le robot, l'exposition, la détection. Tous trois "
         "sont facultatifs et ont un exemple dans `atelier/lieu/exemples/`.",
+        "**`demo.yaml`** (vague 6, facultatif) : les réglages de la démo d'accueil, écrits par Équipe › Avancé › "
+        "Réglages de la démo : personnalité, voix (sortie, voix, volume, vitesse), visiteurs (qui les voit, à quelle "
+        "distance), délais, accompagnement, retour seul, borne (titre, langue, code opérateur). Une salle se cache "
+        "de la borne par l'étiquette `hors_borne` de `salles.yaml` (chapitre 12).",
         "**`sauvegardes/<date>_<raison>/`** : une copie faite avant une opération qui réécrit le lieu "
         "(migration, retraitement), avec un `LISEZMOI.txt` qui dit comment revenir en arrière.",
-        "**Les schémas** : `atelier/lieu/schemas/` en contient 28, en JSON Schema draft-07 : un par sorte de "
+        "**Les schémas** : `atelier/lieu/schemas/` en contient 41, en JSON Schema draft-07 : un par sorte de "
         "fichier (lieu, monde, salles, itinéraires, zones, carte, session de scan, nuage, personnalités, "
-        "dialogues, caméra, scène, chorégraphie) et un par message JSON des sujets ROS 2 (état du guide, "
-        "état du pont, état du repérage, personnes vues…). En cas de doute sur un champ, ce sont eux qui font foi.",
+        "dialogues, caméra, scène, chorégraphie, démo, séance) et un par message JSON des sujets ROS 2 et de "
+        "l'Atelier (état du guide, du pont, du repérage, personnes vues, diagnostic, état de la démo et de la "
+        "borne, voix…). En cas de doute sur un champ, ce sont eux qui font foi.",
     ]),
     ("code", "g1-lieu valider --lieu seance      # vérifie tout le lieu et dit quoi corriger"),
 ]
