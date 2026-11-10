@@ -46,8 +46,8 @@ marche (état `pas_en_marche`, avec un message qui dit quoi faire).
 - **en option**, si le temps le permet : **la voix du robot**, essayée prudemment (volume bas d'abord),
   et **la démo d'accueil** avec la borne (étape V).
 
-**Durée :** environ 2 h 30 avec le robot (plus 20 min pour l'option V), 45 min la veille et 15 min le
-matin. Si le temps manque, on garde l'ordre et on saute H, puis V.
+**Durée :** environ 2 h 40 avec le robot (3 h avec H, 3 h 20 avec H et V), plus 45 min la veille et
+15 min le matin. Si le temps manque, on garde l'ordre et on saute H, puis V.
 
 **Ce qui ne change pas dans le robot :** comme à la séance n° 1. Le PC1 d'Unitree n'est jamais
 touché ; sur le Jetson, seulement notre image Docker (environ 2 Go) et le dossier `~/robot-g1` ;
