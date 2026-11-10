@@ -619,7 +619,10 @@ def perdu(args):
         obs.panne('aucune')
         verifier_textes(obs, t0, args.lieu)
         codes = obs.codes_depuis(t0)
-        verifier(sous_suite(codes, ['depart', 'perdu', 'retrouve', 'arrivee', 'depart', 'perdu', 'echec']),
+        # cas B : « Y aller » vers l'accueil (le point principal), sans visiteur à accompagner : le guide annonce
+        # « Je retourne à l'accueil. » (événement retour) et non plus « Suivez-moi » (depart) depuis les
+        # corrections de la vague 6 (section 13.14 du plan, « Ramener à l'accueil »)
+        verifier(sous_suite(codes, ['depart', 'perdu', 'retrouve', 'arrivee', 'retour', 'perdu', 'echec']),
                  f'suite d\'événements inattendue : {codes}')
         dire(f'événements : {", ".join(codes)} ; tous en français et conformes')
         return 0
