@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- Configuration CycloneDDS du conteneur g1-jetson (section 10.2 du plan).
+     Écrite à chaque démarrage par demarrer.sh (docker/reseau.py) dans /tmp/cyclonedds.xml.
+     Les deux marques entre arobases sont remplacées : la première par les interfaces choisies
+     (réseau 192.168.123.x du robot, puis le Wi-Fi éventuel, sans multicast), la seconde par les
+     pairs unicast de G1_PAIRS (rien sans pairs). -->
+<CycloneDDS>
+  <Domain Id="any">
+    <General>
+      <Interfaces>
+@INTERFACES@
+      </Interfaces>
+    </General>
+@DECOUVERTE@
+  </Domain>
+</CycloneDDS>

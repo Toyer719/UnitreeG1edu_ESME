@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# La boîte noire des séances avec le robot (vague 6, section 13.3 du plan) :
+#   g1-seance demarrer|arreter|etat [--api URL]     la séance de l'Atelier qui tourne
+#   g1-seance enregistrer --dossier D               l'enregistrement seul (lancé par l'Atelier)
+#   g1-seance rapport DOSSIER | exporter DOSSIER [--sortie F.zip] | liste
+# Python du projet (.venv-projet) avec ROS 2 chargé. Commande de l'agent Boîte noire.
+# Pas de set -u : les scripts de ROS 2 ne le supportent pas.
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+source "$HOME/robot-g1/setup/env.sh"
+PY="$RACINE/.venv-projet/bin/python"
+[ -x "$PY" ] || PY="$HOME/robot-g1/.venv-projet/bin/python"
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+# L'enregistreur et le rapport ne travaillent que dans le dossier de la séance : ils ne gardent pas le dossier des
+# lieux de l'Atelier qui les lance (les essais comptent les programmes restés lancés avec leurs lieux)
+case "$1" in
+  enregistrer|rapport) unset ATELIER_LIEUX ;;
+esac
+exec "$PY" -m atelier.seance "$@"

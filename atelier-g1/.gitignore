@@ -1,0 +1,41 @@
+# Environnements Python, dépôts téléchargés et fichiers générés : ils se réinstallent avec setup/
+.venv-*/
+third_party/
+opt/
+modeles/
+ws/build/
+ws/install/
+ws/log/
+ws/src/livox_ros_driver2/
+ws/src/FAST_LIO/
+enregistrements/
+setup/*.log
+__pycache__/
+journaux/
+# Compilations ROS 2 propres à chaque agent (colcon --build-base build_<paquet> ...)
+ws/build_*/
+ws/install_*/
+ws/log_*/
+# Vague 5 : compilations d'un agent lancées depuis la racine (colcon --build-base build_v5_<agent> ...)
+/build_v5_*/
+/install_v5_*/
+/log_v5_*/
+# Installations Python en mode éditable et caches de pytest
+*.egg-info/
+.pytest_cache/
+# Scans intégrés (section 9 du plan) : les enregistrements ros2 bag sont lourds et restent sur le PC ;
+# le verrou de session.json et la liste des programmes lancés (.processus.json) n'ont de sens
+# que pendant le scan
+lieux/*/scans/*/enregistrement/
+lieux/*/scans/*/.session.lock
+lieux/*/scans/*/.processus.json
+# Vague 4 (section 11.5 du plan) : les musiques des chorégraphies sont fournies par l'utilisateur et
+# restent sur le PC ; aucune musique protégée dans le dépôt
+choregraphies/musique/*
+!choregraphies/musique/LISEZMOI.md
+# Vague 6 (section 13.3 du plan) : le .zip d'une séance de la boîte noire (g1-seance exporter, tutoriel de la
+# séance 2) peut peser des centaines de Mo (l'enregistrement ROS 2) : il reste sur le PC, jamais dans Git
+docs/releves/*.zip
+
+# Fichiers de verrou de LibreOffice (document Word ouvert)
+.~lock.*#

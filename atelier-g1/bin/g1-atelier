@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# Lance l'Atelier G1 : le serveur web (FastAPI) puis le navigateur sur http://localhost:8000
+#   g1-atelier                     port 8000, ouvre le navigateur
+#   g1-atelier --port 8080         autre port
+#   g1-atelier --sans-navigateur   n'ouvre pas le navigateur (ex. sur le Jetson)
+#   g1-atelier --hote 0.0.0.0      la borne (http://IP:port/borne) sur une tablette du même réseau
+#   g1-atelier --hote 0.0.0.0 --distant-complet   tout l'Atelier depuis le réseau (pas seulement la borne)
+# Ctrl+C arrête le serveur, et avec lui la simulation et la navigation qu'il a lancées.
+# Le code vient de la copie de travail qui contient cette commande (worktree compris).
+set -o pipefail   # pas de -u : les scripts de ROS 2 ne le supportent pas
+
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PORT=8000
+HOTE=127.0.0.1
+NAVIGATEUR=1
+DISTANT=borne
+
+aide() {
+  sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --port) PORT="$2"; shift 2 ;;
+    --port=*) PORT="${1#*=}"; shift ;;
+    --hote) HOTE="$2"; shift 2 ;;
+    --hote=*) HOTE="${1#*=}"; shift ;;
+    --sans-navigateur) NAVIGATEUR=0; shift ;;
+    --distant-complet) DISTANT=complet; shift ;;
+    -h|--help) aide; exit 0 ;;
+    *) echo "erreur : option inconnue « $1 »" >&2; aide >&2; exit 2 ;;
+  esac
+done
+case "$PORT" in
+  ''|*[!0-9]*) echo "erreur : le port doit être un nombre (ex. --port 8000), pas « $PORT »" >&2; exit 2 ;;
+esac
+
+# Environnement ROS 2 du projet (rclpy pour le pont, commandes g1-*)
+ENV_SH="$RACINE/setup/env.sh"
+[ -f "$ENV_SH" ] || ENV_SH="$HOME/robot-g1/setup/env.sh"
+if [ -f "$ENV_SH" ]; then
+  source "$ENV_SH"
+else
+  echo "Attention : $ENV_SH introuvable, l'Atelier tourne sans ROS 2." >&2
+fi
+# g1_sim et g1_nav compilés avec les autres paquets (ws/install), sinon dans leur propre dossier
+for PAQUET in g1_sim g1_nav; do
+  if [ ! -d "$RACINE/ws/install/$PAQUET" ] && [ -f "$RACINE/ws/install_$PAQUET/local_setup.bash" ]; then
+    source "$RACINE/ws/install_$PAQUET/local_setup.bash"
+  fi
+done
+
+PY="$RACINE/.venv-projet/bin/python"
+[ -x "$PY" ] || PY="$HOME/robot-g1/.venv-projet/bin/python"
+if [ ! -x "$PY" ]; then
+  echo "erreur : Python du projet introuvable ($PY). Installez-le avec setup/installer_utilisateur.sh." >&2
+  exit 1
+fi
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+export PATH="$RACINE/bin:$PATH"
+# Vague 6 (section 13.5 du plan) : le serveur sait où il écoute (adresse de la borne) ; depuis le réseau, seule la
+# borne est permise, sauf avec --distant-complet
+export ATELIER_HOTE="$HOTE" ATELIER_PORT="$PORT" ATELIER_DISTANT="$DISTANT"
+
+if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+  echo "erreur : le port $PORT est déjà pris (un autre Atelier tourne ?). Essayez : g1-atelier --port $((PORT + 1))" >&2
+  exit 1
+fi
+
+ADRESSE="http://localhost:$PORT"
+[ "$HOTE" = "127.0.0.1" ] || [ "$HOTE" = "localhost" ] || ADRESSE="http://$(hostname -I 2>/dev/null | awk '{print $1}'):$PORT (et $ADRESSE sur ce PC)"
+echo "Atelier G1 : $ADRESSE   (Ctrl+C pour arrêter)"
+
+if [ "$NAVIGATEUR" = 1 ]; then
+  # en arrière-plan : on attend que le serveur réponde (15 s au plus), puis on ouvre le navigateur
+  (
+    for _ in $(seq 1 60); do
+      if (exec 3<>"/dev/tcp/127.0.0.1/$PORT") 2>/dev/null; then
+        if [ -n "$DISPLAY$WAYLAND_DISPLAY" ] && command -v xdg-open >/dev/null; then
+          xdg-open "http://localhost:$PORT" >/dev/null 2>&1
+        else
+          echo "Pas d'écran : ouvrez http://localhost:$PORT dans un navigateur."
+        fi
+        exit 0
+      fi
+      sleep 0.25
+    done
+  ) &
+fi
+
+# exec : Ctrl+C va directement au serveur, qui arrête proprement la simulation et la navigation
+exec "$PY" -m uvicorn atelier.serveur.main:app --host "$HOTE" --port "$PORT" --log-level warning

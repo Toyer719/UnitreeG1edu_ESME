@@ -1,0 +1,106 @@
+<?xml version="1.0"?>
+<!--
+  Petit monde de test de g1_sim, écrit à la main : un couloir fermé de 10 m sur 2 m,
+  avec une boîte au milieu. Il a les mêmes plugins de monde que les mondes générés
+  par atelier.monde (Physics, SceneBroadcaster, UserCommands, Sensors en ogre2).
+
+  Vue de dessus (repère du monde = repère map) :
+
+     y = 1  ┌──────────────────────────────────────┐
+            │  R →              ▄▄                 │   R : départ du robot (1 ; 0)
+     y = -1 └──────────────────────────────────────┘   ▄▄ : boîte de 0,5 m en (5 ; 0)
+           x = 0                                  x = 10
+
+  Murs de 0,15 m d'épaisseur et 2,5 m de haut, centrés sur les lignes y = ±1, x = 0 et x = 10.
+-->
+<sdf version="1.9">
+  <world name="couloir">
+    <physics name="1ms" type="ignored">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="ignition-gazebo-physics-system" name="ignition::gazebo::systems::Physics"/>
+    <plugin filename="ignition-gazebo-scene-broadcaster-system"
+            name="ignition::gazebo::systems::SceneBroadcaster"/>
+    <plugin filename="ignition-gazebo-user-commands-system"
+            name="ignition::gazebo::systems::UserCommands"/>
+    <plugin filename="ignition-gazebo-sensors-system" name="ignition::gazebo::systems::Sensors">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+
+    <light type="directional" name="soleil">
+      <cast_shadows>false</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <model name="sol">
+      <static>true</static>
+      <link name="lien">
+        <collision name="collision">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+        </collision>
+        <visual name="visuel">
+          <geometry><plane><normal>0 0 1</normal><size>40 40</size></plane></geometry>
+          <material>
+            <ambient>0.7 0.7 0.7 1</ambient>
+            <diffuse>0.7 0.7 0.7 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- Murs longs : du bout ouest au bout est, sans débordement -->
+    <model name="mur_sud">
+      <static>true</static>
+      <pose>5 -1 1.25 0 0 0</pose>
+      <link name="lien">
+        <collision name="collision"><geometry><box><size>10 0.15 2.5</size></box></geometry></collision>
+        <visual name="visuel"><geometry><box><size>10 0.15 2.5</size></box></geometry></visual>
+      </link>
+    </model>
+    <model name="mur_nord">
+      <static>true</static>
+      <pose>5 1 1.25 0 0 0</pose>
+      <link name="lien">
+        <collision name="collision"><geometry><box><size>10 0.15 2.5</size></box></geometry></collision>
+        <visual name="visuel"><geometry><box><size>10 0.15 2.5</size></box></geometry></visual>
+      </link>
+    </model>
+    <!-- Murs des bouts, entre les deux murs longs -->
+    <model name="mur_ouest">
+      <static>true</static>
+      <pose>0 0 1.25 0 0 0</pose>
+      <link name="lien">
+        <collision name="collision"><geometry><box><size>0.15 2 2.5</size></box></geometry></collision>
+        <visual name="visuel"><geometry><box><size>0.15 2 2.5</size></box></geometry></visual>
+      </link>
+    </model>
+    <model name="mur_est">
+      <static>true</static>
+      <pose>10 0 1.25 0 0 0</pose>
+      <link name="lien">
+        <collision name="collision"><geometry><box><size>0.15 2 2.5</size></box></geometry></collision>
+        <visual name="visuel"><geometry><box><size>0.15 2 2.5</size></box></geometry></visual>
+      </link>
+    </model>
+
+    <!-- La boîte au milieu du couloir : 0,5 × 0,5 × 1 m -->
+    <model name="boite">
+      <static>true</static>
+      <pose>5 0 0.5 0 0 0</pose>
+      <link name="lien">
+        <collision name="collision"><geometry><box><size>0.5 0.5 1</size></box></geometry></collision>
+        <visual name="visuel">
+          <geometry><box><size>0.5 0.5 1</size></box></geometry>
+          <material>
+            <ambient>0.8 0.5 0.2 1</ambient>
+            <diffuse>0.8 0.5 0.2 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>

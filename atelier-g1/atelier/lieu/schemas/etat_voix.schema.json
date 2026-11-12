@@ -1,0 +1,145 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/voix/etat",
+  "description": "État du nœud voix (g1-voix), en JSON (std_msgs/String) sur /voix/etat, 1 fois par seconde et à chaque changement (vague 6, section 13.6 du plan). Des champs en plus sont permis.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "version",
+    "sortie",
+    "en_cours",
+    "file",
+    "volume",
+    "dites",
+    "erreurs"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "sortie": {
+      "enum": [
+        "robot",
+        "borne",
+        "robot_tts"
+      ]
+    },
+    "voix": {
+      "type": "string",
+      "maxLength": 80
+    },
+    "volume": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 100
+    },
+    "en_cours": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "id": {
+              "description": "Identifiant d'une phrase dite (et de son WAV) : minuscules, chiffres et -.",
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "texte": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "priorite": {
+              "enum": [
+                "normale",
+                "haute",
+                "securite"
+              ]
+            },
+            "source": {
+              "type": "string"
+            },
+            "debut": {
+              "description": "Date et heure ISO 8601 à l'heure locale, à la seconde, avec le décalage : 2026-11-12T14:03:05+01:00.",
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"
+            },
+            "duree_s": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "id",
+            "texte",
+            "priorite"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "file": {
+      "description": "Phrases en attente.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "dites": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "interrompues": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "erreurs": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "derniere_erreur": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 300
+    },
+    "robot": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "abonne": {
+          "description": "Le service voice écoute /api/voice/request.",
+          "type": "boolean"
+        },
+        "repond": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "age_reponse_s": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "abonne"
+      ]
+    },
+    "temps": {
+      "description": "Date et heure ISO 8601 à l'heure locale, à la seconde, avec le décalage : 2026-11-12T14:03:05+01:00.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"
+    }
+  }
+}

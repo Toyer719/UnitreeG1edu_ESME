@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/voix/commande",
+  "description": "Une commande du nœud voix, en JSON (std_msgs/String) sur /voix/commande (vague 6, section 13.6 du plan) : taire (coupe la phrase et vide la file), volume, sortie, voix (Piper).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "action"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "description": "Identifiant d'une demande, repris dans la réponse (événement) et les journaux.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "action": {
+      "enum": [
+        "taire",
+        "volume",
+        "sortie",
+        "voix"
+      ]
+    },
+    "volume": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "sortie": {
+      "enum": [
+        "robot",
+        "borne",
+        "robot_tts"
+      ]
+    },
+    "voix": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]{1,80}$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "volume"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "volume"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "sortie"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "sortie"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "voix"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "voix"
+        ]
+      }
+    }
+  ]
+}

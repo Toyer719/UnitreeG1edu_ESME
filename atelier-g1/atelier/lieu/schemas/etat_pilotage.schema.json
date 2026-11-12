@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/pilotage/etat",
+  "description": "État du pilotage (vague 4, section 11.5 du plan), en JSON (std_msgs/String) sur /pilotage/etat par le nœud pilotage (paquet g1_pilotage), 2 Hz et à chaque changement ; c'est aussi la réponse de GET /etat de son API HTTP et de GET /api/pilotage/etat de l'Atelier. Des champs en plus sont permis.",
+  "type": "object",
+  "required": ["version", "maitre", "robot_repond", "fsm", "activite", "message"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Version du format. Toujours 1.", "const": 1},
+    "maitre": {"description": "Maître des mouvements (/mouvement/maitre).", "type": "string", "enum": ["guide", "pilotage"]},
+    "robot_repond": {"description": "Le robot (ou le faux G1) a répondu il y a moins de 2 s.", "type": "boolean"},
+    "fsm": {"description": "Dernier fsm_id connu (7001), ou null.", "type": ["integer", "null"]},
+    "activite": {
+      "description": "repos ; marche : joystick ; posture : changement de posture en cours ; geste : geste d'Unitree ; danse : danse du robot (550000 + n) ; choregraphie : chorégraphie de l'Atelier ; arret : arrêt en cours.",
+      "type": "string",
+      "enum": ["repos", "marche", "posture", "geste", "danse", "choregraphie", "arret"]
+    },
+    "message": {"description": "Phrase en français pour l'utilisateur.", "type": "string"},
+    "consigne": {
+      "description": "Facultatif : dernière consigne du joystick (après plafonds), m/s et rad/s.",
+      "type": "object",
+      "required": ["vx", "vy", "wz"],
+      "properties": {"vx": {"type": "number"}, "vy": {"type": "number"}, "wz": {"type": "number"}}
+    },
+    "age_ordre_s": {"description": "Facultatif : secondes depuis le dernier ordre du joystick, ou null.", "type": ["number", "null"], "minimum": 0},
+    "danse": {"description": "Facultatif : danse en cours {id, nom, debut, duree_s}, ou null.", "type": ["object", "null"]},
+    "choregraphie": {"description": "Facultatif : chorégraphie en cours {id, t, duree_s, poids_bras}, ou null.", "type": ["object", "null"]},
+    "geste": {"description": "Facultatif : geste en cours ou récent {numero, genre (bras : arm 7106 ; tache : sport 7106 SetTaskId), id, nom, ecoule_s}, pendant 10 s au plus, ou null (Vue du robot de l'onglet Pilotage).", "type": ["object", "null"]},
+    "bras_tenus": {"description": "Facultatif : un geste d'Unitree tient encore les bras (relâcher avec 99).", "type": "boolean"},
+    "dernier_refus": {"description": "Facultatif : dernier refus {code, message}, ou null.", "type": ["object", "null"]}
+  }
+}

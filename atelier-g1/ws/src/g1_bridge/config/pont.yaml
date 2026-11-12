@@ -1,0 +1,34 @@
+# Réglages du pont /cmd_vel → /api/sport/request (7105) du G1 : nœud pont_g1 du paquet g1_bridge.
+# Section 10.3 du plan. Valeurs du contrat (atelier.lieu.robot) : test/test_reglages.py vérifie
+# qu'elles sont égales. Les plafonds sont durs : le pont refuse de démarrer avec plus.
+#
+#   ros2 run g1_bridge pont --ros-args --params-file config/pont.yaml
+#   Essai au portique seulement (section 10.9) : ros2 run g1_bridge pont --ros-args -p exiger_reperage:=false
+#   Mesure du seuil de marche au portique (section 12.12), consignes brutes : ajoutez
+#     -p vitesse_min_lin:=0.0 -p vitesse_min_rot:=0.0 -p zone_morte_lin:=0.0 -p zone_morte_rot:=0.0
+pont_g1:
+  ros__parameters:
+    vx_max: 0.4              # m/s, plafond de chaque composante, avec le signe
+    vy_max: 0.25             # m/s
+    wz_max: 0.6              # rad/s
+    duree_consigne: 0.5      # s, champ duration de chaque 7105 non nul : le robot s'arrête seul après
+    duree_arret: 1.0         # s, duration d'un arrêt (velocity [0, 0, 0]), comme StopMove du SDK
+    delai_cmd_vel: 0.3       # s, sans /cmd_vel depuis ce temps : un arrêt, puis plus rien
+    frequence: 10.0          # Hz, envoi de la consigne fraîche
+    garde_stop: 1.0          # s, après /guide/stop : /cmd_vel ignoré
+    exiger_reperage: true    # le mouvement n'est permis que si /reperage/etat dit repere
+    delai_reperage: 1.0      # s, /reperage/etat plus vieux : non repéré
+    delai_muet: 1.0          # s, requêtes sans aucune réponse depuis ce temps : robot_muet
+    # Vague 5 (section 12.6) : vitesse minimale (le 27/10, le G1 ne faisait aucun pas à 0,1 m/s et
+    # marchait à 0,2 m/s). Une consigne toute petite est montée au minimum, dans la même direction ;
+    # sous les zones mortes, elle vaut 0. 0 désactive.
+    vitesse_min_lin: 0.2     # m/s, norme minimale de (vx, vy) envoyée quand le robot avance (mesuré)
+    vitesse_min_rot: 0.3     # rad/s, rotation sur place minimale (à mesurer à la séance 2)
+    zone_morte_lin: 0.05     # m/s, sous cette norme de (vx, vy) : (vx, vy) = 0
+    zone_morte_rot: 0.1      # rad/s, sous ce |wz| : wz = 0
+    # Mode du robot : lecture de 7001 (GetFsmId) chaque seconde ; hors de modes_marche (assis 3,
+    # pas démarré 0, course 802...) : état pas_en_marche, aucun mouvement. Un mode inconnu ne bloque rien.
+    lire_mode: true
+    modes_marche: [500, 501, 801]   # démarrage, marche normale, marche ; ajouter 802 accepte la course
+    sujet_requete: /api/sport/request
+    sujet_reponse: /api/sport/response

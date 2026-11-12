@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Ce que le G1 reçoit de sa télécommande Unitree (robot) ou de la manette (simulateur, avec lo).
+exec env -u PYTHONPATH "$HOME/robot-g1/.venv-sim/bin/python" "$HOME/robot-g1/outils/telecommande.py" "$@"

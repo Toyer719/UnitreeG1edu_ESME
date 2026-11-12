@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Manette virtuelle vue par le système comme une manette Xbox (clavier ou souris).
+exec env -u PYTHONPATH "$HOME/robot-g1/.venv-sim/bin/python" "$HOME/robot-g1/outils/manette_virtuelle.py" "$@"

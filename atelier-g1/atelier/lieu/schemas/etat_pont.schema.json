@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/pont/etat",
+  "description": "État du pont /cmd_vel → /api/sport/request (7105) du G1, publié en JSON (std_msgs/String) sur /pont/etat par le nœud pont_g1 (paquet g1_bridge), à 2 Hz et à chaque changement d'état. Section 10 du plan. Des champs en plus sont permis (mise au point).",
+  "type": "object",
+  "required": ["version", "etat", "message", "mouvement_permis", "reperage", "exiger_reperage", "verrou",
+               "consigne", "limites", "duree_consigne_s", "age_cmd_vel_s", "envoyees", "reponses",
+               "age_reponse_s", "code"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Version du format. Toujours 1.", "const": 1},
+    "etat": {
+      "description": "demarrage : pas encore de réponse à l'arrêt envoyé au lancement ; attente_reperage : le robot n'est pas repéré (ou /reperage/etat muet depuis 1 s), /cmd_vel est ignoré ; pret : mouvement permis, robot immobile ; en_mouvement : consignes non nulles envoyées ; arret : arrêt demandé par /guide/stop, /cmd_vel ignoré pendant 1 s ; arret_verrouille : /pont/arret vaut true ; robot_muet : aucune réponse du service sport depuis 1 s ; refus : la dernière réponse a un code non nul ; pilotage (vague 4, section 11.5) : le pilotage de l'Atelier a la main (/mouvement/maitre), /cmd_vel est ignoré ; pas_en_marche (vague 5, section 12.6) : le mode du robot lu par 7001 n'est pas un mode de marche (MODES_MARCHE : 500, 501, 801), par exemple assis (3) ou en course (802) : mouvement refusé, un arrêt est parti, message qui dit quoi faire ; un mode inconnu ne bloque rien. Si plusieurs valent, la première de cet ordre l'emporte : arret_verrouille, robot_muet, pas_en_marche, refus, pilotage, attente_reperage, arret, demarrage, en_mouvement, pret.",
+      "type": "string",
+      "enum": ["demarrage", "attente_reperage", "pret", "en_mouvement", "arret", "arret_verrouille", "robot_muet", "refus", "pilotage", "pas_en_marche"]
+    },
+    "message": {"description": "Phrase en français pour l'utilisateur, qui dit quoi faire si le robot ne peut pas bouger.", "type": "string"},
+    "mouvement_permis": {"description": "Vrai si une consigne /cmd_vel non nulle reçue maintenant serait envoyée au robot.", "type": "boolean"},
+    "reperage": {"description": "Dernier champ repere de /reperage/etat ; faux s'il n'a pas été reçu depuis 1 s.", "type": "boolean"},
+    "exiger_reperage": {"description": "Paramètre du pont : vrai partout, sauf réglage exprès (essai au portique).", "type": "boolean"},
+    "verrou": {"description": "Vrai tant que le dernier /pont/arret vaut true.", "type": "boolean"},
+    "consigne": {"description": "Dernière consigne envoyée au robot, après plafonnement et, vague 5 (section 12.6), après zones mortes et vitesse minimale (m/s, m/s, rad/s).", "$ref": "#/definitions/vitesses"},
+    "limites": {"description": "Plafonds appliqués à chaque composante (0,4 ; 0,25 ; 0,6).", "$ref": "#/definitions/vitesses"},
+    "duree_consigne_s": {"description": "Champ duration de chaque 7105 non nul : 0,5 s.", "type": "number", "exclusiveMinimum": 0},
+    "age_cmd_vel_s": {"description": "Secondes depuis le dernier /cmd_vel reçu ; null si aucun.", "type": ["number", "null"], "minimum": 0},
+    "envoyees": {"description": "Requêtes 7105 envoyées depuis le lancement.", "type": "integer", "minimum": 0},
+    "reponses": {"description": "Réponses reçues à nos requêtes (même identity.id).", "type": "integer", "minimum": 0},
+    "age_reponse_s": {"description": "Secondes depuis la dernière réponse à une de nos requêtes ; null si aucune.", "type": ["number", "null"], "minimum": 0},
+    "code": {"description": "header.status.code de la dernière réponse (0 : accepté) ; null si aucune.", "type": ["integer", "null"]},
+    "demande": {"description": "Facultatif (vague 5, section 12.6) : dernière consigne demandée par /cmd_vel, après plafonnement et avant les zones mortes et la vitesse minimale (m/s, m/s, rad/s).", "$ref": "#/definitions/vitesses"},
+    "minimums": {
+      "description": "Facultatif (vague 5, section 12.6) : réglages de la vitesse minimale du pont (paramètres ROS du même nom ; 0 : désactivé).",
+      "type": "object",
+      "required": ["vitesse_min_lin", "vitesse_min_rot", "zone_morte_lin", "zone_morte_rot"],
+      "additionalProperties": false,
+      "properties": {
+        "vitesse_min_lin": {"description": "Norme minimale de (vx, vy) envoyée quand le robot avance, m/s (0,2).", "type": "number", "minimum": 0},
+        "vitesse_min_rot": {"description": "Rotation sur place minimale, rad/s (0,3).", "type": "number", "minimum": 0},
+        "zone_morte_lin": {"description": "Sous cette norme de (vx, vy), (vx, vy) vaut 0, m/s (0,05).", "type": "number", "minimum": 0},
+        "zone_morte_rot": {"description": "Sous ce |wz|, wz vaut 0, rad/s (0,1).", "type": "number", "minimum": 0}
+      }
+    },
+    "mode_robot": {
+      "description": "Facultatif (vague 5, section 12.6) : le mode du robot lu par 7001 (GetFsmId) une fois par seconde ; null si la lecture est désactivée (lire_mode false). fsm : le dernier mode lu, null si aucun ou trop vieux (3 s) ; nom : son nom en français (NOMS_MODES) ; en_marche : vrai si fsm est dans modes_marche, faux sinon, null si fsm est inconnu (un mode inconnu ne bloque rien) ; age_s : secondes depuis la lecture.",
+      "type": ["object", "null"],
+      "required": ["fsm", "nom", "en_marche", "age_s"],
+      "additionalProperties": true,
+      "properties": {
+        "fsm": {"type": ["integer", "null"], "minimum": 0},
+        "nom": {"type": "string", "maxLength": 200},
+        "en_marche": {"type": ["boolean", "null"]},
+        "age_s": {"type": ["number", "null"], "minimum": 0},
+        "modes_marche": {"description": "Facultatif : les modes acceptés pour marcher (paramètre modes_marche du pont).", "type": "array", "items": {"type": "integer", "minimum": 0}},
+        "lectures": {"description": "Facultatif : requêtes 7001 envoyées depuis le lancement.", "type": "integer", "minimum": 0}
+      }
+    }
+  },
+  "definitions": {
+    "vitesses": {
+      "type": "object",
+      "required": ["vx", "vy", "wz"],
+      "additionalProperties": false,
+      "properties": {
+        "vx": {"description": "Vers l'avant, m/s.", "type": "number"},
+        "vy": {"description": "Vers la gauche, m/s.", "type": "number"},
+        "wz": {"description": "Rotation, rad/s, sens inverse des aiguilles d'une montre.", "type": "number"}
+      }
+    }
+  }
+}

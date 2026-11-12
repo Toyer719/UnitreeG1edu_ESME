@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Atelier G1 · essai de la vue Caméra</title>
+  <!-- Page d'essai de la vue Caméra (vague 5, section 12.7 du plan), jamais liée par l'interface : la vue
+       seule, sans la coque, pour les tests dans Firefox sans fenêtre et les captures. Paramètres de
+       l'adresse : ?source=poitrine|visiteurs&petit=1&cadres=0&auto=0. Logique : js/camera/essai.js ;
+       la vue est window.vueCamera. -->
+  <link rel="stylesheet" href="../css/theme.css">
+  <link rel="stylesheet" href="../css/camera.css">
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    [hidden] { display: none !important; }
+    body.essai-camera {
+      display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--fond); color: var(--texte);
+      font: 14px/1.4 system-ui, sans-serif;
+    }
+    .essai-barre { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 12px;
+      background: var(--surface); border-bottom: 1px solid var(--bord); }
+    .essai-barre strong { margin-right: auto; }
+    .essai-barre button { min-height: var(--cible); padding: 0 14px; border-radius: var(--rayon-petit);
+      border: 1px solid var(--bord); background: var(--surface-2); color: var(--texte); font: inherit; cursor: pointer; }
+    .essai-barre button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent-actif); color: var(--sur-accent); }
+    .essai-centre { position: relative; min-height: 0; }
+    .essai-vue { position: absolute; inset: 0; }
+    .essai-centre.petite .essai-vue { inset: auto 16px 16px auto; width: 320px; height: 180px;
+      border: 1px solid var(--bord); border-radius: var(--rayon-petit); overflow: hidden; }
+    .essai-etat { min-height: var(--h-barre-etat); padding: 4px 12px; background: var(--surface); border-top: 1px solid var(--bord);
+      color: var(--texte-doux); font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  </style>
+  <script>
+    // Erreurs JavaScript de la page, gardées pour les tests (comme index.html)
+    window.erreursAtelier = [];
+    window.addEventListener('error', function (e) { window.erreursAtelier.push(String(e.message || e)); });
+    window.addEventListener('unhandledrejection', function (e) {
+      window.erreursAtelier.push(String((e.reason && e.reason.message) || e.reason));
+    });
+  </script>
+  <script type="module" src="../js/camera/essai.js"></script>
+</head>
+<body class="essai-camera">
+  <div class="essai-barre">
+    <strong>Essai de la vue Caméra</strong>
+    <button type="button" data-role="essai-demarrer">Démarrer</button>
+    <button type="button" data-role="essai-arreter">Arrêter</button>
+    <button type="button" data-role="essai-source" aria-pressed="false">Image analysée</button>
+    <button type="button" data-role="essai-petit" aria-pressed="false">Incrustation</button>
+    <button type="button" data-role="essai-cacher" aria-pressed="false">Cacher la vue</button>
+  </div>
+  <div class="essai-centre" data-role="essai-centre">
+    <div class="essai-vue" data-role="essai-vue"></div>
+  </div>
+  <div class="essai-etat" data-role="essai-etat">Chargement…</div>
+</body>
+</html>

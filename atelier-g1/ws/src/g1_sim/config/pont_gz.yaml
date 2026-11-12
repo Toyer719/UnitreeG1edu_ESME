@@ -1,0 +1,40 @@
+# Correspondances entre les sujets Gazebo du robot proxy et les sujets ROS 2 du contrat
+# (section 4.2 du plan). Fichier lu par ros_gz_bridge (parameter_bridge, paramètre config_file).
+#
+#   GZ_TO_ROS : Gazebo publie, ROS 2 reçoit ; ROS_TO_GZ : l'inverse.
+#   Types Gazebo de Fortress : ignition.msgs.*
+
+# Horloge de la simulation, pour use_sim_time
+- ros_topic_name: "/clock"
+  gz_topic_name: "/clock"
+  ros_type_name: "rosgraph_msgs/msg/Clock"
+  gz_type_name: "ignition.msgs.Clock"
+  direction: GZ_TO_ROS
+
+# Consigne de vitesse (Nav2, guide, manette) vers le plugin VelocityControl du robot
+- ros_topic_name: "/cmd_vel"
+  gz_topic_name: "/model/g1_proxy/cmd_vel"
+  ros_type_name: "geometry_msgs/msg/Twist"
+  gz_type_name: "ignition.msgs.Twist"
+  direction: ROS_TO_GZ
+
+# Odométrie du plugin OdometryPublisher : odom → base_link
+- ros_topic_name: "/odom"
+  gz_topic_name: "/model/g1_proxy/odometry"
+  ros_type_name: "nav_msgs/msg/Odometry"
+  gz_type_name: "ignition.msgs.Odometry"
+  direction: GZ_TO_ROS
+
+# Transformation odom → base_link (le reste de l'arbre vient de robot_state_publisher)
+- ros_topic_name: "/tf"
+  gz_topic_name: "/model/g1_proxy/tf"
+  ros_type_name: "tf2_msgs/msg/TFMessage"
+  gz_type_name: "ignition.msgs.Pose_V"
+  direction: GZ_TO_ROS
+
+# Nuage du LiDAR gpu_lidar, dans le repère lidar
+- ros_topic_name: "/points"
+  gz_topic_name: "/model/g1_proxy/lidar/points"
+  ros_type_name: "sensor_msgs/msg/PointCloud2"
+  gz_type_name: "ignition.msgs.PointCloudPacked"
+  direction: GZ_TO_ROS

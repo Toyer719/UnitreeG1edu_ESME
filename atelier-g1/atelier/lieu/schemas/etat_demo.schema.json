@@ -1,0 +1,320 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/accueil/etat",
+  "description": "État de la démo d'accueil, en JSON (std_msgs/String) sur /accueil/etat, publié par le nœud accueil (paquet g1_accueil) 2 fois par seconde et à chaque changement (vague 6, section 13.4 du plan). Des champs en plus sont permis.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "version",
+    "etat",
+    "depuis_s",
+    "lieu",
+    "etage",
+    "message",
+    "statistiques"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "etat": {
+      "description": "demarrage, attente (à l'accueil), salutation, choix (la borne ou le chatbot choisit), depart (/guide/aller envoyé), accompagnement, arrivee, retour, occupe (le guide fait une autre visite que celle de la démo), pause (rien ne repart seul).",
+      "enum": [
+        "demarrage",
+        "attente",
+        "salutation",
+        "choix",
+        "depart",
+        "accompagnement",
+        "arrivee",
+        "retour",
+        "occupe",
+        "pause"
+      ]
+    },
+    "depuis_s": {
+      "type": "number",
+      "minimum": 0
+    },
+    "lieu": {
+      "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+    },
+    "etage": {
+      "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+    },
+    "message": {
+      "description": "Une phrase en français pour l'Atelier.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "texte_borne": {
+      "type": "string",
+      "maxLength": 200
+    },
+    "raison": {
+      "description": "En pause seulement : pourquoi (sinon null).",
+      "enum": [
+        "arret",
+        "verrou",
+        "pas_en_marche",
+        "robot_muet",
+        "refus",
+        "pont_absent",
+        "echec",
+        "perdu",
+        "pilotage",
+        "guide_absent",
+        "operateur",
+        null
+      ]
+    },
+    "visite": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "id": {
+              "description": "Identifiant d'une demande, repris dans la réponse (événement) et les journaux.",
+              "type": "string",
+              "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+            },
+            "salle": {
+              "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+            },
+            "nom": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "source": {
+              "enum": [
+                "borne",
+                "dialogue",
+                "atelier",
+                "operateur",
+                "test"
+              ]
+            },
+            "debut": {
+              "description": "Date et heure ISO 8601 à l'heure locale, à la seconde, avec le décalage : 2026-11-12T14:03:05+01:00.",
+              "type": "string",
+              "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"
+            },
+            "reste_m": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "accompagner": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "salle",
+            "source"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "visiteur": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "vu": {
+              "type": "boolean"
+            },
+            "source": {
+              "enum": [
+                "camera",
+                "lidar",
+                "borne"
+              ]
+            },
+            "distance_m": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "id": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "vu"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "guide": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "etat": {
+              "type": "string"
+            },
+            "mission": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "cible": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "age_s": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "etat"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "au_principal": {
+      "type": "boolean"
+    },
+    "reprise_possible": {
+      "description": "En pause : « Reprendre » remettrait la démo en attente (robot à l'accueil, plus rien n'empêche).",
+      "type": "boolean"
+    },
+    "actions_possibles": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "appui",
+          "annuler",
+          "pause",
+          "reprendre",
+          "ramener",
+          "remise_a_zero"
+        ]
+      }
+    },
+    "source_visiteurs": {
+      "enum": [
+        "auto",
+        "camera",
+        "lidar",
+        "borne"
+      ]
+    },
+    "personnalite": {
+      "anyOf": [
+        {
+          "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "statistiques": {
+      "description": "Depuis le lancement de la démo (ou la remise à zéro).",
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "visiteurs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "demandes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "visites_reussies": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "visites_abandonnees": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "echecs": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pauses": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "refus_occupe": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duree_moyenne_s": {
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "depuis": {
+          "description": "Date et heure ISO 8601 à l'heure locale, à la seconde, avec le décalage : 2026-11-12T14:03:05+01:00.",
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"
+        }
+      },
+      "required": [
+        "visiteurs",
+        "demandes",
+        "visites_reussies",
+        "visites_abandonnees",
+        "echecs",
+        "pauses"
+      ]
+    },
+    "temps": {
+      "description": "Date et heure ISO 8601 à l'heure locale, à la seconde, avec le décalage : 2026-11-12T14:03:05+01:00.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"
+    }
+  }
+}

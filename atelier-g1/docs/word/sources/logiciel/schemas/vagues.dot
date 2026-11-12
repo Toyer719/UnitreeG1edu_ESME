@@ -1,0 +1,16 @@
+// Les vagues de construction (chapitre 10)
+digraph vagues {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.3, ranksep=0.2];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.12,0.05", width=5.6];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  d0 [label="21-22/10 : le PC installé (Ubuntu 22.04, ROS 2, Gazebo, Nav2, SDK Unitree),\npremier branchement du robot, relevé du Jetson", fillcolor="#EFEFEF", color="#7F7F7F"];
+  v1 [label="Vague 1 (25/10) : l'Atelier de base, 8 agents\nlieux, monde, carte, Gazebo, Nav2, guide, serveur, interface, scan : 10 / 10"];
+  v2 [label="Vague 2 (25/10, soir) : le scan intégré, 6 agents\ng1-scan, aperçu en direct, reconnaissance, adoption : 15 / 15"];
+  v3 [label="Vague 3 (25-26/10, nuit) : le vrai robot en répétition\nconteneur du Jetson, pont 7105, faux G1, repérage 1804 : 20 / 20"];
+  v4 [label="Vague 4 (26/10) : point principal, passants, guide, pilotage, équipe\n(coupée par la limite d'utilisation, puis reprise) : 30 / 30"];
+  s1 [label="Séance robot n° 1 (27/10) : scan réel validé, ordre 7105 accepté ;\nrien à 0,1 m/s, marche à 0,2 m/s ; modes 0, 3, 501, 802", fillcolor="#FDEBD9", color="#C55A11"];
+  v5 [label="Vague 5 (31/10 - 01/11) : interface à la SolidWorks, carte 3D, scan corrigé,\npont (vitesse minimale, mode), caméra ; revue (30 défauts), recette : 36 / 36\npuis la correction du verrou : un déblocage ne relance rien"];
+  v6 [label="Vague 6 (08-10/11) : « Vérifier le robot », boîte noire et rapport de séance,\nborne, démo d'accueil, voix ; revues (28 défauts), recette : 42 / 42", fillcolor="#E2F0D9", color="#548235"];
+  d0 -> v1 -> v2 -> v3 -> v4 -> s1 -> v5 -> v6;
+}

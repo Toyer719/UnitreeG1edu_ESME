@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/accueil/commande",
+  "description": "Une commande de la démo, en JSON (std_msgs/String) sur /accueil/commande (vague 6, section 13.4 du plan) : appui (le visiteur touche la borne), annuler, pause, reprendre, ramener (ramener le robot à l'accueil), remise_a_zero (des statistiques). Réponse : /accueil/evenement commande_acceptee ou commande_refusee.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "action",
+    "source"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "id": {
+      "description": "Identifiant d'une demande, repris dans la réponse (événement) et les journaux.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "action": {
+      "enum": [
+        "appui",
+        "annuler",
+        "pause",
+        "reprendre",
+        "ramener",
+        "remise_a_zero"
+      ]
+    },
+    "source": {
+      "enum": [
+        "borne",
+        "dialogue",
+        "atelier",
+        "operateur",
+        "test"
+      ]
+    }
+  }
+}

@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# État du G1 en lecture seule : g1-etat (robot) ou g1-etat lo (simulateur).
+exec env -u PYTHONPATH "$HOME/robot-g1/.venv-sim/bin/python" "$HOME/robot-g1/outils/etat_robot.py" "$@"

@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>g1_accueil</name>
+  <version>0.1.0</version>
+  <description>Démo d'accueil (Atelier G1, vague 6, section 13.4 du plan) : le nœud accueil mène la visite (visiteur vu ou borne touchée, salutation, choix de la salle, accompagnement par le guide, arrivée, retour) et se met en pause, sans jamais repartir seul, après un arrêt, un blocage ou une panne</description>
+  <maintainer email="joonhk913@gmail.com">joonho</maintainer>
+  <license>TODO: License declaration</license>
+
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <exec_depend>python3-yaml</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

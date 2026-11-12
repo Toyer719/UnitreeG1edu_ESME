@@ -1,0 +1,463 @@
+# Murs, passages et objets reconnus dans le scan. Format : atelier/lieu/schemas/reconnaissance.schema.json. a_garder : dans le monde tiré du scan.
+# Écrit par l'Atelier G1 : les commentaires ajoutés à la main ne sont pas conservés.
+version: 1
+session: 2026-10-25_21h32
+etage: rdc
+emprise: {min: [-0.05, 0.0], max: [30.0, 20.0]}
+depart_robot: {x: 2.5, y: 10.0, theta: 0.0}
+sol: -0.069
+parametres: {graine: 0, grille: 0.05, sol_bande: 0.4, sol_distance: 0.03, sol_iterations: 1000, sol_echantillon: 20000,
+  sol_inclinaison_max: 10.0, sol_points_min: 100, sol_retrait: 0.06, plafond_hauteur_min: 2.0, plafond_aire_min: 4.0,
+  mur_tranche: [1.3, 1.9], mur_tolerance: 0.06, mur_longueur_min: 0.5, mur_points_par_m: 8.0, mur_points_min: 20,
+  mur_trou_continuite: 0.3, mur_angle_fusion: 5.0, mur_ecart_fusion: 0.1, mur_epaisseur_max: 0.35, mur_epaisseur_vue_min: 0.1,
+  mur_epaisseur_defaut: 0.15, mur_hauteur_defaut: 2.5, mur_hauteur_min: 1.8, mur_longueur_basse: 2.0,
+  mur_extension_bouts: 0.02, hough_pas_angle: 1.0, hough_seuil: 10, hough_trou_px: 3, passage_vue_profondeur: 3.0,
+  passage_marge_mur: 0.2, objet_hauteur_max: 3.0, objet_marge_mur: 0.06, objet_voisins_rayon: 0.1, objet_voisins_min: 2,
+  dbscan_eps: 0.12, dbscan_echelle_z: 0.0, dbscan_points_min: 4, fragment_points_max: 40, fragment_distance: 0.25,
+  objet_points_min: 15, objet_bas: 0.2, objet_bas_liaison: 0.35, objet_saut_vertical: 0.45, objet_densite_min: 0.2,
+  objet_bas_max: 1.2, colonne_largeur_max: 0.2, colonne_points_max: 50, objet_hauteur_min: 0.2, objet_reste_mur: 0.25,
+  objet_bout_mur: 0.3, table_plateau: [0.65, 0.85], table_profondeur_min: 0.35, chaise_hauteur: [0.75,
+    1.05], chaise_emprise_max: 0.75, chaise_assise: [0.4, 0.7], banc_hauteur: [0.35, 0.6], banc_longueur_min: 0.9,
+  banc_profondeur_min: 0.2, poubelle_hauteur: [0.45, 0.95], poubelle_emprise_max: 0.65, poteau_hauteur_min: 1.95,
+  poteau_emprise_max: 0.6, poteau_finesse_min: 3.0, personne_hauteur: [1.5, 1.95], personne_emprise: [
+    0.25, 0.75], meuble_emprise_min: 0.8, meuble_hauteur_haut: 1.0, meuble_hauteur_min: 0.5, remplissage_plein: 0.5,
+  categorie_score_min: 0.35}
+murs:
+- id: mur_1
+  categorie: mur
+  de: [29.899, 14.503]
+  a: [29.901, 0.059]
+  epaisseur: 0.15
+  hauteur: 2.54
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 3049, longueur: 14.445, deux_faces: false, couverture: 0.99}
+- id: mur_2
+  categorie: mur
+  de: [0.073, 0.096]
+  a: [29.86, 0.098]
+  epaisseur: 0.15
+  hauteur: 2.56
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 810, longueur: 29.787, deux_faces: false, couverture: 1.0}
+- id: mur_3
+  categorie: mur
+  de: [19.999, 4.81]
+  a: [20.019, 0.143]
+  epaisseur: 0.212
+  hauteur: 2.523
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 671, longueur: 4.666, deux_faces: true, couverture: 1.0}
+- id: mur_4
+  categorie: mur
+  de: [9.981, 0.166]
+  a: [10.003, 4.81]
+  epaisseur: 0.197
+  hauteur: 2.505
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 730, longueur: 4.645, deux_faces: true, couverture: 1.0}
+- id: mur_5
+  categorie: mur
+  de: [0.073, 4.474]
+  a: [0.078, 0.189]
+  epaisseur: 0.133
+  hauteur: 2.403
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 139, longueur: 4.285, deux_faces: true, couverture: 1.0}
+- id: mur_6
+  categorie: mur
+  de: [0.053, 19.857]
+  a: [0.072, 5.495]
+  epaisseur: 0.133
+  hauteur: 2.568
+  confiance: 0.99
+  a_garder: true
+  infos: {points: 3573, longueur: 14.362, deux_faces: true, couverture: 0.96}
+- id: mur_7
+  categorie: mur
+  de: [23.579, 5.575]
+  a: [29.859, 5.574]
+  epaisseur: 0.15
+  hauteur: 2.545
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 2027, longueur: 6.28, deux_faces: false, couverture: 1.0}
+- id: mur_8
+  categorie: mur
+  de: [0.158, 5.578]
+  a: [6.433, 5.577]
+  epaisseur: 0.15
+  hauteur: 2.546
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 2322, longueur: 6.274, deux_faces: false, couverture: 1.0}
+- id: mur_9
+  categorie: mur
+  de: [7.577, 5.577]
+  a: [14.438, 5.576]
+  epaisseur: 0.15
+  hauteur: 2.542
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 2481, longueur: 6.861, deux_faces: false, couverture: 1.0}
+- id: mur_10
+  categorie: mur
+  de: [15.578, 5.576]
+  a: [22.438, 5.575]
+  epaisseur: 0.15
+  hauteur: 2.541
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 2695, longueur: 6.86, deux_faces: false, couverture: 1.0}
+- id: mur_11
+  categorie: mur
+  de: [4.882, 8.432]
+  a: [25.1, 8.43]
+  epaisseur: 0.15
+  hauteur: 2.546
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 6107, longueur: 20.218, deux_faces: false, couverture: 1.0}
+- id: mur_12
+  categorie: mur
+  de: [25.075, 11.449]
+  a: [25.075, 8.546]
+  epaisseur: 0.15
+  hauteur: 2.543
+  confiance: 0.99
+  a_garder: true
+  infos: {points: 822, longueur: 2.903, deux_faces: false, couverture: 0.97}
+- id: mur_13
+  categorie: mur
+  de: [4.925, 8.574]
+  a: [4.925, 11.458]
+  epaisseur: 0.15
+  hauteur: 2.565
+  confiance: 0.99
+  a_garder: true
+  infos: {points: 848, longueur: 2.884, deux_faces: false, couverture: 0.97}
+- id: mur_14
+  categorie: mur
+  de: [4.861, 9.378]
+  a: [8.967, 11.448]
+  epaisseur: 0.15
+  hauteur: 2.542
+  confiance: 0.99
+  a_garder: true
+  infos: {points: 167, longueur: 4.598, deux_faces: false, couverture: 0.98}
+- id: mur_15
+  categorie: mur
+  de: [22.691, 9.384]
+  a: [25.011, 10.555]
+  epaisseur: 0.15
+  hauteur: 2.518
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 77, longueur: 2.599, deux_faces: false, couverture: 1.0}
+- id: mur_16
+  categorie: mur
+  de: [4.885, 11.568]
+  a: [25.097, 11.57]
+  epaisseur: 0.15
+  hauteur: 2.539
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 9691, longueur: 20.212, deux_faces: false, couverture: 1.0}
+- id: mur_17
+  categorie: mur
+  de: [-0.014, 13.765]
+  a: [0.032, 13.122]
+  epaisseur: 0.15
+  hauteur: 2.545
+  confiance: 0.77
+  a_garder: true
+  infos: {points: 38, longueur: 0.645, deux_faces: false, couverture: 1.0}
+- id: mur_18
+  categorie: mur
+  de: [-0.028, 14.422]
+  a: [8.433, 14.423]
+  epaisseur: 0.15
+  hauteur: 2.553
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 4265, longueur: 8.46, deux_faces: false, couverture: 0.99}
+- id: mur_19
+  categorie: mur
+  de: [9.578, 14.424]
+  a: [20.438, 14.426]
+  epaisseur: 0.15
+  hauteur: 2.539
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 5482, longueur: 10.86, deux_faces: false, couverture: 1.0}
+- id: mur_20
+  categorie: mur
+  de: [21.577, 14.426]
+  a: [29.86, 14.428]
+  epaisseur: 0.15
+  hauteur: 2.542
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 2952, longueur: 8.283, deux_faces: false, couverture: 1.0}
+- id: mur_21
+  categorie: mur
+  de: [0.51, 15.292]
+  a: [3.183, 15.302]
+  epaisseur: 0.15
+  hauteur: 2.47
+  confiance: 0.87
+  a_garder: true
+  infos: {points: 48, longueur: 2.672, deux_faces: false, couverture: 0.48}
+- id: mur_22
+  categorie: mur
+  de: [14.998, 19.931]
+  a: [15.004, 15.691]
+  epaisseur: 0.22
+  hauteur: 2.493
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 622, longueur: 4.24, deux_faces: true, couverture: 1.0}
+- id: mur_23
+  categorie: mur
+  de: [29.899, 19.982]
+  a: [29.899, 15.832]
+  epaisseur: 0.15
+  hauteur: 2.547
+  confiance: 0.99
+  a_garder: true
+  infos: {points: 115, longueur: 4.15, deux_faces: false, couverture: 0.95}
+- id: mur_24
+  categorie: mur
+  de: [0.075, 19.902]
+  a: [29.898, 19.898]
+  epaisseur: 0.15
+  hauteur: 2.556
+  confiance: 1.0
+  a_garder: true
+  infos: {points: 1049, longueur: 29.823, deux_faces: false, couverture: 0.99}
+passages:
+- id: passage_1
+  categorie: passage
+  de: [8.433, 14.423]
+  a: [9.578, 14.424]
+  murs: [mur_18, mur_19]
+  confiance: 0.75
+  a_garder: true
+  infos: {largeur: 1.146, points_embrasure: 0, points_linteau: 0, points_vus_a_travers: 1637}
+- id: passage_2
+  categorie: passage
+  de: [20.438, 14.426]
+  a: [21.577, 14.426]
+  murs: [mur_19, mur_20]
+  confiance: 0.85
+  a_garder: true
+  infos: {largeur: 1.139, points_embrasure: 0, points_linteau: 0, points_vus_a_travers: 1718}
+- id: passage_3
+  categorie: passage
+  de: [6.433, 5.577]
+  a: [7.577, 5.577]
+  murs: [mur_8, mur_9]
+  confiance: 0.85
+  a_garder: true
+  infos: {largeur: 1.145, points_embrasure: 0, points_linteau: 0, points_vus_a_travers: 1071}
+- id: passage_4
+  categorie: passage
+  de: [14.438, 5.576]
+  a: [15.578, 5.576]
+  murs: [mur_9, mur_10]
+  confiance: 0.75
+  a_garder: true
+  infos: {largeur: 1.139, points_embrasure: 0, points_linteau: 0, points_vus_a_travers: 1032}
+- id: passage_5
+  categorie: passage
+  de: [22.438, 5.575]
+  a: [23.579, 5.575]
+  murs: [mur_10, mur_7]
+  confiance: 0.75
+  a_garder: true
+  infos: {largeur: 1.141, points_embrasure: 0, points_linteau: 0, points_vus_a_travers: 1044}
+objets:
+- id: chaise_1
+  categorie: chaise
+  forme: boite
+  centre: [24.584, 1.509]
+  taille: [0.529, 0.078, 0.623]
+  cap: 0.0571
+  confiance: 0.44
+  a_garder: true
+  infos:
+    points: 26
+    hauteur_mesuree: 0.623
+    plateau: 0.575
+    remplissage: null
+    rondeur: 0.0
+    scores: {chaise: 0.49, poubelle: 0.1, personne: 0.0}
+- id: chaise_2
+  categorie: chaise
+  forme: boite
+  centre: [25.391, 1.581]
+  taille: [0.536, 0.217, 0.971]
+  cap: 0.0264
+  confiance: 0.98
+  a_garder: true
+  infos:
+    points: 59
+    hauteur_mesuree: 0.971
+    plateau: 0.975
+    remplissage: 0.23
+    rondeur: 0.0
+    scores: {chaise: 1.0, personne: 0.0, poteau: 0.0}
+- id: table_1
+  categorie: table
+  forme: boite
+  centre: [29.186, 6.115]
+  taille: [1.266, 0.881, 0.873]
+  cap: 0.0016
+  confiance: 0.9
+  a_garder: true
+  infos:
+    points: 555
+    hauteur_mesuree: 0.873
+    plateau: 0.825
+    remplissage: 0.26
+    rondeur: 0.0
+    scores: {table: 0.96, meuble: 0.15, personne: 0.0}
+- id: banc_1
+  categorie: banc
+  forme: boite
+  centre: [0.51, 6.995]
+  taille: [1.526, 0.502, 0.558]
+  cap: -1.5645
+  confiance: 0.57
+  a_garder: true
+  infos:
+    points: 431
+    hauteur_mesuree: 0.558
+    plateau: 0.475
+    remplissage: 0.96
+    rondeur: 0.0
+    scores: {banc: 1.0, meuble: 1.0, personne: 0.0}
+- id: chaise_3
+  categorie: chaise
+  forme: boite
+  centre: [28.887, 6.957]
+  taille: [0.557, 0.511, 0.983]
+  cap: 0.0064
+  confiance: 0.69
+  a_garder: true
+  infos:
+    points: 205
+    hauteur_mesuree: 0.983
+    plateau: 0.475
+    remplissage: 0.45
+    rondeur: 0.0
+    scores: {chaise: 0.68, poubelle: 0.09, meuble: 0.02}
+- id: poteau_1
+  categorie: poteau
+  forme: cylindre
+  centre: [25.999, 10.0]
+  rayon: 0.222
+  hauteur: 2.571
+  confiance: 0.98
+  a_garder: true
+  infos:
+    points: 715
+    hauteur_mesuree: 2.571
+    plateau: 0.925
+    remplissage: null
+    rondeur: 1.0
+    scores: {poteau: 1.0, personne: 0.0, table: 0.0}
+- id: poteau_2
+  categorie: poteau
+  forme: cylindre
+  centre: [29.002, 10.001]
+  rayon: 0.227
+  hauteur: 2.572
+  confiance: 0.98
+  a_garder: true
+  infos:
+    points: 840
+    hauteur_mesuree: 2.572
+    plateau: 1.375
+    remplissage: 0.85
+    rondeur: 1.0
+    scores: {poteau: 1.0, meuble: 0.0, personne: 0.0}
+- id: meuble_1
+  categorie: meuble
+  forme: boite
+  centre: [0.724, 9.999]
+  taille: [2.197, 0.881, 1.176]
+  cap: 1.5527
+  confiance: 0.98
+  a_garder: true
+  infos:
+    points: 1042
+    hauteur_mesuree: 1.176
+    plateau: 0.925
+    remplissage: 0.73
+    rondeur: 0.0
+    scores: {meuble: 1.0, personne: 0.0, poteau: 0.0}
+- id: poteau_3
+  categorie: poteau
+  forme: cylindre
+  centre: [23.359, 10.197]
+  rayon: 0.167
+  hauteur: 2.492
+  confiance: 0.9
+  a_garder: true
+  infos:
+    points: 42
+    hauteur_mesuree: 2.492
+    plateau: 2.225
+    remplissage: 0.19
+    rondeur: 0.0
+    scores: {poteau: 1.0, personne: 0.0, table: 0.0}
+- id: poubelle_1
+  categorie: poubelle
+  forme: cylindre
+  centre: [4.501, 14.102]
+  rayon: 0.276
+  hauteur: 0.889
+  confiance: 0.81
+  a_garder: true
+  infos:
+    points: 391
+    hauteur_mesuree: 0.889
+    plateau: 0.875
+    remplissage: 0.77
+    rondeur: 0.92
+    scores: {poubelle: 0.92, chaise: 0.27, meuble: 0.27}
+- id: personne_1
+  categorie: personne
+  forme: cylindre
+  centre: [20.999, 16.486]
+  rayon: 0.264
+  hauteur: 1.62
+  confiance: 0.98
+  a_garder: false
+  infos:
+    points: 111
+    hauteur_mesuree: 1.62
+    plateau: 1.375
+    remplissage: 0.3
+    rondeur: 1.0
+    scores: {personne: 1.0, poteau: 0.0, table: 0.0}
+- id: meuble_2
+  categorie: meuble
+  forme: boite
+  centre: [7.51, 18.448]
+  taille: [3.091, 0.165, 0.649]
+  cap: 0.0006
+  confiance: 0.83
+  a_garder: true
+  infos:
+    points: 133
+    hauteur_mesuree: 0.649
+    plateau: 0.625
+    remplissage: 0.21
+    rondeur: 0.0
+    scores: {meuble: 0.8, banc: 0.01, personne: 0.0}

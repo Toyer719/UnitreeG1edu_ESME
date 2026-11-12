@@ -1,0 +1,50 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/personnes/lidar, /visiteurs/detectes",
+  "description": "Personnes vues autour du robot, en JSON (std_msgs/String) (vague 4, sections 11.4 et 11.6 du plan). /personnes/lidar : détecteur de personnes au LiDAR (nœud detecteur_personnes, paquet g1_nav), 10 Hz, qui voit aussi derrière le robot (accompagnement du visiteur, passant qui bouche le passage). /visiteurs/detectes : caméra de l'équipe (camera.yaml) ; vague 5 : g1-visiteurs (YOLO sur le PC), avec les cadres en pixels (boite, image). Positions dans base_link (x vers l'avant, y à gauche). Des champs en plus sont permis.",
+  "type": "object",
+  "required": ["version", "source", "temps", "personnes"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Version du format. Toujours 1.", "const": 1},
+    "source": {"description": "lidar ou camera.", "type": "string", "enum": ["lidar", "camera"]},
+    "temps": {"description": "Horodatage ROS des mesures (s ; temps simulé en simulation).", "type": "number", "minimum": 0},
+    "image": {
+      "description": "Facultatif (caméra, vague 5, section 12.7 du plan) : l'image analysée, pour placer les cadres « boite » : largeur et hauteur en pixels, et facultatifs son numéro (compteur des images reçues) et le sujet d'où elle vient (/camera_poitrine/image/compressed).",
+      "type": "object",
+      "required": ["largeur", "hauteur"],
+      "additionalProperties": true,
+      "properties": {
+        "largeur": {"type": "integer", "minimum": 1, "maximum": 8192},
+        "hauteur": {"type": "integer", "minimum": 1, "maximum": 8192},
+        "numero": {"type": "integer", "minimum": 0},
+        "sujet": {"type": "string", "maxLength": 200}
+      }
+    },
+    "personnes": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "required": ["id", "x", "y", "distance_m", "angle_rad", "confiance"],
+        "additionalProperties": true,
+        "properties": {
+          "id": {"description": "Numéro de suivi : le même tant que la personne est suivie.", "type": "integer", "minimum": 0},
+          "x": {"description": "base_link, m.", "type": "number"},
+          "y": {"type": "number"},
+          "distance_m": {"type": "number", "minimum": 0},
+          "angle_rad": {"description": "Direction depuis l'avant du robot, de -π à π (π : juste derrière).", "type": "number", "minimum": -3.1416, "maximum": 3.1416},
+          "confiance": {"type": "number", "minimum": 0, "maximum": 1},
+          "vx": {"description": "Facultatif : vitesse dans base_link (m/s).", "type": "number"},
+          "vy": {"type": "number"},
+          "x_map": {"description": "Facultatif : position dans map.", "type": "number"},
+          "y_map": {"type": "number"},
+          "rayon_m": {"type": "number", "minimum": 0},
+          "derriere": {"description": "Facultatif : vrai si la personne est dans le demi-plan arrière (|angle| > 90°).", "type": "boolean"},
+          "regarde_robot": {"description": "Facultatif (caméra) : la personne fait face au robot.", "type": "boolean"},
+          "boite": {"description": "Facultatif (caméra, vague 5, section 12.7 du plan) : le cadre de la personne dans l'image analysée, en pixels : [x_min, y_min, x_max, y_max], origine en haut à gauche, x vers la droite, y vers le bas (x_min < x_max, y_min < y_max). L'Atelier le dessine sur le flux de la caméra ; la taille de l'image est dans « image ».", "type": "array", "minItems": 4, "maxItems": 4, "items": {"type": "number", "minimum": 0}}
+        }
+      }
+    }
+  }
+}

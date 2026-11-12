@@ -1,0 +1,4 @@
+# Zones interdites et lentes. Format : atelier/lieu/schemas/zones.schema.json.
+# Écrit par l'Atelier G1 : les commentaires ajoutés à la main ne sont pas conservés.
+interdites: []
+lentes: []

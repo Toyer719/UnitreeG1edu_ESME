@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/guide/aller",
+  "description": "Demande de guidage en JSON (std_msgs/String) sur /guide/aller (vague 4, section 11.4 du plan). Le texte simple d'avant (« b204 ») reste accepté : une visite sans accompagnement, avec le retour automatique réglé par le lieu (atelier.lieu.comportement.lire_demande_aller). Le JSON permet d'accompagner un visiteur (chatbot de l'équipe, section 11.6).",
+  "type": "object",
+  "required": ["cible"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"description": "Facultatif : version du format, 1.", "const": 1},
+    "cible": {"description": "id d'une salle ou d'un nœud, ou le mot principal (le point principal du lieu).", "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"},
+    "accompagner": {"description": "Facultatif, défaut true dans ce format : le robot suit le visiteur (ralentit, l'attend, abandonne s'il disparaît).", "type": "boolean"},
+    "retour": {"description": "Facultatif : retour automatique au point principal après la visite ; absent : retour_auto du lieu (vrai par défaut).", "type": "boolean"},
+    "source": {"description": "Facultatif : qui demande (atelier, dialogue, banc…).", "type": "string", "maxLength": 40},
+    "id": {"description": "Facultatif : identifiant de la demande, repris dans les journaux.", "type": "string", "maxLength": 80}
+  }
+}

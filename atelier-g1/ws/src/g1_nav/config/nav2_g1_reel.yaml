@@ -1,0 +1,496 @@
+# Réglages de Nav2 (Humble) pour le vrai G1. Lu par launch/navigation.launch.py (simu:=false).
+# Mêmes réglages que nav2_g1_simu.yaml, sauf l'horloge (temps réel) et les vitesses, plafonnées
+# à vx 0,4 m/s, vy 0,2 m/s et wz 0,6 rad/s, sans marche arrière (vague 5 : vx_min 0) ;
+# test/test_reglages.py vérifie que seuls ces points diffèrent. vitesse_max:= du lancement baisse
+# encore ces vitesses (vague 5). Réglages finaux à faire au milieu de vraies personnes.
+#
+#   Robot      : emprise circulaire de 0,35 m ; vx 0,4 m/s, vy 0,2 m/s, wz 0,6 rad/s au plus
+#   Planif.    : Smac 2D, sur la carte du lieu (static_layer) et le masque des zones interdites
+#   Contrôleur : MPPI, motion_model Omni (le G1 se déplace aussi sur le côté)
+#   Obstacles  : voxel_layer alimentée par /points (relais de /unitree/slam_relocation/points)
+#                dans la carte de coûts locale, de 0,15 à 1,9 m (obstacles bas compris) ; personnes
+#                (1,375 à 1,9 m) aussi dans la carte globale ; inflation de 0,9 m en local
+#                (distance aux personnes), 1 m sur la carte globale
+#   Sécurité   : Collision Monitor, ralentit à ×0,5 si un obstacle est devant à moins de 1 m, ou
+#                à moins de 0,7 m tout autour (pas le visiteur qui suit à 1,2 m), s'arrête sous 0,4 m
+#
+# Chaîne des vitesses : controller_server → cmd_vel_nav → velocity_smoother → cmd_vel_smoothed
+#                       → collision_monitor → cmd_vel → pont vers /api/sport/request (7105)
+# Vague 4 (section 11.3 du plan, agent Passants) : les personnes vues sont aussi dans la carte
+# globale : le chemin passe à côté d'elles (MPPI seul restait bloqué devant un passant au milieu
+# du couloir). Si un couloir est coupé (groupe, boîte), le calcul du chemin échoue : l'arbre vide
+# la carte globale et recalcule à travers, le robot avance jusque devant l'obstacle, et c'est le
+# guide qui attend le passant ou choisit un autre couloir (détour). Réglages essayés et mesurés :
+# docs/journal-atelier.md (section Passants) ; à revoir sur le vrai robot, avec de vraies personnes.
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: False
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /odom
+    bt_loop_duration: 50                # ms ; retour au guide 20 fois par seconde
+    default_server_timeout: 20
+    # Arbres par défaut de Nav2 Humble : navigate_through_poses_w_replanning_and_recovery.xml
+    plugin_lib_names:
+      - nav2_compute_path_to_pose_action_bt_node
+      - nav2_compute_path_through_poses_action_bt_node
+      - nav2_smooth_path_action_bt_node
+      - nav2_follow_path_action_bt_node
+      - nav2_spin_action_bt_node
+      - nav2_wait_action_bt_node
+      - nav2_assisted_teleop_action_bt_node
+      - nav2_back_up_action_bt_node
+      - nav2_drive_on_heading_bt_node
+      - nav2_clear_costmap_service_bt_node
+      - nav2_is_stuck_condition_bt_node
+      - nav2_goal_reached_condition_bt_node
+      - nav2_goal_updated_condition_bt_node
+      - nav2_globally_updated_goal_condition_bt_node
+      - nav2_is_path_valid_condition_bt_node
+      - nav2_initial_pose_received_condition_bt_node
+      - nav2_reinitialize_global_localization_service_bt_node
+      - nav2_rate_controller_bt_node
+      - nav2_distance_controller_bt_node
+      - nav2_speed_controller_bt_node
+      - nav2_truncate_path_action_bt_node
+      - nav2_truncate_path_local_action_bt_node
+      - nav2_goal_updater_node_bt_node
+      - nav2_recovery_node_bt_node
+      - nav2_pipeline_sequence_bt_node
+      - nav2_round_robin_node_bt_node
+      - nav2_transform_available_condition_bt_node
+      - nav2_time_expired_condition_bt_node
+      - nav2_path_expiring_timer_condition
+      - nav2_distance_traveled_condition_bt_node
+      - nav2_single_trigger_bt_node
+      - nav2_goal_updated_controller_bt_node
+      - nav2_is_battery_low_condition_bt_node
+      - nav2_navigate_through_poses_action_bt_node
+      - nav2_navigate_to_pose_action_bt_node
+      - nav2_remove_passed_goals_action_bt_node
+      - nav2_planner_selector_bt_node
+      - nav2_controller_selector_bt_node
+      - nav2_goal_checker_selector_bt_node
+      - nav2_controller_cancel_bt_node
+      - nav2_path_longer_on_approach_bt_node
+      - nav2_wait_cancel_bt_node
+      - nav2_spin_cancel_bt_node
+      - nav2_back_up_cancel_bt_node
+      - nav2_assisted_teleop_cancel_bt_node
+      - nav2_drive_on_heading_cancel_bt_node
+      - nav2_is_battery_charging_condition_bt_node
+
+bt_navigator_navigate_through_poses_rclcpp_node:
+  ros__parameters:
+    use_sim_time: False
+
+bt_navigator_navigate_to_pose_rclcpp_node:
+  ros__parameters:
+    use_sim_time: False
+
+controller_server:
+  ros__parameters:
+    use_sim_time: False
+    controller_frequency: 20.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.001     # le G1 se déplace sur le côté : vy compte
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    # Nav2 abandonne après 15 s sans bouger de 0,5 m ; le guide décide d'un détour avant (8 s)
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 15.0
+    # Arrivée : à 0,2 m du but (critère : moins de 0,3 m), cap à 0,4 rad près
+    general_goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      stateful: True
+      xy_goal_tolerance: 0.2
+      yaw_goal_tolerance: 0.4
+
+    FollowPath:
+      plugin: "nav2_mppi_controller::MPPIController"
+      motion_model: "Omni"
+      time_steps: 56
+      model_dt: 0.05
+      batch_size: 2000
+      iteration_count: 1
+      vx_max: 0.4
+      # Vague 5 (section 12.6) : pas de marche arrière sur le vrai robot. Le pont monte toute petite
+      # consigne à 0,2 m/s (le G1 ne fait aucun pas en dessous) : un recul de 0,05 deviendrait
+      # 0,2 m/s vers le visiteur qui suit. La simulation (nav2_g1_simu.yaml) garde -0,2.
+      vx_min: 0.0
+      vy_max: 0.2
+      wz_max: 0.6
+      vx_std: 0.2
+      vy_std: 0.2
+      wz_std: 0.4
+      prune_distance: 1.7
+      transform_tolerance: 0.1
+      temperature: 0.3
+      gamma: 0.015
+      reset_period: 1.0
+      regenerate_noises: false
+      visualize: false
+      TrajectoryVisualizer:
+        trajectory_step: 5
+        time_step: 3
+      critics: ["ConstraintCritic", "CostCritic", "GoalCritic", "GoalAngleCritic",
+                "PathAlignCritic", "PathFollowCritic", "PathAngleCritic",
+                "PreferForwardCritic", "TwirlingCritic"]
+      ConstraintCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 4.0
+      CostCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.81
+        critical_cost: 300.0
+        consider_footprint: false       # emprise circulaire : le rayon suffit
+        collision_cost: 1000000.0
+        near_goal_distance: 1.0
+        trajectory_point_step: 2
+      GoalCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 1.4
+      GoalAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 3.0
+        threshold_to_consider: 0.5
+      PathAlignCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 14.0
+        max_path_occupancy_ratio: 0.05
+        trajectory_point_step: 4
+        threshold_to_consider: 0.5
+        offset_from_furthest: 20
+        use_path_orientations: false
+      PathFollowCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        offset_from_furthest: 5
+        threshold_to_consider: 1.4
+      PathAngleCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 2.0
+        offset_from_furthest: 4
+        threshold_to_consider: 0.5
+        max_angle_to_furthest: 1.0
+        forward_preference: true
+      # Le G1 marche de préférence vers l'avant, même s'il sait aller de côté
+      PreferForwardCritic:
+        enabled: true
+        cost_power: 1
+        cost_weight: 5.0
+        threshold_to_consider: 0.5
+      # Omni : évite de tourner sur lui-même en avançant
+      TwirlingCritic:
+        enabled: true
+        twirling_cost_power: 1
+        twirling_cost_weight: 10.0
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: False
+      # 10 Hz : après chaque vidage (chaque seconde, voir naviguer_par_poses.xml), les
+      # obstacles vus reviennent en 0,1 s au plus
+      update_frequency: 10.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      # 7 × 7 m (5 × 5 jusqu'à la vague 3) : un passant qui arrive en face est vu 3,5 m avant
+      width: 7
+      height: 7
+      resolution: 0.05
+      robot_radius: 0.35
+      plugins: ["voxel_layer", "inflation_layer"]
+      # Pas de filtre Keepout ici : la carte locale est vidée chaque seconde, et chaque vidage
+      # rechargerait le masque. Le chemin global, qui contourne les zones interdites, suffit.
+      # Obstacles vus par le LiDAR (MID-360 à 1,245 m), en 3D, de 0,15 à 1,9 m de haut (vague 4 :
+      # obstacles bas, enfant, valise, fauteuil ; de 1,125 m seulement jusqu'à la vague 3).
+      # Deux sources marquent (points : 1,125 à 1,9 m ; points_bas : 0,15 à 1,125 m), une seule
+      # efface (effacement) : chaque rayon, sol compris, vide les voxels qu'il traverse. Près du
+      # robot, aucun rayon ne passe sous ~1 m (le LiDAR ne voit pas sous −7°) : ce qui y a été
+      # marqué de loin reste au plus 1 s, jusqu'au vidage de la carte locale par l'arbre. Le sol
+      # (sous 0,15 m) ne marque jamais. Les points fantômes qui gênaient la vague 1 venaient en
+      # partie des coutures du gpu_lidar de Gazebo, corrigées dans g1_sim (vague 4).
+      # Sur le vrai robot, à revoir selon le montage du MID-360 (tête inclinée vers le sol) et le
+      # roulis de la marche (sol vu au-dessus de 0,15 m ?).
+      voxel_layer:
+        plugin: "nav2_costmap_2d::VoxelLayer"
+        enabled: True
+        footprint_clearing_enabled: True
+        publish_voxel_map: False
+        origin_z: 0.0
+        z_resolution: 0.125
+        z_voxels: 16
+        max_obstacle_height: 2.0
+        mark_threshold: 0
+        observation_sources: points points_bas effacement
+        points:
+          topic: /points
+          data_type: "PointCloud2"
+          marking: True
+          clearing: False
+          min_obstacle_height: 1.125
+          max_obstacle_height: 1.9
+          obstacle_min_range: 0.0
+          obstacle_max_range: 5.0
+        points_bas:
+          topic: /points
+          data_type: "PointCloud2"
+          marking: True
+          clearing: False
+          min_obstacle_height: 0.15
+          max_obstacle_height: 1.125
+          obstacle_min_range: 0.0
+          obstacle_max_range: 5.0
+        effacement:
+          topic: /points
+          data_type: "PointCloud2"
+          marking: False
+          clearing: True
+          min_obstacle_height: -0.5
+          max_obstacle_height: 2.5
+          raytrace_min_range: 0.0
+          raytrace_max_range: 6.0
+      # Vague 4 : distance aux personnes. Coût élevé jusqu'à 0,46 m d'un obstacle (0,20 m bord à
+      # bord d'un passant), qui décroît jusqu'à 0,9 m : MPPI passe au milieu d'un passage de
+      # 1,18 m (à 0,59 m des deux bords), loin des personnes quand il a la place.
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 0.9
+        cost_scaling_factor: 4.0
+      always_send_full_costmap: True
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: False
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      robot_radius: 0.35
+      resolution: 0.05
+      track_unknown_space: true
+      plugins: ["static_layer", "voxel_layer", "inflation_layer"]
+      filters: ["keepout_filter"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: True
+      # Vague 4 : les personnes vues, de 1,375 à 1,9 m seulement (une personne debout, 1,7 m) : cette
+      # carte n'est pas vidée chaque seconde, et un voxel bas vu de loin n'y serait jamais effacé.
+      # À 5 m au plus. Pas plus bas que 1,375 m : une boîte, une table, un comptoir (1,2 m) ne
+      # doivent pas y entrer (reprise : avec 1,125 m, le haut de la boîte des critères 5 et 19 y
+      # était marqué par moments, et Nav2 basculait sans cesse entre le chemin direct et le
+      # couloir sud, devant la boîte) ; ils restent dans la carte locale, comme en vague 3.
+      voxel_layer:
+        plugin: "nav2_costmap_2d::VoxelLayer"
+        enabled: True
+        footprint_clearing_enabled: True
+        publish_voxel_map: False
+        origin_z: 0.0
+        z_resolution: 0.125
+        z_voxels: 16
+        max_obstacle_height: 2.0
+        mark_threshold: 0
+        observation_sources: personnes effacement
+        personnes:
+          topic: /points
+          data_type: "PointCloud2"
+          marking: True
+          clearing: False
+          min_obstacle_height: 1.375
+          max_obstacle_height: 1.9
+          obstacle_min_range: 0.0
+          obstacle_max_range: 5.0
+        effacement:
+          topic: /points
+          data_type: "PointCloud2"
+          marking: False
+          clearing: True
+          min_obstacle_height: -0.5
+          max_obstacle_height: 2.5
+          raytrace_min_range: 0.0
+          raytrace_max_range: 6.0
+      # Inflation de 1 m : le chemin global passe au milieu des couloirs de 3 m, loin des murs,
+      # et à distance des personnes vues (voxel_layer)
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        inflation_radius: 1.0
+        cost_scaling_factor: 3.0
+      # Zones interdites de zones.yaml : masque <lieu>/cartes/<etage>_interdit.yaml
+      keepout_filter:
+        plugin: "nav2_costmap_2d::KeepoutFilter"
+        enabled: True
+        filter_info_topic: "/costmap_filter_info"
+      always_send_full_costmap: True
+
+# Carte du lieu : yaml_filename est donné par navigation.launch.py (<lieu>/cartes/<etage>.yaml)
+map_server:
+  ros__parameters:
+    use_sim_time: False
+    yaml_filename: ""
+
+# Masque des zones interdites et sa description pour le filtre Keepout
+filter_mask_server:
+  ros__parameters:
+    use_sim_time: False
+    yaml_filename: ""
+    topic_name: "/keepout_filter_mask"
+    frame_id: "map"
+
+costmap_filter_info_server:
+  ros__parameters:
+    use_sim_time: False
+    type: 0                             # 0 : Keepout
+    filter_info_topic: "/costmap_filter_info"
+    mask_topic: "/keepout_filter_mask"
+    base: 0.0
+    multiplier: 1.0
+
+planner_server:
+  ros__parameters:
+    use_sim_time: False
+    expected_planner_frequency: 20.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_smac_planner/SmacPlanner2D"
+      tolerance: 0.125
+      downsample_costmap: false
+      downsampling_factor: 1
+      allow_unknown: true
+      max_iterations: 1000000
+      max_on_approach_iterations: 1000
+      max_planning_time: 2.0
+      cost_travel_multiplier: 2.0
+      use_final_approach_orientation: false
+      smoother:
+        max_iterations: 1000
+        w_smooth: 0.3
+        w_data: 0.2
+        tolerance: 1.0e-10
+
+smoother_server:
+  ros__parameters:
+    use_sim_time: False
+    smoother_plugins: ["simple_smoother"]
+    simple_smoother:
+      plugin: "nav2_smoother::SimpleSmoother"
+      tolerance: 1.0e-10
+      max_its: 1000
+      do_refinement: True
+
+# Manœuvres de secours de l'arbre de Nav2 (tourner, attendre, reculer), sous les mêmes plafonds
+behavior_server:
+  ros__parameters:
+    use_sim_time: False
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+    spin:
+      plugin: "nav2_behaviors/Spin"
+    backup:
+      plugin: "nav2_behaviors/BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors/DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors/Wait"
+    global_frame: odom
+    robot_base_frame: base_link
+    transform_tolerance: 0.1
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 0.6
+    min_rotational_vel: 0.3
+    rotational_acc_lim: 1.6
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: False
+    smoothing_frequency: 20.0
+    scale_velocities: False
+    feedback: "OPEN_LOOP"
+    # [vx, vy, wz]
+    max_velocity: [0.4, 0.2, 0.6]
+    min_velocity: [0.0, -0.2, -0.6]          # vague 5 : pas de marche arrière (vx ≥ 0)
+    max_accel: [1.0, 1.0, 1.6]
+    max_decel: [-1.0, -1.0, -1.6]
+    odom_topic: "odom"
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+
+# Dernier filtre avant le robot, avec les points du LiDAR (dès 0,1 m de haut) :
+#   - ralentir (×0,5) : un demi-disque de 1 m DEVANT le robot (x ≥ 0 dans base_link, 13 sommets) :
+#     une personne, un mur, une porte devant lui ou à côté ;
+#   - ralentir_pres (×0,5) : un cercle de 0,7 m tout autour : une personne tout près, sur le côté
+#     ou derrière (0,44 m bord à bord), quand le robot tourne ou se déplace de côté ;
+#   - arret : un cercle de 0,4 m tout autour (contrat 11.3 : 0,4 m au moins).
+# Vague 4 : les deux zones « ralentir » remplacent le cercle de 1 m tout autour, qui freinait aussi
+# le robot quand le visiteur le suit à 1,2 m (sa surface à 0,95 m) : un robot accompagné roulait à
+# mi-vitesse (0,23 m/s au lieu de 0,46). Devant, rien ne change.
+# Essayés et retirés (vague 4, journal) : une zone qui porte plus loin devant le robot ralentit plus
+# tôt face à un passant qui coupe la route, et le robot reste plus longtemps sur son passage (plus
+# d'arrêts, des échecs) : rectangle de 0 à 1,6 m et ±0,45 m (×0,6) en plus du cercle, un échec sur
+# cinq ; rectangle de 0 à 1,2 m et ±0,6 m à la place du cercle, deux échecs sur cinq (critère 24).
+# Le demi-disque seul : un contact causé par le robot sur cinq trajets (coupe_route, critère 24).
+collision_monitor:
+  ros__parameters:
+    use_sim_time: False
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    cmd_vel_in_topic: "cmd_vel_smoothed"
+    cmd_vel_out_topic: "cmd_vel"
+    transform_tolerance: 0.5
+    source_timeout: 5.0
+    base_shift_correction: True
+    stop_pub_timeout: 2.0
+    polygons: ["ralentir", "ralentir_pres", "arret"]
+    ralentir:
+      type: "polygon"
+      points: [0.000, 1.000, 0.259, 0.966, 0.500, 0.866, 0.707, 0.707,
+               0.866, 0.500, 0.966, 0.259, 1.000, 0.000, 0.966, -0.259,
+               0.866, -0.500, 0.707, -0.707, 0.500, -0.866, 0.259, -0.966,
+               0.000, -1.000]
+      action_type: "slowdown"
+      slowdown_ratio: 0.5
+      max_points: 3
+      visualize: True
+      polygon_pub_topic: "collision_ralentir"
+    ralentir_pres:
+      type: "circle"
+      radius: 0.7
+      action_type: "slowdown"
+      slowdown_ratio: 0.5
+      max_points: 3
+      visualize: True
+      polygon_pub_topic: "collision_ralentir_pres"
+    arret:
+      type: "circle"
+      radius: 0.4
+      action_type: "stop"
+      max_points: 3
+      visualize: True
+      polygon_pub_topic: "collision_arret"
+    observation_sources: ["points"]
+    points:
+      type: "pointcloud"
+      topic: "/points"
+      min_height: 0.1
+      max_height: 1.9

@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "itineraires.yaml",
+  "description": "Graphe des itinéraires du guide : des nœuds (points de passage) reliés par des couloirs. Le routeur y cherche le plus court chemin, et un autre si un couloir est bloqué. Règles vérifiées par atelier.lieu, pas par ce schéma : chaque couloir relie deux nœuds existants d'un même étage ; un couloir est un segment droit dans l'espace libre, de 8 m au plus (la navigation d'Unitree, commande 1102, va en ligne droite par tronçons de 8 m au plus) ; chaque salle de salles.yaml, accueil compris, a un nœud de même id à la même position.",
+  "type": "object",
+  "required": ["noeuds", "couloirs"],
+  "additionalProperties": false,
+  "properties": {
+    "noeuds": {
+      "description": "Nœuds, rangés par id : { id: {etage, x, y}, ... }. Peut être vide.",
+      "type": "object",
+      "propertyNames": {
+        "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, commence par une lettre ou un chiffre. Éviter yes, no, on, off : YAML les lit comme des booléens.",
+        "type": "string",
+        "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+      },
+      "additionalProperties": {"$ref": "#/definitions/noeud"}
+    },
+    "couloirs": {
+      "description": "Couloirs : paires [id1, id2] de nœuds distincts. Passage libre dans les deux sens ; la longueur est la distance entre les deux nœuds, calculée. Peut être vide.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/couloir"}
+    }
+  },
+  "definitions": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+    },
+    "noeud": {
+      "description": "Point de passage : étage, et position x, y en mètres dans le repère map. Pas d'orientation.",
+      "type": "object",
+      "required": ["etage", "x", "y"],
+      "additionalProperties": false,
+      "properties": {
+        "etage": {
+          "description": "Id de l'étage du nœud, parmi les etages de lieu.yaml.",
+          "$ref": "#/definitions/id"
+        },
+        "x": {"description": "Position x, en mètres.", "type": "number"},
+        "y": {"description": "Position y, en mètres.", "type": "number"}
+      }
+    },
+    "couloir": {
+      "description": "Couloir entre deux nœuds différents, [id1, id2].",
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "items": {"$ref": "#/definitions/id"}
+    }
+  }
+}

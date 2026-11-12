@@ -1,0 +1,29 @@
+# Exemple de chatbot à règles (vague 4, section 11.6 du plan), à copier dans lieux/<id>/.
+# Format : atelier/lieu/schemas/dialogues.schema.json. La première règle qui correspond l'emporte.
+# {salle} : une salle du lieu (id, nom ou alias de salles.yaml) ; {*} : n'importe quels mots.
+version: 1
+langue: fr
+repli: "Je n'ai pas compris. Vous pouvez me dire par exemple : je cherche la salle B204."
+regles:
+  - id: chercher_salle
+    motifs: ["je cherche {salle}", "ou est {salle}", "je vais {salle}", "emmene moi {salle}", "{salle}"]
+    action: guider
+    accompagner: true
+    reponse: "Je vous emmène à {nom_salle}. Suivez-moi !"
+  - id: bonjour
+    motifs: ["bonjour", "salut", "bonsoir"]
+    action: dire
+    reponse: "Bonjour ! Où voulez-vous aller ?"
+  - id: merci
+    motifs: ["merci {*}", "merci"]
+    action: dire
+    reponse: "Avec plaisir !"
+  - id: discret
+    motifs: ["sois discret", "mode discret"]
+    action: personnalite
+    personnalite: discret
+    reponse: "D'accord, je me fais discret."
+  - id: stop
+    motifs: ["stop", "arrete toi", "arrete"]
+    action: stop
+    reponse: "Je m'arrête."

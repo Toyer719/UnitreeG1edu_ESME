@@ -1,0 +1,372 @@
+/* La page de la borne visiteur (vague 6, section 13.5 du plan) : feuille de l'agent Borne et orchestrateur.
+   Seulement les jetons de css/theme.css (aucune couleur en dur) ; pensée d'abord pour le tactile : téléphone
+   390 × 844 (une colonne de cartes), tablette 1024 × 768 (la mascotte à gauche, deux colonnes de cartes à droite).
+   Cibles de 64 px au moins ; la page ne défile jamais : seule la liste des salles défile. L'écran montré est
+   data-ecran sur [data-role=borne] : hors_service, salles, suivez_moi, arrivee, retour, occupe, pause. */
+
+html, body { height: 100%; margin: 0; overflow: hidden; background: var(--fond); color: var(--texte); }
+body.borne {
+  font-family: var(--police);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+[hidden] { display: none !important; }
+.borne *, .borne *::before, .borne *::after { box-sizing: border-box; }
+
+.borne-page {
+  --carte-h: 78px;
+  --icone-carte: 52px;
+  --mascotte: 92px;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas: "entete" "centre" "pied";
+  gap: 14px;
+  padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+    max(8px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background: radial-gradient(120% 70% at 50% 0%, var(--accent-doux), var(--fond) 62%);
+  overflow: clip;
+}
+
+/* ---------------------------------------------------------------- en-tête : mascotte et phrase de l'écran */
+
+.borne-entete { grid-area: entete; display: flex; align-items: center; gap: 14px; min-width: 0; }
+.borne-mascotte { width: var(--mascotte); height: var(--mascotte); flex: none; }
+.borne-textes { min-width: 0; }
+.borne-titre {
+  margin: 0;
+  font-size: clamp(1.55rem, 6.6vw, 2.15rem);
+  line-height: 1.12;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+.borne-detail { margin: 6px 0 0; font-size: 1.12rem; line-height: 1.3; color: var(--texte-doux); }
+
+/* la mascotte (dessins.js) */
+.mascotte { width: 100%; height: 100%; overflow: visible; display: block; }
+.m-tete, .m-corps { fill: var(--surface-2); stroke: var(--accent-texte); stroke-width: 3; }
+.m-visage { fill: var(--champ); }
+.m-oreille { fill: var(--accent); }
+.m-cou { fill: var(--bord-fort); }
+.m-antenne-tige { stroke: var(--bord-fort); stroke-width: 3; stroke-linecap: round; }
+.m-antenne { fill: var(--repere-accueil); }
+.m-oeil { fill: var(--accent-texte); }
+.m-reflet { fill: var(--texte); opacity: 0.85; }
+.m-trait { fill: none; stroke: var(--accent-texte); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.m-joue { fill: var(--nuage-haut); opacity: 0.45; }
+.m-z { fill: var(--texte-doux); font-family: var(--police); font-weight: 800; font-size: 15px; }
+.m-z2 { font-size: 11px; }
+.m-clignote { transform-box: fill-box; transform-origin: center; animation: borne-clignement 4.6s infinite; }
+.mascotte[data-humeur=accueil] .m-antenne { animation: borne-lueur 2.4s ease-in-out infinite; }
+.mascotte[data-humeur=marche] { animation: borne-pas 0.8s ease-in-out infinite; }
+.mascotte[data-humeur=content] { animation: borne-saut 1.6s ease-in-out infinite; }
+.mascotte[data-humeur=dort] .m-z, .mascotte[data-humeur=pause] .m-z { animation: borne-z 2.6s ease-in-out infinite; }
+.borne-mascotte.parle .m-bouche { animation: borne-parle 0.32s ease-in-out infinite alternate; transform-box: fill-box;
+  transform-origin: center; }
+
+@keyframes borne-clignement { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.12); } }
+@keyframes borne-lueur { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
+@keyframes borne-pas { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-5px) rotate(2deg); } }
+@keyframes borne-saut { 0%, 100% { transform: translateY(0); } 40% { transform: translateY(-8px); } }
+@keyframes borne-z { 0% { opacity: 0; transform: translateY(4px); } 50% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
+@keyframes borne-parle { from { transform: scaleY(1); } to { transform: scaleY(1.6); } }
+@keyframes borne-point { 0%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+
+/* ---------------------------------------------------------------- centre : les cartes des salles */
+
+.borne-centre { grid-area: centre; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
+.borne-salles {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: minmax(var(--carte-h), auto);
+  align-content: start;
+  gap: 10px;
+  padding: 2px 2px 10px;
+}
+.borne-carte {
+  min-height: var(--carte-h);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px 10px 12px;
+  border-radius: 18px;
+  border: 2px solid var(--bord);
+  background: var(--surface);
+  color: var(--texte);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--ombre);
+  transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.borne-carte:active:not(:disabled) { transform: scale(0.98); background: var(--accent-doux); border-color: var(--accent-actif); }
+.borne-carte:focus-visible, .borne-bouton:focus-visible, .borne-touche:focus-visible, .borne-operateur:focus-visible {
+  outline: 3px solid var(--accent-actif);
+  outline-offset: 3px;
+}
+.borne-carte:disabled { opacity: 0.42; cursor: default; box-shadow: none; }
+.borne-carte-ailleurs { border-style: dashed; background: var(--surface-3); }
+.borne-carte-ailleurs .borne-carte-nom, .borne-carte-ailleurs .borne-carte-icone { color: var(--texte-doux); }
+.borne-carte-icone {
+  width: var(--icone-carte);
+  height: var(--icone-carte);
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: var(--accent-doux);
+  color: var(--accent-texte);
+}
+.pictogramme { width: 64%; height: 64%; }
+.p-trait { fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.p-fort { stroke-width: 5; }
+.borne-carte-textes { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.borne-carte-nom { font-size: 1.38rem; font-weight: 750; line-height: 1.15; overflow-wrap: break-word; hyphens: auto; }
+.borne-carte-etage { font-size: 0.98rem; color: var(--texte-doux); }
+.borne-carte-chevron { flex: none; font-size: 2.1rem; line-height: 1; color: var(--accent-texte); padding: 0 2px 4px; }
+/* une carte inactive (robot occupé, pause) n'invite pas à toucher (corrections de la vague 6) */
+.borne-carte:disabled .borne-carte-chevron { visibility: hidden; }
+.borne-vide { margin: auto; font-size: 1.2rem; color: var(--texte-doux); text-align: center; }
+
+/* ---------------------------------------------------------------- les écrans */
+
+/* les cartes ne se montrent que sur salles, occupe et pause (inactives sur les deux derniers) */
+.borne-page:not([data-ecran=salles]):not([data-ecran=occupe]):not([data-ecran=pause]) .borne-salles { display: none; }
+.borne-visite { display: none; flex: 1; min-height: 0; flex-direction: column; align-items: center; justify-content: center;
+  gap: 28px; }
+.borne-page[data-ecran=suivez_moi] .borne-visite,
+.borne-page[data-ecran=arrivee] .borne-visite,
+.borne-page[data-ecran=retour] .borne-visite { display: flex; }
+/* le robot en route : trois points qui s'allument tour à tour (aucune direction) */
+.borne-en-route { width: min(46%, 180px); height: auto; overflow: visible; }
+.r-point { fill: var(--accent-texte); opacity: 0.25; animation: borne-point 1.2s ease-in-out infinite; }
+.r-point-2 { animation-delay: 0.2s; }
+.r-point-3 { animation-delay: 0.4s; }
+.borne-page[data-ecran=retour] .borne-en-route { opacity: 0.7; }
+.borne-page[data-ecran=arrivee] .borne-en-route { display: none; }
+.borne-barre { width: min(86%, 520px); height: 18px; border-radius: var(--rayon-pilule); background: var(--surface-3);
+  border: 1px solid var(--bord); overflow: hidden; }
+.borne-barre-plein { height: 100%; width: 0; background: var(--accent); border-radius: var(--rayon-pilule);
+  transition: width 0.6s ease; }
+.borne-page[data-ecran=retour] .borne-barre, .borne-page[data-ecran=arrivee] .borne-barre { display: none; }
+.borne-destination { display: flex; align-items: center; gap: 14px; max-width: 100%; padding: 10px 18px 10px 10px;
+  border-radius: 20px; background: var(--surface); border: 2px solid var(--accent-actif); box-shadow: var(--ombre); }
+.borne-destination-nom { font-size: 1.6rem; font-weight: 800; line-height: 1.15; overflow-wrap: break-word; min-width: 0; }
+.borne-page[data-ecran=arrivee] .borne-destination { border-color: var(--succes); }
+
+/* écrans de la visite et hors service : la mascotte en grand, au milieu */
+.borne-page[data-ecran=suivez_moi], .borne-page[data-ecran=arrivee], .borne-page[data-ecran=retour] {
+  --mascotte: clamp(120px, 22vh, 190px);
+}
+.borne-page[data-ecran=suivez_moi] .borne-entete, .borne-page[data-ecran=arrivee] .borne-entete,
+.borne-page[data-ecran=retour] .borne-entete, .borne-page[data-ecran=hors_service] .borne-entete {
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+.borne-page[data-ecran=suivez_moi] .borne-titre, .borne-page[data-ecran=arrivee] .borne-titre,
+.borne-page[data-ecran=retour] .borne-titre, .borne-page[data-ecran=hors_service] .borne-titre {
+  font-size: clamp(2.1rem, 9vw, 3.2rem);
+}
+.borne-page[data-ecran=suivez_moi] .borne-detail, .borne-page[data-ecran=arrivee] .borne-detail,
+.borne-page[data-ecran=retour] .borne-detail { font-size: 1.4rem; color: var(--texte); }
+.borne-page[data-ecran=hors_service] {
+  --mascotte: clamp(140px, 26vh, 220px);
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas: "entete" "pied";
+}
+.borne-page[data-ecran=hors_service] .borne-centre { display: none; }
+
+/* occupé et pause : le message dans un bandeau, les cartes inactives dessous */
+.borne-page[data-ecran=occupe] .borne-entete, .borne-page[data-ecran=pause] .borne-entete {
+  padding: 12px 14px;
+  border-radius: 20px;
+  background: var(--surface);
+  border: 2px solid var(--avertissement);
+  box-shadow: var(--ombre);
+}
+.borne-page[data-ecran=occupe], .borne-page[data-ecran=pause] { --mascotte: 76px; }
+
+/* ---------------------------------------------------------------- pied : lieu, liaison, opérateur */
+
+.borne-pied { grid-area: pied; display: flex; align-items: center; gap: 10px; min-height: 48px; min-width: 0;
+  font-size: 0.95rem; color: var(--texte-doux); }
+.borne-lieu { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.borne-liaison { color: var(--danger-texte); font-weight: 700; }
+.borne-operateur {
+  width: 48px;
+  height: 48px;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--bord);
+  background: transparent;
+  color: var(--texte-doux);
+  opacity: 0.6;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+.borne-operateur svg { width: 22px; height: 22px; fill: currentColor; }
+.borne-operateur:active { opacity: 1; background: var(--surface-2); }
+
+/* ---------------------------------------------------------------- fenêtres dans la page */
+
+.borne-voile {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--voile);
+}
+.borne-dialogue {
+  width: min(560px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 20px 20px;
+  border-radius: 24px;
+  border: 1px solid var(--bord);
+  background: var(--surface);
+  box-shadow: var(--ombre-forte);
+  text-align: center;
+}
+.borne-dialogue-mascotte { width: 84px; height: 84px; }
+.borne-question { margin: 0; font-size: 1.35rem; color: var(--texte-doux); }
+.borne-question-salle { margin: 0; font-size: 2rem; line-height: 1.15; font-weight: 800; overflow-wrap: anywhere; }
+.borne-dialogue-titre { margin: 0; font-size: 1.6rem; }
+.borne-dialogue-aide { margin: 0; font-size: 1.05rem; color: var(--texte-doux); }
+.borne-dialogue-message { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--texte); }
+.borne-boutons { display: flex; flex-direction: column-reverse; gap: 12px; width: 100%; margin-top: 6px; }
+.borne-boutons-colonne { flex-direction: column; }
+.borne-bouton {
+  min-height: 68px;
+  padding: 10px 18px;
+  border-radius: 18px;
+  border: 2px solid var(--bord-fort);
+  background: var(--surface-3);
+  color: var(--texte);
+  font-family: var(--police);
+  font-size: 1.35rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+.borne-bouton:active:not(:disabled) { transform: scale(0.98); }
+.borne-bouton:disabled { opacity: 0.45; cursor: default; }
+.borne-bouton-oui { background: var(--accent); border-color: var(--accent); color: var(--sur-accent); }
+.borne-bouton-non { width: 100%; }
+
+/* le clavier du code opérateur */
+.borne-code-points { display: flex; gap: 12px; min-height: 22px; }
+.borne-code-points span { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--bord-fort); }
+.borne-code-points span.plein { background: var(--accent-texte); border-color: var(--accent-texte); }
+.borne-clavier { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; width: min(320px, 100%); }
+.borne-touche {
+  min-height: 64px;
+  border-radius: 16px;
+  border: 1px solid var(--bord);
+  background: var(--surface-3);
+  color: var(--texte);
+  font-family: var(--police);
+  font-size: 1.6rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.borne-touche:active { background: var(--accent-doux); }
+.borne-touche-valider { background: var(--accent); color: var(--sur-accent); border-color: var(--accent); font-size: 1.15rem; }
+.borne-touche-effacer { font-size: 1.4rem; }
+
+/* la bulle des messages courts */
+.borne-bulle {
+  position: fixed;
+  left: 50%;
+  bottom: max(72px, env(safe-area-inset-bottom));
+  z-index: 20;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 14px 20px;
+  border-radius: 18px;
+  border: 1px solid var(--bord-fort);
+  background: var(--surface-2);
+  color: var(--texte);
+  font-size: 1.1rem;
+  font-weight: 650;
+  text-align: center;
+  box-shadow: var(--ombre-forte);
+}
+.borne-page[data-connexion=perdue] .borne-salles { opacity: 0.6; }
+
+/* ---------------------------------------------------------------- tablette (et grand téléphone couché) */
+
+@media (min-width: 700px) {
+  .borne-page { --carte-h: 96px; --icone-carte: 62px; --mascotte: 120px; gap: 18px; padding-left: 24px; padding-right: 24px; }
+  .borne-titre { font-size: 2.4rem; }
+  .borne-detail { font-size: 1.25rem; }
+  .borne-salles { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .borne-carte-nom { font-size: 1.5rem; }
+  .borne-boutons { flex-direction: row; }
+  .borne-boutons .borne-bouton { flex: 1; }
+  .borne-boutons-colonne { flex-direction: column; }
+}
+
+/* tablette couchée (1024 × 768) : la mascotte et la phrase à gauche, les salles à droite */
+@media (min-width: 900px) and (min-aspect-ratio: 5/4) {
+  .borne-page {
+    --mascotte: 190px;
+    --carte-h: 112px;
+    --icone-carte: 70px;
+    grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.6fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: "entete centre" "pied pied";
+    gap: 16px 30px;
+    padding: 26px 30px 12px;
+    background: radial-gradient(80% 90% at 15% 40%, var(--accent-doux), var(--fond) 65%);
+  }
+  .borne-entete { flex-direction: column; justify-content: center; text-align: center; }
+  .borne-titre { font-size: 2.45rem; }
+  .borne-detail { font-size: 1.3rem; }
+  .borne-page { --icone-carte: 62px; }
+  .borne-carte { gap: 14px; padding: 12px 14px; }
+  .borne-carte-nom { font-size: 1.4rem; }
+  .borne-carte-chevron { display: none; }
+  .borne-destination-nom { font-size: 2rem; }
+  .borne-salles { align-content: center; padding-top: 4px; }
+  .borne-page[data-ecran=occupe] .borne-entete, .borne-page[data-ecran=pause] .borne-entete { align-self: center; padding: 24px; }
+  .borne-page[data-ecran=occupe], .borne-page[data-ecran=pause] { --mascotte: 150px; }
+  .borne-page[data-ecran=suivez_moi], .borne-page[data-ecran=arrivee], .borne-page[data-ecran=retour] {
+    --mascotte: 210px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+  .borne-page[data-ecran=suivez_moi] .borne-titre, .borne-page[data-ecran=arrivee] .borne-titre,
+  .borne-page[data-ecran=retour] .borne-titre, .borne-page[data-ecran=hors_service] .borne-titre { font-size: 2.9rem; }
+  .borne-page[data-ecran=hors_service] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "entete" "pied"; }
+}
+
+/* téléphone couché ou petite hauteur : plus compact */
+@media (max-height: 560px) {
+  .borne-page { --mascotte: 64px; --carte-h: 68px; gap: 8px; padding-top: max(8px, env(safe-area-inset-top)); }
+  .borne-titre { font-size: 1.5rem; }
+  .borne-page[data-ecran=suivez_moi], .borne-page[data-ecran=arrivee], .borne-page[data-ecran=retour],
+  .borne-page[data-ecran=hors_service] { --mascotte: 96px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascotte, .m-clignote, .m-antenne, .m-z, .r-point, .m-bouche { animation: none !important; }
+  .r-point { opacity: 0.8; }
+}

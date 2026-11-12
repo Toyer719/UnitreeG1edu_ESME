@@ -1,0 +1,25 @@
+// La méthode d'une vague (chapitre 10)
+digraph methode {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.22, ranksep=0.3, newrank=true];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.10,0.05"];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  demande [label="Demande de l'utilisateur\n(en français, avec ses mots)", fillcolor="#FFF6D5", color="#BF9000"];
+  comprendre [label="Comprendre : lecteurs qui\nétudient le code et la question"];
+  contrats [label="Contrats : plan, formats, sujets,\nroutes, critères ; code partagé\n(commit « contrats »)"];
+  a1 [label="agent 1\nses fichiers,\nson domaine ROS", fillcolor="#E2F0D9", color="#548235"];
+  a2 [label="agent 2", fillcolor="#E2F0D9", color="#548235"];
+  a3 [label="agent 3", fillcolor="#E2F0D9", color="#548235"];
+  a4 [label="agent …", fillcolor="#E2F0D9", color="#548235"];
+  assemblage [label="Assemblage (l'intégrateur) : compiler,\ncorriger les écarts, relancer les tests"];
+  revue [label="Revue (depuis la vague 5) : deux relecteurs,\npuis un correcteur (un test par défaut)", fillcolor="#FBE5D6", color="#C55A11"];
+  recette [label="Recette : toutes les suites de tests,\npuis les critères, sans robot ni écran (« N / 42 »)"];
+  livraison [label="Commits, journal, README, plan, documents\n(« Précisions de l'assemblage »)", fillcolor="#FFF6D5", color="#BF9000"];
+
+  demande -> comprendre -> contrats;
+  contrats -> a1; contrats -> a2; contrats -> a3; contrats -> a4;
+  a1 -> assemblage; a2 -> assemblage; a3 -> assemblage; a4 -> assemblage;
+  assemblage -> revue -> recette -> livraison;
+  recette -> assemblage [label=" échec : on corrige", style=dashed, constraint=false];
+  {rank=same; a1; a2; a3; a4}
+}

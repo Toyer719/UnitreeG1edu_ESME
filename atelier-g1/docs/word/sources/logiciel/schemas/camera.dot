@@ -1,0 +1,29 @@
+// La caméra de poitrine et les visiteurs (chapitre 8)
+digraph camera {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.45, ranksep=0.28, newrank=true, splines=line];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.10,0.05", width=2.6];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  subgraph cluster_robot {
+    label="Sur le robot (Jetson, conteneur)"; style="rounded"; color="#548235"; fontcolor="#385723";
+    see3cam [label="See3CAM_11CUG (USB 3)\npassée au conteneur :\n/dev/g1_camera", fillcolor="#FDEBD9", color="#C55A11"];
+    v4l2 [label="v4l2-ctl : exposition\nautomatique, capture\nYUYV 1280 × 720", fillcolor="#E2F0D9", color="#548235"];
+    noeud [label="nœud camera_usb\n(g1_equipe) : JPEG de\n640 px par Pillow", fillcolor="#E2F0D9", color="#548235"];
+    sujet [label="/camera_poitrine/\nimage/compressed\n10 images par seconde", style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+  }
+  subgraph cluster_pc {
+    label="Sur le PC"; style="rounded"; color="#2F5597"; fontcolor="#1F3A5F";
+    visiteurs [label="g1-visiteurs : YOLO pose\n+ suivi ByteTrack\n(carte graphique)"];
+    detectes [label="/visiteurs/detectes\n(JSON : distance,\ncadre, regard)", style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+    serveur [label="pont ROS 2 du serveur :\ngarde la dernière image\n→ /api/camera/flux (MJPEG)"];
+    vue [label="vue Caméra du navigateur :\nl'image et un cadre\nautour de chaque visiteur"];
+  }
+  see3cam -> v4l2 -> noeud -> sujet;
+  visiteurs -> detectes -> serveur -> vue;
+  sujet:e -> visiteurs:w [label=" câble (DDS)"];
+  sujet:e -> serveur:w;
+  {rank=same; see3cam; visiteurs}
+  {rank=same; v4l2; detectes}
+  {rank=same; noeud; serveur}
+  {rank=same; sujet; vue}
+}

@@ -1,0 +1,8 @@
+# Graphe des itinéraires du guide. Format : atelier/lieu/schemas/itineraires.schema.json.
+# Écrit par l'Atelier G1 : les commentaires ajoutés à la main ne sont pas conservés.
+noeuds:
+  '1': {etage: rdc, x: 18.65, y: 12.95}
+  '2': {etage: rdc, x: 19.9, y: 5.5}
+  '3': {etage: rdc, x: 8.2, y: 37.95}
+  accueil: {etage: rdc, x: 1, y: 1}
+couloirs: []

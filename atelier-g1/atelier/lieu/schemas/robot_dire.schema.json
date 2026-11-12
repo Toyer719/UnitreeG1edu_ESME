@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/robot/dire",
+  "description": "Phrase à dire par le robot, en JSON (std_msgs/String) sur /robot/dire (vague 4, section 11.6 du plan) : la seule entrée de la partie voix de l'équipe. Publiée par le chatbot (réponses), par le relais des événements du guide (/guide/evenement, avec les phrases de la personnalité active) et par les chorégraphies. Vague 6 (section 13.6 du plan) : aussi publiée par la démo d'accueil (source accueil), et dite par le nœud voix (g1-voix). Des champs en plus sont permis.",
+  "type": "object",
+  "required": [
+    "texte"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "version": {
+      "description": "Facultatif : version du format, 1.",
+      "const": 1
+    },
+    "texte": {
+      "description": "La phrase, en français.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "id": {
+      "description": "Facultatif (vague 6) : identifiant de la phrase, repris par /voix/etat et /voix/son.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "source": {
+      "description": "Facultatif : guide, dialogue, personnalite, choregraphie, atelier, accueil (la démo d'accueil, vague 6) ou autre.",
+      "type": "string",
+      "enum": [
+        "guide",
+        "dialogue",
+        "personnalite",
+        "choregraphie",
+        "atelier",
+        "accueil",
+        "autre"
+      ]
+    },
+    "code": {
+      "description": "Facultatif : code de l'événement du guide (source guide).",
+      "type": "string"
+    },
+    "priorite": {
+      "description": "Facultatif, défaut normale : haute coupe la phrase en cours ; securite (vague 6, section 13.6 du plan) coupe la phrase en cours et vide la file d'attente (messages de sécurité).",
+      "type": "string",
+      "enum": [
+        "normale",
+        "haute",
+        "securite"
+      ]
+    },
+    "langue": {
+      "description": "Facultatif, défaut fr.",
+      "type": "string",
+      "pattern": "^[a-z]{2}$"
+    }
+  }
+}

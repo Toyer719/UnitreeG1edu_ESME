@@ -1,0 +1,260 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "État de la borne",
+  "description": "Ce que la page de la borne montre (vague 6, section 13.5 du plan) : GET /api/borne/etat et chaque message de /ws/borne. Calculé par le serveur depuis /accueil/etat, /voix/son, salles.yaml et demo.yaml. Des champs en plus sont permis.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "version",
+    "ecran",
+    "texte",
+    "salles",
+    "demo",
+    "operateur"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "ecran": {
+      "description": "hors_service (démo arrêtée), salles, suivez_moi, arrivee, retour, occupe, pause.",
+      "enum": [
+        "hors_service",
+        "salles",
+        "suivez_moi",
+        "arrivee",
+        "retour",
+        "occupe",
+        "pause"
+      ]
+    },
+    "texte": {
+      "description": "La phrase principale de l'écran.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "detail": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 300
+    },
+    "lieu": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+            },
+            "nom": {
+              "type": "string",
+              "maxLength": 100
+            }
+          },
+          "required": [
+            "id",
+            "nom"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "salles": {
+      "type": "array",
+      "maxItems": 60,
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "id": {
+            "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+          },
+          "nom": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "etage": {
+            "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+          },
+          "nom_etage": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "etiquettes": {
+            "type": "array",
+            "items": {
+              "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+            }
+          },
+          "accessible": {
+            "description": "Faux pour une salle d'un autre étage (montrée, pas choisie).",
+            "type": "boolean"
+          },
+          "pictogramme": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 40
+          }
+        },
+        "required": [
+          "id",
+          "nom",
+          "etage",
+          "accessible"
+        ]
+      }
+    },
+    "visite": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "salle": {
+              "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+            },
+            "nom": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "reste_m": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "salle"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "demo": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "etat": {
+              "enum": [
+                "demarrage",
+                "attente",
+                "salutation",
+                "choix",
+                "depart",
+                "accompagnement",
+                "arrivee",
+                "retour",
+                "occupe",
+                "pause"
+              ]
+            },
+            "depuis_s": {
+              "type": "number",
+              "minimum": 0
+            },
+            "age_s": {
+              "type": "number",
+              "minimum": 0
+            }
+          },
+          "required": [
+            "etat"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "son": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "id": {
+              "description": "Identifiant d'une phrase dite (et de son WAV) : minuscules, chiffres et -.",
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+            },
+            "texte": {
+              "type": "string",
+              "maxLength": 500
+            },
+            "duree_s": {
+              "type": "number",
+              "minimum": 0
+            },
+            "url": {
+              "type": "string",
+              "pattern": "^/api/voix/son/"
+            }
+          },
+          "required": [
+            "id",
+            "url"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "operateur": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "possible": {
+          "description": "Un code opérateur est réglé (demo.yaml).",
+          "type": "boolean"
+        },
+        "actif": {
+          "description": "Ce client a un jeton opérateur valable.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "possible",
+        "actif"
+      ]
+    },
+    "langue": {
+      "type": "string",
+      "pattern": "^[a-z]{2}$"
+    },
+    "temps": {
+      "description": "Date et heure ISO 8601 à l'heure locale, à la seconde, avec le décalage : 2026-11-12T14:03:05+01:00.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"
+    }
+  }
+}

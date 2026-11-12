@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Scan intégré d'un étage : « Scan », aperçu en direct, « Fin », puis carte 3D, carte 2D et nuage
+# de la carte 3D (sections 9 et 12.5 du plan) :
+#   g1-scan demarrer --lieu L --etage E --mode robot|simu [--repetition] [--explorer] [--nom N] [--json]
+#   g1-scan arreter --lieu L [--session S] [--sans-traitement] [--attendre]
+#   g1-scan traiter --lieu L --session S [--refaire]     g1-scan etat --lieu L [--session S] [--json]
+#   g1-scan adopter --lieu L --session S                 (« Utiliser cette carte »)
+#   g1-scan carte-unitree --lieu L [--etage E] [--delai 60]
+# Pas de set -u : les scripts de ROS 2 ne le supportent pas.
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+source "$HOME/robot-g1/setup/env.sh"
+PY="$RACINE/.venv-projet/bin/python"
+[ -x "$PY" ] || PY="$HOME/robot-g1/.venv-projet/bin/python"
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PY" -m atelier.scan.session "$@"

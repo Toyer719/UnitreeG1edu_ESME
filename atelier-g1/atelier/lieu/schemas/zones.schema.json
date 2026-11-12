@@ -1,0 +1,70 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "zones.yaml",
+  "description": "Zones particulières de la carte : interdites (le robot n'y entre jamais : masque Keepout de Nav2, cartes/<etage>_interdit.pgm) et lentes (vitesse plafonnée). Polygones en mètres dans le repère map de l'étage.",
+  "type": "object",
+  "required": ["interdites", "lentes"],
+  "additionalProperties": false,
+  "properties": {
+    "interdites": {
+      "description": "Zones où le robot n'entre jamais. Peut être vide.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/interdite"}
+    },
+    "lentes": {
+      "description": "Zones où le robot ralentit. Peut être vide.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/lente"}
+    }
+  },
+  "definitions": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+    },
+    "polygone": {
+      "description": "Polygone simple [[x, y], ...] en mètres : au moins 3 sommets, dans l'ordre du contour (sens indifférent), sans répéter le premier à la fin.",
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": {"type": "number"}
+      }
+    },
+    "nom": {
+      "description": "Facultatif. Nom affiché de la zone (ex. « Escalier »).",
+      "type": "string",
+      "maxLength": 100
+    },
+    "interdite": {
+      "description": "Zone interdite. Champs obligatoires : etage, polygone.",
+      "type": "object",
+      "required": ["etage", "polygone"],
+      "additionalProperties": false,
+      "properties": {
+        "etage": {"description": "Id de l'étage, parmi les etages de lieu.yaml.", "$ref": "#/definitions/id"},
+        "polygone": {"$ref": "#/definitions/polygone"},
+        "nom": {"$ref": "#/definitions/nom"}
+      }
+    },
+    "lente": {
+      "description": "Zone lente. Champs obligatoires : etage, polygone, vitesse_max.",
+      "type": "object",
+      "required": ["etage", "polygone", "vitesse_max"],
+      "additionalProperties": false,
+      "properties": {
+        "etage": {"description": "Id de l'étage, parmi les etages de lieu.yaml.", "$ref": "#/definitions/id"},
+        "polygone": {"$ref": "#/definitions/polygone"},
+        "vitesse_max": {
+          "description": "Vitesse maximale du robot dans la zone, en m/s : plus de 0 et 1 m/s au plus. Ex. 0.2.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "nom": {"$ref": "#/definitions/nom"}
+      }
+    }
+  }
+}

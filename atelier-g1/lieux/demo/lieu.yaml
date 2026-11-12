@@ -1,0 +1,11 @@
+# Lieu d'exemple de l'Atelier G1 : un lycée imaginaire de 30 × 20 m, sur un seul étage.
+# Format : atelier/lieu/schemas/lieu.schema.json. Unités : mètres et radians.
+version: 1
+nom: "Lycée démo"
+langue: fr
+etages:
+  - id: rdc
+    nom: "Rez-de-chaussée"
+    source_carte: monde
+accueil: {etage: rdc, x: 2.5, y: 10.0, theta: 0.0}
+carte_unitree: null

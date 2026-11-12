@@ -1,0 +1,280 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "mondes/<etage>.monde.yaml",
+  "description": "Environnement inventé d'un étage, vu de dessus avec des hauteurs : murs, objets, piétons et départ du robot. Sert à générer le monde Gazebo mondes/<etage>.sdf et la carte 2D cartes/<etage>.pgm. Unités : mètres et radians, repère map (z vers le haut). Tout est posé au sol (z = 0). Les id sont uniques dans tout le monde, murs, objets et piétons confondus : ils deviennent les noms des modèles Gazebo (vérifié par atelier.lieu, pas par ce schéma).",
+  "type": "object",
+  "required": ["version", "emprise", "depart_robot"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "description": "Version du format. Toujours 1.",
+      "const": 1
+    },
+    "emprise": {
+      "description": "Rectangle aligné sur les axes qui contient tout le monde, en mètres : min = [xmin, ymin], max = [xmax, ymax], avec xmax > xmin et ymax > ymin. La carte 2D couvre exactement ce rectangle (plus une marge d'un pixel). Les extrémités des murs, les objets, les trajets des piétons et le départ du robot sont dedans ; seule l'épaisseur d'un mur posé sur le bord peut dépasser.",
+      "type": "object",
+      "required": ["min", "max"],
+      "additionalProperties": false,
+      "properties": {
+        "min": {"$ref": "#/definitions/point"},
+        "max": {"$ref": "#/definitions/point"}
+      }
+    },
+    "murs": {
+      "description": "Facultatif, liste vide par défaut. Murs droits. Un passage (une porte) est l'écart laissé entre les bouts de deux murs alignés : il n'y a pas d'objet porte.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/mur"}
+    },
+    "objets": {
+      "description": "Facultatif, liste vide par défaut. Obstacles fixes posés au sol : boîte, cylindre ou modèle de mobilier.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/objet"}
+    },
+    "pietons": {
+      "description": "Facultatif, liste vide par défaut. Personnes qui marchent : obstacles mobiles, présents dans Gazebo mais jamais sur la carte 2D.",
+      "type": "array",
+      "items": {"$ref": "#/definitions/pieton"}
+    },
+    "depart_robot": {
+      "description": "Pose où le robot apparaît au lancement de la simulation (en général celle de l'accueil).",
+      "$ref": "#/definitions/pose"
+    },
+    "carte_extrudee": {
+      "description": "Facultatif (vague 5, section 12.5 du plan) : la carte 2D de l'étage extrudée en un seul maillage STL, pour simuler un étage scanné. Écrit par g1-monde generer (étage source_carte: scan qui a une carte), jamais à la main. Dans Gazebo : un seul modèle statique nommé carte_du_scan (collision et visuel). Absent : le monde n'a que ses murs et objets dessinés (comme avant la vague 5).",
+      "type": "object",
+      "required": ["fichier", "hauteur"],
+      "additionalProperties": false,
+      "properties": {
+        "fichier": {
+          "description": "Nom du fichier STL binaire, dans le dossier mondes/ du lieu, sans dossier : <etage>_carte.stl.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,39}\\.stl$"
+        },
+        "hauteur": {
+          "description": "Hauteur des blocs, en mètres (1,5 par défaut : au-dessus du LiDAR du robot simulé, à 1,245 m).",
+          "type": "number",
+          "minimum": 0.2,
+          "maximum": 5
+        }
+      }
+    }
+  },
+  "definitions": {
+    "id": {
+      "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus, commence par une lettre ou un chiffre. Éviter yes, no, on, off (lus comme des booléens par YAML), ainsi que sol, g1_proxy et carte_du_scan (déjà pris dans le monde Gazebo).",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+    },
+    "nombre": {
+      "type": "number"
+    },
+    "point": {
+      "description": "Point au sol [x, y], en mètres.",
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {"type": "number"}
+    },
+    "angle": {
+      "description": "Angle en radians, depuis l'axe x, sens inverse des aiguilles d'une montre, entre -2π et 2π (de préférence entre -π et π). 90° = 1.5708.",
+      "type": "number",
+      "minimum": -6.2832,
+      "maximum": 6.2832
+    },
+    "pose": {
+      "description": "Position x, y en mètres et orientation theta en radians.",
+      "type": "object",
+      "required": ["x", "y", "theta"],
+      "additionalProperties": false,
+      "properties": {
+        "x": {"$ref": "#/definitions/nombre"},
+        "y": {"$ref": "#/definitions/nombre"},
+        "theta": {"$ref": "#/definitions/angle"}
+      }
+    },
+    "categorie_objet": {
+      "description": "Facultatif. Ce qu'est l'objet, pour l'affichage, la reconnaissance du scan et son évaluation : table, chaise, banc, poteau, meuble (armoire, bureau plein, banque d'accueil...), poubelle, personne (debout et immobile pendant le scan) ou inconnu. Un objet de catégorie personne n'est jamais dessiné sur la carte 2D (il reste dans le monde Gazebo). Sans ce champ, la catégorie se déduit de la forme : modele → son nom (chaise, table, banc, poubelle), cylindre → poteau, boite → meuble.",
+      "type": "string",
+      "enum": ["table", "chaise", "banc", "poteau", "meuble", "poubelle", "personne", "inconnu"]
+    },
+    "source": {
+      "description": "Facultatif, dessin par défaut. D'où vient l'élément : dessin (posé à la main dans l'éditeur) ou scan (reconnu dans le scan du robot).",
+      "type": "string",
+      "enum": ["dessin", "scan"]
+    },
+    "confiance": {
+      "description": "Facultatif. Confiance de la reconnaissance, de 0 (douteux) à 1 (sûr). Seulement pour un élément venu d'un scan.",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "mur": {
+      "description": "Mur droit de « de » à « a » : une boîte de longueur exactement égale au segment (sans débordement aux bouts), d'épaisseur centrée sur le segment, posée au sol. Les deux bouts sont distincts. Champs facultatifs : source et confiance (élément venu d'un scan).",
+      "type": "object",
+      "required": ["id", "de", "a", "epaisseur", "hauteur"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/id"},
+        "de": {"description": "Premier bout [x, y], en mètres.", "$ref": "#/definitions/point"},
+        "a": {"description": "Second bout [x, y], en mètres.", "$ref": "#/definitions/point"},
+        "epaisseur": {
+          "description": "Épaisseur en mètres, plus de 0 et 1 m au plus. Habituel : 0.15.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "hauteur": {
+          "description": "Hauteur en mètres, plus de 0 et 10 m au plus. Habituel : 2.5. Un mur de moins de 0,1 m n'apparaît pas sur la carte 2D (tranche de 0,1 à 1,5 m).",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        },
+        "source": {"$ref": "#/definitions/source"},
+        "confiance": {"$ref": "#/definitions/confiance"}
+      }
+    },
+    "objet": {
+      "description": "Obstacle fixe posé au sol. Champs selon le type : boite = id, type, centre, taille, cap ; cylindre = id, type, centre, rayon, hauteur ; modele = id, type, modele, centre, cap. Champs facultatifs, pour tous les types : categorie, source et confiance.",
+      "type": "object",
+      "required": ["id", "type", "centre"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/id"},
+        "type": {
+          "description": "boite (parallélépipède), cylindre (poteau, pot) ou modele (mobilier tout fait).",
+          "type": "string",
+          "enum": ["boite", "cylindre", "modele"]
+        },
+        "centre": {"description": "Centre de l'objet au sol [x, y], en mètres.", "$ref": "#/definitions/point"},
+        "cap": {
+          "description": "Rotation de l'objet autour de l'axe z, en radians (0 : la longueur est le long de l'axe x).",
+          "$ref": "#/definitions/angle"
+        },
+        "taille": {
+          "description": "boite seulement : [longueur le long du cap, largeur, hauteur], en mètres, chacune de plus de 0 et 20 m au plus.",
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {"type": "number", "exclusiveMinimum": 0, "maximum": 20}
+        },
+        "rayon": {
+          "description": "cylindre seulement : rayon en mètres, plus de 0 et 5 m au plus.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 5
+        },
+        "hauteur": {
+          "description": "cylindre seulement : hauteur en mètres, plus de 0 et 10 m au plus.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 10
+        },
+        "modele": {
+          "description": "modele seulement : meuble écrit en SDF par l'agent Monde, sans téléchargement. Encombrement indicatif longueur × largeur × hauteur, en mètres, avant rotation par cap : chaise 0,45 × 0,45 × 0,9 ; table 1,2 × 0,8 × 0,75 ; banc 1,5 × 0,4 × 0,45 ; poubelle cylindre de 0,25 de rayon et 0,8 de haut.",
+          "type": "string",
+          "enum": ["chaise", "table", "banc", "poubelle"]
+        },
+        "categorie": {"$ref": "#/definitions/categorie_objet"},
+        "source": {"$ref": "#/definitions/source"},
+        "confiance": {"$ref": "#/definitions/confiance"}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"type": {"const": "boite"}}, "required": ["type"]},
+          "then": {
+            "required": ["taille", "cap"],
+            "propertyNames": {"enum": ["id", "type", "centre", "taille", "cap", "categorie", "source", "confiance"]}
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "cylindre"}}, "required": ["type"]},
+          "then": {
+            "required": ["rayon", "hauteur"],
+            "propertyNames": {"enum": ["id", "type", "centre", "rayon", "hauteur", "categorie", "source", "confiance"]}
+          }
+        },
+        {
+          "if": {"properties": {"type": {"const": "modele"}}, "required": ["type"]},
+          "then": {
+            "required": ["modele", "cap"],
+            "propertyNames": {"enum": ["id", "type", "modele", "centre", "cap", "categorie", "source", "confiance"]}
+          }
+        }
+      ]
+    },
+    "pieton": {
+      "description": "Piéton qui marche en boucle pendant toute la simulation. Il part de trajet[0] et suit les points dans l'ordre, en ligne droite entre deux points. Vague 4 (section 11.3 du plan) : champs facultatifs du piéton crédible, un corps qui gêne le robot et une réaction simple (absents du fichier quand ils ont leur valeur par défaut ; un monde d'avant reste valide et garde son trajet).",
+      "type": "object",
+      "required": ["id", "trajet", "vitesse", "aller_retour"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/id"},
+        "trajet": {
+          "description": "Points de passage [[x, y], ...], en mètres, au moins 2, dans l'espace libre.",
+          "type": "array",
+          "minItems": 2,
+          "items": {"$ref": "#/definitions/point"}
+        },
+        "vitesse": {
+          "description": "Vitesse de marche en m/s, plus de 0 et 2 m/s au plus. Habituel : 1.0.",
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 2
+        },
+        "aller_retour": {
+          "description": "true : il va du premier au dernier point, puis revient en sens inverse, sans fin. false : arrivé au dernier point, il retourne directement au premier, sans fin (boucle).",
+          "type": "boolean"
+        },
+        "reaction": {
+          "description": "Facultatif, défaut ecart. Ce que fait le piéton quand le robot est à moins de distance_reaction_m de lui (bord à bord), devant lui : arret (il s'arrête, et repart 1 s après que le robot s'est éloigné), ecart (il ralentit et s'écarte sur le côté, dans l'espace libre ; s'il ne peut pas, il s'arrête), aucune (il ne voit pas le robot : scènes « pire cas »).",
+          "type": "string",
+          "enum": ["aucune", "arret", "ecart"]
+        },
+        "distance_reaction_m": {
+          "description": "Facultatif, défaut 0.8. Distance bord à bord (m) entre le corps du piéton et le robot, sous laquelle il réagit.",
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 3
+        },
+        "corps": {
+          "description": "Facultatif, défaut true. true : dans Gazebo, un corps solide (cylindre de rayon_m, 1,7 m de haut) que le robot ne peut pas traverser et que le LiDAR voit. false : silhouette seule (<actor> de la vague 1), traversable.",
+          "type": "boolean"
+        },
+        "rayon_m": {
+          "description": "Facultatif, défaut 0.25. Rayon du corps du piéton (m), pour Gazebo et pour la distance bord à bord.",
+          "type": "number",
+          "minimum": 0.15,
+          "maximum": 0.5
+        },
+        "pauses": {
+          "description": "Facultatif, liste vide par défaut. Arrêts sur le trajet, à chaque passage : {point: rang du point dans trajet (0 = le premier), duree_s}. Un piéton immobile : une pause de 3600 s au point 0.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["point", "duree_s"],
+            "additionalProperties": false,
+            "properties": {
+              "point": {"description": "Rang du point dans trajet, à partir de 0.", "type": "integer", "minimum": 0},
+              "duree_s": {"description": "Durée de l'arrêt, en secondes.", "type": "number", "exclusiveMinimum": 0, "maximum": 3600}
+            }
+          }
+        },
+        "depart_s": {
+          "description": "Facultatif, défaut 0. Le piéton attend à trajet[0] jusqu'à ce temps simulé (s), puis part.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 3600
+        },
+        "repeter": {
+          "description": "Facultatif, défaut true. false : un seul parcours (l'aller, ou l'aller et le retour avec aller_retour), puis le piéton reste au dernier point atteint.",
+          "type": "boolean"
+        },
+        "pilote": {
+          "description": "Facultatif, défaut trajet. externe : le piéton ne suit pas son trajet (il part de trajet[0]) ; il est conduit par /pietons/consigne (ex. le faux visiteur de la simulation, section 11.4).",
+          "type": "string",
+          "enum": ["trajet", "externe"]
+        }
+      }
+    }
+  }
+}

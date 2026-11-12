@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/pietons/consigne",
+  "description": "Consigne de vitesse d'un piéton « pilote: externe » (le faux visiteur, section 11.4), en JSON (std_msgs/String) sur /pietons/consigne (vague 4, section 11.3 du plan). Repère map. Chaque consigne vaut 0,5 s : sans nouvelle consigne, le piéton s'arrête. Le nœud pietons refuse d'entrer dans un mur (il s'arrête devant).",
+  "type": "object",
+  "required": ["id", "vx", "vy"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"description": "Facultatif : version du format, 1.", "const": 1},
+    "id": {"description": "id du piéton (pilote: externe dans le monde).", "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"},
+    "vx": {"description": "m/s, 1,5 au plus en valeur absolue.", "type": "number", "minimum": -1.5, "maximum": 1.5},
+    "vy": {"type": "number", "minimum": -1.5, "maximum": 1.5},
+    "theta": {"description": "Facultatif : direction du corps (rad) ; défaut : celle du mouvement.", "type": "number", "minimum": -6.2832, "maximum": 6.2832}
+  }
+}

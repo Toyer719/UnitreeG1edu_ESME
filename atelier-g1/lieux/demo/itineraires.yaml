@@ -1,0 +1,35 @@
+# Graphe des itinéraires du lycée démo. Format : atelier/lieu/schemas/itineraires.schema.json.
+# Les nœuds forment une boucle : couloir sud, liaison est, couloir nord, hall. Entre l'accueil
+# et chaque salle, il y a donc deux chemins (si un couloir est bloqué, le guide prend l'autre).
+# Couloirs droits, dans l'espace libre, de 8 m au plus (commande 1102 du vrai robot).
+noeuds:
+  accueil:        {etage: rdc, x: 2.5,  y: 10.0}
+  # Couloir sud (y = 7), d'ouest en est
+  hall_sud:       {etage: rdc, x: 2.5,  y: 7.0}
+  vie_scolaire:   {etage: rdc, x: 7.0,  y: 7.0}
+  couloir_sud_1:  {etage: rdc, x: 11.0, y: 7.0}
+  infirmerie:     {etage: rdc, x: 15.0, y: 7.0}
+  couloir_sud_2:  {etage: rdc, x: 19.0, y: 7.0}
+  cdi:            {etage: rdc, x: 23.0, y: 7.0}
+  est_sud:        {etage: rdc, x: 27.5, y: 7.0}
+  # Couloir nord (y = 13), d'est en ouest
+  est_nord:       {etage: rdc, x: 27.5, y: 13.0}
+  b204:           {etage: rdc, x: 21.0, y: 13.0}
+  couloir_nord_1: {etage: rdc, x: 15.0, y: 13.0}
+  amphi:          {etage: rdc, x: 9.0,  y: 13.0}
+  hall_nord:      {etage: rdc, x: 2.5,  y: 13.0}
+
+couloirs:
+  - [accueil, hall_sud]
+  - [hall_sud, vie_scolaire]
+  - [vie_scolaire, couloir_sud_1]
+  - [couloir_sud_1, infirmerie]
+  - [infirmerie, couloir_sud_2]
+  - [couloir_sud_2, cdi]
+  - [cdi, est_sud]
+  - [est_sud, est_nord]
+  - [est_nord, b204]
+  - [b204, couloir_nord_1]
+  - [couloir_nord_1, amphi]
+  - [amphi, hall_nord]
+  - [hall_nord, accueil]

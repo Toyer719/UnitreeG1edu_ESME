@@ -1,0 +1,30 @@
+// Du scan à la carte et au nuage (chapitre 8)
+digraph chaine_scan {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.3, ranksep=0.26, newrank=true];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.10,0.05"];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  scan [label="« Scan » (Réel › Scanner)\nordre 1801 au SLAM d'Unitree", fillcolor="#FDEBD9", color="#C55A11"];
+  sujets [label="/unitree/slam_mapping/points (10 Hz)\n/unitree/slam_mapping/odom", shape=box, style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+  bag [label="ros2 bag : scans/<session>/enregistrement/\n(environ 100 Mo par minute)"];
+  apercu [label="aperçu en direct\ntoutes les 2 s", fillcolor="#EFEFEF", color="#7F7F7F"];
+  fin [label="« Fin » : ordre 1802\n(le robot garde sa carte .pcd)", fillcolor="#FDEBD9", color="#C55A11"];
+  c3d [label="étape carte_3d (atelier/scan/carte3d.py)\nchaque nuage placé par sa pose,\npassants retirés, sol trouvé"];
+  b1 [label="correction 1 : une seule base de temps\n(nuages sans heure : appariés à la réception)", fillcolor="#FBE3E1", color="#C0392B", fontsize=9];
+  b2 [label="correction 2 : passants retirés depuis\nla vraie position du capteur", fillcolor="#FBE3E1", color="#C0392B", fontsize=9];
+  b3 [label="correction 3 : le sol est un plan\n(RANSAC), même un peu penché", fillcolor="#FBE3E1", color="#C0392B", fontsize=9];
+  c2d [label="étape carte_2d (carte2d.py)\ntranche de 0,1 à 1,5 m au-dessus du sol,\n5 cm par pixel → carte.pgm + carte.yaml"];
+  aff [label="étape nuage (affichage.py)\nnuage_affichage.bin : x, y, hauteur"];
+  adopter [label="« Utiliser cette carte » (g1-scan adopter)", fillcolor="#E2F0D9", color="#548235"];
+  sortie [label="cartes/rdc.pgm + .yaml, rdc.pcd, rdc.nuage.bin\nmondes/rdc_carte.stl (carte extrudée de 1,5 m)", shape=note, fillcolor="#FFF6D5", color="#BF9000"];
+
+  scan -> sujets -> bag -> fin -> c3d -> c2d -> aff -> adopter -> sortie;
+  sujets -> apercu [style=dashed];
+  c3d -> b1 [arrowhead=none, style=dotted];
+  b1 -> b2 [arrowhead=none, style=dotted];
+  b2 -> b3 [arrowhead=none, style=dotted];
+  {rank=same; sujets; apercu}
+  {rank=same; c3d; b1}
+  {rank=same; c2d; b2}
+  {rank=same; aff; b3}
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/personnalite/active",
+  "description": "Personnalité active du robot, en JSON (std_msgs/String) sur /personnalite/active, QoS fiable et transient_local (vague 4, section 11.6 du plan). Publiée quand elle change (onglet Personnalités, chatbot) : la personnalité entière de personnalites.yaml, telle quelle. Des champs en plus sont permis.",
+  "type": "object",
+  "required": ["id", "nom"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Facultatif : version du format, 1.", "const": 1},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"},
+    "nom": {"type": "string", "minLength": 1},
+    "lieu": {"description": "Facultatif : id du lieu.", "type": "string"},
+    "phrases": {"description": "Facultatif : textes par code d'événement du guide.", "type": "object"}
+  }
+}

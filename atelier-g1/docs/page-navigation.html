@@ -1,0 +1,490 @@
+<title>Piste navigation G1</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: same identity as the project page; one reading column, the six-step chain as a numbered strip, then phases of steps with copyable commands */
+:root {
+  --paper: #F2F5F5;
+  --surface: #FFFFFF;
+  --inset: #E7EDED;
+  --term: #10191D;
+  --term-ink: #D7F2EE;
+  --ink: #122127;
+  --muted: #53646A;
+  --line: #D2DCDD;
+  --accent: #08766F;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #D9EDEA;
+  --ok: #2B7A47;
+  --info: #3A5F92;
+  --warn: #A65F0A;
+  --risk: #B0392C;
+  --f-display: "Barlow Semi Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --t-xs: 0.75rem; --t-sm: 0.875rem; --t-md: 1rem; --t-lg: 1.25rem; --t-xl: 1.75rem; --t-2xl: 2.75rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #0E1619; --surface: #152126; --inset: #1B2A30; --term: #081013; --term-ink: #CDEFEA;
+    --ink: #E2EBEC; --muted: #97AAB0; --line: #28383E; --accent: #3DBFB4; --accent-ink: #06201D;
+    --accent-soft: #16332F; --ok: #5DC184; --info: #82A8DB; --warn: #E3A24C; --risk: #EC7A6C;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #0E1619; --surface: #152126; --inset: #1B2A30; --term: #081013; --term-ink: #CDEFEA;
+  --ink: #E2EBEC; --muted: #97AAB0; --line: #28383E; --accent: #3DBFB4; --accent-ink: #06201D;
+  --accent-soft: #16332F; --ok: #5DC184; --info: #82A8DB; --warn: #E3A24C; --risk: #EC7A6C;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-padding-top: 4rem; }
+body { background: var(--paper); color: var(--ink); font-family: var(--f-body); font-size: var(--t-md); line-height: 1.6; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+code { font-family: var(--f-mono); font-size: 0.9em; }
+p code, li code, td code { background: var(--inset); padding: 0.05em 0.3em; border-radius: 3px; overflow-wrap: anywhere; }
+.page {
+  max-width: 58rem; margin: 0 auto; padding-block: 2rem 4rem;
+  padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 3.25rem;
+}
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; line-height: 1.1; }
+h1 { font-size: var(--t-2xl); font-weight: 700; }
+h2 { font-size: var(--t-xl); font-weight: 600; }
+h3 { font-size: var(--t-lg); font-weight: 600; }
+h4 { margin: 0; font-size: 1.02rem; font-weight: 600; }
+p { margin: 0; max-width: 70ch; }
+ul, ol { margin: 0; padding-left: 1.15rem; display: flex; flex-direction: column; gap: 0.4rem; }
+li { max-width: 70ch; }
+.eyebrow { font-family: var(--f-mono); font-size: var(--t-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.section { display: flex; flex-direction: column; gap: 1.25rem; }
+.section-head { display: flex; flex-direction: column; gap: 0.4rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+.masthead { display: flex; flex-direction: column; gap: 1rem; }
+.lede { font-size: 1.1rem; max-width: 64ch; }
+.navbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--paper);
+  border-bottom: 1px solid var(--line); margin-top: -2rem; padding-block: 0.6rem;
+  display: flex; flex-wrap: wrap; gap: 0.3rem 1.2rem; font-size: var(--t-sm); font-weight: 500;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper); }
+.navbar a { color: var(--muted); text-decoration: none; }
+.navbar a:hover { color: var(--accent); }
+
+.chip {
+  --lvl: var(--muted); display: inline-block; font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 500;
+  padding: 0.08rem 0.5rem; border-radius: 99px; white-space: nowrap; color: var(--lvl);
+  background: color-mix(in srgb, var(--lvl) 13%, transparent); border: 1px solid color-mix(in srgb, var(--lvl) 35%, transparent);
+}
+.lvl-1 { --lvl: var(--ok); } .lvl-2 { --lvl: var(--info); } .lvl-3 { --lvl: var(--warn); } .lvl-4 { --lvl: var(--risk); } .lvl-0 { --lvl: var(--muted); }
+
+/* The chain */
+.chaine { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7rem; counter-reset: maillon; }
+.chaine li { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 0.9rem 1rem; display: flex; flex-direction: column; gap: 0.45rem; max-width: none; counter-increment: maillon; }
+.chaine h3 { font-size: 1.15rem; display: flex; align-items: baseline; gap: 0.5rem; }
+.chaine h3::before { content: counter(maillon); font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 500; color: var(--accent-ink); background: var(--accent); border-radius: 50%; width: 1.5rem; height: 1.5rem; display: inline-grid; place-items: center; flex-shrink: 0; }
+.chaine p { font-size: var(--t-sm); color: var(--muted); }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 0.15rem 0.6rem; font-size: var(--t-sm); }
+.kv dt { font-family: var(--f-mono); font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding-top: 0.15rem; }
+.kv dd { margin: 0; }
+
+.alerte { border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--warn) 8%, var(--surface)); border-radius: 8px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.alerte h3 { font-size: 1.1rem; color: var(--warn); }
+.note { font-size: var(--t-sm); color: var(--muted); border-left: 2px solid var(--line); padding-left: 0.8rem; }
+
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 40rem; font-size: var(--t-sm); }
+th, td { text-align: left; padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); background: var(--inset); }
+tr:last-child td { border-bottom: 0; }
+td.mono { font-family: var(--f-mono); font-size: 0.8125rem; }
+td:first-child { font-weight: 600; }
+
+/* Levels */
+.niveaux { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.niveau { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.niveau.recommande { border-color: var(--accent); }
+.niveau h3 { font-size: 1.15rem; }
+.niveau ul { font-size: var(--t-sm); }
+.niveau .plus { color: var(--ok); } .niveau .moins { color: var(--risk); }
+
+/* Phases */
+.phases { display: flex; flex-direction: column; gap: 1.25rem; }
+.phase { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.phase-tete { display: grid; grid-template-columns: 3rem 1fr auto; gap: 0 1rem; padding: 1rem 1.1rem 0.85rem; border-bottom: 1px solid var(--line); align-items: start; }
+.phase-lettre { font-family: var(--f-display); font-weight: 700; font-size: 2.3rem; line-height: 0.9; color: var(--accent); }
+.phase-tete p { font-size: var(--t-sm); color: var(--muted); margin-top: 0.25rem; }
+.phase-quand { font-family: var(--f-mono); font-size: var(--t-xs); color: var(--muted); white-space: nowrap; padding-top: 0.3rem; }
+.etapes { list-style: none; padding: 0.9rem 1.1rem 1rem; counter-reset: etape; display: flex; flex-direction: column; gap: 1rem; }
+.etapes > li { display: grid; grid-template-columns: 1.7rem 1fr; gap: 0.65rem; counter-increment: etape; max-width: none; }
+.etapes > li::before { content: counter(etape); font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 500; width: 1.6rem; height: 1.6rem; border-radius: 50%; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); }
+.etapes .corps { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.etapes .corps > p { font-size: 0.9375rem; }
+.cmd { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.25rem 0.5rem; align-items: center; }
+.cmd code.ligne { background: var(--term); color: var(--term-ink); border-radius: 6px; padding: 0.45rem 0.7rem; font-size: 0.84rem; overflow-x: auto; white-space: pre; min-width: 0; }
+.cmd code.ligne::before { content: "$ "; opacity: 0.5; }
+.copy { font: inherit; font-size: var(--t-xs); font-weight: 500; cursor: pointer; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 5px; padding: 0.3rem 0.55rem; white-space: nowrap; }
+.copy:hover { border-color: var(--accent); color: var(--accent); }
+.attendu { font-size: var(--t-sm); } .attendu b { color: var(--ok); font-weight: 600; }
+
+pre { margin: 0; background: var(--inset); border-radius: 6px; padding: 0.9rem 1rem; font-family: var(--f-mono); font-size: 0.8125rem; line-height: 1.55; overflow-x: auto; }
+pre .c { color: var(--muted); }
+.links { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; font-size: var(--t-sm); }
+
+@media (max-width: 760px) {
+  h1 { font-size: 2.2rem; }
+  .chaine { grid-template-columns: 1fr 1fr; }
+  .niveaux { grid-template-columns: 1fr; }
+}
+@media (max-width: 480px) {
+  .chaine { grid-template-columns: 1fr; }
+  .phase-tete { grid-template-columns: 2.4rem 1fr; }
+  .phase-quand { grid-column: 2; padding-top: 0.4rem; }
+  .cmd { grid-template-columns: minmax(0, 1fr) auto; }
+  .cmd .chip { grid-column: 1 / -1; }
+}
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <span class="eyebrow">Projet robot d'accueil G1 · Votre partie</span>
+    <h1>Piste navigation</h1>
+    <p class="lede">Scanner un bâtiment, y placer les salles, y accompagner les visiteurs et contourner la foule. Ce que le robot sait déjà faire, ce qu'il faut ajouter, les logiciels de chaque étape, et comment chaque étape deviendra un bouton du logiciel de configuration.</p>
+    <p class="note">Le calendrier jour par jour reste sur la <a href="https://claude.ai/artifact/3sjPDb9CYcwJGrTZ8vgxNP">page du projet</a> (semaines 3 à 5). Cette page explique le fond : pourquoi, avec quoi, dans quel ordre.</p>
+  </header>
+
+  <nav class="navbar" aria-label="Sections">
+    <a href="#chaine">La chaîne</a>
+    <a href="#robot">Ce que le robot sait faire</a>
+    <a href="#niveaux">Deux niveaux</a>
+    <a href="#logiciels">Logiciels</a>
+    <a href="#etapes">Les étapes</a>
+    <a href="#logiciel-unique">Vers le logiciel unique</a>
+    <a href="#equipe">Avec l'équipe</a>
+  </nav>
+
+  <!-- La chaîne -->
+  <section class="section" id="chaine">
+    <div class="section-head">
+      <span class="eyebrow">Vue d'ensemble</span>
+      <h2>La chaîne en six étapes</h2>
+    </div>
+    <p>Chaque étape produit un fichier dont la suivante a besoin. Ces fichiers forment le « paquet de lieu » d'un bâtiment : changer de bâtiment revient à refaire la chaîne dans un nouveau dossier.</p>
+    <ol class="chaine">
+      <li>
+        <h3>Scanner</h3>
+        <p>Faire marcher le robot dans l'étage pendant qu'il construit sa carte 3D.</p>
+        <dl class="kv"><dt>Avec</dt><dd>Cartographie d'Unitree (1801, 1802)</dd><dt>Produit</dt><dd><code>cartes/rdc.pcd</code></dd></dl>
+      </li>
+      <li>
+        <h3>Carte 2D</h3>
+        <p>Couper le nuage 3D à hauteur du robot et le mettre à plat.</p>
+        <dl class="kv"><dt>Avec</dt><dd>Open3D, script Python</dd><dt>Produit</dt><dd><code>cartes/rdc.pgm</code>, <code>rdc.yaml</code></dd></dl>
+      </li>
+      <li>
+        <h3>Salles</h3>
+        <p>Amener le robot devant chaque porte et enregistrer sa position.</p>
+        <dl class="kv"><dt>Avec</dt><dd>Relocalisation d'Unitree (1804)</dd><dt>Produit</dt><dd><code>salles.yaml</code></dd></dl>
+      </li>
+      <li>
+        <h3>Itinéraires</h3>
+        <p>Décrire les couloirs comme un réseau de carrefours, pour avoir des chemins de secours.</p>
+        <dl class="kv"><dt>Avec</dt><dd>Graphe, algorithme A*</dd><dt>Produit</dt><dd><code>itineraires.yaml</code></dd></dl>
+      </li>
+      <li>
+        <h3>Accompagner</h3>
+        <p>Aller d'un point à une salle en suivant les itinéraires.</p>
+        <dl class="kv"><dt>Avec</dt><dd>Niveau 1 : navigation d'Unitree (1102). Niveau 2 : Nav2</dd><dt>Produit</dt><dd>le robot devant la porte</dd></dl>
+      </li>
+      <li>
+        <h3>Contourner la foule</h3>
+        <p>Ralentir, contourner, demander le passage, changer de couloir.</p>
+        <dl class="kv"><dt>Avec</dt><dd>Nav2 (MPPI, Collision Monitor), routeur</dd><dt>Produit</dt><dd>tableau de mesures</dd></dl>
+      </li>
+    </ol>
+  </section>
+
+  <!-- Ce que le robot sait faire -->
+  <section class="section" id="robot">
+    <div class="section-head">
+      <span class="eyebrow">Ce qui existe déjà</span>
+      <h2>Le service de cartographie et de navigation du G1</h2>
+    </div>
+    <p>Votre G1 contient un service d'Unitree, <code>slam_operate</code>, qui fait la cartographie, le repérage sur une carte et une navigation simple. On le commande depuis le PC avec le SDK Python d'Unitree (client « slam_operate », version 1.0.0.1), en envoyant un numéro de commande et un texte JSON. C'est lui qui tourne quand vous faites un scan 3D dans l'appli.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>N°</th><th>Rôle</th><th>Paramètres</th><th>Ce qu'on en fait</th></tr></thead>
+        <tbody>
+          <tr><td>1801</td><td>Commencer une cartographie</td><td class="mono">{"data": {"slam_type": "indoor"}}</td><td>Scanner un étage</td></tr>
+          <tr><td>1802</td><td>Terminer et enregistrer la carte</td><td class="mono">{"data": {"address": "…/test1.pcd"}}</td><td>Carte enregistrée sur le PC1 du robot</td></tr>
+          <tr><td>1804</td><td>Se repérer sur une carte</td><td class="mono">{"data": {"x", "y", "z", "q_x", "q_y", "q_z", "q_w", "address"}}</td><td>Dire au robot où il est au démarrage</td></tr>
+          <tr><td>1102</td><td>Aller à une position</td><td class="mono">{"data": {"targetPose": {x, y, z, q_x…q_w}, "mode": 1}}</td><td>Niveau 1 de l'accompagnement</td></tr>
+          <tr><td>1201 / 1202</td><td>Mettre en pause / reprendre</td><td class="mono">{"data": {}}</td><td>Attendre qu'un couloir se libère</td></tr>
+          <tr><td>1901</td><td>Arrêter le service</td><td class="mono">{"data": {}}</td><td>Fin de séance</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Pendant qu'il travaille, le robot publie sa position sur la carte (<code>/unitree/slam_relocation/odom</code>), le nuage de points (<code>/unitree/slam_relocation/points</code>) et l'avancement des tâches en JSON (<code>/slam_info</code>, <code>/slam_key_info</code>, avec <code>is_arrived</code> à l'arrivée). Tous ces sujets sont déjà visibles dans votre relevé du 22 octobre.</p>
+    <div class="alerte">
+      <h3>Limites rapportées, à vérifier sur votre robot</h3>
+      <p>Ces détails viennent d'une équipe qui a programmé un G1 en septembre 2026, pas d'Unitree directement :</p>
+      <ul>
+        <li>La navigation 1102 va <strong>en ligne droite</strong> vers le point visé et <strong>s'arrête devant un obstacle</strong> sans le contourner. Pas de réglage de vitesse.</li>
+        <li>Chaque déplacement doit faire <strong>moins de 8 à 10 m</strong>. Zone utile d'environ 45 m. Obstacles vus à partir de 50 cm de haut.</li>
+        <li>Il faut un micrologiciel <strong>1.5.3 ou plus récent</strong>, et les services <code>unitree_slam</code> et <code>lidar_driver</code> activés dans l'appli.</li>
+        <li>Ne pas utiliser la navigation de l'appli en même temps que les commandes du PC.</li>
+        <li>La carte enregistrée par 1802 reste sur le PC1 du robot, qu'on ne peut pas ouvrir. Pour en avoir une copie, on enregistre le nuage publié pendant la relocalisation.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- Deux niveaux -->
+  <section class="section" id="niveaux">
+    <div class="section-head">
+      <span class="eyebrow">Stratégie</span>
+      <h2>Deux niveaux de navigation</h2>
+    </div>
+    <p>La cartographie et le repérage d'Unitree servent dans les deux cas. Ce qui change, c'est qui décide du trajet et qui évite les gens.</p>
+    <div class="niveaux">
+      <div class="niveau">
+        <span class="chip lvl-2">semaine 4 · rapide</span>
+        <h3>Niveau 1 · Navigation d'Unitree, guidée par votre graphe</h3>
+        <ul>
+          <li>Votre routeur découpe le trajet en tronçons de moins de 8 m le long des couloirs, et envoie chaque tronçon avec 1102.</li>
+          <li class="plus">Marche vite : quelques jours de travail, utile pour une première démonstration.</li>
+          <li class="plus">Changement de couloir possible : si le robot reste arrêté, le routeur met en pause et prend un autre itinéraire.</li>
+          <li class="moins">Ne contourne pas une personne : il s'arrête devant elle.</li>
+        </ul>
+      </div>
+      <div class="niveau recommande">
+        <span class="chip lvl-1">semaines 4 et 5 · version finale</span>
+        <h3>Niveau 2 · Nav2, avec la position d'Unitree</h3>
+        <ul>
+          <li>Nav2 calcule le trajet sur votre carte 2D et commande la marche par le pont <code>/cmd_vel</code> → <code>/api/sport/request</code> (commande 7105).</li>
+          <li>La position vient de la relocalisation d'Unitree, les obstacles de son nuage de points.</li>
+          <li class="plus">Contourne les gens, ralentit près d'eux, vitesse réglable, zones interdites.</li>
+          <li class="moins">Plus long à régler : c'est le cœur de la semaine 5.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- Logiciels -->
+  <section class="section" id="logiciels">
+    <div class="section-head">
+      <span class="eyebrow">Boîte à outils</span>
+      <h2>Les logiciels de votre partie</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Logiciel</th><th>Rôle</th><th>État</th></tr></thead>
+        <tbody>
+          <tr><td>Service slam_operate d'Unitree</td><td>Scanner, se repérer, navigation simple</td><td><span class="chip lvl-1">dans le robot</span></td></tr>
+          <tr><td>unitree_sdk2_python</td><td>Envoyer les commandes 1801 à 1901 depuis le PC</td><td><span class="chip lvl-1">installé</span></td></tr>
+          <tr><td>ROS 2 Humble, rosbag2, RViz2</td><td>Lire les sujets du robot, enregistrer, visualiser</td><td><span class="chip lvl-1">installé</span></td></tr>
+          <tr><td>Open3D</td><td>Lire et nettoyer le nuage 3D, fabriquer la carte 2D</td><td><span class="chip lvl-1">installé</span></td></tr>
+          <tr><td>nav2_map_server</td><td>Charger et enregistrer les cartes 2D</td><td><span class="chip lvl-1">installé</span></td></tr>
+          <tr><td>Nav2 : Smac 2D, MPPI, Collision Monitor, Keepout</td><td>Trajets, évitement, sécurité, zones interdites</td><td><span class="chip lvl-1">installé</span></td></tr>
+          <tr><td>nav2_simple_commander</td><td>Envoyer des buts à Nav2 depuis Python</td><td><span class="chip lvl-1">installé</span></td></tr>
+          <tr><td>Gazebo Fortress, slam_toolbox</td><td>Tester trajets et foule en simulation</td><td><span class="chip lvl-1">installé</span></td></tr>
+          <tr><td>FAST-LIO2, pilote Livox</td><td>Cartographie de secours, si celle d'Unitree ne suffit pas</td><td><span class="chip lvl-1">installé</span></td></tr>
+          <tr><td>g1-slam</td><td>Commandes du service d'Unitree : scan-debut, scan-fin, relocaliser, aller</td><td><span class="chip lvl-3">à écrire</span></td></tr>
+          <tr><td>g1-carte-3d, g1-carte-2d</td><td>Copier la carte du robot, la mettre à plat</td><td><span class="chip lvl-3">à écrire</span></td></tr>
+          <tr><td>g1-salle</td><td>Enregistrer la position actuelle du robot comme salle</td><td><span class="chip lvl-3">à écrire</span></td></tr>
+          <tr><td>Routeur (g1_nav)</td><td>A* sur le graphe, tronçons, changement de couloir</td><td><span class="chip lvl-3">à écrire</span></td></tr>
+          <tr><td>Pont (g1_bridge)</td><td><code>/cmd_vel</code> → marche du robot, pour Nav2</td><td><span class="chip lvl-3">à écrire</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Claude peut écrire avec vous les outils « à écrire ». Le premier utile est <code>g1-slam</code> : il permettra de tout tester dès la prochaine séance avec le robot.</p>
+  </section>
+
+  <!-- Étapes -->
+  <section class="section" id="etapes">
+    <div class="section-head">
+      <span class="eyebrow">Mode d'emploi</span>
+      <h2>Les étapes, une par une</h2>
+    </div>
+    <p>Dans chaque terminal qui parle au robot : <code>source ~/robot-g1/setup/robot.sh</code> d'abord. Les commandes marquées « à créer » viendront avec les outils de la section précédente.</p>
+    <div class="phases">
+
+      <article class="phase">
+        <header class="phase-tete"><div class="phase-lettre">A</div><div><h3>Vérifications</h3><p>Une fois, avant le premier scan par le PC.</p></div><span class="phase-quand">avec le robot · 20 min</span></header>
+        <ol class="etapes">
+          <li><div class="corps"><strong>Version du micrologiciel</strong><p>Dans l'appli Unitree, réglages du robot : notez la version. Il faut 1.5.3 ou plus.</p></div></li>
+          <li><div class="corps"><strong>Services activés</strong><p>Dans l'appli, vérifiez que les services <code>unitree_slam</code> et <code>lidar_driver</code> sont en marche.</p></div></li>
+          <li><div class="corps"><strong>Écouter le service</strong>
+            <div class="cmd"><code class="ligne">ros2 topic echo /slam_info</code><button class="copy" type="button">Copier</button><span class="chip lvl-2">robot</span></div>
+            <p class="attendu"><b>Vous devez voir : </b>des messages JSON (type robot_data, pos_info, ctrl_info…). Notez-en un pour Claude.</p></div></li>
+        </ol>
+      </article>
+
+      <article class="phase">
+        <header class="phase-tete"><div class="phase-lettre">B</div><div><h3>Scanner l'étage</h3><p>La carte 3D, base de tout le reste.</p></div><span class="phase-quand">semaine 3 · robot</span></header>
+        <ol class="etapes">
+          <li><div class="corps"><strong>Préparer le parcours</strong><p>Sur le plan : une boucle qui passe devant chaque salle et revient au départ. Portes ouvertes, couloirs vides, moins de 15 minutes de scan par étage pour rester prudent.</p></div></li>
+          <li><div class="corps"><strong>Enregistrer pendant le scan</strong><p>Le scan se lance depuis l'appli (méthode connue) ou plus tard avec <code>g1-slam scan-debut</code>. Pendant ce temps, le PC garde une copie de tout.</p>
+            <div class="cmd"><code class="ligne">ros2 bag record -o ~/robot-g1/enregistrements/scan_rdc /unitree/slam_mapping/points /unitree/slam_mapping/odom /state_estimator/odom_pelvis /slam_info</code><button class="copy" type="button">Copier</button><span class="chip lvl-2">robot</span></div></div></li>
+          <li><div class="corps"><strong>Marcher</strong><p>À la télécommande, 0,3 m/s au maximum, virages larges, 2 s d'arrêt devant chaque porte, retour au point de départ. Puis fin du scan (appli, ou <code>g1-slam scan-fin --nom rdc</code>) et Ctrl + C sur l'enregistrement.</p></div></li>
+          <li><div class="corps"><strong>Copier la carte sur le PC</strong>
+            <div class="cmd"><code class="ligne">g1-carte-3d --lieu ~/robot-g1/lieux/mon-lycee --etage rdc</code><button class="copy" type="button">Copier</button><span class="chip lvl-3">à créer</span></div>
+            <p>L'outil assemble le nuage enregistré, ou celui publié pendant la relocalisation, en un fichier <code>cartes/rdc.pcd</code>.</p></div></li>
+          <li><div class="corps"><strong>La regarder</strong>
+            <div class="cmd"><code class="ligne">~/robot-g1/.venv-projet/bin/python -c "import open3d as o3d; o3d.visualization.draw_geometries([o3d.io.read_point_cloud('$HOME/robot-g1/lieux/mon-lycee/cartes/rdc.pcd')])"</code><button class="copy" type="button">Copier</button><span class="chip lvl-1">prête</span></div>
+            <p class="attendu"><b>Vous devez voir : </b>l'étage en 3D, murs droits, sans double paroi. Une double paroi veut dire que la carte a glissé : refaire le scan plus lentement.</p></div></li>
+        </ol>
+      </article>
+
+      <article class="phase">
+        <header class="phase-tete"><div class="phase-lettre">C</div><div><h3>Fabriquer la carte 2D</h3><p>La carte que Nav2 et le logiciel de configuration affichent.</p></div><span class="phase-quand">semaine 3 · PC</span></header>
+        <ol class="etapes">
+          <li><div class="corps"><strong>Mettre à plat</strong>
+            <div class="cmd"><code class="ligne">g1-carte-2d --lieu ~/robot-g1/lieux/mon-lycee --etage rdc</code><button class="copy" type="button">Copier</button><span class="chip lvl-3">à créer</span></div>
+            <p>Garde les points entre 0,1 et 1,5 m de haut (la taille du robot), puis les projette en image : noir = obstacle, blanc = libre, 5 cm par pixel. Produit <code>rdc.pgm</code> et <code>rdc.yaml</code>.</p></div></li>
+          <li><div class="corps"><strong>Nettoyer</strong><p>Effacer les personnes et objets restés sur la carte (GIMP, ou plus tard le pinceau du logiciel).</p></div></li>
+          <li><div class="corps"><strong>Zones interdites</strong><p>Dans une copie <code>rdc_interdit.pgm</code>, peindre en noir les vitres, escaliers, zones fragiles. Nav2 les évitera (filtre Keepout).</p></div></li>
+        </ol>
+      </article>
+
+      <article class="phase">
+        <header class="phase-tete"><div class="phase-lettre">D</div><div><h3>Placer les salles</h3><p>Le plus simple : emmener le robot devant chaque porte.</p></div><span class="phase-quand">semaine 3 · robot</span></header>
+        <ol class="etapes">
+          <li><div class="corps"><strong>Repérer le robot sur la carte</strong>
+            <div class="cmd"><code class="ligne">g1-slam relocaliser --carte rdc --x 0 --y 0 --cap 0</code><button class="copy" type="button">Copier</button><span class="chip lvl-3">à créer</span></div>
+            <p>Robot posé au point de départ du scan, tourné comme au départ. C'est la commande 1804.</p></div></li>
+          <li><div class="corps"><strong>Vérifier la position</strong>
+            <div class="cmd"><code class="ligne">ros2 topic echo /unitree/slam_relocation/odom --field pose.pose.position</code><button class="copy" type="button">Copier</button><span class="chip lvl-2">robot</span></div>
+            <p class="attendu"><b>Vous devez voir : </b>x et y proches de 0, qui changent quand le robot marche.</p></div></li>
+          <li><div class="corps"><strong>Enregistrer chaque salle</strong>
+            <div class="cmd"><code class="ligne">g1-salle ajouter "B204" --alias "labo de physique" --lieu ~/robot-g1/lieux/mon-lycee</code><button class="copy" type="button">Copier</button><span class="chip lvl-3">à créer</span></div>
+            <p>Amenez le robot à 1 m devant la porte, tourné vers elle, puis lancez la commande : elle lit la position et l'ajoute à <code>salles.yaml</code>. Faites de même pour le point d'accueil.</p></div></li>
+        </ol>
+      </article>
+
+      <article class="phase">
+        <header class="phase-tete"><div class="phase-lettre">E</div><div><h3>Décrire les itinéraires</h3><p>Le réseau des couloirs, pour choisir un chemin et en changer.</p></div><span class="phase-quand">semaine 4 · PC</span></header>
+        <ol class="etapes">
+          <li><div class="corps"><strong>Nœuds</strong><p>Un nœud à chaque carrefour, devant chaque porte, et tous les 6 à 8 m dans les longs couloirs (limite de 1102). Même méthode que pour les salles : <code>g1-salle ajouter</code> avec <code>--type noeud</code>, ou un clic sur la carte.</p></div></li>
+          <li><div class="corps"><strong>Couloirs</strong><p>Dans <code>itineraires.yaml</code>, une ligne par paire de nœuds reliés par un passage libre.</p></div></li>
+          <li><div class="corps"><strong>Le routeur</strong><p>Calcule le plus court chemin (A*) et sait ignorer un couloir marqué bloqué pendant 2 minutes.</p></div></li>
+        </ol>
+<pre>noeuds:
+  accueil: {x: 0.0,  y: 0.0}
+  c1:      {x: 7.5,  y: 0.2}   <span class="c"># carrefour</span>
+  b204:    {x: 12.4, y: -3.1}  <span class="c"># devant la porte</span>
+couloirs:
+  - [accueil, c1]
+  - [c1, b204]</pre>
+      </article>
+
+      <article class="phase">
+        <header class="phase-tete"><div class="phase-lettre">F</div><div><h3>Accompagner · niveau 1</h3><p>La navigation d'Unitree, tronçon par tronçon.</p></div><span class="phase-quand">semaine 4 · robot</span></header>
+        <ol class="etapes">
+          <li><div class="corps"><strong>Aller à une salle</strong>
+            <div class="cmd"><code class="ligne">g1-guide aller B204 --lieu ~/robot-g1/lieux/mon-lycee</code><button class="copy" type="button">Copier</button><span class="chip lvl-3">à créer</span></div>
+            <p>Le routeur calcule l'itinéraire, envoie chaque tronçon avec 1102, attend <code>is_arrived</code> sur <code>/slam_key_info</code>, puis passe au suivant.</p></div></li>
+          <li><div class="corps"><strong>Quand le robot s'arrête</strong><p>Arrêté plus de 3 s sans être arrivé : phrase « Pardon, je peux passer ? ». Plus de 8 s : pause (1201), couloir marqué bloqué, nouvel itinéraire.</p></div></li>
+          <li><div class="corps"><strong>Mesurer</strong><p>Trois salles, dix allers-retours chacune : réussite, durée, nombre d'arrêts. Ce tableau servira de référence pour le niveau 2.</p></div></li>
+        </ol>
+      </article>
+
+      <article class="phase">
+        <header class="phase-tete"><div class="phase-lettre">G</div><div><h3>Accompagner et contourner la foule · niveau 2</h3><p>Nav2 prend la main sur les trajets.</p></div><span class="phase-quand">semaines 4 et 5</span></header>
+        <ol class="etapes">
+          <li><div class="corps"><strong>Le pont vers la marche</strong><p>Nœud <code>g1_bridge</code> : <code>/cmd_vel</code> → <code>/api/sport/request</code>, commande 7105, vitesses limitées, arrêt si plus de commande depuis 0,3 s (journée du 27 octobre).</p></div></li>
+          <li><div class="corps"><strong>La position pour Nav2</strong><p>Petit nœud qui transforme <code>/unitree/slam_relocation/odom</code> en repères <code>map</code> → <code>base_link</code>, et le nuage <code>/unitree/slam_relocation/points</code> en obstacles pour la carte des coûts.</p></div></li>
+          <li><div class="corps"><strong>Réglages Nav2</strong><p>Fichier <code>config/nav2_g1.yaml</code> : emprise de 0,35 m, 0,3 puis 0,5 m/s, planificateur Smac 2D, contrôleur MPPI, filtre Keepout sur <code>rdc_interdit.pgm</code>, Collision Monitor (ralentir sous 1 m, arrêt sous 0,4 m).</p>
+            <div class="cmd"><code class="ligne">ros2 launch nav2_bringup navigation_launch.py params_file:=$HOME/robot-g1/config/nav2_g1.yaml</code><button class="copy" type="button">Copier</button><span class="chip lvl-3">à créer</span></div></div></li>
+          <li><div class="corps"><strong>Garder les itinéraires</strong><p>Le même routeur envoie la suite de nœuds à Nav2 (goThroughPoses de nav2_simple_commander). Nav2 contourne les personnes entre deux nœuds ; le routeur change de couloir si Nav2 n'avance plus.</p></div></li>
+          <li><div class="corps"><strong>Foule en simulation</strong><p>Monde Gazebo généré depuis <code>rdc.pgm</code>, avec 5 à 10 piétons (acteurs). Banc de 50 trajets : réussite, temps, arrêts, distance minimale aux personnes. Une seule modification de réglage à la fois.</p></div></li>
+          <li><div class="corps"><strong>Foule en vrai</strong><p>5 puis 10 volontaires qui marchent, puis trois personnes en travers d'un couloir. Comparez au tableau du niveau 1.</p></div></li>
+        </ol>
+      </article>
+    </div>
+  </section>
+
+  <!-- Vers le logiciel unique -->
+  <section class="section" id="logiciel-unique">
+    <div class="section-head">
+      <span class="eyebrow">Intégration</span>
+      <h2>Vers le logiciel unique</h2>
+    </div>
+    <p>Pour que tout se réduise à un seul logiciel, chaque étape est d'abord une commande qui lit et écrit dans le dossier d'un lieu. Le logiciel de configuration ne fera que présenter ces commandes sous forme d'écrans et de boutons. Une seule règle : chaque outil prend <code>--lieu</code>, et rien n'est écrit ailleurs.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Écran du logiciel</th><th>Bouton</th><th>Commande appelée</th><th>Fichier</th></tr></thead>
+        <tbody>
+          <tr><td>Scan</td><td>Démarrer / Terminer</td><td class="mono">g1-slam scan-debut · scan-fin --nom rdc</td><td class="mono">cartes/rdc.pcd</td></tr>
+          <tr><td>Carte</td><td>Fabriquer la carte</td><td class="mono">g1-carte-2d --etage rdc</td><td class="mono">cartes/rdc.pgm, .yaml</td></tr>
+          <tr><td>Zones</td><td>Pinceau</td><td>édition d'image</td><td class="mono">cartes/rdc_interdit.pgm</td></tr>
+          <tr><td>Salles</td><td>Enregistrer ici</td><td class="mono">g1-salle ajouter NOM</td><td class="mono">salles.yaml</td></tr>
+          <tr><td>Itinéraires</td><td>Relier deux nœuds</td><td>édition du graphe</td><td class="mono">itineraires.yaml</td></tr>
+          <tr><td>Pilotage</td><td>Y aller · Arrêt</td><td class="mono">g1-guide aller NOM · g1-guide stop</td><td>aucun</td></tr>
+        </tbody>
+      </table>
+    </div>
+<pre>lieux/mon-lycee/
+├── lieu.yaml            <span class="c"># nom, étages, point d'accueil, carte Unitree (test1.pcd…)</span>
+├── cartes/rdc.pcd       <span class="c"># B · Scanner</span>
+├── cartes/rdc.pgm .yaml <span class="c"># C · Carte 2D</span>
+├── cartes/rdc_interdit.pgm
+├── salles.yaml          <span class="c"># D · Salles</span>
+└── itineraires.yaml     <span class="c"># E · Itinéraires</span></pre>
+  </section>
+
+  <!-- Avec l'équipe -->
+  <section class="section" id="equipe">
+    <div class="section-head">
+      <span class="eyebrow">Avec le reste de l'équipe</span>
+      <h2>Ce que votre partie offre aux autres</h2>
+    </div>
+    <p>Le dialogue (qui comprend « je cherche la B204 ») et le comportement d'accueil n'ont pas besoin de savoir comment le robot marche. Mettez-vous d'accord tôt sur deux sujets ROS 2 : chacun peut alors avancer de son côté et tester avec de faux messages.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Sujet</th><th>Sens</th><th>Contenu</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">/guide/aller</td><td>les autres → vous</td><td>identifiant de salle (std_msgs/String), par exemple « b204 », ou « accueil » pour rentrer</td></tr>
+          <tr><td class="mono">/guide/etat</td><td>vous → les autres</td><td>JSON (std_msgs/String) : <code>{"etat": "en_route" | "bloque" | "detour" | "arrive" | "echec", "salle": "b204", "reste_m": 12.5}</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Exemple : le comportement d'accueil publie « b204 » sur <code>/guide/aller</code>, dit « Suivez-moi », puis annonce l'arrivée quand <code>/guide/etat</code> passe à « arrive ».</p>
+  </section>
+
+  <section class="section" id="sources">
+    <div class="section-head">
+      <span class="eyebrow">Sources</span>
+      <h2>D'où viennent ces informations</h2>
+    </div>
+    <div class="links">
+      <a href="https://github.com/airlayout/G1_Hackason/pull/17" target="_blank" rel="noopener">G1_Hackason : client slam_operate et limites observées</a>
+      <a href="https://unidocs.2vzdtw8.duckdns.org/doc/home_en_G1_developer_slam_navigation_services_interface.md" target="_blank" rel="noopener">Copie de la doc Unitree : SLAM and Navigation Services Interface</a>
+      <a href="https://github.com/automaticdai/unitree-g1-navigation" target="_blank" rel="noopener">unitree-g1-navigation : Nav2 sur G1</a>
+      <a href="https://docs.nav2.org" target="_blank" rel="noopener">Documentation Nav2</a>
+    </div>
+    <p class="note">Les numéros de commande et les noms de champs se recoupent entre ces sources, mais aucune n'est la documentation officielle sur le site d'Unitree. On les vérifiera un par un avec g1-slam, en commençant par 1801 et 1802.</p>
+  </section>
+</div>
+
+<script>
+document.addEventListener("click", function (ev) {
+  var b = ev.target.closest(".copy");
+  if (!b) return;
+  var code = b.parentNode.querySelector("code");
+  function selectionner() {
+    var r = document.createRange();
+    r.selectNodeContents(code);
+    var s = window.getSelection();
+    s.removeAllRanges(); s.addRange(r);
+    b.textContent = "Ctrl+C";
+  }
+  try {
+    navigator.clipboard.writeText(code.textContent).then(function () { b.textContent = "Copié"; }, selectionner);
+  } catch (e) { selectionner(); }
+  setTimeout(function () { b.textContent = "Copier"; }, 1800);
+});
+</script>

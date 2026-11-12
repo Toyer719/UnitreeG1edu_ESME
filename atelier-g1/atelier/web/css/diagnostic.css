@@ -1,0 +1,192 @@
+/* Vague 6 (section 13.2 du plan) : « Vérifier le robot », styles de js/coque/diagnostic.js (agent Diagnostic).
+   Seulement les jetons de css/theme.css, aucune couleur en dur. Trois endroits : le bouton et le résumé sous les
+   vérifications de l'accueil (Robot réel), le bouton de la barre d'outils (Réel et répétition), la fenêtre du
+   diagnostic, posée sous la barre d'outils (elle ne couvre jamais l'ARRÊT : z-index sous les confirmations, 5000,
+   et sous l'ARRÊT, 6000). Couleurs des états : ok --succes, attention --avertissement, probleme --danger (fond et
+   bord ; texte --danger-texte), inconnu --texte-doux. */
+
+/* ------------------------------------------------ pastilles communes */
+.diagnostic-pastille, .diagnostic-point {
+  flex: 0 0 auto; width: 12px; height: 12px; border-radius: 50%; background: var(--texte-doux);
+}
+.diagnostic-pastille[data-etat="ok"], .diagnostic-barre[data-etat="ok"] .diagnostic-point {
+  background: var(--succes); box-shadow: 0 0 8px var(--succes);
+}
+.diagnostic-pastille[data-etat="attention"], .diagnostic-barre[data-etat="attention"] .diagnostic-point {
+  background: var(--avertissement);
+}
+.diagnostic-pastille[data-etat="probleme"], .diagnostic-barre[data-etat="probleme"] .diagnostic-point {
+  background: var(--danger);
+}
+.diagnostic-pastille[data-etat="inconnu"], .diagnostic-barre[data-etat="inconnu"] .diagnostic-point {
+  background: var(--texte-doux);
+}
+.diagnostic-pastille[data-etat="aucun"], .diagnostic-barre[data-etat="aucun"] .diagnostic-point {
+  background: transparent; border: 2px solid var(--bord-fort);
+}
+.diagnostic-pastille[data-etat="en-cours"], .diagnostic-pastille[data-etat="attente"],
+.diagnostic-barre[data-etat="en-cours"] .diagnostic-point {
+  background: var(--accent-actif); animation: diagnostic-pulsation 1s ease-in-out infinite alternate;
+}
+@keyframes diagnostic-pulsation { from { opacity: 0.35; } to { opacity: 1; } }
+
+/* ------------------------------------------------ accueil (sous les vérifications de Robot réel) */
+.zone-diagnostic-accueil:empty { display: none; }
+.diagnostic-accueil {
+  display: flex; flex-direction: column; gap: 8px; margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--bord);
+}
+.diagnostic-verifier { align-self: flex-start; min-height: var(--cible); padding: 0 20px; }
+.diagnostic-resume {
+  display: flex; align-items: flex-start; gap: 10px; width: 100%; padding: 8px 10px; text-align: left;
+  border: 1px solid transparent; border-radius: var(--rayon-petit); background: transparent; color: var(--texte);
+  cursor: pointer;
+}
+.diagnostic-resume .diagnostic-pastille { margin-top: 4px; }
+.diagnostic-resume:hover:not(:disabled) { background: var(--survol); border-color: var(--bord); }
+.diagnostic-resume:disabled { cursor: default; }
+.diagnostic-resume-textes { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.diagnostic-resume-phrase { font-size: 0.88rem; overflow-wrap: anywhere; }
+.diagnostic-resume[data-etat="aucun"] .diagnostic-resume-phrase,
+.diagnostic-resume[data-etat="en-cours"] .diagnostic-resume-phrase { color: var(--texte-doux); }
+.diagnostic-resume-quand { font-size: 0.78rem; color: var(--accent-texte); }
+.diagnostic-resume-quand:empty { display: none; }
+
+/* ------------------------------------------------ barre d'outils */
+.zone-diagnostic { display: inline-flex; align-items: center; flex: 0 0 auto; }
+.diagnostic-barre { position: relative; gap: 6px; padding: 0 10px; white-space: nowrap; }
+.diagnostic-barre .diagnostic-point { width: 8px; height: 8px; }
+/* la barre d'outils est pleine à 1366 px (lieu, étage, états, séance) : l'icône et sa pastille suffisent (infobulle
+   complète, et « Vérifier le robot » écrit en entier dans Naviguer) ; le libellé revient sur un grand écran (à partir
+   de 1 700 px depuis les corrections de la vague 6 ; 1 800 px à l'assemblage) */
+.diagnostic-barre .bouton-barre-texte { display: none; }
+@media (min-width: 1700px) {
+  .diagnostic-barre .bouton-barre-texte { display: inline; }
+}
+.diagnostic-barre[data-etat="probleme"] { color: var(--texte); }
+
+/* ------------------------------------------------ la fenêtre du diagnostic */
+.diagnostic-fenetre {
+  position: fixed; z-index: 4000; top: calc(var(--h-barre-outils) + 10px); right: 12px;
+  width: min(560px, calc(100% - 24px)); max-height: calc(100% - var(--h-barre-outils) - 22px);
+  display: flex; flex-direction: column; min-height: 0; overflow: hidden;
+  background: var(--surface); color: var(--texte); border: 1px solid var(--bord); border-radius: var(--rayon);
+  box-shadow: var(--ombre-forte); outline: none;
+}
+/* ouverte depuis l'accueil : elle laisse voir la rangée « Ouvrir », collée en bas (corrections de la vague 6) */
+.diagnostic-fenetre.sur-accueil { max-height: calc(100% - var(--h-barre-outils) - 22px - 96px); }
+.diagnostic-fenetre:focus-visible { box-shadow: var(--ombre-forte), 0 0 0 2px var(--accent-actif); }
+.diagnostic-entete {
+  display: flex; align-items: center; gap: 12px; padding: 12px 12px 10px 16px; flex: 0 0 auto;
+  border-bottom: 1px solid var(--bord);
+}
+.diagnostic-icone {
+  display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex: 0 0 auto;
+  border-radius: 50%; background: var(--accent-doux); color: var(--accent-texte);
+}
+.diagnostic-titres { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+.diagnostic-titre-fenetre { margin: 0; font-size: 1.1rem; }
+.diagnostic-sous-titre { font-size: 0.82rem; color: var(--mode-reel); font-weight: 650; letter-spacing: 0.02em; }
+.diagnostic-fermer { flex: 0 0 auto; }
+
+/* le bandeau : l'état global et la chose la plus importante à faire */
+.diagnostic-bandeau {
+  display: flex; align-items: flex-start; gap: 12px; margin: 12px 14px 4px; padding: 12px 14px; flex: 0 0 auto;
+  border-radius: var(--rayon-petit); background: var(--surface-2); border-left: 4px solid var(--texte-doux);
+}
+.diagnostic-bandeau .diagnostic-pastille { width: 16px; height: 16px; margin-top: 2px; }
+.diagnostic-bandeau[data-etat="ok"] { border-left-color: var(--succes); }
+.diagnostic-bandeau[data-etat="attention"] { border-left-color: var(--avertissement); }
+.diagnostic-bandeau[data-etat="probleme"] { border-left-color: var(--danger); }
+.diagnostic-bandeau[data-etat="attente"] { border-left-color: var(--accent-actif); }
+.diagnostic-bandeau-textes { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.diagnostic-bandeau-titre { font-size: 1.02rem; }
+.diagnostic-bandeau-message { margin: 0; font-size: 0.9rem; color: var(--texte); overflow-wrap: anywhere; }
+.diagnostic-compteurs { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.diagnostic-compteurs:empty { display: none; }
+.diagnostic-compteur {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: var(--rayon-pilule);
+  background: var(--surface-3); font-size: 0.78rem; font-weight: 650; color: var(--texte-doux);
+}
+.diagnostic-compteur::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--texte-doux); }
+.diagnostic-compteur[data-etat="ok"]::before { background: var(--succes); }
+.diagnostic-compteur[data-etat="attention"]::before { background: var(--avertissement); }
+.diagnostic-compteur[data-etat="probleme"]::before { background: var(--danger); }
+
+/* le retour d'une action, et l'attente */
+.diagnostic-retour {
+  margin: 6px 14px 0; padding: 8px 12px; border-radius: var(--rayon-petit); font-size: 0.88rem; flex: 0 0 auto;
+  background: var(--surface-3);
+}
+.diagnostic-retour[data-genre="succes"] { color: var(--succes); font-weight: 600; }
+.diagnostic-retour[data-genre="erreur"] { color: var(--danger-texte); font-weight: 600; }
+.diagnostic-attente {
+  display: flex; align-items: center; gap: 10px; margin: 8px 16px 0; color: var(--texte-doux); font-size: 0.88rem;
+  flex: 0 0 auto;
+}
+.diagnostic-roue {
+  width: 18px; height: 18px; flex: 0 0 auto; border-radius: 50%;
+  border: 3px solid var(--bord); border-top-color: var(--accent-actif); animation: diagnostic-roue 0.8s linear infinite;
+}
+@keyframes diagnostic-roue { to { transform: rotate(360deg); } }
+.diagnostic-fenetre[data-occupe="oui"] .diagnostic-liste { opacity: 0.55; }
+
+/* la liste, par groupe ; elle défile seule */
+.diagnostic-corps {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px 14px 12px;
+  margin-top: 8px; border-top: 1px solid var(--bord);
+}
+.diagnostic-groupe { margin-top: 10px; }
+.diagnostic-groupe-titre {
+  margin: 0 0 6px 2px; font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--texte-doux);
+}
+.diagnostic-liste { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.diagnostic-ligne {
+  display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 0 12px; align-items: start;
+  padding: 8px 10px; border-radius: var(--rayon-petit); border-left: 3px solid transparent;
+}
+.diagnostic-ligne .diagnostic-pastille { margin-top: 4px; }
+.diagnostic-ligne[data-etat="attention"] { background: var(--surface-2); border-left-color: var(--avertissement); }
+.diagnostic-ligne[data-etat="probleme"] { background: var(--surface-2); border-left-color: var(--danger); }
+.diagnostic-ligne[data-etat="inconnu"] { border-left-color: var(--bord-fort); }
+.diagnostic-textes { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.diagnostic-ligne-haut { display: flex; align-items: baseline; gap: 10px; }
+.diagnostic-titre { font-weight: 650; font-size: 0.93rem; flex: 1 1 auto; min-width: 0; }
+.diagnostic-etiquette { flex: 0 0 auto; font-size: 0.74rem; font-weight: 750; letter-spacing: 0.03em; color: var(--texte-doux); }
+.diagnostic-etiquette[data-etat="ok"] { color: var(--succes); }
+.diagnostic-etiquette[data-etat="attention"] { color: var(--avertissement); }
+.diagnostic-etiquette[data-etat="probleme"] { color: var(--danger-texte); }
+.diagnostic-detail { margin: 0; font-size: 0.86rem; color: var(--texte-doux); overflow-wrap: anywhere; }
+.diagnostic-ligne:not([data-etat="ok"]) .diagnostic-detail { color: var(--texte); }
+.diagnostic-conseil {
+  display: flex; align-items: flex-start; gap: 4px; margin: 2px 0 0; font-size: 0.86rem; font-weight: 500;
+  color: var(--accent-texte); overflow-wrap: anywhere;
+}
+.diagnostic-conseil .icone { margin-top: 2px; }
+.diagnostic-action {
+  align-self: flex-start; margin-top: 6px; min-height: 36px; white-space: normal; text-align: left; line-height: 1.2;
+  padding: 6px 14px;
+}
+.diagnostic-ignorees { margin-top: 14px; color: var(--texte-doux); font-size: 0.84rem; }
+.diagnostic-ignorees > summary { cursor: pointer; min-height: 30px; display: flex; align-items: center; font-weight: 650; }
+.diagnostic-ignorees-liste { list-style: none; margin: 4px 0 0; padding: 0 0 0 4px; display: flex; flex-direction: column; gap: 3px; }
+.diagnostic-ignorees-liste li { display: flex; flex-wrap: wrap; gap: 0 6px; }
+.diagnostic-ignoree-titre { color: var(--texte); }
+.diagnostic-ignoree-raison::before { content: "· "; }
+
+/* le pied : l'heure, et « Vérifier à nouveau » */
+.diagnostic-pied {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px 12px;
+  border-top: 1px solid var(--bord); flex: 0 0 auto;
+}
+.diagnostic-duree { font-size: 0.8rem; color: var(--texte-doux); min-width: 0; }
+.diagnostic-reverifier { flex: 0 0 auto; }
+
+/* tablette et téléphone */
+@media (max-width: 640px) {
+  .diagnostic-fenetre { right: 8px; width: calc(100% - 16px); }
+  .diagnostic-pied { flex-wrap: wrap; }
+}
+@media (pointer: coarse) {
+  .diagnostic-action, .diagnostic-reverifier { min-height: var(--cible); }
+}

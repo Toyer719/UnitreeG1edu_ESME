@@ -1,0 +1,57 @@
+/* Le point principal du lieu, l'accueil (vague 4, section 11.2 du plan) : une étoile ambre au centre de la
+   flèche de sa salle, un badge « principal », une flèche plus longue à glisser (Placer), un cercle « posez le
+   robot ici » (Naviguer, répétition et robot) et le départ du robot qui lui est lié (Dessiner).
+   Vague 5 : couleurs des jetons du thème (--repere-accueil), lisibles en sombre comme en clair. */
+
+/* icône : la flèche de la salle, cerclée d'ambre, et l'étoile par-dessus (elle ne tourne pas) */
+.salle.principal { position: relative; }
+.salle.principal .icone-fleche {
+  width: 30px; height: 30px; border-width: 3px; border-color: var(--repere-accueil); background: var(--surface);
+  box-shadow: 0 0 0 2px var(--fond), 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+.salle.principal .icone-fleche::after { border-left-color: var(--repere-accueil); }
+.salle.principal.choisi .icone-fleche { border-color: var(--accent-texte); background: var(--accent-actif); }
+.salle.principal.choisi .icone-fleche::after { border-left-color: var(--accent-texte); }
+.etoile-principal {
+  position: absolute; left: 0; top: 0; width: 34px; height: 34px; line-height: 34px; text-align: center;
+  font-size: 16px; color: var(--repere-accueil); pointer-events: none;
+}
+.salle.principal.choisi .etoile-principal { color: var(--sur-accent); }
+
+/* badge « principal » : sur la carte (à côté du nom), dans les listes et les titres */
+.badge-principal {
+  display: inline-block; padding: 0 7px; border-radius: 999px; font-size: 0.72rem; font-weight: 700;
+  line-height: 1.5; vertical-align: middle; letter-spacing: 0.02em;
+  background: var(--repere-accueil); color: var(--vue-fond);
+}
+.panneau-titre .badge-principal { font-size: 0.7rem; }
+.note-principal { border-left: 3px solid var(--repere-accueil); padding-left: 8px; }
+.note-sans-principal { border-left: 3px solid var(--danger); padding-left: 8px; color: var(--danger-texte); }
+.bouton-faire-principal { border-color: var(--repere-accueil); color: var(--texte); background: transparent; }
+.bouton-faire-principal:hover:not(:disabled) { border-color: var(--repere-accueil); background: var(--survol); }
+
+/* la flèche de l'accueil, que l'on glisse pour la tourner */
+.poignee-principal { background: var(--repere-accueil); box-shadow: 0 0 0 1px var(--repere-accueil); }
+.fleche-principal { stroke: var(--repere-accueil); stroke-width: 3; stroke-dasharray: none; }
+
+/* Naviguer (répétition et robot) : là où poser le robot */
+.marque-principal {
+  fill: var(--repere-accueil); fill-opacity: 0.15; stroke: var(--repere-accueil); stroke-width: 3; stroke-dasharray: 6 4;
+}
+
+/* Dessiner : le départ du robot, lié à l'accueil */
+.robot.principal { stroke: var(--repere-accueil); stroke-width: 3; }
+.robot-cap.principal { stroke: var(--repere-accueil); }
+.depart-principal { font-weight: 600; }
+.robot.principal.choisi { stroke: var(--accent-texte); }
+
+/* listes de points (panneau de Placer) */
+.liste-points { display: flex; flex-direction: column; gap: 4px; }
+.ligne-point {
+  display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 4px 12px; border: 1px solid transparent;
+  border-radius: 12px; background: var(--surface-3); color: var(--texte); cursor: pointer; text-align: left;
+}
+.ligne-point:hover { border-color: var(--bord-fort); }
+.ligne-point .etoile, .liste-salles .etoile { color: var(--accueil-texte); }
+.ligne-accueil { border-color: var(--repere-accueil); }
+.liste-salles li.choisie { box-shadow: 0 0 0 2px var(--accent-actif); }

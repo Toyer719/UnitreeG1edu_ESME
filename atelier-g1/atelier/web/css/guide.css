@@ -1,0 +1,22 @@
+/* Styles du panneau « Comportement du guide » (vague 4, section 11 du plan ; js/panneaux/guide.js), dans la
+   section « Visite guidée » du panneau Simuler / Naviguer (vague 5). Chargée après atelier.css et scan.css.
+   Aucune hauteur fixe : c'est le panneau de tâches qui défile. */
+
+.panneau-comportement { flex: 0 0 auto; }
+.section-comportement > summary, .section-passants > summary { font-weight: 650; }
+.section-comportement .panneau-comportement > .panneau-titre:first-child { display: none; }
+.comportement-etat { font-weight: 600; margin: 2px 0 4px; }
+.comportement-visiteur, .comportement-retour { color: var(--texte-doux); font-size: 0.92rem; min-height: 1.2em; }
+.comportement-attente_visiteur, .comportement-attente_passage, .comportement-bloque { color: var(--avertissement); }
+.comportement-perdu, .comportement-echec { color: var(--danger-texte); }
+.comportement-arrive, .comportement-retour { color: var(--succes); }
+.comportement-accompagner { margin: 8px 0; }
+.comportement-modes { display: flex; flex-wrap: wrap; gap: 0; }
+.panneau-comportement details { margin-top: 10px; }
+.panneau-comportement summary { cursor: pointer; font-weight: 600; min-height: 32px; }
+.liste-evenements { list-style: none; margin: 6px 0 0; padding: 0; }
+.evenement { display: flex; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--bord); font-size: 0.92rem; }
+.evenement-heure { color: var(--texte-doux); font-variant-numeric: tabular-nums; min-width: 64px; }
+.evenement-perdu .evenement-texte, .evenement-echec .evenement-texte, .evenement-visiteur_perdu .evenement-texte {
+  color: var(--danger-texte);
+}

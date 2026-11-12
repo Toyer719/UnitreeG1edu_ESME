@@ -1,0 +1,23 @@
+// La boîte noire : d'une séance à son rapport (chapitre 12)
+digraph boite_noire {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.3, ranksep=0.28, newrank=true];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.10,0.05"];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  ouvrir [label="On ouvre l'espace en Réel (robot ou répétition)\n→ une séance s'ouvre seule (badge « Séance »)", fillcolor="#EFEFEF", color="#7F7F7F"];
+  debut [label="À l'ouverture : le dossier journaux/seances/<date>/,\nseance.json, la copie du lieu, le diagnostic du début,\nle journal du serveur, l'enregistreur (g1-seance enregistrer)"];
+  actions [label="actions.jsonl\nchaque demande qui change\nquelque chose : ARRÊT, Bloquer,\nY aller, Repérer, démo…"];
+  bag [label="bag/ (rosbag2)\nguide, pont, repérage, ordres 7105,\nodométrie à 10 Hz, batterie, démo,\nvoix, /rosout ; jamais de nuage\nni d'image ni de son"];
+  jetson [label="journaux/jetson/\nle journal du conteneur, gardé\navant chaque « Arrêter »\net à la fin"];
+  garde [label="garde-fous : bag de 1 Go au plus,\n2 Go libres au moins sur le disque\n(sinon l'enregistrement s'arrête\nproprement ; la séance continue)", fillcolor="#FFF6D5", color="#BF9000"];
+  fin [label="« Terminer la séance » (ou arrêt de l'Atelier)\njournal du Jetson, enregistreur arrêté (SIGINT),\nfin des journaux, manifeste fermé", fillcolor="#EFEFEF", color="#7F7F7F"];
+  rapport [label="Le rapport, en moins d'une minute : rapport.html, .md, .json,\ntrajets.png (la carte et chaque trajet) ; « À regarder en premier » :\nmouvement sans demande, robot muet, arrêts d'urgence…", fillcolor="#E2F0D9", color="#548235"];
+  zip [label="g1-seance exporter derniere\n→ un .zip à donner à Claude", fillcolor="#E2F0D9", color="#548235"];
+
+  ouvrir -> debut;
+  debut -> actions; debut -> bag; debut -> jetson;
+  bag -> garde [arrowhead=none, style=dotted];
+  actions -> fin; bag -> fin; jetson -> fin;
+  fin -> rapport -> zip;
+  {rank=same; actions; bag; jetson}
+}

@@ -1,0 +1,26 @@
+// Le pilotage : HTTP et WebSocket jusqu'au conteneur (chapitre 8)
+digraph pilotage {
+  graph [fontname="DejaVu Sans", fontsize=10.5, rankdir=TB, nodesep=0.4, ranksep=0.3, newrank=true];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=box, style="rounded,filled", fillcolor="#E3ECF7", color="#2F5597", margin="0.10,0.05"];
+  edge  [fontname="DejaVu Sans", fontsize=9, color="#4A4A4A", arrowsize=0.7];
+
+  page [label="Navigateur : Réel › Piloter\njoysticks, postures, gestes, voix,\nlumière, danses, chorégraphies"];
+  atelier [label="Serveur de l'Atelier (PC)\n/api/pilotage/* et /ws/pilotage :\nil relaie, il n'invente aucun ordre"];
+  noeud [label="nœud pilotage (g1_pilotage)\ndans le conteneur du Jetson,\nport 8010, jeton « X-Jeton »", fillcolor="#E2F0D9", color="#548235"];
+  regles [label="ses règles : permis et interdits,\nconfirmations (portique, zone libre),\nhomme mort 0,5 s, plafonds,\nvitesse minimale, un seul maître", fillcolor="#FBE3E1", color="#C0392B"];
+  sujets [label="/api/sport/request, /api/arm/request,\n/api/voice/request, /arm_sdk", style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+  robot [label="PC1 d'Unitree : postures, marche,\nbras, voix, LED, danses", fillcolor="#FDEBD9", color="#C55A11"];
+  maitre [label="/mouvement/maitre\n« guide » ou « pilotage »", style="filled", fillcolor="#F2F2F2", color="#7F7F7F"];
+  autres [label="guide et pont : le pilotage a la main,\nle pont ignore Nav2, le guide attend"];
+
+  page -> atelier [label=" HTTP + WebSocket", dir=both];
+  atelier -> noeud [label=" HTTP + WebSocket (Wi-Fi ou câble)\n G1_PILOTAGE_URL", dir=both];
+  noeud -> regles [arrowhead=none, style=dotted];
+  noeud -> sujets [label=" ROS 2 (réseau interne)"];
+  sujets -> robot;
+  noeud -> maitre [label=" publie"];
+  maitre -> autres;
+  {rank=same; noeud; regles}
+  {rank=same; sujets; maitre}
+  {rank=same; robot; autres}
+}

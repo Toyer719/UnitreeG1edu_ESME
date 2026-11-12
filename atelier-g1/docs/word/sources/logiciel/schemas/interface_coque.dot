@@ -1,0 +1,16 @@
+// L'espace de travail de l'Atelier (chapitre 11)
+digraph interface_coque {
+  graph [fontname="DejaVu Sans", fontsize=10, margin=0];
+  node  [fontname="DejaVu Sans", fontsize=10, shape=plaintext];
+  coque [label=<
+  <TABLE BORDER="1" CELLBORDER="1" CELLSPACING="0" CELLPADDING="6" COLOR="#2E2E3D">
+    <TR><TD COLSPAN="3" BGCOLOR="#2E2E3D" ALIGN="LEFT"><FONT COLOR="#FFFFFF">⌂ Atelier G1 │ Lieu ▾ › Étage ▾ │ <B>SIMULATION / RÉEL / RÉPÉTITION</B> │ ↶ ↷ │ Enregistrer │ état │ ◐ ⚙ │ </FONT><FONT COLOR="#FFFFFF"><B>  ARRÊT  </B></FONT></TD></TR>
+    <TR><TD COLSPAN="3" BGCOLOR="#3A3A4D" ALIGN="LEFT"><FONT COLOR="#FFFFFF">Ruban : onglets du mode (Dessiner, Placer, Simuler, Équipe │ Scanner, Placer, Naviguer, Piloter, Équipe)<BR ALIGN="LEFT"/>grosses icônes et libellés courts ; menu ⚙ Avancé pour ce qui est rare<BR ALIGN="LEFT"/></FONT></TD></TR>
+    <TR>
+      <TD BGCOLOR="#201F2D" WIDTH="120" HEIGHT="190" VALIGN="TOP" ALIGN="LEFT"><FONT COLOR="#FFFFFF">Arbre du lieu<BR ALIGN="LEFT"/>▸ Étage<BR ALIGN="LEFT"/>  Carte, Monde<BR ALIGN="LEFT"/>  ★ Accueil, salles<BR ALIGN="LEFT"/>  Itinéraires<BR ALIGN="LEFT"/>  Zones, Scans<BR ALIGN="LEFT"/>▸ Équipe<BR ALIGN="LEFT"/></FONT></TD>
+      <TD BGCOLOR="#1E1E1E" WIDTH="300" VALIGN="TOP"><FONT COLOR="#FFFFFF">Vue centrale<BR/>[ 3D │ Plan 2D │ Caméra ]  Dessus · Iso · Face · Recadrer<BR/><BR/>nuage de points coloré par la hauteur,<BR/>monde, accueil ★, salles, itinéraires,<BR/>zones, robot et piétons en direct</FONT></TD>
+      <TD BGCOLOR="#201F2D" WIDTH="130" VALIGN="TOP" ALIGN="LEFT"><FONT COLOR="#FFFFFF">Panneau de tâches<BR ALIGN="LEFT"/>propriétés de l'élément,<BR ALIGN="LEFT"/>ou formulaire<BR ALIGN="LEFT"/>de la commande<BR ALIGN="LEFT"/><BR ALIGN="LEFT"/>✓ Enregistrer   ✗ Annuler<BR ALIGN="LEFT"/></FONT></TD>
+    </TR>
+    <TR><TD COLSPAN="3" BGCOLOR="#2E2E3D" ALIGN="LEFT"><FONT COLOR="#FFFFFF">Barre d'état : consigne de l'outil · dernier message · x, y sous le pointeur · Ce qui tourne</FONT></TD></TR>
+  </TABLE>>];
+}

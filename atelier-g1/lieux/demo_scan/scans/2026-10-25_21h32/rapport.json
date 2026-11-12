@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "session": "2026-10-25_21h32",
+  "termine": "2026-10-25T21:35:52+01:00",
+  "duree_traitement_s": 9.6,
+  "etapes": [
+    {
+      "etape": "carte_3d",
+      "ok": true,
+      "duree_s": 9.0,
+      "message": "214799 points, 1811 nuages, 67707 points d'obstacles mobiles retirés"
+    },
+    {
+      "etape": "carte_2d",
+      "ok": true,
+      "duree_s": 0.1,
+      "message": "602 × 402 pixels, 8174 occupés, sol à -0.07 m"
+    },
+    {
+      "etape": "reconnaissance",
+      "ok": true,
+      "duree_s": 0.4,
+      "message": "murs, passages et objets reconnus"
+    },
+    {
+      "etape": "monde",
+      "ok": true,
+      "duree_s": 0.1,
+      "message": "monde_scan.monde.yaml valide"
+    }
+  ],
+  "nuage": {
+    "fichier": "nuage.pcd",
+    "points": 214799,
+    "nuages": 1811,
+    "retires_mobiles": 67707
+  },
+  "carte": {
+    "fichier": "carte.yaml",
+    "largeur": 602,
+    "hauteur": 402,
+    "resolution": 0.05,
+    "occupes": 8174,
+    "sol": -0.069
+  },
+  "reconnaissance": {
+    "murs": 24,
+    "murs_gardes": 24,
+    "passages": 5,
+    "passages_gardes": 5,
+    "objets": {
+      "chaise": 3,
+      "table": 1,
+      "banc": 1,
+      "poteau": 3,
+      "meuble": 2,
+      "poubelle": 1,
+      "personne": 1
+    },
+    "objets_gardes": {
+      "chaise": 3,
+      "table": 1,
+      "banc": 1,
+      "poteau": 3,
+      "meuble": 2,
+      "poubelle": 1
+    }
+  },
+  "comparaison": {
+    "reference": "cartes/rdc.yaml",
+    "recouvrement": 0.991,
+    "couverture": 0.652
+  },
+  "repere": {
+    "nuage": "lidar",
+    "odom": "odom",
+    "robot": "base_link",
+    "deja_dans_le_monde": false,
+    "premiere_pose": [
+      2.5,
+      10.0,
+      0.0
+    ],
+    "capteur": "tf_static"
+  },
+  "avertissements": []
+}

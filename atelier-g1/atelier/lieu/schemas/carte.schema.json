@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "cartes/<etage>.yaml",
+  "description": "Description d'une carte 2D au format standard de Nav2 (map_server), à côté de son image .pgm. Même format pour la carte cartes/<etage>.yaml et pour le masque cartes/<etage>_interdit.yaml, qui a la même taille, la même résolution et la même origine que la carte. Pixels de l'image : 0 = occupé, 254 = libre, 205 = inconnu ; la ligne 0 de l'image correspond au y maximal. Conversions pixel ↔ mètres : atelier.lieu.conversions, et nulle part ailleurs. D'autres champs de Nav2 sont permis.",
+  "type": "object",
+  "required": ["image", "resolution", "origin", "negate", "occupied_thresh", "free_thresh"],
+  "properties": {
+    "image": {
+      "description": "Nom de l'image .pgm, relatif au dossier de ce fichier. Ex. rdc.pgm.",
+      "type": "string",
+      "pattern": "^[^/]+\\.pgm$"
+    },
+    "resolution": {
+      "description": "Taille d'un pixel, en mètres. 0.05 pour les cartes de l'Atelier.",
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 1
+    },
+    "origin": {
+      "description": "[x, y, lacet] : position en mètres du coin bas gauche de l'image (pixel de la dernière ligne, première colonne) dans le repère map, et rotation en radians. Toujours [xmin, ymin, 0.0] pour l'Atelier.",
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {"type": "number"}
+    },
+    "negate": {
+      "description": "0 : un pixel blanc est libre. Toujours 0 pour l'Atelier.",
+      "type": "integer",
+      "enum": [0, 1]
+    },
+    "occupied_thresh": {
+      "description": "Seuil d'occupation entre 0 et 1. 0.65 pour l'Atelier.",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "free_thresh": {
+      "description": "Seuil de case libre entre 0 et 1. 0.196 pour l'Atelier.",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "mode": {
+      "description": "Facultatif. Mode de lecture de l'image par map_server : trinary (par défaut), scale ou raw.",
+      "type": "string",
+      "enum": ["trinary", "scale", "raw"]
+    }
+  }
+}

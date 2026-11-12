@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/accueil/evenement",
+  "description": "Ce qui arrive dans la démo, en JSON (std_msgs/String) sur /accueil/evenement, une fois par événement (vague 6, section 13.4 du plan). Un choix ou une commande avec un id reçoit toujours sa réponse : choix_accepte, choix_refuse, commande_acceptee ou commande_refusee, avec le même id. Des champs en plus sont permis.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "version",
+    "code",
+    "texte",
+    "temps"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "code": {
+      "enum": [
+        "demarree",
+        "visiteur",
+        "salutation",
+        "choix_accepte",
+        "choix_refuse",
+        "depart",
+        "arrivee",
+        "retour",
+        "retour_arrive",
+        "visite_abandonnee",
+        "visite_echouee",
+        "delai_choix",
+        "occupe",
+        "libre",
+        "pause",
+        "reprise",
+        "commande_acceptee",
+        "commande_refusee",
+        "arretee"
+      ]
+    },
+    "texte": {
+      "description": "Une phrase en français (journal de l'Atelier, rapport de séance) ; ce n'est pas forcément ce que le robot dit (/robot/dire).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "temps": {
+      "description": "Date et heure ISO 8601 à l'heure locale, à la seconde, avec le décalage : 2026-11-12T14:03:05+01:00.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"
+    },
+    "id": {
+      "description": "Identifiant d'une demande, repris dans la réponse (événement) et les journaux.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "salle": {
+      "anyOf": [
+        {
+          "description": "Identifiant : lettres minuscules sans accent, chiffres, _ et -, 40 caractères au plus.",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,39}$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "nom": {
+      "type": "string",
+      "maxLength": 100
+    },
+    "source": {
+      "enum": [
+        "borne",
+        "dialogue",
+        "atelier",
+        "operateur",
+        "test"
+      ]
+    },
+    "raison": {
+      "description": "Pause : RAISONS_PAUSE ; refus : RAISONS_REFUS.",
+      "enum": [
+        "arret",
+        "verrou",
+        "pas_en_marche",
+        "robot_muet",
+        "refus",
+        "pont_absent",
+        "echec",
+        "perdu",
+        "pilotage",
+        "guide_absent",
+        "operateur",
+        "occupe",
+        "pause",
+        "salle_inconnue",
+        "salle_cachee",
+        "autre_etage",
+        "deja_la",
+        "demo_arretee",
+        "action_impossible"
+      ]
+    },
+    "visite": {
+      "description": "Identifiant d'une demande, repris dans la réponse (événement) et les journaux.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.:-]{1,80}$"
+    },
+    "action": {
+      "enum": [
+        "appui",
+        "annuler",
+        "pause",
+        "reprendre",
+        "ramener",
+        "remise_a_zero"
+      ]
+    }
+  }
+}

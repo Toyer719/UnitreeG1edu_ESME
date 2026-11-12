@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Reconnaissance vocale en français (Vosk / faster-whisper).
+exec "$HOME/robot-g1/.venv-projet/bin/python" "$HOME/robot-g1/outils/ecouter.py" "$@"

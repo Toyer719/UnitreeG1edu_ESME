@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Détection et suivi de personnes avec YOLO (webcam ou caméra).
+exec "$HOME/robot-g1/.venv-projet/bin/python" "$HOME/robot-g1/outils/personnes.py" "$@"

@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "/guide/etat",
+  "description": "État du guide, publié en JSON (std_msgs/String) sur /guide/etat par le nœud guide (paquet g1_nav), 5 fois par seconde et à chaque changement (contrats 4.2 et 10.7, complétés en vague 4, section 11.4 du plan). Compatible avec les messages d'avant : seuls etat, cible, reste_m et itineraire sont obligatoires. Des champs en plus sont permis.",
+  "type": "object",
+  "required": ["etat", "cible", "reste_m", "itineraire"],
+  "additionalProperties": true,
+  "properties": {
+    "version": {"description": "Facultatif : version du format, 1.", "const": 1},
+    "etat": {
+      "description": "attente : au repos (au point principal après un retour) ; en_route : visite vers une salle ; retour : retour automatique vers le point principal ; bloque : plus de progrès depuis 3 s ; attente_passage : une personne bouche le passage, le guide l'attend (delai_passant_s) avant de déclarer le couloir bloqué ; detour : autre chemin après un couloir bloqué ; attente_visiteur : le visiteur ne suit plus, le robot s'est arrêté pour l'attendre (delai_visiteur_s) ; perdu : le robot ne sait plus où il est (repérage perdu), il est arrêté (delai_perdu_s) ; arrive : arrivé à la cible ; echec : le trajet a échoué (message).",
+      "type": "string",
+      "enum": ["attente", "en_route", "bloque", "detour", "arrive", "echec", "retour", "attente_passage",
+               "attente_visiteur", "perdu"]
+    },
+    "cible": {"description": "id de la salle ou du nœud visé (celui du point principal pendant un retour), ou null.", "type": ["string", "null"]},
+    "reste_m": {"description": "Mètres restant jusqu'à la cible, ou null.", "type": ["number", "null"], "minimum": 0},
+    "itineraire": {"description": "Nœuds de l'itinéraire en cours, dans l'ordre.", "type": "array", "items": {"type": "string"}},
+    "message": {"description": "Facultatif : phrase en français pour l'utilisateur de l'Atelier.", "type": "string"},
+    "mission": {"description": "Facultatif : visite (trajet demandé par /guide/aller), retour (retour automatique au point principal), ou null au repos.", "type": ["string", "null"], "enum": ["visite", "retour", null]},
+    "accompagner": {"description": "Facultatif : vrai si le guide suit un visiteur pendant cette visite.", "type": "boolean"},
+    "visiteur": {
+      "description": "Facultatif : le visiteur suivi (null sans accompagnement). vu : vu par le détecteur de personnes il y a moins de 2 s ; distance_m : distance au robot.",
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "required": ["vu", "distance_m", "age_s"],
+          "properties": {
+            "vu": {"type": "boolean"},
+            "distance_m": {"type": ["number", "null"], "minimum": 0},
+            "age_s": {"type": ["number", "null"], "minimum": 0}
+          }
+        }
+      ]
+    },
+    "depuis_s": {"description": "Facultatif : secondes passées dans cet état.", "type": "number", "minimum": 0},
+    "immobilise": {"description": "Facultatif (correction du 01/11/2026, section 12.15 du plan) : ce qui empêche le robot de marcher. verrou : robot bloqué (/pont/arret : Bloquer, ARRÊT, ligne de commande) ; pas_en_marche : le mode du robot n'est pas la marche ; pont_absent (relecture du 01/11/2026) : le pont vers la marche, déjà vu, ne publie plus son état (tué ou figé). Pendant ces trois-là, le trajet est annulé et « Y aller » refusé (echec). robot_muet, refus : la panne du pont qui a annulé le dernier trajet, tant qu'elle dure. Absent sinon. Le guide ne reprend jamais seul un trajet annulé.", "type": "string", "enum": ["verrou", "pas_en_marche", "robot_muet", "refus", "pont_absent"]},
+    "actif": {"description": "Facultatif (relecture du 01/11/2026) : vrai si le robot peut bouger d'un instant à l'autre (mission en cours, départ en attente de la navigation, retour automatique prévu) ; la touche Échap de l'Atelier envoie alors l'ARRÊT.", "type": "boolean"}
+  }
+}

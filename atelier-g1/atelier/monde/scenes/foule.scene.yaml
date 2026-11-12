@@ -1,0 +1,19 @@
+# Scène des passants (section 11.3 du plan, critères 6 et 25). Format : atelier/lieu/schemas/scene.schema.json.
+version: 1
+id: foule
+nom: "Foule : les 5 piétons du critère 6"
+description: >-
+  Les deux piétons du lycée démo et les trois du critère 6 (5 en tout), en piétons crédibles par
+  défaut : un corps, et ils s'écartent du robot (reaction: ecart). 20 trajets tirés au sort entre
+  les salles : au moins 90 % de réussite, et aucun contact dont le robot est la cause.
+lieu: demo
+etage: rdc
+ajouter: true
+pietons:
+  - {id: pieton_3, trajet: [[8.0, 13.2], [22.0, 13.2]], vitesse: 0.8, aller_retour: true}
+  - {id: pieton_4, trajet: [[26.5, 6.5], [26.5, 13.5]], vitesse: 0.7, aller_retour: true}
+  - {id: pieton_5, trajet: [[1.5, 8.5], [4.0, 12.0]], vitesse: 0.6, aller_retour: true}
+trajets: []
+hasard: 20
+graine: 1
+mesures: {reussite_min: 0.9, contacts_robot_max: 0}

@@ -1,0 +1,416 @@
+"""Serveur web de l'Atelier G1 (FastAPI). Lancé par bin/g1-atelier :
+
+  uvicorn atelier.serveur.main:app --port 8000
+
+  /api/...     API REST en JSON (contrat 4.4 du plan), voir atelier/serveur/routes/
+  /ws/etat     WebSocket, environ 10 messages par seconde : {robot, guide, pietons, processus,
+               mode, reperage, pont} ; vague 4 (section 11) : evenements, maitre, personnes, visiteurs ;
+               vague 5 (section 12.4) : arret ; vague 6 (section 13) : seance, demo, voix
+  /borne       vague 6 (section 13.5) : la page de la borne visiteur (tablette ou téléphone du même réseau)
+  /            l'interface web (atelier/web), servie telle quelle
+
+Vague 6 (section 13 du plan), deux accroches autour de toutes les demandes :
+  JournalDesActions  après la réponse à chaque POST, PUT, PATCH ou DELETE sous /api/ (sauf les flèches de la
+                     téléopération), etat.seance.noter_action(action) : le journal des actions de la boîte noire.
+                     La réponse n'est jamais changée ni retardée ; une erreur de la boîte noire est avalée.
+  GardeBorne         quand l'Atelier écoute le réseau (g1-atelier --hote 0.0.0.0 : ATELIER_HOTE), un client qui
+                     n'est pas ce PC n'a droit qu'à la borne (atelier.lieu.accueil.chemin_permis_borne) ; le reste
+                     répond 403. ATELIER_DISTANT=complet (g1-atelier --distant-complet) rend tout l'Atelier.
+  GardeOrigine       (corrections de la vague 6) une page d'un autre site ouverte dans le navigateur du PC ne peut
+                     rien changer : une demande POST, PUT, PATCH ou DELETE et un WebSocket venus d'une autre origine
+                     (en-têtes Origin et Sec-Fetch-Site) répondent 403, et un nom d'hôte inconnu (en-tête Host :
+                     le « rebinding » DNS) aussi. L'ARRÊT passe toujours. curl, g1-seance et les tests (sans Origin)
+                     ne changent pas.
+
+Variables d'environnement :
+  ATELIER_LIEUX   dossier des lieux (défaut ~/robot-g1/lieux)
+  ATELIER_BIN     dossier des commandes g1-* (défaut ~/robot-g1/bin)
+  ATELIER_ROS     0 : pas de pont ROS 2 (tests de l'API sans ROS) ; défaut 1
+  ATELIER_HOTE    adresse d'écoute du serveur (g1-atelier la met ; défaut : 127.0.0.1, ce PC seulement)
+  ATELIER_PORT    port du serveur (g1-atelier le met ; pour l'adresse de la borne)
+  ATELIER_DISTANT complet : tout l'Atelier depuis le réseau ; sinon la borne seulement (vague 6)
+  ATELIER_HOTES_PERMIS  noms d'hôte de plus acceptés par GardeOrigine (séparés par des virgules ; en plus de
+                  localhost, du nom du PC et de toute adresse IP)
+"""
+import asyncio
+import ipaddress
+import json
+import logging
+import os
+import socket
+import time
+from contextlib import asynccontextmanager
+from datetime import datetime
+from pathlib import Path
+
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi.concurrency import run_in_threadpool
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+import atelier
+from atelier.lieu import ErreurLieu
+from atelier.lieu.accueil import chemin_permis_borne
+from atelier.lieu.seance import LIMITE_CORPS_OCTETS, action_journalisee
+
+from .communs import ErreurAtelier
+from .etat import EtatServeur
+from .processus import commande, dossier_bin
+from .routes import lieux, monde, plan, robot, scan, simulation
+# vague 4 (section 11 du plan) : une route par agent (point principal, passants, guide, pilotage, équipe)
+from .routes import equipe, guide, passants, pilotage, principal
+# vague 5 (section 12 du plan) : ARRÊT et liaison (Coquille), nuages 3D (Scan), flux de la caméra (Caméra)
+from .routes import arret, camera, liaison, nuage
+# vague 6 (section 13 du plan) : diagnostic, boîte noire, borne et démo, voix (un fichier par agent)
+from .routes import borne, demo, diagnostic, seance, voix
+
+DOSSIER_WEB = Path(__file__).resolve().parent.parent / "web"
+PERIODE_DIRECT = 0.1      # s entre deux messages du WebSocket (10 par seconde)
+COMMANDES = ("g1-lieu", "g1-monde", "g1-guide", "g1-slam", "g1-scan")
+HOTES_LOCAUX = ("127.0.0.1", "::1", "localhost", "testclient")    # testclient : TestClient de Starlette (tests)
+JOURNAL = logging.getLogger("atelier.serveur")
+
+
+def client_local(hote):
+    """Vrai si la demande vient de ce PC (boucle locale)."""
+    hote = str(hote or "")
+    return hote in HOTES_LOCAUX or hote.startswith(("127.", "::ffff:127."))
+
+
+def ecoute_reseau():
+    """Vrai si le serveur écoute sur une autre adresse que la boucle locale (ATELIER_HOTE, mis par g1-atelier)."""
+    hote = os.environ.get("ATELIER_HOTE") or "127.0.0.1"
+    return not client_local(hote)
+
+
+METHODES_QUI_CHANGENT = ("POST", "PUT", "PATCH", "DELETE")
+SITES_REFUSES = ("cross-site", "same-site")      # Sec-Fetch-Site d'une demande venue d'une autre page
+CHEMINS_TOUJOURS_PERMIS = ("/api/arret",)        # l'ARRÊT passe toujours (il ne fait qu'arrêter)
+HOTES_DE_TEST = ("testserver",)                  # TestClient de Starlette
+
+
+def _entetes(scope):
+    """{nom en minuscules: valeur} des en-têtes d'une demande ASGI."""
+    return {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers") or []}
+
+
+def _nom_d_hote(hote_port):
+    """« 127.0.0.1:8000 » → « 127.0.0.1 » ; « [::1]:8000 » → « ::1 » ; en minuscules."""
+    h = str(hote_port or "").strip().lower()
+    if h.startswith("["):
+        return h[1:].split("]", 1)[0]
+    return h.rsplit(":", 1)[0] if h.count(":") == 1 else h
+
+
+def noms_du_pc():
+    """Noms d'hôte acceptés en plus des adresses IP : localhost, le nom du PC (et .local), ATELIER_HOTES_PERMIS."""
+    noms = {"localhost"}
+    try:
+        nom = socket.gethostname().lower()
+        noms.update({nom, nom + ".local", socket.getfqdn().lower()})
+    except OSError:
+        pass
+    noms.update(n.strip().lower() for n in os.environ.get("ATELIER_HOTES_PERMIS", "").split(",") if n.strip())
+    return noms
+
+
+def hote_permis(hote_port, noms=None):
+    """Vrai si l'en-tête Host désigne ce serveur : une adresse IP (la page vient alors de ce serveur), localhost
+    (et *.localhost), le nom du PC, un nom de ATELIER_HOTES_PERMIS ; ou pas d'en-tête (vieux client)."""
+    nom = _nom_d_hote(hote_port)
+    if not nom:
+        return True
+    try:
+        ipaddress.ip_address(nom)
+        return True
+    except ValueError:
+        pass
+    if nom.endswith(".localhost") or nom in HOTES_DE_TEST:
+        return True
+    return nom in (noms if noms is not None else noms_du_pc())
+
+
+def origine_refusee(scope, noms=None):
+    """La raison (texte) de refuser une demande qui vient d'une autre page que l'Atelier, ou None.
+    Refusées : un nom d'hôte inconnu (Host) ; pour une demande qui change quelque chose et pour un WebSocket, un
+    Sec-Fetch-Site d'un autre site ou un Origin différent de « schéma://Host » (Origin « null » : une page locale)."""
+    if scope.get("type") not in ("http", "websocket"):
+        return None
+    if scope["type"] == "http" and scope.get("path") in CHEMINS_TOUJOURS_PERMIS:
+        return None
+    entetes = _entetes(scope)
+    hote = entetes.get("host", "")
+    if not hote_permis(hote, noms):
+        return f"nom d'hôte inconnu ({hote[:80]})"
+    if scope["type"] == "http" and scope.get("method", "").upper() not in METHODES_QUI_CHANGENT:
+        return None
+    site = entetes.get("sec-fetch-site", "").lower()
+    if site in SITES_REFUSES:
+        return f"demande venue d'un autre site (Sec-Fetch-Site : {site})"
+    origine = entetes.get("origin")
+    if origine is not None:
+        attendu = hote.strip().lower()
+        _, _, reste = origine.strip().lower().partition("://")
+        if not attendu or reste.rstrip("/") != attendu:
+            return f"demande venue d'une autre page ({origine[:80]})"
+    return None
+
+
+def _lire_corps(octets, tronque):
+    """Corps gardé dans le journal : le JSON lu s'il est entier et lisible, sinon le texte (coupé)."""
+    if not octets:
+        return None
+    if not tronque:
+        try:
+            return json.loads(octets)
+        except ValueError:
+            pass
+    texte = octets.decode("utf-8", "replace")
+    return texte + (" […]" if tronque else "")
+
+
+class JournalDesActions:
+    """Accroche du journal des actions de la boîte noire (vague 6, section 13.3 du plan), en ASGI pur : la demande
+    et la réponse passent telles quelles ; une copie de leurs premiers octets (LIMITE_CORPS_OCTETS) est donnée à
+    etat.seance.noter_action APRÈS la réponse. Une erreur de la boîte noire ne gêne jamais une demande."""
+
+    def __init__(self, app, etat):
+        self.app = app
+        self.etat = etat
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not action_journalisee(scope.get("method", ""), scope.get("path", "")):
+            await self.app(scope, receive, send)
+            return
+        debut = time.monotonic()
+        heure = datetime.now().astimezone().isoformat(timespec="milliseconds")
+        requete, reponse = bytearray(), bytearray()
+        vu = {"requete": 0, "reponse": 0, "statut": None}
+
+        async def recevoir():
+            message = await receive()
+            if message.get("type") == "http.request":
+                corps = message.get("body", b"")
+                vu["requete"] += len(corps)
+                requete.extend(corps[:max(0, LIMITE_CORPS_OCTETS - len(requete))])
+            return message
+
+        async def envoyer(message):
+            if message.get("type") == "http.response.start":
+                vu["statut"] = message.get("status")
+            elif message.get("type") == "http.response.body":
+                corps = message.get("body", b"")
+                vu["reponse"] += len(corps)
+                reponse.extend(corps[:max(0, LIMITE_CORPS_OCTETS - len(reponse))])
+            await send(message)
+
+        try:
+            await self.app(scope, recevoir, envoyer)
+        finally:
+            self._noter(scope, heure, debut, requete, reponse, vu)
+
+    def _noter(self, scope, heure, debut, requete, reponse, vu):
+        try:
+            hote = (scope.get("client") or ("", 0))[0]
+            chemin = scope.get("path", "")
+            local = client_local(hote)
+            action = {"t": heure, "methode": scope.get("method"), "chemin": chemin,
+                      "requete": _lire_corps(bytes(requete), vu["requete"] > len(requete)),
+                      "statut": vu["statut"], "reponse": _lire_corps(bytes(reponse), vu["reponse"] > len(reponse)),
+                      "duree_ms": round((time.monotonic() - debut) * 1000.0, 1),
+                      "client": "local" if local else ("borne" if chemin_permis_borne(chemin) else "distant")}
+            if scope.get(CLE_GARDE):            # refusée par GardeBorne ou GardeOrigine : résumée par la séance
+                action["garde"] = scope[CLE_GARDE]
+            self.etat.seance.noter_action(action)
+        except Exception:       # noqa: BLE001 : la boîte noire ne doit jamais gêner une demande
+            JOURNAL.exception("journal des actions : action non notée")
+
+
+# Une demande refusée par une garde le dit dans son scope ASGI (le même dictionnaire que voit JournalDesActions) :
+# la boîte noire résume ces demandes au lieu d'écrire une ligne par demande (corrections de la vague 6, revue du
+# code, défaut 9)
+CLE_GARDE = "atelier.garde"
+
+
+class GardeBorne:
+    """Garde de la borne (vague 6, section 13.5 du plan), en ASGI pur : quand l'Atelier écoute le réseau, un client
+    qui n'est pas ce PC n'a droit qu'aux pages et aux routes de la borne ; tout le reste répond 403 (et un
+    WebSocket est refusé). Inactive si l'Atelier n'écoute que ce PC, ou avec ATELIER_DISTANT=complet."""
+
+    MESSAGE = ("Depuis cette tablette, seule la borne est permise (adresse /borne). L'Atelier complet s'utilise sur "
+               "le PC du robot (ou relancez-le avec g1-atelier --distant-complet).")
+
+    def __init__(self, app, active=None):
+        self.app = app
+        self.active = (ecoute_reseau() and os.environ.get("ATELIER_DISTANT") != "complet") if active is None \
+            else bool(active)
+
+    async def __call__(self, scope, receive, send):
+        if not self.active or scope["type"] not in ("http", "websocket") \
+                or client_local((scope.get("client") or ("", 0))[0]) or chemin_permis_borne(scope.get("path", "")):
+            await self.app(scope, receive, send)
+            return
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 4403})
+            return
+        scope[CLE_GARDE] = "borne"
+        corps = json.dumps({"detail": self.MESSAGE}, ensure_ascii=False).encode("utf-8")
+        await send({"type": "http.response.start", "status": 403,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(corps)).encode()),
+                                (b"cache-control", b"no-cache")]})
+        await send({"type": "http.response.body", "body": corps})
+
+
+class GardeOrigine:
+    """Garde des origines (corrections de la vague 6), en ASGI pur : une page d'un autre site ouverte dans le
+    navigateur du PC (une « requête simple » part sans vérification CORS) ne peut ni agir sur le robot, ni sur la
+    démo, la voix, la séance ou le diagnostic : 403 en français (un WebSocket est refusé, code 4403). Un nom d'hôte
+    inconnu est refusé aussi (rebinding DNS : un autre site qui pointerait sur ce PC). L'ARRÊT passe toujours."""
+
+    MESSAGE = ("Demande refusée : elle ne vient pas de l'Atelier ({raison}). Utilisez la page de l'Atelier ouverte "
+               "par g1-atelier sur ce PC, ou la borne (/borne) sur la tablette.")
+
+    PERIODE_ALERTE_S = 10.0     # une page qui insiste : une alerte au plus toutes les 10 s dans le journal du serveur
+
+    def __init__(self, app, horloge=time.monotonic):
+        self.app = app
+        self.noms = noms_du_pc()
+        self.horloge = horloge
+        self._derniere_alerte = None
+        self._taisees = 0
+
+    def _alerter(self, scope, raison):
+        maintenant = self.horloge()
+        if self._derniere_alerte is not None and maintenant - self._derniere_alerte < self.PERIODE_ALERTE_S:
+            self._taisees += 1
+            return
+        plus = f" ; {self._taisees} autres refusées avant elle, sans alerte" if self._taisees else ""
+        JOURNAL.warning("demande refusée par la garde des origines : %s %s (%s)%s", scope.get("method", "WS"),
+                        scope.get("path", ""), raison, plus)
+        self._derniere_alerte, self._taisees = maintenant, 0
+
+    async def __call__(self, scope, receive, send):
+        raison = origine_refusee(scope, self.noms)
+        if raison is None:
+            await self.app(scope, receive, send)
+            return
+        self._alerter(scope, raison)
+        if scope["type"] == "websocket":
+            await send({"type": "websocket.close", "code": 4403})
+            return
+        scope[CLE_GARDE] = "origine"
+        corps = json.dumps({"detail": self.MESSAGE.format(raison=raison)}, ensure_ascii=False).encode("utf-8")
+        await send({"type": "http.response.start", "status": 403,
+                    "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(corps)).encode()),
+                                (b"cache-control", b"no-cache")]})
+        await send({"type": "http.response.body", "body": corps})
+
+
+def _champ(loc):
+    """Nom lisible du champ en faute dans une erreur de FastAPI : ('body', 'lieu') → « lieu »."""
+    morceaux = [str(m) for m in loc if m not in ("body", "query", "path")]
+    return ".".join(morceaux) or "corps de la demande"
+
+
+def _traduire(erreur):
+    champ, genre = _champ(erreur.get("loc", ())), erreur.get("type", "")
+    if genre == "missing":
+        return f"il manque le champ « {champ} »"
+    if genre.startswith("bool"):
+        return f"« {champ} » doit valoir true ou false"
+    if genre.startswith(("float", "int")):
+        return f"« {champ} » doit être un nombre"
+    if genre.startswith("string"):
+        return f"« {champ} » doit être un texte"
+    if genre == "json_invalid":
+        return "le corps de la demande n'est pas du JSON valable"
+    return f"« {champ} » : valeur refusée ({erreur.get('msg', genre)})"
+
+
+def creer_app(ros=None):
+    """Application FastAPI. ros : démarrer le pont ROS 2 (défaut : $ATELIER_ROS, sinon oui)."""
+    if ros is None:
+        ros = os.environ.get("ATELIER_ROS", "1") != "0"
+    etat = EtatServeur(ros=ros)
+
+    @asynccontextmanager
+    async def cycle_de_vie(app):
+        await run_in_threadpool(etat.demarrer)
+        try:
+            yield
+        finally:
+            # rien ne doit survivre au serveur : simulation, navigation, nœud ROS 2
+            await run_in_threadpool(etat.arreter)
+
+    app = FastAPI(title="Atelier G1", version=atelier.__version__, lifespan=cycle_de_vie,
+                  description="Configuration des lieux du robot d'accueil G1.")
+    app.state.atelier = etat
+
+    @app.exception_handler(ErreurAtelier)
+    async def _erreur_atelier(request: Request, e: ErreurAtelier):
+        return JSONResponse(e.vers_dict(), status_code=e.statut)
+
+    @app.exception_handler(ErreurLieu)
+    async def _erreur_lieu(request: Request, e: ErreurLieu):
+        return JSONResponse({"detail": "Fichier du lieu invalide : corrigez les points ci-dessous.",
+                             "erreurs": e.erreurs}, status_code=422)
+
+    @app.exception_handler(RequestValidationError)
+    async def _demande_invalide(request: Request, e: RequestValidationError):
+        erreurs = [_traduire(x) for x in e.errors()]
+        return JSONResponse({"detail": "Demande incomplète ou mal formée : " + " ; ".join(erreurs) + ".",
+                             "erreurs": erreurs}, status_code=422)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def _http(request: Request, e: StarletteHTTPException):
+        if e.status_code == 404:
+            detail = f"Adresse inconnue : {request.url.path}"
+        elif e.status_code == 405:
+            detail = f"Méthode {request.method} non permise sur {request.url.path}"
+        else:
+            detail = str(e.detail)
+        return JSONResponse({"detail": detail}, status_code=e.status_code)
+
+    @app.middleware("http")
+    async def _sans_cache(request: Request, suite):
+        # l'interface évolue souvent : le navigateur redemande toujours les fichiers
+        reponse = await suite(request)
+        reponse.headers.setdefault("Cache-Control", "no-cache")
+        return reponse
+
+    for module in (lieux, monde, plan, simulation, scan, robot, principal, passants, guide, pilotage, equipe,
+                   arret, liaison, nuage, camera, diagnostic, seance, borne, demo, voix):
+        app.include_router(module.routeur)
+    # vague 6 (section 13) : la garde de la borne, la garde des origines (corrections), puis le journal des actions
+    # autour de tout (une demande refusée par une garde est notée aussi)
+    app.add_middleware(GardeBorne)
+    app.add_middleware(GardeOrigine)
+    app.add_middleware(JournalDesActions, etat=etat)
+
+    @app.get("/api/etat", tags=["serveur"])
+    def etat_serveur():
+        """Ajout au contrat : commandes g1-* présentes, liaison ROS 2, lieux."""
+        pont = etat.pont.etat()
+        return {"version": atelier.__version__, "lieux": str(atelier.dossier_lieux()),
+                "bin": str(dossier_bin()),
+                "commandes": {nom: commande(nom) is not None for nom in COMMANDES},
+                "ros": {"actif": pont["actif"], "erreur": pont["erreur"],
+                        "domaine": os.environ.get("ROS_DOMAIN_ID", "0")}}
+
+    @app.websocket("/ws/etat")
+    async def direct(ws: WebSocket):
+        await ws.accept()
+        try:
+            while True:
+                await ws.send_json(etat.etat_direct())
+                await asyncio.sleep(PERIODE_DIRECT)
+        except (WebSocketDisconnect, RuntimeError, ConnectionError):
+            pass        # l'onglet a été fermé
+
+    app.mount("/", StaticFiles(directory=DOSSIER_WEB, html=True), name="web")
+    return app
+
+
+app = creer_app()

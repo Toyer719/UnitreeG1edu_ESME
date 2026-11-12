@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# La voix du robot (vague 6, section 13.6 du plan) : le nœud ROS 2 « voix », qui dit les phrases de
+# /robot/dire par le haut-parleur du robot (Piper, PCM 16 kHz, api 1003), la borne ou la synthèse d'Unitree :
+#   g1-voix --lieu L [--sortie robot|borne|robot_tts] [--volume N] [--voix fr_FR-siwis-medium]
+# Python du projet (.venv-projet) avec ROS 2 chargé. Commande de l'agent Voix.
+# Pas de set -u : les scripts de ROS 2 ne le supportent pas.
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+source "$HOME/robot-g1/setup/env.sh"
+PY="$RACINE/.venv-projet/bin/python"
+[ -x "$PY" ] || PY="$HOME/robot-g1/.venv-projet/bin/python"
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PY" -m atelier.voix "$@"

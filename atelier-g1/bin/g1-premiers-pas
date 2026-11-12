@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Premiers tests du vrai G1 : voix, LED, gestes, quelques pas.
+exec env -u PYTHONPATH "$HOME/robot-g1/.venv-sim/bin/python" "$HOME/robot-g1/robot/premiers_pas.py" "$@"

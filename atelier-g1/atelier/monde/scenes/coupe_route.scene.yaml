@@ -1,0 +1,17 @@
+# Scène des passants (section 11.3 du plan, critère 24). Format : atelier/lieu/schemas/scene.schema.json.
+version: 1
+id: coupe_route
+nom: "Passant qui coupe la route dans le hall"
+description: >-
+  Un passant traverse le hall de part en part, d'ouest en est puis retour, à 1,0 m/s, en coupant la
+  ligne du robot (x = 2,5) entre y = 11,5 et 12,5, sans voir le robot (reaction: aucune, pire cas).
+  Le robot, qui monte de l'accueil vers le couloir nord, doit le laisser passer ou le contourner :
+  aucun contact dont il est la cause.
+lieu: demo
+etage: rdc
+pietons:
+  - {id: passant, trajet: [[0.6, 11.5], [4.4, 12.5]], vitesse: 1.0, aller_retour: true, reaction: aucune}
+trajets: [[accueil, b204]]
+essais: 5
+reglages_guide: {retour_auto: false}
+mesures: {reussite_min: 0.8, contacts_robot_max: 0, duree_max_s: 180}

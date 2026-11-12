@@ -1,0 +1,1692 @@
+<title>Robot d'accueil G1</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap">
+<style>
+/* Layout: one reading column (58rem) with a sticky section bar; the calendar is a stack of week sheets, each day a row with a date rail on the left */
+:root {
+  --paper: #F2F5F5;
+  --surface: #FFFFFF;
+  --inset: #E7EDED;
+  --term: #10191D;
+  --term-ink: #D7F2EE;
+  --ink: #122127;
+  --muted: #53646A;
+  --line: #D2DCDD;
+  --accent: #08766F;
+  --accent-ink: #FFFFFF;
+  --accent-soft: #D9EDEA;
+  --ok: #2B7A47;
+  --info: #3A5F92;
+  --warn: #A65F0A;
+  --risk: #B0392C;
+
+  --f-display: "Barlow Semi Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+  --t-xs: 0.75rem;
+  --t-sm: 0.875rem;
+  --t-md: 1rem;
+  --t-lg: 1.25rem;
+  --t-xl: 1.75rem;
+  --t-2xl: 2.75rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #0E1619;
+    --surface: #152126;
+    --inset: #1B2A30;
+    --term: #081013;
+    --term-ink: #CDEFEA;
+    --ink: #E2EBEC;
+    --muted: #97AAB0;
+    --line: #28383E;
+    --accent: #3DBFB4;
+    --accent-ink: #06201D;
+    --accent-soft: #16332F;
+    --ok: #5DC184;
+    --info: #82A8DB;
+    --warn: #E3A24C;
+    --risk: #EC7A6C;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #0E1619;
+  --surface: #152126;
+  --inset: #1B2A30;
+  --term: #081013;
+  --term-ink: #CDEFEA;
+  --ink: #E2EBEC;
+  --muted: #97AAB0;
+  --line: #28383E;
+  --accent: #3DBFB4;
+  --accent-ink: #06201D;
+  --accent-soft: #16332F;
+  --ok: #5DC184;
+  --info: #82A8DB;
+  --warn: #E3A24C;
+  --risk: #EC7A6C;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-padding-top: 4rem; }
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: var(--t-md);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent); text-underline-offset: 2px; }
+a:focus-visible, input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+code { font-family: var(--f-mono); font-size: 0.9em; }
+p code, li code, td code, label code { background: var(--inset); padding: 0.05em 0.3em; border-radius: 3px; overflow-wrap: anywhere; }
+kbd {
+  font-family: var(--f-mono); font-size: 0.85em; padding: 0.05em 0.4em; border-radius: 4px;
+  border: 1px solid var(--line); border-bottom-width: 2px; background: var(--surface); white-space: nowrap;
+}
+
+.page {
+  max-width: 58rem;
+  margin: 0 auto;
+  padding-block: 2rem 4rem;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 3.25rem;
+}
+
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; line-height: 1.1; }
+h1 { font-size: var(--t-2xl); font-weight: 700; letter-spacing: -0.005em; }
+h2 { font-size: var(--t-xl); font-weight: 600; }
+h3 { font-size: var(--t-lg); font-weight: 600; }
+h4 { margin: 0; font-size: 1.02rem; font-weight: 600; }
+p { margin: 0; max-width: 70ch; }
+ul, ol { margin: 0; padding-left: 1.15rem; display: flex; flex-direction: column; gap: 0.4rem; }
+li { max-width: 70ch; }
+
+.eyebrow {
+  font-family: var(--f-mono); font-size: var(--t-xs); letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--accent);
+}
+.section { display: flex; flex-direction: column; gap: 1.25rem; }
+.section-head { display: flex; flex-direction: column; gap: 0.4rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+.lead-in { color: var(--muted); }
+.sub { display: flex; flex-direction: column; gap: 0.9rem; }
+
+/* Header */
+.masthead { display: flex; flex-direction: column; gap: 1rem; }
+.lede { font-size: 1.1rem; max-width: 64ch; }
+.status {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.25rem;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 0.85rem 1rem;
+}
+.status-today { display: flex; flex-direction: column; gap: 0.1rem; }
+.status-today span:first-child { font-family: var(--f-mono); font-size: var(--t-xs); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.status-today strong { font-weight: 600; }
+.status .progress { flex: 1 1 14rem; }
+.btn {
+  font: inherit; font-size: var(--t-sm); font-weight: 500; cursor: pointer; text-decoration: none;
+  background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px; padding: 0.45rem 0.85rem;
+}
+.progress { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.8rem; font-size: var(--t-sm); color: var(--muted); }
+.progress-track { flex: 1 1 8rem; height: 6px; border-radius: 3px; background: var(--inset); overflow: hidden; }
+.progress-fill { height: 100%; width: 0; background: var(--accent); transition: width 0.25s ease; }
+#progress-count { font-family: var(--f-mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+
+/* Sticky section bar */
+.navbar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  background: var(--paper); border-bottom: 1px solid var(--line);
+  margin-top: -2rem; padding-block: 0.6rem;
+  display: flex; flex-wrap: wrap; gap: 0.3rem 1.2rem; font-size: var(--t-sm); font-weight: 500;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--paper); }
+.navbar a { color: var(--muted); text-decoration: none; }
+.navbar a:hover { color: var(--accent); }
+
+/* Commands */
+.cmd { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 0.25rem 0.5rem; align-items: center; }
+.cmd .ligne {
+  background: var(--term); color: var(--term-ink); border-radius: 6px; padding: 0.45rem 0.7rem;
+  font-family: var(--f-mono); font-size: 0.84rem; overflow-x: auto; white-space: pre; min-width: 0;
+}
+.cmd .ligne::before { content: "$ "; opacity: 0.5; }
+.cmd .ligne.sur-jetson::before { content: "jetson$ "; }
+.cmd p { grid-column: 1 / -1; font-size: var(--t-sm); color: var(--muted); }
+.copy {
+  font: inherit; font-size: var(--t-xs); font-weight: 500; cursor: pointer;
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 5px; padding: 0.3rem 0.55rem;
+  white-space: nowrap;
+}
+.copy:hover { border-color: var(--accent); color: var(--accent); }
+.cmds { display: flex; flex-direction: column; gap: 0.7rem; }
+
+.chip {
+  --lvl: var(--muted);
+  display: inline-block; justify-self: start;
+  font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 500; letter-spacing: 0.02em;
+  padding: 0.08rem 0.5rem; border-radius: 99px; white-space: nowrap;
+  color: var(--lvl);
+  background: color-mix(in srgb, var(--lvl) 13%, transparent);
+  border: 1px solid color-mix(in srgb, var(--lvl) 35%, transparent);
+}
+.lvl-1 { --lvl: var(--ok); }
+.lvl-2 { --lvl: var(--info); }
+.lvl-3 { --lvl: var(--warn); }
+.lvl-4 { --lvl: var(--risk); }
+.lvl-0 { --lvl: var(--muted); }
+
+/* Start section */
+.steps { list-style: none; padding: 0; counter-reset: pas; display: flex; flex-direction: column; gap: 1rem; }
+.steps > li { display: grid; grid-template-columns: 2.2rem 1fr; gap: 0.8rem; max-width: none; counter-increment: pas; }
+.steps > li::before {
+  content: counter(pas); font-family: var(--f-display); font-weight: 700; font-size: 1.35rem;
+  width: 2.2rem; height: 2.2rem; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.steps > li > div { display: flex; flex-direction: column; gap: 0.5rem; padding-top: 0.2rem; }
+.scenario { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.9rem; }
+.scenario h3 { font-size: 1.15rem; }
+.alerte {
+  display: grid; grid-template-columns: auto 1fr; gap: 1rem 1.25rem; align-items: center;
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent); background: color-mix(in srgb, var(--warn) 8%, var(--surface));
+  border-radius: 8px; padding: 1rem 1.1rem;
+}
+.comparaison { display: flex; flex-direction: column; gap: 0.35rem; font-family: var(--f-mono); font-size: 1.35rem; line-height: 1.2; }
+.comparaison .bon { color: var(--ok); }
+.comparaison .faux { color: var(--risk); text-decoration: line-through; text-decoration-thickness: 2px; }
+.comparaison small { font-family: var(--f-body); font-size: var(--t-xs); color: var(--muted); }
+.alerte .texte { display: flex; flex-direction: column; gap: 0.4rem; }
+.touches { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 0.4rem 1.25rem; font-size: var(--t-sm); }
+.touches div { display: flex; justify-content: space-between; gap: 0.75rem; border-bottom: 1px dashed var(--line); padding-block: 0.25rem; }
+.touches div span:first-child { color: var(--muted); }
+
+/* Calendar */
+.legende { display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem; font-size: var(--t-sm); color: var(--muted); align-items: center; }
+.semaines { display: flex; flex-direction: column; gap: 1.5rem; }
+.semaine { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.semaine.en-cours { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.semaine-tete { display: grid; grid-template-columns: 4.25rem 1fr auto; gap: 0 1rem; padding: 1rem 1.1rem 0.9rem; border-bottom: 1px solid var(--line); align-items: start; }
+.semaine-num { font-family: var(--f-display); font-weight: 700; font-size: 2.6rem; line-height: 0.9; color: var(--accent); }
+.semaine-tete h3 { margin-bottom: 0.15rem; }
+.semaine-dates { font-family: var(--f-mono); font-size: var(--t-xs); color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+.semaine-obj { font-size: var(--t-sm); color: var(--muted); margin-top: 0.3rem; }
+.semaine-compte { font-family: var(--f-mono); font-size: var(--t-xs); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; padding-top: 0.3rem; display: flex; flex-direction: column; align-items: flex-end; gap: 0.4rem; }
+.jour { display: grid; grid-template-columns: 4.25rem 1fr; gap: 0 1rem; padding: 1rem 1.1rem; border-bottom: 1px solid var(--line); }
+.jour:last-of-type { border-bottom: 0; }
+.jour.aujourdhui { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.jour.ferie { color: var(--muted); }
+.jour-date { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.jour-date .dow { font-family: var(--f-mono); font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.jour-date .dnum { font-family: var(--f-display); font-weight: 700; font-size: 1.9rem; }
+.jour-date .mon { font-size: var(--t-xs); color: var(--muted); }
+.jour-corps { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.jour-tete { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; }
+.badge-jour { font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 500; background: var(--accent); color: var(--accent-ink); border-radius: 99px; padding: 0.08rem 0.55rem; }
+.taches { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.taches li { display: grid; grid-template-columns: 1.2rem 1fr; gap: 0.5rem; align-items: start; max-width: none; font-size: 0.9375rem; }
+.taches input { width: 1rem; height: 1rem; margin: 0.25rem 0 0; accent-color: var(--accent); cursor: pointer; }
+.taches label { cursor: pointer; }
+.taches input:checked + label { color: var(--muted); }
+.note { font-size: var(--t-sm); color: var(--muted); border-left: 2px solid var(--line); padding-left: 0.8rem; }
+.duree { font-family: var(--f-mono); font-size: var(--t-xs); color: var(--muted); }
+.materiel { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.35rem 0.6rem; }
+.materiel-titre { font-family: var(--f-mono); font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); }
+.materiel ul { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 0.3rem; flex-direction: row; }
+.materiel li { font-size: var(--t-xs); background: var(--inset); border-radius: 4px; padding: 0.12rem 0.45rem; max-width: none; }
+.table-materiel td:nth-child(2) { font-family: var(--f-body); }
+.table-materiel td:first-child { white-space: normal; }
+.guide { border: 1px solid var(--accent); border-radius: 8px; background: var(--paper); counter-reset: etape; }
+.guide > summary {
+  cursor: pointer; list-style: none; padding: 0.65rem 0.9rem; font-weight: 600; color: var(--accent);
+  display: flex; align-items: center; gap: 0.55rem;
+}
+.guide > summary::-webkit-details-marker { display: none; }
+.guide > summary::before { content: "▸"; transition: transform 0.15s ease; }
+.guide[open] > summary::before { transform: rotate(90deg); }
+.guide[open] > summary { border-bottom: 1px solid var(--line); }
+.guide-section {
+  font-family: var(--f-mono); font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--muted); padding: 0.9rem 0.9rem 0.4rem;
+}
+.guide-etapes { list-style: none; padding: 0 0.9rem 0.4rem; display: flex; flex-direction: column; gap: 0.9rem; }
+.guide-etapes > li { display: grid; grid-template-columns: 1.7rem 1fr; gap: 0.65rem; counter-increment: etape; max-width: none; }
+.guide-etapes > li::before {
+  content: counter(etape); font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 500;
+  width: 1.6rem; height: 1.6rem; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.guide-etapes .corps { display: flex; flex-direction: column; gap: 0.4rem; min-width: 0; }
+.guide-etapes .corps > p { font-size: 0.9375rem; }
+.guide-etapes .attendu, .guide-etapes .probleme { font-size: var(--t-sm); }
+.guide-etapes .attendu b { color: var(--ok); font-weight: 600; }
+.guide-etapes .probleme b { color: var(--warn); font-weight: 600; }
+.guide-fin { height: 0.5rem; }
+.livrable { display: grid; grid-template-columns: 4.25rem 1fr; gap: 0 1rem; padding: 0.8rem 1.1rem; background: var(--accent-soft); font-weight: 500; }
+.livrable span { font-family: var(--f-mono); font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.07em; color: var(--accent); padding-top: 0.2rem; font-weight: 500; }
+
+/* Command index */
+.index { display: flex; flex-direction: column; gap: 1.75rem; }
+.index-cat { display: flex; flex-direction: column; gap: 0.75rem; }
+.index-cat h3 { font-size: 1.15rem; }
+.index-ligne { display: grid; grid-template-columns: minmax(0, 1fr) 13rem; gap: 0.5rem 1.25rem; padding-bottom: 0.75rem; border-bottom: 1px dashed var(--line); }
+.index-ligne:last-child { border-bottom: 0; }
+.index-etapes { display: flex; flex-direction: column; gap: 0.2rem; font-size: var(--t-sm); }
+.index-etapes span { font-family: var(--f-mono); font-size: var(--t-xs); color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* Project reference (kept from the first version) */
+.feas { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.feas-row { display: grid; grid-template-columns: 15rem 8.5rem 1fr; gap: 0.25rem 1.25rem; align-items: baseline; padding: 0.85rem 1.1rem; border-bottom: 1px solid var(--line); }
+.feas-row:last-child { border-bottom: 0; }
+.feas-row strong { font-weight: 600; }
+.feas-row p { color: var(--muted); font-size: var(--t-sm); }
+.arch { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 1.1rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.layer { display: grid; grid-template-columns: 7rem 1fr; gap: 0.9rem; align-items: center; }
+.layer-name { font-family: var(--f-mono); font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.nodes { display: flex; flex-wrap: wrap; gap: 0.45rem; }
+.node { font-size: var(--t-sm); line-height: 1.35; padding: 0.4rem 0.65rem; border: 1px solid var(--line); border-radius: 5px; background: var(--paper); }
+.node small { display: block; color: var(--muted); font-size: var(--t-xs); }
+.node.new { border-style: dashed; border-color: var(--accent); }
+.node.key { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 500; }
+.node.key small { color: var(--accent-ink); opacity: 0.85; }
+.node.closed { color: var(--muted); }
+.flow { margin-left: 7.9rem; color: var(--accent); font-size: var(--t-sm); line-height: 1; padding: 0.15rem 0; }
+.arch-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; font-size: var(--t-xs); color: var(--muted); padding-top: 0.6rem; border-top: 1px solid var(--line); margin-top: 0.5rem; }
+.swatch { display: inline-block; width: 0.9rem; height: 0.7rem; border-radius: 2px; vertical-align: -1px; margin-right: 0.35rem; border: 1px solid var(--line); background: var(--paper); }
+.swatch.new { border: 1px dashed var(--accent); }
+.swatch.key { background: var(--accent); border-color: var(--accent); }
+.states { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; counter-reset: st; }
+.states li { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 0.75rem 0.9rem; display: flex; flex-direction: column; gap: 0.2rem; max-width: none; }
+.states .st-name { font-family: var(--f-display); font-weight: 600; font-size: 1.05rem; letter-spacing: 0.06em; text-transform: uppercase; }
+.states .st-name::before { counter-increment: st; content: counter(st) " "; font-family: var(--f-mono); font-size: var(--t-xs); color: var(--accent); letter-spacing: 0; margin-right: 0.3rem; vertical-align: 1px; }
+.states p { font-size: var(--t-sm); color: var(--muted); }
+.exceptions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
+.exceptions div { font-size: var(--t-sm); border: 1px dashed color-mix(in srgb, var(--warn) 55%, transparent); border-radius: 6px; padding: 0.6rem 0.9rem; }
+.exceptions b { font-family: var(--f-display); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--warn); display: block; }
+pre {
+  margin: 0; background: var(--inset); border-radius: 6px; padding: 0.9rem 1rem;
+  font-family: var(--f-mono); font-size: 0.8125rem; line-height: 1.55; overflow-x: auto; tab-size: 2;
+}
+pre .c { color: var(--muted); }
+.code-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+.code-grid figure { margin: 0; display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
+.code-grid figcaption { font-family: var(--f-mono); font-size: var(--t-xs); color: var(--muted); }
+.code-grid .wide { grid-column: 1 / -1; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 38rem; font-size: var(--t-sm); }
+th, td { text-align: left; padding: 0.55rem 0.9rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-family: var(--f-mono); font-size: var(--t-xs); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); background: var(--inset); }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 600; white-space: nowrap; }
+td:nth-child(2) { font-family: var(--f-mono); font-size: 0.8125rem; }
+.prio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; }
+.prio > div { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 1rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.prio h3 { font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem; }
+.prio ul { font-size: var(--t-sm); }
+.risks { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.risk { display: grid; grid-template-columns: 1fr 1.4fr; gap: 0.25rem 1.25rem; padding: 0.75rem 1.1rem; border-bottom: 1px solid var(--line); font-size: var(--t-sm); }
+.risk:last-child { border-bottom: 0; }
+.risk b { font-weight: 600; }
+.risk p { color: var(--muted); }
+.risk-head { background: var(--inset); font-family: var(--f-mono); font-size: var(--t-xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.links { display: flex; flex-wrap: wrap; gap: 0.4rem 1.2rem; font-size: var(--t-sm); }
+
+@media (max-width: 760px) {
+  h1 { font-size: 2.2rem; }
+  .feas-row { grid-template-columns: 1fr auto; }
+  .feas-row p { grid-column: 1 / -1; }
+  .code-grid, .prio, .risk, .index-ligne, .alerte { grid-template-columns: 1fr; }
+  .states { grid-template-columns: repeat(2, 1fr); }
+  .exceptions { grid-template-columns: 1fr; }
+  .layer { grid-template-columns: 1fr; gap: 0.35rem; }
+  .flow { margin-left: 0.5rem; }
+  .risk-head { display: none; }
+  .jour, .livrable { grid-template-columns: 3.2rem 1fr; gap: 0 0.75rem; }
+  .jour-date .dnum { font-size: 1.5rem; }
+}
+@media (max-width: 480px) {
+  .states { grid-template-columns: 1fr; }
+  .semaine-tete { grid-template-columns: 3.2rem 1fr; }
+  .semaine-num { font-size: 2rem; }
+  .semaine-compte { grid-column: 2; align-items: flex-start; padding-top: 0.5rem; }
+  .cmd { grid-template-columns: minmax(0, 1fr) auto; }
+  .cmd .chip { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill { transition: none; }
+  html { scroll-behavior: auto; }
+}
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <span class="eyebrow">Unitree G1 EDU · Projet robot d'accueil</span>
+    <h1>Robot d'accueil G1</h1>
+    <p class="lede">Le guide de tout le projet, du 21 octobre au 18 décembre 2026. Chaque jour indique quoi faire et quelles commandes taper. Les commandes se copient d'un clic. Les cases cochées sont mémorisées dans ce navigateur.</p>
+    <div class="status">
+      <div class="status-today"><span>Aujourd'hui</span><strong id="statut-jour">Calendrier du projet</strong></div>
+      <div class="progress">
+        <span>Tâches faites <span id="progress-count">0 / 0</span></span>
+        <div class="progress-track"><div class="progress-fill" id="progress-bar"></div></div>
+      </div>
+      <a class="btn" id="aller-aujourdhui" href="#calendrier">Aller à aujourd'hui</a>
+    </div>
+  </header>
+
+  <nav class="navbar" aria-label="Sections">
+    <a href="#demarrer">Démarrer</a>
+    <a href="#calendrier">Calendrier</a>
+    <a href="#materiel">Matériel</a>
+    <a href="#commandes">Toutes les commandes</a>
+    <a href="#projet">Le projet</a>
+    <a href="https://claude.ai/artifact/L2WdGJg8XW5CjeuyJojCjh">Piste navigation ↗</a>
+  </nav>
+
+  <!-- Démarrer -->
+  <section class="section" id="demarrer">
+    <div class="section-head">
+      <span class="eyebrow">Avant tout</span>
+      <h2>Lancer les simulations, pas à pas</h2>
+    </div>
+
+    <div class="alerte">
+      <div class="comparaison" aria-hidden="true">
+        <span class="bon">g1-sim</span>
+        <span class="faux">gl-sim</span>
+        <small>chiffre 1, pas la lettre L</small>
+      </div>
+      <div class="texte">
+        <h3>Pourquoi « commande introuvable »</h3>
+        <p>Votre historique montre <code>gl-sim-marche</code> : vous avez tapé la lettre L minuscule. Le nom du robot s'écrit avec le chiffre 1 : <code>g1</code>. Sur un clavier AZERTY, le 1 s'obtient avec <kbd>Maj</kbd> + <kbd>&amp;</kbd>, ou sur le pavé numérique. Les deux orthographes marchent désormais, mais le plus sûr reste de copier la commande ici et de la coller dans le terminal.</p>
+      </div>
+    </div>
+
+    <ol class="steps">
+      <li><div>
+        <h4>Ouvrir un terminal</h4>
+        <p>Appuyez sur <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>T</kbd>. Une fenêtre s'ouvre avec une ligne qui se termine par <code>~$</code> : le terminal attend votre commande. Pour un deuxième terminal dans la même fenêtre : <kbd>Ctrl</kbd> + <kbd>Maj</kbd> + <kbd>T</kbd>.</p>
+      </div></li>
+      <li><div>
+        <h4>Copier la commande ici, la coller dans le terminal</h4>
+        <p>Cliquez sur « Copier » à côté d'une commande. Dans le terminal, collez avec <kbd>Ctrl</kbd> + <kbd>Maj</kbd> + <kbd>V</kbd>, ou clic droit puis Coller. Le simple <kbd>Ctrl</kbd> + <kbd>V</kbd> ne marche pas dans un terminal.</p>
+      </div></li>
+      <li><div>
+        <h4>Appuyer sur Entrée</h4>
+        <p>La commande démarre. Pour l'arrêter : <kbd>Ctrl</kbd> + <kbd>C</kbd> dans le terminal, ou fermer sa fenêtre.</p>
+      </div></li>
+      <li><div>
+        <h4>Astuce : la touche Tab</h4>
+        <p>Tapez <code>g1-</code> puis appuyez deux fois sur <kbd>Tab</kbd> : le terminal affiche toutes les commandes du projet. Tapez le début d'un nom et <kbd>Tab</kbd> complète le reste, sans faute de frappe possible.</p>
+      </div></li>
+    </ol>
+
+    <div class="scenario">
+      <h3>Simulation 1 · Le G1 qui marche</h3>
+      <p>Un seul terminal suffit. Une fenêtre MuJoCo s'ouvre avec le G1 debout.</p>
+      <div class="cmd"><code class="ligne">g1-sim-marche</code><button class="copy" type="button">Copier</button><span class="chip lvl-1">prête</span></div>
+      <div class="touches">
+        <div><span>Avancer / reculer</span><span>stick gauche · <kbd>↑</kbd> <kbd>↓</kbd></span></div>
+        <div><span>Tourner</span><span>stick droit · <kbd>←</kbd> <kbd>→</kbd></span></div>
+        <div><span>Glisser sur le côté</span><span>stick gauche · <kbd>Page préc.</kbd> <kbd>Page suiv.</kbd></span></div>
+        <div><span>Stop</span><span>B · <kbd>Fin</kbd></span></div>
+        <div><span>Relever le robot</span><span>A · <kbd>Origine</kbd></span></div>
+        <div><span>Quitter</span><span><kbd>Ctrl</kbd> + <kbd>C</kbd> ou fermer la fenêtre</span></div>
+      </div>
+      <p class="note">Les touches du clavier agissent quand la fenêtre MuJoCo est active : cliquez une fois dedans. Chaque appui sur une flèche ajoute 0,1 m/s ou 0,2 rad/s.</p>
+      <h4>Sans manette physique : la manette virtuelle</h4>
+      <p>Une fenêtre qui se comporte comme une manette Xbox branchée : le simulateur la voit comme une vraie. On la pilote en maintenant les touches, comme un vrai stick.</p>
+      <ol class="steps">
+        <li><div>
+          <p>Une seule fois, l'autoriser (mot de passe demandé) :</p>
+          <div class="cmd"><code class="ligne">sudo bash ~/robot-g1/setup/activer_manette_virtuelle.sh</code><button class="copy" type="button">Copier</button><span class="chip lvl-1">prête</span></div>
+        </div></li>
+        <li><div>
+          <p><strong>Terminal 1</strong> : ouvrir la manette virtuelle.</p>
+          <div class="cmd"><code class="ligne">g1-manette-virtuelle</code><button class="copy" type="button">Copier</button><span class="chip lvl-1">prête</span></div>
+        </div></li>
+        <li><div>
+          <p><strong>Terminal 2</strong> (<kbd>Ctrl</kbd> + <kbd>Maj</kbd> + <kbd>T</kbd>) : lancer <code>g1-sim-marche</code>, puis cliquer dans la fenêtre de la manette virtuelle pour lui rendre la main.</p>
+        </div></li>
+      </ol>
+      <div class="touches">
+        <div><span>Stick gauche</span><span><kbd>Z</kbd> <kbd>Q</kbd> <kbd>S</kbd> <kbd>D</kbd> ou souris</span></div>
+        <div><span>Stick droit</span><span><kbd>←</kbd> <kbd>→</kbd> ou souris</span></div>
+        <div><span>A (relever)</span><span><kbd>Espace</kbd> ou <kbd>A</kbd></span></div>
+        <div><span>B (stop)</span><span><kbd>B</kbd></span></div>
+        <div><span>LB (homme mort)</span><span><kbd>Maj</kbd> gauche maintenue</span></div>
+      </div>
+      <p class="note">Unitree ne fournit pas de manette virtuelle pour la simulation : son simulateur officiel attend une manette Xbox ou Switch branchée. Celle-ci se fait passer pour une manette Xbox, donc <code>g1-sim</code> la prend pour la télécommande du robot. Vérifiez-le avec <code>g1-telecommande lo</code>.</p>
+    </div>
+
+    <div class="scenario">
+      <h3>Simulation 2 · Le simulateur officiel relié au SDK</h3>
+      <p>Il faut deux terminaux : le premier fait tourner le robot simulé, le second lui parle comme on parlera au vrai robot.</p>
+      <ol class="steps">
+        <li><div>
+          <p><strong>Terminal 1</strong> : lancer le simulateur. Le G1 pend à un élastique, comme sur le portique (touches <kbd>7</kbd> <kbd>8</kbd> pour monter et descendre, <kbd>9</kbd> pour le lâcher).</p>
+          <div class="cmd"><code class="ligne">g1-sim</code><button class="copy" type="button">Copier</button><span class="chip lvl-1">prête</span></div>
+        </div></li>
+        <li><div>
+          <p><strong>Terminal 2</strong> (<kbd>Ctrl</kbd> + <kbd>Maj</kbd> + <kbd>T</kbd>) : lire l'état du robot simulé. Arrêter avec <kbd>Ctrl</kbd> + <kbd>C</kbd>.</p>
+          <div class="cmd"><code class="ligne">g1-etat lo</code><button class="copy" type="button">Copier</button><span class="chip lvl-1">prête</span></div>
+        </div></li>
+        <li><div>
+          <p><strong>Terminal 2</strong> : faire bouger le robot simulé, moteur par moteur. Appuyez sur Entrée quand la démo le demande.</p>
+          <div class="cmd"><code class="ligne">g1-sim-demo</code><button class="copy" type="button">Copier</button><span class="chip lvl-1">prête</span></div>
+        </div></li>
+      </ol>
+    </div>
+
+    <div class="scenario">
+      <h3>Sans robot · Vision et voix sur le PC</h3>
+      <div class="cmds">
+        <div class="cmd"><code class="ligne">g1-personnes</code><button class="copy" type="button">Copier</button><span class="chip lvl-1">prête</span><p>Détecte et suit les personnes avec la webcam du PC. Touche <kbd>q</kbd> pour quitter.</p></div>
+        <div class="cmd"><code class="ligne">g1-parler "Bonjour, je suis le robot d'accueil."</code><button class="copy" type="button">Copier</button><span class="chip lvl-1">prête</span><p>Le PC parle en français avec la voix du futur robot. <code>--voix tom</code> pour une voix d'homme.</p></div>
+        <div class="cmd"><code class="ligne">g1-ecouter</code><button class="copy" type="button">Copier</button><span class="chip lvl-1">prête</span><p>Écrit en direct ce que vous dites au micro. Ctrl+C pour arrêter.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Calendrier -->
+  <section class="section" id="calendrier">
+    <div class="section-head">
+      <span class="eyebrow">Calendrier</span>
+      <h2>Jour par jour, du 21 octobre au 18 décembre</h2>
+    </div>
+    <p>Neuf semaines, dont une de marge pour la documentation et la soutenance. Si une journée déborde, décalez la suite : l'ordre compte plus que les dates.</p>
+    <div class="legende">
+      <span><span class="chip lvl-1">prête</span> la commande marche déjà</span>
+      <span><span class="chip lvl-2">matériel branché</span> il faut le robot ou la caméra</span>
+      <span><span class="chip lvl-3">à créer</span> vous écrirez ce programme ce jour-là</span>
+    </div>
+    <div><button class="btn" id="tout-deplier" type="button">Déplier toutes les étapes</button></div>
+    <div class="semaines" id="semaines"></div>
+  </section>
+
+  <!-- Matériel -->
+  <section class="section" id="materiel">
+    <div class="section-head">
+      <span class="eyebrow">Matériel</span>
+      <h2>Ce qu'il faut avoir, et quand</h2>
+    </div>
+    <p>La liste est tirée du calendrier : chaque objet renvoie à la première journée où il sert. Ce qui est « à obtenir » ou « à fabriquer » doit être prêt avant cette date.</p>
+    <div class="table-wrap">
+      <table class="table-materiel">
+        <thead><tr><th>Matériel</th><th>État</th><th>Première utilisation</th></tr></thead>
+        <tbody id="table-materiel"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Commandes -->
+  <section class="section" id="commandes">
+    <div class="section-head">
+      <span class="eyebrow">Référence</span>
+      <h2>Toutes les commandes</h2>
+    </div>
+    <p>Chaque commande renvoie aux jours où elle sert. Celles qui commencent par <code>ros2</code> utilisent ROS 2 directement ; celles qui commencent par <code>g1-</code> sont les raccourcis du projet, rangés dans <code>~/robot-g1/bin</code>. Le guide détaillé est dans <code>~/robot-g1/README.md</code>.</p>
+    <div class="index" id="index-commandes"></div>
+  </section>
+
+  <!-- Le projet -->
+  <section class="section" id="projet">
+    <div class="section-head">
+      <span class="eyebrow">Comprendre le projet</span>
+      <h2>Architecture, outils, risques</h2>
+    </div>
+
+    <div class="sub">
+      <h3>Ce qui est faisable, et à quel prix</h3>
+      <div class="feas">
+        <div class="feas-row"><strong>Détecter les visiteurs avec une caméra en plus</strong><span class="chip lvl-1">Simple</span><p>Caméra See3CAM fixée sur la poitrine, détection YOLO accélérée sur le Jetson, distance estimée par la taille des personnes.</p></div>
+        <div class="feas-row"><strong>Dialoguer en français</strong><span class="chip lvl-2">Moyen</span><p>Chatbot à règles et reconnaissance vocale hors ligne. Le vrai obstacle est le bruit d'une journée portes ouvertes : prévoyez une tablette.</p></div>
+        <div class="feas-row"><strong>Scanner le bâtiment en 3D</strong><span class="chip lvl-1">Simple</span><p>Le LiDAR 3D de la tête suffit. FAST-LIO2 construit le nuage de points pendant que le robot parcourt les couloirs.</p></div>
+        <div class="feas-row"><strong>Placer les salles et y accompagner</strong><span class="chip lvl-2">Moyen</span><p>Points nommés sur la carte, Nav2 calcule le trajet. Le plus long est de fiabiliser la localisation.</p></div>
+        <div class="feas-row"><strong>Contourner la foule, changer d'itinéraire</strong><span class="chip lvl-3">Long à régler</span><p>Nav2 recalcule en continu, un graphe des couloirs fournit les itinéraires de secours. Rien à « entraîner » : ce sont des réglages et des tests.</p></div>
+        <div class="feas-row"><strong>Logiciel de configuration multi-lieux</strong><span class="chip lvl-2">Moyen</span><p>Application web : lieux, cartes, salles, phrases, modes. Tout est rangé dans un « paquet de lieu » par bâtiment.</p></div>
+        <div class="feas-row"><strong>Escaliers et plusieurs étages</strong><span class="chip lvl-4">Hors périmètre</span><p>Trop risqué en deux mois. Le robot accompagne jusqu'à l'escalier ou l'ascenseur, puis explique la suite.</p></div>
+      </div>
+    </div>
+
+    <div class="sub">
+      <h3>Comment les pièces s'assemblent</h3>
+      <p>Votre code tourne en ROS 2 sur le Jetson Orin NX du robot (le PC2). Le PC1 d'Unitree, fermé, garde l'équilibre et exécute les pas. Les deux communiquent par DDS sur le réseau interne <code>192.168.123.x</code>.</p>
+      <div class="arch" role="img" aria-label="Schéma en couches : capteurs, perception, décision, action, configuration">
+        <div class="layer"><div class="layer-name">Capteurs</div><div class="nodes">
+          <span class="node">LiDAR MID-360<small>tête, 360°</small></span>
+          <span class="node">D435i<small>tête, obstacles bas</small></span>
+          <span class="node new">See3CAM<small>poitrine, visiteurs</small></span>
+          <span class="node">Micros<small>robot ou USB</small></span>
+          <span class="node new">Tablette<small>boutons des salles</small></span>
+        </div></div>
+        <div class="flow" aria-hidden="true">▼</div>
+        <div class="layer"><div class="layer-name">Perception</div><div class="nodes">
+          <span class="node">FAST-LIO2 + AMCL<small>où suis-je sur la carte</small></span>
+          <span class="node">YOLO + ByteTrack<small>qui est autour, à quelle distance</small></span>
+          <span class="node">Vosk / faster-whisper<small>parole → texte</small></span>
+        </div></div>
+        <div class="flow" aria-hidden="true">▼</div>
+        <div class="layer"><div class="layer-name">Décision</div><div class="nodes">
+          <span class="node key">Machine à états d'accueil<small>chef d'orchestre</small></span>
+          <span class="node">Chatbot à règles<small>intentions, salles, modes</small></span>
+          <span class="node">Routeur d'itinéraires<small>graphe des couloirs</small></span>
+        </div></div>
+        <div class="flow" aria-hidden="true">▼</div>
+        <div class="layer"><div class="layer-name">Action</div><div class="nodes">
+          <span class="node">Nav2<small>trajet, évitement, Collision Monitor</small></span>
+          <span class="node new">g1_bridge<small>/cmd_vel → marche Unitree</small></span>
+          <span class="node closed">PC1 Unitree<small>équilibre et pas (fermé)</small></span>
+          <span class="node">Piper → haut-parleur<small>voix</small></span>
+          <span class="node">Gestes et LED<small>SDK Unitree</small></span>
+        </div></div>
+        <div class="flow" aria-hidden="true">▲</div>
+        <div class="layer"><div class="layer-name">Configuration</div><div class="nodes">
+          <span class="node new">Logiciel web (FastAPI)<small>ouvert depuis un navigateur</small></span>
+          <span class="node new">Paquet de lieu (YAML)<small>cartes, salles, phrases, modes</small></span>
+        </div></div>
+        <div class="arch-legend">
+          <span><span class="swatch"></span>brique existante, installée</span>
+          <span><span class="swatch new"></span>matériel ou code à créer</span>
+          <span><span class="swatch key"></span>cœur du comportement</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="sub">
+      <h3>Le scénario d'accueil</h3>
+      <ol class="states">
+        <li><span class="st-name">Attente</span><p>Au point d'accueil, le robot surveille le hall.</p></li>
+        <li><span class="st-name">Accroche</span><p>Une personne à moins de 3 m regarde le robot : coucou, « Bonjour ! ».</p></li>
+        <li><span class="st-name">Dialogue</span><p>À moins de 1,5 m : écoute, comprend la salle, demande confirmation.</p></li>
+        <li><span class="st-name">Guidage</span><p>« Suivez-moi. » Navigation vers la salle, quelques phrases en route.</p></li>
+        <li><span class="st-name">Arrivée</span><p>Phrase d'arrivée propre à la salle, geste d'au revoir.</p></li>
+        <li><span class="st-name">Retour</span><p>Revient au point d'accueil, puis repasse en attente.</p></li>
+      </ol>
+      <div class="exceptions">
+        <div><b>Bloqué</b>Demande le passage au bout de 3 s, change de couloir au bout de 8 s.</div>
+        <div><b>Batterie faible</b>Prévient le visiteur et rentre sous 25 %.</div>
+        <div><b>Arrêt</b>Télécommande ou bouton du logiciel, priorité absolue.</div>
+      </div>
+    </div>
+
+    <div class="sub">
+      <h3>Le paquet de lieu</h3>
+      <p>Le logiciel de configuration lit et écrit ces fichiers. Changer de bâtiment revient à charger un autre paquet : le code ne change jamais. Pour le mode « méchant », visez le sarcasme bienveillant et faites valider les phrases par l'établissement.</p>
+      <div class="code-grid">
+        <figure class="wide">
+          <figcaption>~/robot-g1/lieux/mon-lycee/ (exemple)</figcaption>
+<pre>lieu.yaml           <span class="c"># nom, langue, étages, point d'accueil</span>
+cartes/rdc.pgm      <span class="c"># carte 2D pour Nav2 (+ rdc.yaml)</span>
+cartes/rdc.pcd      <span class="c"># nuage 3D du scan FAST-LIO2</span>
+salles.yaml         <span class="c"># points nommés et alias</span>
+itineraires.yaml    <span class="c"># graphe des couloirs</span>
+zones.yaml          <span class="c"># zones interdites et lentes</span>
+dialogue.yaml       <span class="c"># intentions et réponses communes</span>
+modes/normal.yaml  modes/drole.yaml  modes/grincheux.yaml  modes/discret.yaml</pre>
+        </figure>
+        <figure>
+          <figcaption>salles.yaml (exemple)</figcaption>
+<pre>- id: b204
+  nom: "Salle B204"
+  alias: ["b204", "labo de physique"]
+  etage: rdc
+  pose: {x: 12.40, y: -3.10, theta: 1.57}
+  phrase_arrivee: "Voici le labo de physique."</pre>
+        </figure>
+        <figure>
+          <figcaption>modes/grincheux.yaml (exemple)</figcaption>
+<pre>voix: {modele: fr_FR-tom-medium, vitesse: 0.9}
+led: [200, 70, 40]
+vitesse_max: 0.4        <span class="c"># m/s</span>
+gestes: {accueil: "reject", arrivee: "clap"}
+phrases:
+  depart: ["Suivez-moi. Et ne traînez pas."]</pre>
+        </figure>
+      </div>
+    </div>
+
+    <div class="sub">
+      <h3>Les outils et où ils en sont</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Domaine</th><th>Outil</th><th>État sur votre PC</th></tr></thead>
+          <tbody>
+            <tr><td>Système</td><td>Ubuntu 22.04, ROS 2 Humble, CycloneDDS</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Robot</td><td>unitree_sdk2, unitree_sdk2_python, unitree_ros2</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Simulation robot</td><td>MuJoCo (unitree_mujoco, politique unitree_rl_gym)</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Simulation navigation</td><td>Gazebo Fortress, ros_gz, acteurs pour la foule</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>LiDAR</td><td>Livox-SDK2, livox_ros_driver2</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Carte 3D</td><td>Cartographie intégrée d'Unitree ; FAST-LIO2 en secours</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Carte 2D</td><td>Open3D</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Localisation</td><td>AMCL ; pointcloud_to_laserscan</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Navigation</td><td>Nav2 : Smac, MPPI, Collision Monitor, Keepout</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Caméras</td><td>See3CAM_11CUG (USB, UVC) ; RealSense pour la tête</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Personnes</td><td>Ultralytics YOLO + ByteTrack, PyTorch CUDA</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Parole → texte</td><td>Vosk (français), faster-whisper</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Texte → parole</td><td>Piper, voix siwis et tom</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Compréhension</td><td>Intentions YAML, rapidfuzz</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Configuration</td><td>FastAPI, uvicorn ; rosbridge</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Conteneurs</td><td>Docker</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Débogage</td><td>RViz2, rosbag2</td><td><span class="chip lvl-1">installé</span></td></tr>
+            <tr><td>Jetson du robot</td><td>ROS 2 Humble dans Docker (dustynv/ros, L4T R35.3.1)</td><td><span class="chip lvl-2">le 26 octobre</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sub">
+      <h3>Si le temps manque</h3>
+      <div class="prio">
+        <div>
+          <h3><span class="chip lvl-4">1</span>Indispensable</h3>
+          <ul>
+            <li>Carte d'un étage et salles placées</li>
+            <li>Guidage vers une salle et retour</li>
+            <li>Ralentir, contourner, s'arrêter en sécurité</li>
+            <li>Détection des visiteurs</li>
+            <li>Dialogue par la voix ou la tablette</li>
+            <li>Logiciel : lieux, salles, phrases, modes</li>
+          </ul>
+        </div>
+        <div>
+          <h3><span class="chip lvl-3">2</span>Important</h3>
+          <ul>
+            <li>Itinéraires de secours par graphe</li>
+            <li>Banc de test avec foule simulée</li>
+            <li>Quatre modes de personnalité complets</li>
+            <li>Écrans scan, itinéraires et zones</li>
+          </ul>
+        </div>
+        <div>
+          <h3><span class="chip lvl-2">3</span>Bonus</h3>
+          <ul>
+            <li>Plusieurs étages par l'ascenseur</li>
+            <li>Questions libres avec une IA cadrée</li>
+            <li>Caméra fixe dans le hall</li>
+            <li>Accueil en plusieurs langues</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="sub">
+      <h3>Ce qui peut mal tourner, et la parade</h3>
+      <div class="risks">
+        <div class="risk risk-head"><span>Risque</span><span>Parade</span></div>
+        <div class="risk"><b>Le bruit empêche la reconnaissance vocale</b><p>Tablette kiosque, micro directionnel, questions fermées (« oui » ou « non »).</p></div>
+        <div class="risk"><b>Le LiDAR ne voit pas les vitres</b><p>Zones interdites sur la carte ; la caméra de tête complète.</p></div>
+        <div class="risk"><b>Le robot se perd dans un long couloir uniforme</b><p>AMCL bien réglé, départ toujours du point d'accueil, recalage depuis le logiciel.</p></div>
+        <div class="risk"><b>Le Jetson sature (carte, Nav2, YOLO, voix)</b><p>Modèles « nano » en TensorRT ; reconnaissance vocale déportée sur un portable en Wi-Fi si besoin.</p></div>
+        <div class="risk"><b>La batterie tient environ 2 h</b><p>Retour automatique sous 25 %, batterie de rechange, planning de charge.</p></div>
+        <div class="risk"><b>Une mise à jour Unitree change le SDK</b><p>Versions figées dans <code>~/robot-g1/third_party/VERSIONS.txt</code>.</p></div>
+        <div class="risk"><b>Un visiteur est heurté</b><p>0,6 m/s maximum, arrêt sous 0,4 m, un accompagnateur avec la télécommande pendant tout l'événement.</p></div>
+        <div class="risk"><b>Le visiteur ne suit plus</b><p>Le robot se retourne aux carrefours et l'attend ; caméra arrière en option.</p></div>
+      </div>
+    </div>
+
+    <div class="sub">
+      <h3>Documentation</h3>
+      <div class="links">
+        <a href="https://support.unitree.com/home/en/G1_developer" target="_blank" rel="noopener">Documentation développeur G1</a>
+        <a href="https://github.com/unitreerobotics/unitree_sdk2_python" target="_blank" rel="noopener">unitree_sdk2_python</a>
+        <a href="https://github.com/unitreerobotics/unitree_ros2" target="_blank" rel="noopener">unitree_ros2</a>
+        <a href="https://github.com/unitreerobotics/unitree_mujoco" target="_blank" rel="noopener">unitree_mujoco</a>
+        <a href="https://github.com/Livox-SDK/livox_ros_driver2" target="_blank" rel="noopener">livox_ros_driver2</a>
+        <a href="https://github.com/hku-mars/FAST_LIO/tree/ROS2" target="_blank" rel="noopener">FAST_LIO (ROS 2)</a>
+        <a href="https://docs.nav2.org" target="_blank" rel="noopener">Nav2</a>
+        <a href="https://docs.ros.org/en/humble/Tutorials.html" target="_blank" rel="noopener">Tutoriels ROS 2 Humble</a>
+        <a href="https://docs.ultralytics.com" target="_blank" rel="noopener">Ultralytics YOLO</a>
+        <a href="https://alphacephei.com/vosk/" target="_blank" rel="noopener">Vosk</a>
+        <a href="https://github.com/OHF-Voice/piper1-gpl" target="_blank" rel="noopener">Piper</a>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  // --- Commandes ---------------------------------------------------------
+  // etat : ok = marche déjà, materiel = robot ou caméra branchés, creer = programme à écrire ce jour-là
+  var CMD = {
+    inst_sys: { cat: "install", etat: "ok", c: "bash ~/robot-g1/setup/installer_pc.sh", d: "Installe la partie système : pilote NVIDIA, ROS 2, Nav2, Gazebo, capteurs, audio, Docker. Demande votre mot de passe une fois." },
+    inst_user: { cat: "install", etat: "ok", c: "bash ~/robot-g1/setup/installer_utilisateur.sh", d: "Installe tout le reste sans mot de passe : SDK, simulations, LiDAR, vision, voix, modèles. Sert à tout réinstaller un jour." },
+    inst_ws: { cat: "install", etat: "ok", c: "bash ~/robot-g1/setup/installer_utilisateur.sh ws", d: "Compile l'espace de travail ROS 2 : pilote LiDAR et FAST-LIO2." },
+    recharger: { cat: "install", etat: "ok", c: "source ~/.bashrc", d: "Recharge les commandes du projet dans un terminal ouvert avant une installation." },
+    nvidia: { cat: "install", etat: "ok", c: "nvidia-smi", d: "Vérifie la carte graphique." },
+    docker_test: { cat: "install", etat: "ok", c: "docker run --rm hello-world", d: "Vérifie que Docker marche : affiche « Hello from Docker! ». Sert une fois, après l'installation." },
+
+    sim_marche: { cat: "sim", etat: "ok", c: "g1-sim-marche", d: "Le G1 qui marche dans MuJoCo, à la manette ou au clavier." },
+    activer_virt: { cat: "sim", etat: "ok", c: "sudo bash ~/robot-g1/setup/activer_manette_virtuelle.sh", d: "Autorise une fois la manette virtuelle (mot de passe demandé)." },
+    manette_virt: { cat: "sim", etat: "ok", c: "g1-manette-virtuelle", d: "Manette Xbox virtuelle pilotée au clavier (Z Q S D, flèches, Espace, B, Maj) ou à la souris. À lancer avant la simulation. --test pour vérifier qu'elle est bien vue." },
+    sim: { cat: "sim", etat: "ok", c: "g1-sim", d: "Simulateur officiel Unitree : G1 complet relié au SDK. Ajouter --ddl 23 pour la version 23 degrés de liberté." },
+    etat_lo: { cat: "sim", etat: "ok", c: "g1-etat lo", d: "État du robot simulé (g1-sim doit tourner dans un autre terminal)." },
+    sim_demo: { cat: "sim", etat: "ok", c: "g1-sim-demo", d: "Le SDK fait bouger le robot simulé, moteur par moteur. Jamais sur le vrai robot." },
+    gazebo: { cat: "sim", etat: "ok", c: "ign gazebo shapes.sdf", d: "Ouvre Gazebo avec un monde d'exemple." },
+    gz_ros: { cat: "sim", etat: "ok", c: "ros2 launch ros_gz_sim gz_sim.launch.py gz_args:=empty.sdf", d: "Lance Gazebo depuis ROS 2." },
+    nav2_sim: { cat: "sim", etat: "ok", c: "ros2 launch nav2_bringup navigation_launch.py use_sim_time:=true", d: "Lance Nav2 sur la simulation." },
+    rviz: { cat: "sim", etat: "ok", c: "rviz2", d: "Visualiser cartes, nuages de points, trajets ; envoyer un but de navigation." },
+    map_save: { cat: "sim", etat: "ok", c: "ros2 run nav2_map_server map_saver_cli -f ~/robot-g1/cartes/ma_carte", d: "Enregistre la carte 2D en cours (.pgm + .yaml)." },
+
+    robot_sh: { cat: "robot", etat: "materiel", c: "source ~/robot-g1/setup/robot.sh", d: "Relie ce terminal au robot par le câble Ethernet (PC en 192.168.123.99). À refaire dans chaque nouveau terminal." },
+    etat: { cat: "robot", etat: "materiel", c: "g1-etat", d: "État du vrai robot, sans rien faire bouger : connexion, inclinaison, nombre de moteurs, batterie." },
+    premiers: { cat: "robot", etat: "materiel", c: "g1-premiers-pas", d: "Menu de premiers tests : voix, LED, gestes, quelques pas." },
+    manette: { cat: "robot", etat: "materiel", c: "g1-manette", d: "Piloter le robot à la manette : LB maintenu pour bouger, B pour arrêter. --vitesse-max 0.5 pour aller plus vite." },
+    jstest: { cat: "robot", etat: "ok", c: "jstest /dev/input/js0", d: "Vérifie que la manette est reconnue et affiche ses boutons." },
+    telecommande: { cat: "robot", etat: "materiel", c: "g1-telecommande", d: "Affiche ce que le robot reçoit de sa télécommande Unitree officielle : sticks et boutons." },
+    telecommande_lo: { cat: "robot", etat: "ok", c: "g1-telecommande lo", d: "Même chose dans le simulateur g1-sim, où la manette (physique ou virtuelle) remplace la télécommande Unitree." },
+    releve: { cat: "robot", etat: "materiel", c: "g1-releve", d: "Relève en une fois la version du G1, ce qu'il publie, le LiDAR et les versions du Jetson, dans ~/robot-g1/docs/releves/. Claude lit ce fichier." },
+    nuage: { cat: "lidar", etat: "materiel", c: "g1-nuage", d: "Cherche le nuage de points du LiDAR publié sur le réseau et l'ouvre dans RViz. --liste pour seulement lister." },
+    ssh: { cat: "robot", etat: "materiel", c: "ssh unitree@192.168.123.164", d: "Se connecter au Jetson (PC2) du robot. Adresse habituelle, identifiants dans la documentation Unitree." },
+    jetson_versions: { cat: "robot", etat: "materiel", jetson: true, c: "cat /etc/os-release; printenv ROS_DISTRO; cat /etc/nv_tegra_release", d: "À taper sur le Jetson : versions d'Ubuntu, de ROS et de JetPack." },
+    teleop_clavier: { cat: "robot", etat: "ok", c: "ros2 run teleop_twist_keyboard teleop_twist_keyboard", d: "Envoie des vitesses (/cmd_vel) au clavier : pour tester le pont vers le robot ou la simulation." },
+
+    ping_lidar: { cat: "lidar", etat: "materiel", c: "ping -c 3 192.168.123.120", d: "Vérifie que le LiDAR du robot répond (adresse habituelle à confirmer)." },
+    lidar_rviz: { cat: "lidar", etat: "materiel", c: "ros2 launch livox_ros_driver2 rviz_MID360_launch.py", d: "Affiche le nuage de points du LiDAR dans RViz." },
+    lidar_msg: { cat: "lidar", etat: "materiel", c: "ros2 launch livox_ros_driver2 msg_MID360_launch.py", d: "Démarre le LiDAR au format attendu par FAST-LIO2." },
+    fastlio: { cat: "lidar", etat: "materiel", c: "ros2 launch fast_lio mapping.launch.py config_file:=mid360.yaml", d: "Cartographie 3D en direct. Ctrl+C enregistre ~/robot-g1/ws/src/FAST_LIO/PCD/scans.pcd." },
+    fastlio_sans_rviz: { cat: "lidar", etat: "materiel", c: "ros2 launch fast_lio mapping.launch.py config_file:=mid360.yaml rviz:=false", d: "FAST-LIO2 sans fenêtre, comme odométrie pour la navigation." },
+    bag_rec: { cat: "lidar", etat: "materiel", c: "ros2 bag record -o ~/robot-g1/enregistrements/scan_etage /livox/lidar /livox/imu", d: "Enregistre les données du LiDAR pour refaire la carte plus tard sans le robot." },
+    bag_rec_unitree: { cat: "lidar", etat: "materiel", c: "ros2 bag record -o ~/robot-g1/enregistrements/scan_etage /unitree/slam_mapping/points /unitree/slam_mapping/odom /state_estimator/odom_pelvis /lf/sportmodestate", d: "Enregistre le nuage et la position de la cartographie d'Unitree pendant un scan lancé dans l'appli." },
+    bag_info: { cat: "lidar", etat: "ok", c: "ros2 bag info ~/robot-g1/enregistrements/scan_couloir", d: "Résumé d'un enregistrement : durée et nombre de messages par sujet." },
+    bag_play: { cat: "lidar", etat: "ok", c: "ros2 bag play ~/robot-g1/enregistrements/scan_etage", d: "Rejoue un enregistrement comme si le robot était là." },
+    pcd2map: { cat: "lidar", etat: "creer", c: "~/robot-g1/.venv-projet/bin/python ~/robot-g1/outils/pcd_vers_carte.py scans.pcd", d: "Votre script de conversion du nuage 3D en carte 2D Nav2 (Open3D est installé)." },
+    clicked: { cat: "lidar", etat: "ok", c: "ros2 topic echo /clicked_point", d: "Affiche les coordonnées des points cliqués dans RViz avec l'outil « Publish Point »." },
+
+    scan2d: { cat: "nav", etat: "materiel", c: "ros2 run pointcloud_to_laserscan pointcloud_to_laserscan_node --ros-args -r cloud_in:=/cloud_registered_body", d: "Transforme le nuage 3D en scan 2D pour la localisation." },
+    loc: { cat: "nav", etat: "materiel", c: "ros2 launch nav2_bringup localization_launch.py map:=$HOME/robot-g1/cartes/rdc.yaml", d: "Localise le robot sur la carte 2D (AMCL)." },
+    nav_robot: { cat: "nav", etat: "creer", c: "ros2 launch nav2_bringup navigation_launch.py params_file:=$HOME/robot-g1/config/nav2_g1.yaml", d: "Nav2 sur le vrai robot, avec vos réglages du G1 (fichier à écrire)." },
+    bridge: { cat: "nav", etat: "creer", c: "ros2 run g1_bridge pont", d: "Votre pont /cmd_vel → marche Unitree." },
+    pkg_create: { cat: "nav", etat: "ok", c: "cd ~/robot-g1/ws/src && ros2 pkg create --build-type ament_python g1_bridge --dependencies rclpy geometry_msgs", d: "Crée un paquet ROS 2 Python (remplacer g1_bridge par le nom voulu)." },
+    colcon: { cat: "nav", etat: "ok", c: "cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_bridge && source ~/.bashrc", d: "Compile un de vos paquets, puis le rend disponible dans le terminal." },
+    topics: { cat: "nav", etat: "ok", c: "ros2 topic list", d: "Liste tout ce qui circule dans ROS 2. ros2 topic echo NOM pour lire un sujet." },
+    routeur: { cat: "nav", etat: "creer", c: "ros2 run g1_nav routeur", d: "Votre routeur A* sur le graphe des couloirs." },
+
+    personnes: { cat: "ia", etat: "ok", c: "g1-personnes", d: "Détecte et suit les personnes avec la webcam (q pour quitter)." },
+    cameras: { cat: "ia", etat: "ok", c: "v4l2-ctl --list-devices", d: "Liste les caméras branchées et leur numéro." },
+    personnes_cam: { cat: "ia", etat: "materiel", c: "g1-personnes --source 4", d: "Détection sur la See3CAM : remplacer 4 par son numéro, trouvé avec v4l2-ctl --list-devices." },
+    realsense: { cat: "ia", etat: "materiel", c: "ros2 launch realsense2_camera rs_launch.py", d: "Démarre la caméra RealSense dans ROS 2." },
+    yolo_trt: { cat: "ia", etat: "materiel", jetson: true, c: "yolo export model=yolo11n-pose.pt format=engine", d: "À taper sur le Jetson : accélère YOLO avec TensorRT." },
+    perception: { cat: "ia", etat: "creer", c: "ros2 run g1_perception personnes", d: "Votre nœud qui publie /personnes." },
+    parler: { cat: "ia", etat: "ok", c: "g1-parler \"Bonjour, je suis le robot d'accueil.\"", d: "Voix française hors ligne (Piper)." },
+    parler_tom: { cat: "ia", etat: "ok", c: "g1-parler --voix tom --vitesse 0.9 \"Suivez-moi. Et ne traînez pas.\"", d: "Autre voix, plus lente : pour les modes de personnalité." },
+    ecouter: { cat: "ia", etat: "ok", c: "g1-ecouter", d: "Transcrit le micro en direct (Vosk). Ctrl+C pour arrêter." },
+    ecouter_whisper: { cat: "ia", etat: "ok", c: "g1-ecouter --whisper --fichier phrase.wav", d: "Transcription plus précise d'un fichier (faster-whisper)." },
+    chatbot: { cat: "ia", etat: "creer", c: "ros2 run g1_dialogue chatbot", d: "Votre chatbot à règles." },
+
+    accueil: { cat: "app", etat: "creer", c: "ros2 run g1_behavior accueil", d: "Votre machine à états du scénario d'accueil." },
+    config_app: { cat: "app", etat: "creer", c: "cd ~/robot-g1 && .venv-projet/bin/uvicorn config_app.main:app --reload --host 0.0.0.0", d: "Votre logiciel de configuration, puis ouvrir http://localhost:8000 dans le navigateur." },
+    rosbridge: { cat: "app", etat: "ok", c: "ros2 launch rosbridge_server rosbridge_websocket_launch.xml", d: "Laisse une page web parler à ROS 2." },
+    git_config: { cat: "app", etat: "ok", c: "git config --global user.name \"Prénom Nom\" && git config --global user.email \"votre.adresse@exemple.fr\"", d: "Indique à Git votre nom et votre adresse, une seule fois." },
+    git_init: { cat: "app", etat: "ok", c: "cd ~/robot-g1 && git init && git add -A && git commit -m \"Départ du projet\"", d: "Met le projet sous Git (le fichier .gitignore exclut déjà les gros dossiers)." },
+    git_commit: { cat: "app", etat: "ok", c: "cd ~/robot-g1 && git add -A && git commit -m \"Ce que j'ai fait\"", d: "Sauvegarde une étape du travail. À faire chaque soir." },
+    git_tag: { cat: "app", etat: "ok", c: "cd ~/robot-g1 && git tag v1.0", d: "Marque la version livrée." }
+  };
+  var CATS = [
+    ["install", "Installation et terminal"], ["sim", "Simulation"], ["robot", "Robot et manette"],
+    ["lidar", "LiDAR et cartographie"], ["nav", "Navigation et paquets ROS 2"],
+    ["ia", "Visiteurs et voix"], ["app", "Comportement, configuration, Git"]
+  ];
+  var ETATS = { ok: ["prête", "lvl-1"], materiel: ["matériel branché", "lvl-2"], creer: ["à créer", "lvl-3"] };
+  var LIEUX = { pc: ["Sur le PC", "lvl-0"], robot: ["Avec le robot", "lvl-2"], ferie: ["Férié", "lvl-0"] };
+
+  // --- Calendrier --------------------------------------------------------
+  // Matériel réutilisé d'une journée à l'autre
+  var M = {
+    pc: "PC portable chargé", chargeur: "Chargeur du PC", internet: "Connexion Internet",
+    robot: "Robot G1 chargé", portique: "Portique ou harnais", tele: "Télécommande officielle",
+    ethernet: "Câble Ethernet RJ45", aide: "Une deuxième personne", appli: "Téléphone avec l'appli Unitree",
+    manette: "Manette (virtuelle ou USB)", camera: "Caméra See3CAM_11CUG et son câble USB 3",
+    support: "Support de caméra imprimé en 3D, vis, serre-câbles", metre: "Mètre ruban ou télémètre laser",
+    scotch: "Ruban adhésif de marquage au sol", obstacles: "Cartons ou chaises (obstacles)",
+    plans: "Plans du bâtiment", video: "Téléphone pour filmer", chrono: "Chronomètre", feuille: "Feuille de mesures",
+    micro: "Micro USB", tablette: "Tablette", tuteur: "Votre tuteur", volontaires: "5 à 10 volontaires",
+    chargeurRobot: "Chargeur du robot", espace: "Couloir libre réservé"
+  };
+  var SEMAINES = [
+    { n: "S1", titre: "Prise en main et installation", obj: "PC prêt, simulations comprises, robot relié au PC.",
+      livrable: "Le robot parle, fait coucou et avance sur commande depuis le PC.", jours: [
+      { d: "2026-10-21", titre: "Installer le poste et découvrir les simulations", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc, M.internet],
+        t: [["Passer le PC en Ubuntu 22.04", 1], ["Installer le pilote NVIDIA, ROS 2 Humble, Nav2, Gazebo", 1],
+            ["Installer les SDK Unitree, les simulations, le pilote LiDAR, la vision et la voix", 1],
+            ["Relancer l'installation système : capteurs, audio, Docker", 1], ["Compiler FAST-LIO2", 1],
+            ["Se reconnecter à la session Ubuntu et vérifier Docker", 1], ["Activer la manette virtuelle", 1],
+            ["Faire marcher le G1 simulé", 1], ["Lancer le simulateur officiel et lire l'état du robot simulé", 1],
+            ["Regarder la démo bas niveau du SDK", 1], ["Essayer la détection de personnes et la voix", 1]],
+        c: ["inst_sys", "inst_ws", "docker_test", "activer_virt", "manette_virt", "sim_marche", "sim", "etat_lo",
+            "telecommande_lo", "sim_demo", "personnes", "parler", "ecouter"],
+        guide: [
+          { s: "Le G1 qui marche, avec la manette virtuelle", e: [
+            { t: "Ouvrir la manette virtuelle", c: "g1-manette-virtuelle", ou: "Terminal 1",
+              ok: "une fenêtre « Manette virtuelle G1 » avec deux sticks et les boutons A, B, LB." },
+            { t: "Lancer la simulation dans un deuxième terminal", x: "Ctrl + Maj + T ouvre le Terminal 2.",
+              c: "g1-sim-marche", ou: "Terminal 2",
+              ok: "la fenêtre MuJoCo avec le G1 debout, et « Manette : Xbox 360 Controller » dans le terminal." },
+            { t: "Piloter", x: "Cliquez dans la fenêtre de la manette virtuelle. Maintenez Z pour avancer, Q / D pour glisser, flèches gauche / droite pour tourner. Espace relève le robot s'il tombe.",
+              ok: "le robot marche tant que la touche est maintenue, et s'arrête quand vous la lâchez." }]},
+          { s: "Le simulateur officiel relié au SDK", e: [
+            { t: "Lancer le simulateur", c: "g1-sim", ou: "Terminal 1", ok: "le G1 suspendu à un élastique, comme sur le portique." },
+            { t: "Lire l'état du robot simulé", c: "g1-etat lo", ou: "Terminal 2", ok: "« Connecté (200 msg/s) … Moteurs actifs 29 »." },
+            { t: "Faire bouger le robot simulé", c: "g1-sim-demo", ou: "Terminal 2", ok: "les chevilles et les bras bougent." }]},
+          { s: "Vision et voix", e: [
+            { t: "Détecter les personnes", c: "g1-personnes", ou: "Terminal 1",
+              x: "Restez devant la webcam, inutile de bouger. Sortez du cadre puis revenez, ou mettez-vous à deux.",
+              ok: "un cadre « person » numéroté autour de vous, des points sur le corps, et le nombre de personnes. Touche q pour quitter." },
+            { t: "Faire parler le PC", c: "g1-parler \"Bonjour, je suis le robot d'accueil.\"", ou: "Terminal 1", ok: "vous entendez la phrase." },
+            { t: "Transcrire votre voix", c: "g1-ecouter", ou: "Terminal 1", ok: "ce que vous dites s'écrit. Ctrl + C pour arrêter." }]}
+        ] },
+      { d: "2026-10-22", titre: "Le robot relié au PC : relevé, voix, gestes, manette, LiDAR", lieu: "robot", duree: "1 h 30",
+        materiel: [M.robot, M.portique, M.tele, M.ethernet, M.pc, M.aide, M.appli],
+        t: [["Relier le PC au robot par le câble Ethernet", 1], ["Faire le relevé du robot (g1-releve) et l'envoyer à Claude", 1],
+            ["Vérifier la télécommande vue par le PC", 1], ["Faire parler le robot et changer sa LED", 1],
+            ["Robot debout : coucou, un geste, deux secondes de marche", 1],
+            ["Piloter à la manette et vérifier que le robot s'arrête tout seul", 1],
+            ["Afficher le nuage de points du LiDAR", 1], ["Ranger le robot", 1]],
+        c: ["robot_sh", "releve", "telecommande", "premiers", "manette_virt", "manette", "nuage"],
+        note: "Comme d'habitude : robot au portique, une deuxième personne tient la télécommande officielle. Elle reste l'arrêt d'urgence même quand le PC commande le robot.",
+        guide: [
+          { s: "1 · Relier le PC au robot (10 min)", e: [
+            { t: "Allumer le robot et brancher le câble", x: "Robot au portique, démarrage terminé. Câble entre le port Ethernet du PC et celui du robot. Le Wi-Fi ne sert pas." },
+            { t: "Relier le terminal au robot", c: "source ~/robot-g1/setup/robot.sh", ou: "Terminal 1",
+              ok: "« ROS 2 relié au robot par eno2 (PC en 192.168.123.99) : le robot répond. »",
+              ko: "« Câble non détecté » : câble mal enfoncé. « Le robot ne répond pas » : attendez une minute." }]},
+          { s: "2 · Le relevé du robot (5 min)", e: [
+            { t: "Lancer le relevé", c: "g1-releve", ou: "Terminal 1",
+              x: "Mot de passe du Jetson : 123. Les caractères ne s'affichent pas pendant la frappe.",
+              ok: "« Relevé enregistré dans … ». Écrivez « relevé fait » à Claude." }]},
+          { s: "3 · La télécommande et la voix, robot suspendu (10 min)", e: [
+            { t: "Voir la télécommande depuis le PC", c: "g1-telecommande --diagnostic", ou: "Terminal 1",
+              x: "Pendant les 15 s, bougez les deux sticks de la télécommande officielle et appuyez sur A puis B.",
+              ok: "un résumé « Diagnostic de la télécommande ». Écrivez « diagnostic fait » à Claude." },
+            { t: "Faire parler le robot", c: "g1-premiers-pas", ou: "Terminal 1",
+              x: "Dans le menu : 1, Entrée, Entrée.", ok: "« Voix : OK » et le robot dit « Hello, I am G1 »." },
+            { t: "Changer la LED", x: "2, Entrée, puis vert, Entrée.", ok: "« LED : OK » et la lumière change." }]},
+          { s: "4 · Robot debout (15 min)", e: [
+            { t: "Mettre le robot debout", x: "Dans le mode où vous le faites marcher d'habitude, toujours au portique, corde un peu détendue." },
+            { t: "Coucou et geste", x: "Menu : 4 (coucou). Puis 3 et 1 (face wave), 3 et 4 (clap). Si un bras reste levé : 3 et 10.",
+              ok: "« OK » et le robot fait les gestes.", ko: "« erreur 3104 » : le robot n'est pas dans son mode de marche." },
+            { t: "Deux secondes de marche", x: "5, puis oui. Ensuite 6 pour tourner. 0 pour quitter.", ok: "quelques pas lents, puis arrêt tout seul." }]},
+          { s: "5 · Piloter à la manette (15 min)", e: [
+            { t: "Manette virtuelle", c: "g1-manette-virtuelle", ou: "Terminal 2", ok: "la fenêtre « Manette virtuelle G1 »." },
+            { t: "Pilotage", c: "g1-manette", ou: "Terminal 1", ok: "« Prêt. Vitesse max 0.30 m/s »." },
+            { t: "Homme mort", x: "Cliquez dans la fenêtre de la manette. Maj gauche maintenue + Z : le robot avance. Lâchez Maj : il s'arrête." },
+            { t: "Arrêt de sécurité", x: "Pendant un mouvement, fermez la fenêtre de la manette.", ok: "« Manette déconnectée : robot arrêté » et arrêt en moins d'une seconde.",
+              ko: "s'il continue : amortissement à la télécommande, et prévenez Claude." }]},
+          { s: "6 · Le LiDAR (15 min)", e: [
+            { t: "Lancer un scan 3D dans l'appli", x: "Le nuage du robot (/unitree/slam_mapping/points) n'est publié que pendant un scan." },
+            { t: "Afficher le nuage", c: "g1-nuage", ou: "Terminal 1", ok: "RViz dessine la pièce en points colorés.",
+              ko: "« n'a rien envoyé » : le scan n'est pas lancé dans l'appli." },
+            { t: "Arrêter le scan", x: "Notez si l'appli enregistre la carte et sous quel nom. N'utilisez pas le pilote LiDAR du PC pendant un scan de l'appli." }]},
+          { s: "7 · Fin de séance (5 min)", e: [
+            { t: "Ranger", x: "Amortissement au portique, extinction, mise en charge. Racontez la séance à Claude : réussites, erreurs, batterie." }]}
+        ] },
+      { d: "2026-10-23", titre: "Cadrer le projet", lieu: "pc", duree: "3 h",
+        materiel: [M.pc, M.plans, M.tuteur, M.camera],
+        t: [["Récupérer les plans du bâtiment"], ["Lister les salles à desservir, escaliers, ascenseurs, zones vitrées"],
+            ["Écrire le cahier des charges d'une page : indispensable, important, bonus"],
+            ["Identifier la caméra See3CAM et son objectif"], ["Demander un micro USB et une tablette"], ["Mettre le projet sous Git", 1]],
+        c: ["git_config", "git_init", "cameras"],
+        guide: [
+          { s: "Le bâtiment", e: [
+            { t: "Récupérer les plans", x: "Plan d'évacuation ou plan d'architecte de l'étage où le robot travaillera. Photo ou PDF dans ~/robot-g1/docs/plans/." },
+            { t: "Lister les salles", c: "code ~/robot-g1/docs/salles.txt", ou: "Terminal 1",
+              x: "Une ligne par salle : nom, étage, autres noms possibles (« B204, labo de physique »), obstacles sur le trajet (escalier, porte vitrée, marche)." }]},
+          { s: "Le cahier des charges", e: [
+            { t: "Écrire une page", c: "code ~/robot-g1/docs/cahier_des_charges.md", ou: "Terminal 1",
+              x: "Trois titres : Indispensable, Important, Bonus. Partez de la section « Si le temps manque » de cette page et validez avec votre tuteur." }]},
+          { s: "Le matériel", e: [
+            { t: "Identifier la caméra", x: "Lisez la référence exacte sur l'étiquette de la See3CAM et celle de son objectif (angle de vue). Branchez-la au PC en USB 3 (port bleu).",
+              c: "v4l2-ctl --list-devices", ou: "Terminal 1", ok: "une ligne « See3CAM… » suivie de /dev/videoN. Notez N : c'est son numéro pour g1-personnes --source N." },
+            { t: "Demander le matériel manquant", x: "Micro USB directionnel (type ReSpeaker) et tablette pour la page kiosque. Faites valider par votre tuteur." }]},
+          { s: "Git : sauvegarder le projet", e: [
+            { t: "Dire à Git qui vous êtes (une seule fois)", c: "git config --global user.name \"Prénom Nom\" && git config --global user.email \"votre.adresse@exemple.fr\"", ou: "Terminal 1",
+              x: "Remplacez le nom et l'adresse par les vôtres." },
+            { t: "Créer l'historique", c: "cd ~/robot-g1 && git init && git add -A && git commit -m \"Départ du projet\"", ou: "Terminal 1",
+              ok: "« [master (commit racine) …] Départ du projet ». Les gros dossiers sont exclus automatiquement." }]}
+        ] }
+    ]},
+    { n: "S2", titre: "Socle logiciel et simulation de navigation", obj: "Le Jetson est prêt, le pont vers la marche existe, Nav2 navigue en simulation.",
+      livrable: "Jalon : dans Gazebo, le robot proxy va seul d'une salle à une autre.", jours: [
+      { d: "2026-10-26", titre: "Installer le projet sur le Jetson", lieu: "robot", duree: "2 h",
+        materiel: [M.robot, M.chargeurRobot, M.ethernet, M.pc],
+        t: [["Donner au PC un accès au Jetson sans mot de passe"], ["Claude installe ROS 2 Humble en Docker sur le Jetson"],
+            ["Lire l'état du robot depuis le conteneur du Jetson"]],
+        c: ["robot_sh", "ssh"],
+        note: "Le Jetson est en Ubuntu 20.04 avec Docker 24 : ROS 2 Humble tournera dans le conteneur dustynv/ros:humble-ros-base-l4t-r35.3.1, sans toucher au système d'Unitree. Le robot peut rester assis ou suspendu, branché sur son chargeur.",
+        guide: [
+          { s: "Accès au Jetson pour Claude", e: [
+            { t: "Relier le PC au robot", c: "source ~/robot-g1/setup/robot.sh", ou: "Terminal 1", ok: "« le robot répond »." },
+            { t: "Créer une clé SSH si vous n'en avez pas", c: "[ -f ~/.ssh/id_ed25519 ] || ssh-keygen -t ed25519 -N \"\" -f ~/.ssh/id_ed25519", ou: "Terminal 1",
+              ok: "rien, ou « Your identification has been saved »." },
+            { t: "Installer la clé sur le Jetson", c: "ssh-copy-id unitree@192.168.123.164", ou: "Terminal 1",
+              x: "Mot de passe : 123.", ok: "« Number of key(s) added: 1 »." },
+            { t: "Vérifier", c: "ssh unitree@192.168.123.164 hostname", ou: "Terminal 1", ok: "le nom du Jetson, sans mot de passe demandé." }]},
+          { s: "Installation par Claude (30 à 60 min)", e: [
+            { t: "Prévenir Claude", x: "Écrivez « accès Jetson prêt ». Claude télécharge l'image ROS 2 Humble pour Jetson, crée le conteneur, y compile les messages Unitree, et crée une commande pour y entrer." },
+            { t: "Vérifier vous-même", x: "Claude vous donne la commande d'entrée dans le conteneur. Dedans, lisez l'état du robot.", ok: "les mêmes informations que g1-etat, mais calculées sur le robot." }]}
+        ] },
+      { d: "2026-10-27", titre: "Écrire le pont vers la marche du robot", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc, M.robot, M.portique, M.tele, M.ethernet, M.aide],
+        t: [["Lire l'exemple de marche d'Unitree en ROS 2"], ["Créer le paquet g1_bridge"],
+            ["Écrire le nœud : /cmd_vel → /api/sport/request"], ["Tester au clavier, robot au portique"]],
+        c: ["pkg_create", "colcon", "bridge", "teleop_clavier"],
+        note: "Le robot accepte la marche en ROS 2 sur le sujet /api/sport/request (message unitree_api/msg/Request). La commande n° 7105 règle la vitesse : paramètre {\"velocity\": [vx, vy, vyaw], \"duration\": d}.",
+        guide: [
+          { s: "Comprendre (1 h)", e: [
+            { t: "Lire l'exemple officiel", c: "code ~/robot-g1/third_party/unitree_ros2/example/src/src/g1/high_level/loco_client_example.cpp ~/robot-g1/third_party/unitree_ros2/example/src/include/g1/g1_loco_client.hpp", ou: "Terminal 1",
+              x: "Repérez SetVelocity : il remplit un Request avec api_id = 7105 et un texte JSON, puis le publie sur /api/sport/request." }]},
+          { s: "Écrire le pont (3 h)", e: [
+            { t: "Créer le paquet", c: "cd ~/robot-g1/ws/src && ros2 pkg create --build-type ament_python g1_bridge --dependencies rclpy geometry_msgs unitree_api", ou: "Terminal 1" },
+            { t: "Écrire g1_bridge/pont.py", x: "S'abonner à /cmd_vel (Twist). Limiter vx à 0,4 m/s, vy à 0,25 m/s, vyaw à 0,6 rad/s. Publier à 10 Hz un Request 7105 avec duration 0,5 s. Sans /cmd_vel depuis 0,3 s : publier une vitesse nulle. Claude peut écrire ce fichier avec vous." },
+            { t: "Déclarer l'exécutable", x: "Dans setup.py, entry_points : 'pont = g1_bridge.pont:main'." },
+            { t: "Compiler", c: "cd ~/robot-g1/ws && colcon build --symlink-install --packages-select g1_bridge && source ~/.bashrc", ou: "Terminal 1",
+              ok: "« Summary: 1 package finished »." }]},
+          { s: "Tester au portique (1 h)", e: [
+            { t: "Lancer le pont", x: "Robot debout au portique, dans son mode de marche.", c: "source ~/robot-g1/setup/robot.sh && ros2 run g1_bridge pont", ou: "Terminal 1" },
+            { t: "Piloter au clavier", c: "source ~/robot-g1/setup/robot.sh && ros2 run teleop_twist_keyboard teleop_twist_keyboard", ou: "Terminal 2",
+              x: "Appuyez plusieurs fois sur x pour baisser la vitesse à 0,2. Puis i pour avancer, k pour arrêter.",
+              ok: "le robot avance doucement, et s'arrête moins d'une demi-seconde après Ctrl + C dans le Terminal 2." }]}
+        ] },
+      { d: "2026-10-28", titre: "Préparer le robot proxy dans Gazebo", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc],
+        t: [["Vérifier que Gazebo s'ouvre"], ["Créer le modèle : une boîte de la taille du G1 qui suit /cmd_vel"],
+            ["Ajouter un LiDAR 3D simulé à hauteur de tête et l'odométrie"], ["Relier Gazebo à ROS 2"]],
+        c: ["gazebo", "gz_ros", "teleop_clavier", "rviz"],
+        guide: [
+          { s: "Le modèle (3 h)", e: [
+            { t: "Vérifier Gazebo", c: "ign gazebo shapes.sdf", ou: "Terminal 1", ok: "une fenêtre 3D avec des formes." },
+            { t: "Créer le paquet de simulation", c: "cd ~/robot-g1/ws/src && ros2 pkg create --build-type ament_cmake g1_sim", ou: "Terminal 1" },
+            { t: "Écrire le modèle SDF", x: "Dans g1_sim/models/g1_proxy/model.sdf : une boîte de 0,45 × 0,30 × 1,30 m, 35 kg. Plugin VelocityControl (se déplace dans toutes les directions comme le G1), plugin OdometryPublisher." },
+            { t: "Ajouter le LiDAR", x: "Capteur gpu_lidar à 1,2 m de haut : 360° à l'horizontale, 16 lignes entre −7° et +52°, portée 40 m (comme le MID-360)." }]},
+          { s: "Relier à ROS 2 (2 h)", e: [
+            { t: "Lancer Gazebo depuis ROS 2", c: "ros2 launch ros_gz_sim gz_sim.launch.py gz_args:=empty.sdf", ou: "Terminal 1" },
+            { t: "Créer le pont Gazebo ↔ ROS 2", x: "Avec ros_gz_bridge : /cmd_vel (vers Gazebo), /points, /odom et /tf (vers ROS 2). Un fichier de lancement g1_sim/launch/proxy.launch.py lance tout." },
+            { t: "Tester", c: "ros2 run teleop_twist_keyboard teleop_twist_keyboard", ou: "Terminal 2", ok: "la boîte bouge dans Gazebo, et le nuage du LiDAR s'affiche dans RViz (rviz2)." }]}
+        ] },
+      { d: "2026-10-29", titre: "Monde simple et Nav2 en simulation", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc, M.plans],
+        t: [["Construire un monde de couloirs d'après le plan"], ["Cartographier le monde simulé avec slam_toolbox"],
+            ["Lancer Nav2 et envoyer le robot vers un point"]],
+        c: ["nav2_sim", "rviz", "map_save"],
+        guide: [
+          { s: "Le monde (2 h)", e: [
+            { t: "Dessiner les couloirs", x: "Dans g1_sim/worlds/couloirs.sdf : des murs (boîtes de 0,1 m d'épaisseur, 2,5 m de haut) qui reproduisent deux couloirs et trois salles de votre plan, à l'échelle 1 m = 1 m." }]},
+          { s: "La carte (2 h)", e: [
+            { t: "Transformer le nuage en scan 2D", c: "ros2 run pointcloud_to_laserscan pointcloud_to_laserscan_node --ros-args -r cloud_in:=/points -p use_sim_time:=true", ou: "Terminal 2" },
+            { t: "Cartographier", c: "ros2 launch slam_toolbox online_async_launch.py use_sim_time:=true", ou: "Terminal 3",
+              x: "Promenez le robot au clavier dans tout le monde.", ok: "dans RViz (affichage Map, sujet /map), la carte se dessine." },
+            { t: "Enregistrer la carte", c: "ros2 run nav2_map_server map_saver_cli -f ~/robot-g1/cartes/simu", ou: "Terminal 4", ok: "simu.pgm et simu.yaml." }]},
+          { s: "Naviguer (2 h)", e: [
+            { t: "Lancer Nav2 sur la carte", c: "ros2 launch nav2_bringup bringup_launch.py map:=$HOME/robot-g1/cartes/simu.yaml use_sim_time:=true", ou: "Terminal 2" },
+            { t: "Envoyer un but", x: "Dans RViz : « 2D Pose Estimate » sur la position du robot, puis « Nav2 Goal » sur une salle.", ok: "le robot proxy y va seul en évitant les murs." }]}
+        ] },
+      { d: "2026-10-30", titre: "Jalon : navigation en simulation", lieu: "pc", duree: "1/2 journée",
+        materiel: [M.pc, M.tuteur],
+        t: [["Le robot proxy va seul d'une salle à l'autre"], ["Filmer l'écran"], ["Faire le point avec votre tuteur"], ["Sauvegarder dans Git"]],
+        c: ["nav2_sim", "git_commit"],
+        guide: [
+          { s: "Démonstration", e: [
+            { t: "Rejouer la navigation", x: "Trois buts successifs vers trois salles du monde simulé." },
+            { t: "Filmer", x: "Touche Impr. écran, puis l'icône caméra « Enregistrer l'écran ». La vidéo est rangée dans ~/Vidéos/Captures d'écran." },
+            { t: "Sauvegarder", c: "cd ~/robot-g1 && git add -A && git commit -m \"Navigation en simulation\"", ou: "Terminal 1" }]}
+        ] }
+    ]},
+    { n: "S3", titre: "Cartographie 3D du bâtiment", obj: "Carte 3D et carte 2D de l'étage principal, salles placées.",
+      livrable: "Carte 3D dans RViz, carte 2D propre, cinq salles enregistrées.", jours: [
+      { d: "2026-11-02", titre: "Tester la cartographie intégrée du robot", lieu: "robot", duree: "2 h",
+        materiel: [M.robot, M.tele, M.ethernet, M.pc, M.aide, M.appli, M.espace],
+        t: [["Lancer un scan 3D dans l'appli sur un couloir de 20 m"], ["Enregistrer en même temps le nuage et l'odométrie sur le PC"],
+            ["Envoyer l'enregistrement à Claude"]],
+        c: ["robot_sh", "nuage", "bag_rec_unitree", "bag_info"],
+        note: "Votre G1 a sa propre cartographie (unitree_slam). On l'essaie d'abord : si elle donne une carte exploitable, pas besoin de FAST-LIO2.",
+        guide: [
+          { s: "Enregistrer un scan (1 h)", e: [
+            { t: "Relier le PC", c: "source ~/robot-g1/setup/robot.sh", ou: "Terminal 1" },
+            { t: "Démarrer l'enregistrement", c: "ros2 bag record -o ~/robot-g1/enregistrements/scan_couloir /unitree/slam_mapping/points /unitree/slam_mapping/odom /state_estimator/odom_pelvis /lf/sportmodestate", ou: "Terminal 1",
+              ok: "« Recording… »." },
+            { t: "Scanner", x: "Lancez le scan 3D dans l'appli, faites marcher le robot à la télécommande sur 20 m, lentement, demi-tour, retour au départ. Arrêtez le scan dans l'appli." },
+            { t: "Arrêter l'enregistrement", x: "Ctrl + C dans le Terminal 1." },
+            { t: "Vérifier", c: "ros2 bag info ~/robot-g1/enregistrements/scan_couloir", ou: "Terminal 1", ok: "des centaines de messages pour chaque sujet." }]},
+          { s: "Analyse", e: [
+            { t: "Prévenir Claude", x: "Écrivez « scan enregistré ». Claude regarde si le nuage est déjà une carte complète ou des morceaux à assembler, et prépare l'outil de carte 3D." }]}
+        ] },
+      { d: "2026-11-03", titre: "Construire la carte 3D", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc],
+        t: [["Assembler la carte 3D du couloir (outil préparé avec Claude)"], ["La regarder en 3D"],
+            ["Plan B si besoin : FAST-LIO2 avec le pilote LiDAR du PC"]],
+        c: ["bag_play", "fastlio"],
+        guide: [
+          { s: "Méthode A : la cartographie d'Unitree", e: [
+            { t: "Fabriquer la carte", x: "Avec l'outil préparé par Claude à partir de votre enregistrement, la carte est enregistrée dans ~/robot-g1/cartes/couloir.pcd." },
+            { t: "La regarder en 3D", c: "~/robot-g1/.venv-projet/bin/python -c \"import open3d as o3d; o3d.visualization.draw_geometries([o3d.io.read_point_cloud('$HOME/robot-g1/cartes/couloir.pcd')])\"", ou: "Terminal 1",
+              ok: "le couloir en 3D : murs droits, pas de double paroi. La souris tourne la vue." }]},
+          { s: "Méthode B : FAST-LIO2, seulement si A ne marche pas", e: [
+            { t: "Avec le robot, appli fermée", x: "Lancez le pilote LiDAR du PC puis FAST-LIO2, et refaites le trajet de 20 m.",
+              c: "ros2 launch livox_ros_driver2 msg_MID360_launch.py", ou: "Terminal 1" },
+            { t: "Cartographier", c: "ros2 launch fast_lio mapping.launch.py config_file:=mid360.yaml", ou: "Terminal 2",
+              ok: "la carte se construit dans RViz. Ctrl + C l'enregistre dans ~/robot-g1/ws/src/FAST_LIO/PCD/scans.pcd." }]}
+        ] },
+      { d: "2026-11-04", titre: "Scanner l'étage entier", lieu: "robot", duree: "2 h",
+        materiel: [M.robot, M.tele, M.ethernet, M.pc, M.aide, M.appli, M.plans],
+        t: [["Scanner hors des heures de cours, portes ouvertes"], ["Marcher lentement, revenir au point de départ"],
+            ["Garder l'enregistrement complet"]],
+        c: ["robot_sh", "bag_rec_unitree"],
+        guide: [
+          { s: "Préparer (15 min)", e: [
+            { t: "Choisir le parcours", x: "Sur le plan, tracez une boucle qui passe devant chaque salle et revient au hall. Ouvrez les portes des salles à cartographier." }]},
+          { s: "Scanner (1 h)", e: [
+            { t: "Enregistrer", c: "ros2 bag record -o ~/robot-g1/enregistrements/scan_etage /unitree/slam_mapping/points /unitree/slam_mapping/odom /state_estimator/odom_pelvis /lf/sportmodestate", ou: "Terminal 1" },
+            { t: "Parcourir", x: "Scan 3D lancé dans l'appli. 0,3 m/s au maximum, virages larges, arrêt de 2 s devant chaque porte. Terminer au point de départ pour refermer la boucle." },
+            { t: "Arrêter", x: "Arrêter le scan dans l'appli, puis Ctrl + C dans le Terminal 1. Enregistrez aussi la carte dans l'appli si elle le propose." }]}
+        ] },
+      { d: "2026-11-05", titre: "De la carte 3D à la carte 2D", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc],
+        t: [["Fabriquer la carte 3D de l'étage"], ["La convertir en carte 2D (tranche 0,1 – 1,5 m, 5 cm par pixel)"],
+            ["Nettoyer la carte et tracer les zones interdites"]],
+        c: ["pcd2map"],
+        guide: [
+          { s: "Conversion (3 h)", e: [
+            { t: "Carte 3D de l'étage", x: "Même méthode que le 3 novembre, sur l'enregistrement scan_etage." },
+            { t: "Carte 2D", x: "Le script pcd_vers_carte.py (à écrire avec Claude, Open3D est installé) garde les points entre 0,1 et 1,5 m de haut et les projette en image : noir = obstacle, blanc = libre, 5 cm par pixel. Il produit rdc.pgm et rdc.yaml dans ~/robot-g1/cartes/." }]},
+          { s: "Nettoyage (2 h)", e: [
+            { t: "Ouvrir la carte", c: "eog ~/robot-g1/cartes/rdc.pgm", ou: "Terminal 1", ok: "l'étage vu de dessus." },
+            { t: "Nettoyer", x: "Dans un logiciel de dessin (GIMP : sudo apt install gimp), effacez les personnes et chaises restées sur la carte. Dans une copie rdc_interdit.pgm, peignez en noir les vitres, escaliers et zones où le robot ne doit pas aller." }]}
+        ] },
+      { d: "2026-11-06", titre: "Placer les salles", lieu: "pc", duree: "1/2 journée",
+        materiel: [M.pc, M.plans],
+        t: [["Afficher la carte dans RViz"], ["Relever les coordonnées devant chaque porte"], ["Écrire salles.yaml (5 salles et le point d'accueil)"]],
+        c: ["rviz", "clicked", "git_commit"],
+        guide: [
+          { s: "Coordonnées", e: [
+            { t: "Afficher la carte", c: "ros2 run nav2_map_server map_server --ros-args -p yaml_filename:=$HOME/robot-g1/cartes/rdc.yaml", ou: "Terminal 1",
+              x: "Puis dans un autre terminal : ros2 run nav2_util lifecycle_bringup map_server, et rviz2 (affichage Map, sujet /map)." },
+            { t: "Cliquer devant chaque porte", c: "ros2 topic echo /clicked_point", ou: "Terminal 3",
+              x: "Outil « Publish Point » de RViz : cliquez à 1 m devant chaque porte.", ok: "x et y de chaque point. Notez-les avec le nom de la salle." }]},
+          { s: "Fichier des salles", e: [
+            { t: "Écrire salles.yaml", c: "code ~/robot-g1/lieux/mon-lycee/salles.yaml", ou: "Terminal 1",
+              x: "Pour chaque salle : id, nom, alias, pose x, y et theta (orientation vers la porte), phrase d'arrivée. Exemple dans la section « Le paquet de lieu » de cette page." }]}
+        ] }
+    ]},
+    { n: "S4", titre: "Navigation autonome réelle", obj: "Le robot va seul de l'accueil à une salle, puis revient.",
+      livrable: "Jalon : vidéo du robot qui part du hall, va seul à une salle et revient.", jours: [
+      { d: "2026-11-09", titre: "Localiser le robot sur la carte", lieu: "robot", duree: "2 h",
+        materiel: [M.robot, M.tele, M.ethernet, M.pc, M.aide, M.appli, M.metre, M.scotch],
+        t: [["Essayer la relocalisation d'Unitree sur la carte enregistrée"], ["Sinon : AMCL sur la carte 2D"],
+            ["Vérifier que l'erreur de position reste sous 15 cm"]],
+        c: ["robot_sh", "loc", "scan2d"],
+        guide: [
+          { s: "Repères au sol (15 min)", e: [
+            { t: "Marquer trois points", x: "Avec le ruban adhésif : le point d'accueil, et deux points à 5 m et 10 m dans le couloir, mesurés au mètre. Ils servent à vérifier la précision." }]},
+          { s: "Méthode A : relocalisation d'Unitree", e: [
+            { t: "Lancer la relocalisation", x: "Dans l'appli, sur la carte enregistrée le 4 novembre." },
+            { t: "Lire la position", c: "ros2 topic echo /unitree/slam_relocation/odom --field pose.pose.position", ou: "Terminal 1",
+              ok: "x, y qui changent quand le robot marche. Sur chaque repère, comparez avec la distance mesurée." }]},
+          { s: "Méthode B : AMCL, si A n'est pas utilisable", e: [
+            { t: "Localisation sur la carte 2D", c: "ros2 launch nav2_bringup localization_launch.py map:=$HOME/robot-g1/cartes/rdc.yaml", ou: "Terminal 2",
+              x: "Avec un scan 2D fabriqué à partir du nuage du robot (pointcloud_to_laserscan) et l'odométrie /state_estimator/odom_pelvis. Claude prépare le fichier de lancement." }]}
+        ] },
+      { d: "2026-11-10", titre: "Nav2 sur le robot", lieu: "robot", duree: "1 journée",
+        materiel: [M.robot, M.tele, M.ethernet, M.pc, M.aide, M.espace],
+        t: [["Écrire les réglages Nav2 du G1"], ["Brancher le pont g1_bridge"], ["Premiers trajets courts, à 0,3 m/s"]],
+        c: ["nav_robot", "bridge"],
+        guide: [
+          { s: "Réglages (3 h, sur le PC)", e: [
+            { t: "Écrire nav2_g1.yaml", c: "code ~/robot-g1/config/nav2_g1.yaml", ou: "Terminal 1",
+              x: "Partir du fichier par défaut de nav2_bringup. Emprise : cercle de 0,35 m. Vitesse max 0,3 m/s puis 0,4. Contrôleur MPPI, planificateur Smac 2D. Carte des coûts alimentée par le nuage du robot." }]},
+          { s: "Essais (3 h, avec le robot)", e: [
+            { t: "Lancer le pont", c: "ros2 run g1_bridge pont", ou: "Terminal 1" },
+            { t: "Lancer Nav2", c: "ros2 launch nav2_bringup navigation_launch.py params_file:=$HOME/robot-g1/config/nav2_g1.yaml", ou: "Terminal 2" },
+            { t: "Premier but à 3 m", x: "Robot au sol dans le couloir libre, télécommande en main. « Nav2 Goal » dans RViz à 3 m devant.",
+              ok: "le robot y va et s'arrête.", ko: "comportement étrange : amortissement à la télécommande, puis notez ce qui s'est passé." }]}
+        ] },
+      { d: "2026-11-11", titre: "Férié (Armistice)", lieu: "ferie", t: [], c: [] },
+      { d: "2026-11-12", titre: "Sécurité et essais", lieu: "robot", duree: "1 journée",
+        materiel: [M.robot, M.tele, M.ethernet, M.pc, M.aide, M.chrono, M.feuille, M.espace],
+        t: [["Collision Monitor : ralentir sous 1 m, arrêt sous 0,4 m"], ["Trois salles, dix allers-retours chacune"], ["Noter chaque échec et sa cause"]],
+        c: ["nav_robot", "topics"],
+        guide: [
+          { s: "Sécurité (2 h)", e: [
+            { t: "Configurer le Collision Monitor", x: "Dans nav2_g1.yaml : polygone « ralentir » de 1 m (vitesse × 0,5), polygone « arrêt » de 0,4 m." },
+            { t: "Le tester", x: "Une personne s'approche lentement du robot en marche.", ok: "il ralentit à 1 m et s'arrête à 0,4 m." }]},
+          { s: "Série d'essais (4 h)", e: [
+            { t: "Mesurer", x: "Pour chaque trajet, sur la feuille : salle, réussite oui / non, durée au chronomètre, nombre d'arrêts, cause de l'échec." }]}
+        ] },
+      { d: "2026-11-13", titre: "Jalon : premier guidage réel", lieu: "robot", duree: "1 journée",
+        materiel: [M.robot, M.tele, M.ethernet, M.pc, M.aide, M.obstacles, M.video],
+        t: [["Ajouter des obstacles absents de la carte"], ["Filmer le trajet hall → salle → hall"], ["Sur le PC : chatbot v0 au clavier"]],
+        c: ["chatbot", "git_commit"],
+        guide: [
+          { s: "Obstacles et vidéo (3 h)", e: [
+            { t: "Obstacles", x: "Posez deux cartons dans le couloir, absents de la carte.", ok: "le robot les contourne." },
+            { t: "Vidéo", x: "Filmez un trajet complet au téléphone, depuis le hall." }]},
+          { s: "Chatbot v0 (3 h, sur le PC)", e: [
+            { t: "Intentions", x: "Fichier dialogue.yaml : aller_a_salle, ou_est, saluer, remercier, au_revoir, incompris, avec des phrases d'exemple." },
+            { t: "Reconnaître les salles", x: "Avec rapidfuzz, « b deux cent quatre » ou « labo de physique » doivent donner la salle B204. Testez avec des phrases tapées au clavier." }]}
+        ] }
+    ]},
+    { n: "S5", titre: "Foule et itinéraires de secours", obj: "Le robot ralentit, contourne, demande le passage et change de couloir.",
+      livrable: "Tableau de mesures en simulation et en réel ; vidéo d'un détour.", jours: [
+      { d: "2026-11-16", titre: "Graphe des couloirs", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc, M.plans],
+        t: [["Décrire carrefours et couloirs dans itineraires.yaml"], ["Écrire le routeur A* qui envoie une liste de points à Nav2"]],
+        c: ["routeur"],
+        guide: [
+          { s: "Le graphe", e: [
+            { t: "Placer les nœuds", x: "Sur la carte 2D : un nœud à chaque carrefour et devant chaque porte, avec ses coordonnées (même méthode que le 6 novembre)." },
+            { t: "Écrire itineraires.yaml", x: "noeuds : id, x, y. aretes : paire de nœuds. Le routeur calcule les longueurs." }]},
+          { s: "Le routeur", e: [
+            { t: "Écrire g1_nav/routeur.py", x: "A* sur le graphe, puis envoi de la liste de points à Nav2 avec nav2_simple_commander (goThroughPoses)." }]}
+        ] },
+      { d: "2026-11-17", titre: "Quand le robot est bloqué", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc],
+        t: [["Bloqué 3 s : « Pardon, je peux passer ? »"], ["Bloqué 8 s : désactiver ce couloir 2 minutes et changer d'itinéraire"], ["Replanifier à 2 Hz"]],
+        c: ["parler", "nav2_sim"],
+        guide: [
+          { s: "Comportement", e: [
+            { t: "Détecter le blocage", x: "Dans le routeur : si la distance restante ne baisse pas pendant 3 s, phrase de politesse ; pendant 8 s, annuler le but, retirer l'arête du graphe pour 2 minutes, recalculer." },
+            { t: "Tester en simulation", x: "Placez une boîte au milieu d'un couloir du monde Gazebo.", ok: "le robot demande le passage, puis repart par l'autre couloir." }]}
+        ] },
+      { d: "2026-11-18", titre: "Foule simulée", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc],
+        t: [["Générer le monde Gazebo à partir de la vraie carte 2D"], ["Ajouter des piétons (acteurs Gazebo)"]],
+        c: ["gazebo"],
+        guide: [
+          { s: "Monde et piétons", e: [
+            { t: "Monde du bâtiment", x: "Un script transforme rdc.pgm en murs (une boîte par groupe de pixels noirs). Claude peut l'écrire avec vous." },
+            { t: "Acteurs", x: "Balises <actor> dans le monde : 5 à 10 piétons qui vont et viennent dans les couloirs, avec une trajectoire chacun." }]}
+        ] },
+      { d: "2026-11-19", titre: "Banc de test automatique", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc],
+        t: [["50 trajets en simulation"], ["Mesurer réussite, temps, arrêts, distance minimale aux personnes"], ["Régler les paramètres"]],
+        c: ["nav2_sim"],
+        guide: [
+          { s: "Banc de test", e: [
+            { t: "Script de test", x: "Avec nav2_simple_commander : 50 trajets entre salles tirées au hasard. Un fichier CSV avec une ligne par trajet." },
+            { t: "Régler", x: "Modifier une seule chose à la fois dans nav2_g1.yaml (vitesse, inflation, critiques MPPI), relancer les 50 trajets, comparer." }]}
+        ] },
+      { d: "2026-11-20", titre: "Essais réels avec du monde", lieu: "robot", duree: "1/2 journée",
+        materiel: [M.robot, M.tele, M.ethernet, M.pc, M.aide, M.volontaires, M.chrono, M.feuille, M.video],
+        t: [["Couloir avec 5 puis 10 personnes"], ["Bloquer volontairement un couloir"], ["Remplir le tableau de mesures"]],
+        c: ["nav_robot", "bridge", "git_commit"],
+        guide: [
+          { s: "Scénarios", e: [
+            { t: "Personnes qui marchent", x: "5 puis 10 volontaires circulent dans le couloir pendant 10 trajets." },
+            { t: "Couloir bloqué", x: "Trois volontaires se placent en travers.", ok: "le robot demande le passage, puis fait le détour." },
+            { t: "Mesures et vidéo", x: "Même tableau qu'en simulation, plus une vidéo d'un détour." }]}
+        ] }
+    ]},
+    { n: "S6", titre: "Visiteurs et voix", obj: "Le robot repère un visiteur avec la See3CAM, le salue et comprend la salle demandée.",
+      livrable: "Jalon : un visiteur dit « je cherche la B204 » et le robot confirme.", jours: [
+      { d: "2026-11-23", titre: "Monter la caméra See3CAM", lieu: "robot", duree: "1/2 journée",
+        materiel: [M.robot, M.portique, M.camera, M.support, M.pc, M.metre],
+        t: [["Imprimer le support, fixer la caméra sur la poitrine, inclinée de 10 à 15° vers le haut"],
+            ["Vérifier l'équilibre du robot et que la caméra ne masque pas le LiDAR"], ["Voir l'image de la caméra sur le PC"]],
+        c: ["cameras", "personnes_cam"],
+        note: "La See3CAM_11CUG est une caméra couleur USB 3 de 1,3 mégapixel, sans mesure de distance : la distance des visiteurs sera estimée à partir de leur taille dans l'image.",
+        guide: [
+          { s: "Montage", e: [
+            { t: "Support", x: "Modélisez un support (Onshape ou FreeCAD) qui se fixe sur la poitrine et tient la caméra inclinée de 10 à 15°. Imprimez-le en PLA." },
+            { t: "Câble", x: "Câble USB 3 le long du bras ou du dos, attaché tous les 15 cm, sans gêner les articulations." },
+            { t: "Équilibre", x: "Robot debout au portique : faites-le marcher sur place.", ok: "aucune différence de comportement avec la caméra." }]},
+          { s: "Image", e: [
+            { t: "Trouver la caméra", c: "v4l2-ctl --list-devices", ou: "Terminal 1", ok: "« See3CAM… /dev/videoN »." },
+            { t: "Voir les personnes", c: "g1-personnes --source N", ou: "Terminal 1", x: "Remplacez N par le numéro trouvé.", ok: "les personnes encadrées, vues depuis la hauteur de la poitrine." }]}
+        ] },
+      { d: "2026-11-24", titre: "Détecter les personnes et estimer leur distance", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc, M.camera, M.metre, M.scotch, M.aide],
+        t: [["Étalonner la distance : une personne à 1, 2, 3 et 4 m"], ["Mesurer les images par seconde"], ["Préparer l'export TensorRT pour le Jetson"]],
+        c: ["personnes_cam", "yolo_trt"],
+        guide: [
+          { s: "Étalonnage (2 h)", e: [
+            { t: "Marquer le sol", x: "Repères au ruban adhésif à 1, 2, 3 et 4 m devant la caméra, mesurés au mètre." },
+            { t: "Mesurer", x: "Une personne debout sur chaque repère. Notez la hauteur du cadre en pixels. La distance vaut à peu près k / hauteur : calculez k pour chaque repère et prenez la moyenne." }]},
+          { s: "Vitesse", e: [
+            { t: "Images par seconde", x: "Sur le PC (carte graphique) puis plus tard sur le Jetson. Visez au moins 15 images par seconde." }]}
+        ] },
+      { d: "2026-11-25", titre: "Règle d'engagement", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc, M.camera],
+        t: [["« Regarde le robot » : nez et yeux visibles dans les points du visage"], ["Saluer à moins de 3 m, dialoguer à moins de 1,5 m"], ["Publier /personnes"]],
+        c: ["perception"],
+        guide: [
+          { s: "Le nœud g1_perception", e: [
+            { t: "Écrire le nœud", x: "Lit la See3CAM, détecte et suit les personnes (YOLO pose + ByteTrack), estime la distance, et publie /personnes : identifiant, distance, regarde_robot." },
+            { t: "Tester", x: "Approchez-vous lentement.", ok: "« accroche » à 3 m, puis « dialogue » à 1,5 m, sur un seul visiteur à la fois." }]}
+        ] },
+      { d: "2026-11-26", titre: "La voix sur le robot", lieu: "robot", duree: "1 journée",
+        materiel: [M.robot, M.ethernet, M.pc, M.micro, M.aide],
+        t: [["Comparer la reconnaissance vocale du robot (/audio_msg) et Vosk"], ["Jouer la voix Piper sur le haut-parleur du robot"], ["Tester dans le bruit"]],
+        c: ["ecouter", "ecouter_whisper", "parler"],
+        guide: [
+          { s: "Écouter", e: [
+            { t: "Ce que le robot entend déjà", c: "ros2 topic echo /audio_msg", ou: "Terminal 1",
+              x: "Le robot a peut-être sa propre reconnaissance vocale. Parlez-lui en français.", ok: "du texte qui correspond à ce que vous dites, ou rien." },
+            { t: "Vosk sur le micro USB", c: "g1-ecouter", ou: "Terminal 1", ok: "votre phrase écrite." }]},
+          { s: "Parler et bruit", e: [
+            { t: "Voix française sur le robot", x: "Piper produit le son, le client audio d'Unitree (PlayStream) le joue sur le haut-parleur du robot. Claude prépare l'outil." },
+            { t: "Test dans le bruit", x: "Faites jouer un bruit de foule sur une enceinte et prononcez 20 phrases. Comptez les phrases bien comprises.", ok: "au moins 15 sur 20 ; sinon, micro plus proche ou tablette." }]}
+        ] },
+      { d: "2026-11-27", titre: "Jalon : première conversation", lieu: "robot", duree: "1 journée",
+        materiel: [M.robot, M.tele, M.ethernet, M.pc, M.camera, M.micro, M.aide, M.video],
+        t: [["Chatbot vocal : 8 à 10 intentions"], ["Phrases de reprise quand il ne comprend pas"], ["Test complet avec un visiteur"]],
+        c: ["chatbot", "git_commit"],
+        guide: [
+          { s: "Conversation", e: [
+            { t: "Scénario", x: "Un visiteur s'approche, le robot salue, le visiteur demande une salle, le robot répète la salle et demande confirmation." },
+            { t: "Filmer et sauvegarder", c: "cd ~/robot-g1 && git add -A && git commit -m \"Première conversation\"", ou: "Terminal 1" }]}
+        ] }
+    ]},
+    { n: "S7", titre: "Scénario complet, modes, configuration (1)", obj: "Le scénario d'accueil tourne de bout en bout, piloté par les fichiers du lieu.",
+      livrable: "Démonstration complète sur le robot.", jours: [
+      { d: "2026-11-30", titre: "Machine à états d'accueil", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc],
+        t: [["Attente, accroche, dialogue, guidage, arrivée, retour"]], c: ["accueil"],
+        guide: [
+          { s: "Le nœud g1_behavior", e: [
+            { t: "États", x: "Un état à la fois. Chaque état écoute /personnes, le chatbot ou la navigation, et décide de l'état suivant. Commencez par écrire le schéma sur papier." },
+            { t: "Tester en simulation", x: "Simulez un visiteur en publiant à la main sur /personnes, et le robot proxy de Gazebo fait le guidage." }]}
+        ] },
+      { d: "2026-12-01", titre: "Cas particuliers", lieu: "robot", duree: "1 journée",
+        materiel: [M.robot, M.tele, M.ethernet, M.pc, M.aide],
+        t: [["Bloqué, batterie faible (retour sous 25 %), arrêt depuis le logiciel"], ["Vérifier que le visiteur suit : se retourner aux carrefours"]],
+        c: ["accueil", "etat"],
+        guide: [
+          { s: "Cas à tester", e: [
+            { t: "Batterie", x: "La batterie se lit sur /lf/bmsstate (champ soc). Sous 25 % : phrase d'excuse et retour au point d'accueil." },
+            { t: "Visiteur perdu", x: "Aux carrefours, le robot se tourne. S'il ne voit plus le visiteur pendant 10 s, il l'attend puis rentre." }]}
+        ] },
+      { d: "2026-12-02", titre: "Modes de personnalité", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc],
+        t: [["Normal, drôle, grincheux, discret : phrases, voix, gestes, LED, vitesse"], ["Changer de mode sans redémarrer"]],
+        c: ["parler_tom"],
+        guide: [
+          { s: "Les modes", e: [
+            { t: "Fichiers", x: "Un fichier par mode dans lieux/mon-lycee/modes/ (exemple dans « Le paquet de lieu »). Faites valider les phrases par l'établissement." },
+            { t: "Changement à chaud", x: "Un sujet /mode : la machine à états relit le fichier du mode quand il change." }]}
+        ] },
+      { d: "2026-12-03", titre: "Serveur du logiciel de configuration", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc],
+        t: [["FastAPI lit et écrit le paquet de lieu"], ["Liaison avec ROS 2 par rosbridge"]],
+        c: ["config_app", "rosbridge"],
+        guide: [
+          { s: "Serveur", e: [
+            { t: "Squelette", x: "Dossier ~/robot-g1/config_app : main.py avec FastAPI, une route par fichier du paquet de lieu (lire, écrire)." },
+            { t: "Lancer", c: "cd ~/robot-g1 && .venv-projet/bin/uvicorn config_app.main:app --reload --host 0.0.0.0", ou: "Terminal 1",
+              ok: "http://localhost:8000/docs dans le navigateur montre les routes." }]}
+        ] },
+      { d: "2026-12-04", titre: "Écrans Lieux, Salles, Phrases", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc, M.robot, M.ethernet],
+        t: [["Carte Leaflet : placer une salle d'un clic"], ["Écran Phrases et modes"], ["Démonstration complète sur le robot"]],
+        c: ["config_app", "git_commit"],
+        guide: [
+          { s: "Écrans", e: [
+            { t: "Carte", x: "Page HTML avec Leaflet en mode image : la carte rdc.pgm en fond, un clic place une salle, puis enregistrement dans salles.yaml." },
+            { t: "Phrases", x: "Formulaire par mode : phrases d'accueil, de départ, de blocage, d'arrivée." }]}
+        ] }
+    ]},
+    { n: "S8", titre: "Configuration (2) et répétition générale", obj: "Une version 1.0 utilisable par quelqu'un d'autre que vous.",
+      livrable: "Jalon : version 1.0.", jours: [
+      { d: "2026-12-07", titre: "Écrans Scan, Itinéraires et zones", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc],
+        t: [["Lancer et enregistrer un scan depuis le logiciel"], ["Dessiner le graphe des couloirs, les zones interdites et lentes"]],
+        c: ["config_app"],
+        guide: [
+          { s: "Écrans", e: [
+            { t: "Scan", x: "Un bouton démarre l'enregistrement (ros2 bag), un autre l'arrête et lance la fabrication de la carte." },
+            { t: "Itinéraires", x: "Sur la carte : clic pour poser un nœud, clic sur deux nœuds pour créer un couloir, pinceau pour les zones." }]}
+        ] },
+      { d: "2026-12-08", titre: "Pilotage et kiosque", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc, M.tablette],
+        t: [["Mode actif, envoyer le robot, position en direct, bouton d'arrêt"], ["Page tablette pour les visiteurs"]],
+        c: ["config_app", "rosbridge"],
+        guide: [
+          { s: "Écrans", e: [
+            { t: "Pilotage", x: "Position du robot en direct sur la carte (rosbridge), liste des salles avec un bouton « Y aller », gros bouton rouge « Arrêt »." },
+            { t: "Kiosque", x: "Page plein écran pour la tablette : un bouton par salle. Ouvrez-la sur la tablette connectée au même réseau." }]}
+        ] },
+      { d: "2026-12-09", titre: "Deuxième lieu sans toucher au code", lieu: "robot", duree: "1 journée",
+        materiel: [M.robot, M.tele, M.ethernet, M.pc, M.aide, M.appli, M.plans],
+        t: [["Configurer un autre étage ou bâtiment uniquement avec le logiciel"]], c: ["config_app"],
+        guide: [
+          { s: "Le vrai test", e: [
+            { t: "Tout depuis le logiciel", x: "Scan, carte, salles, phrases. Si vous devez ouvrir un fichier de code, notez-le : c'est un manque à corriger." }]}
+        ] },
+      { d: "2026-12-10", titre: "Répétition générale", lieu: "robot", duree: "1 journée",
+        materiel: [M.robot, M.tele, M.ethernet, M.pc, M.camera, M.micro, M.tablette, M.aide, M.volontaires, M.chrono, M.feuille, M.video, M.chargeurRobot],
+        t: [["Une heure en continu avec un groupe de personnes"], ["Noter chaque incident"]], c: ["etat"],
+        guide: [
+          { s: "Comme une journée portes ouvertes", e: [
+            { t: "Dérouler", x: "Une heure : visiteurs qui arrivent, demandes de salles, foule dans les couloirs. Une personne note l'heure et la nature de chaque incident." },
+            { t: "Batterie", x: "Notez le niveau de batterie au début et à la fin (g1-etat) pour prévoir les recharges." }]}
+        ] },
+      { d: "2026-12-11", titre: "Corrections et version 1.0", lieu: "pc", duree: "1 journée",
+        materiel: [M.pc],
+        t: [["Corriger les incidents de la répétition"], ["Marquer la version 1.0 dans Git"]], c: ["git_commit", "git_tag"],
+        guide: [
+          { s: "Version 1.0", e: [
+            { t: "Corriger", x: "Les incidents les plus graves d'abord (sécurité, robot perdu), puis les plus fréquents." },
+            { t: "Marquer la version", c: "cd ~/robot-g1 && git add -A && git commit -m \"Version 1.0\" && git tag v1.0", ou: "Terminal 1" }]}
+        ] }
+    ]},
+    { n: "S9", titre: "Marge, documentation, soutenance", obj: "Rendre un projet que quelqu'un d'autre peut reprendre.",
+      livrable: "Soutenance.", jours: [
+      { d: "2026-12-14", titre: "Guide utilisateur", lieu: "pc", duree: "1 journée", materiel: [M.pc],
+        t: [["Installer le robot dans un nouveau lieu en moins d'une heure, pas à pas"]], c: [],
+        guide: [{ s: "Guide", e: [{ t: "Écrire", x: "Pour quelqu'un qui n'a jamais vu le projet : allumer, relier, scanner, placer les salles, choisir le mode, lancer l'accueil, arrêter." }]}] },
+      { d: "2026-12-15", titre: "Documentation technique et sécurité", lieu: "pc", duree: "1 journée", materiel: [M.pc],
+        t: [["Architecture, commandes, réglages"], ["Procédure de sécurité pour les journées portes ouvertes"]], c: [],
+        guide: [{ s: "Documents", e: [
+          { t: "Technique", x: "Le schéma d'architecture, la liste des paquets ROS 2 et leurs sujets, les réglages de Nav2 et pourquoi." },
+          { t: "Sécurité", x: "Qui tient la télécommande, vitesse maximale, zones interdites, que faire si le robot tombe ou se perd." }]}] },
+      { d: "2026-12-16", titre: "Vidéo de démonstration", lieu: "robot", duree: "1/2 journée",
+        materiel: [M.robot, M.tele, M.pc, M.aide, M.video], t: [["Filmer le scénario complet"]], c: [],
+        guide: [{ s: "Vidéo", e: [{ t: "Tourner", x: "2 à 3 minutes : arrivée d'un visiteur, dialogue, guidage, détour, arrivée, retour." }]}] },
+      { d: "2026-12-17", titre: "Préparer la soutenance", lieu: "pc", duree: "1 journée", materiel: [M.pc, M.tuteur],
+        t: [["Diapositives et démonstration en direct"]], c: [],
+        guide: [{ s: "Soutenance", e: [{ t: "Préparer", x: "Problème, solution, démonstration, mesures (tableaux des semaines 4 et 5), limites, suite possible. Répétez avec le robot." }]}] },
+      { d: "2026-12-18", titre: "Soutenance et remise", lieu: "pc", duree: "1 journée", materiel: [M.pc, M.robot, M.tele],
+        t: [["Présenter, remettre le code et la documentation"]], c: [],
+        guide: [{ s: "Remise", e: [{ t: "Remettre", x: "Le dépôt Git (version v1.0), la documentation, la vidéo, la page de ce projet." }]}] }
+    ]}
+  ];
+
+  // --- Outils ------------------------------------------------------------
+  function el(tag, cls, texte) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (texte != null) e.textContent = texte;
+    return e;
+  }
+  function dateLocale(iso) { var p = iso.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function isoDe(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function court(iso) { return dateLocale(iso).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" }); }
+  function chip(paire) { return el("span", "chip " + paire[1], paire[0]); }
+
+  function blocCommande(cle) {
+    var k = CMD[cle];
+    var b = el("div", "cmd");
+    b.appendChild(el("code", "ligne" + (k.jetson ? " sur-jetson" : ""), k.c));
+    var bouton = el("button", "copy", "Copier");
+    bouton.type = "button";
+    b.appendChild(bouton);
+    b.appendChild(chip(ETATS[k.etat]));
+    b.appendChild(el("p", null, k.d));
+    return b;
+  }
+
+  // Instructions pas à pas d'une journée : sections, puis étapes numérotées à la suite
+  function rendreGuide(guide) {
+    var det = el("details", "guide");
+    var total = 0;
+    guide.forEach(function (g) { total += g.e.length; });
+    det.appendChild(el("summary", null, "Instructions pas à pas · " + total + " étapes"));
+    guide.forEach(function (g) {
+      det.appendChild(el("p", "guide-section", g.s));
+      var ol = el("ol", "guide-etapes");
+      g.e.forEach(function (e) {
+        var li = el("li");
+        var c = el("div", "corps");
+        c.appendChild(el("strong", null, e.t));
+        if (e.x) c.appendChild(el("p", null, e.x));
+        if (e.c) {
+          var b = el("div", "cmd");
+          b.appendChild(el("code", "ligne" + (e.ou === "Sur le Jetson" ? " sur-jetson" : ""), e.c));
+          var bouton = el("button", "copy", "Copier");
+          bouton.type = "button";
+          b.appendChild(bouton);
+          b.appendChild(el("span", "chip lvl-0", e.ou || "Terminal 1"));
+          c.appendChild(b);
+        }
+        if (e.ok) {
+          var ok = el("p", "attendu");
+          ok.appendChild(el("b", null, "Vous devez voir : "));
+          ok.appendChild(document.createTextNode(e.ok));
+          c.appendChild(ok);
+        }
+        if (e.ko) {
+          var ko = el("p", "probleme");
+          ko.appendChild(el("b", null, "Sinon : "));
+          ko.appendChild(document.createTextNode(e.ko));
+          c.appendChild(ko);
+        }
+        li.appendChild(c);
+        ol.appendChild(li);
+      });
+      det.appendChild(ol);
+    });
+    det.appendChild(el("div", "guide-fin"));
+    return det;
+  }
+
+  // --- Calendrier --------------------------------------------------------
+  // v2 : les tâches de la semaine 1 ont changé de jour, les anciennes cases ne correspondent plus
+  var CLE = "g1-calendrier-v2";
+  var etat = {};
+  try { etat = JSON.parse(localStorage.getItem(CLE) || "{}") || {}; } catch (e) { etat = {}; }
+  var usages = {};
+  var usagesMateriel = {};
+  var conteneur = document.getElementById("semaines");
+
+  SEMAINES.forEach(function (s) {
+    var art = el("article", "semaine");
+    art.id = s.n.toLowerCase();
+    var tete = el("header", "semaine-tete");
+    tete.appendChild(el("div", "semaine-num", s.n));
+    var titres = el("div");
+    var debut = s.jours[0].d, fin = s.jours[s.jours.length - 1].d;
+    titres.appendChild(el("h3", null, s.titre));
+    titres.appendChild(el("div", "semaine-dates", court(debut) + " → " + court(fin)));
+    titres.appendChild(el("p", "semaine-obj", s.obj));
+    tete.appendChild(titres);
+    var compte = el("div", "semaine-compte");
+    compte.appendChild(el("span", "compte-txt"));
+    tete.appendChild(compte);
+    art.appendChild(tete);
+    s.debut = debut; s.fin = fin; s.el = art;
+
+    s.jours.forEach(function (j) {
+      var ligne = el("div", "jour" + (j.lieu === "ferie" ? " ferie" : ""));
+      ligne.id = "j-" + j.d;
+      var dt = dateLocale(j.d);
+      var date = el("div", "jour-date");
+      date.appendChild(el("span", "dow", dt.toLocaleDateString("fr-FR", { weekday: "short" })));
+      date.appendChild(el("span", "dnum", String(dt.getDate())));
+      date.appendChild(el("span", "mon", dt.toLocaleDateString("fr-FR", { month: "short" })));
+      ligne.appendChild(date);
+
+      var corps = el("div", "jour-corps");
+      var jt = el("div", "jour-tete");
+      jt.appendChild(el("h4", null, j.titre));
+      jt.appendChild(chip(LIEUX[j.lieu]));
+      if (j.duree) jt.appendChild(el("span", "duree", j.duree));
+      corps.appendChild(jt);
+      if (j.materiel && j.materiel.length) {
+        var mat = el("div", "materiel");
+        mat.appendChild(el("span", "materiel-titre", "À avoir"));
+        var lm = el("ul");
+        j.materiel.forEach(function (m) {
+          lm.appendChild(el("li", null, m));
+          (usagesMateriel[m] = usagesMateriel[m] || []).push({ id: ligne.id, label: s.n + " · " + court(j.d) });
+        });
+        mat.appendChild(lm);
+        corps.appendChild(mat);
+      }
+      if (j.guide) corps.appendChild(rendreGuide(j.guide));
+
+      if (j.t.length) {
+        var ul = el("ul", "taches");
+        j.t.forEach(function (t, i) {
+          var li = el("li");
+          var id = "t-" + j.d + "-" + i;
+          var cb = el("input");
+          cb.type = "checkbox"; cb.id = id;
+          cb.checked = id in etat ? !!etat[id] : !!t[1];
+          var lab = el("label", null, t[0]);
+          lab.htmlFor = id;
+          li.appendChild(cb); li.appendChild(lab);
+          ul.appendChild(li);
+        });
+        corps.appendChild(ul);
+      }
+      if (j.c.length) {
+        var cmds = el("div", "cmds");
+        j.c.forEach(function (cle) {
+          cmds.appendChild(blocCommande(cle));
+          (usages[cle] = usages[cle] || []).push({ id: ligne.id, label: s.n + " · " + court(j.d) });
+        });
+        corps.appendChild(cmds);
+      }
+      if (j.note) corps.appendChild(el("p", "note", j.note));
+      ligne.appendChild(corps);
+      art.appendChild(ligne);
+    });
+
+    var liv = el("p", "livrable");
+    liv.appendChild(el("span", null, "Livrable"));
+    liv.appendChild(document.createTextNode(s.livrable));
+    art.appendChild(liv);
+    conteneur.appendChild(art);
+  });
+
+  // --- Index des commandes ----------------------------------------------
+  var index = document.getElementById("index-commandes");
+  CATS.forEach(function (cat) {
+    var bloc = el("div", "index-cat");
+    bloc.appendChild(el("h3", null, cat[1]));
+    Object.keys(CMD).forEach(function (cle) {
+      if (CMD[cle].cat !== cat[0]) return;
+      var ligne = el("div", "index-ligne");
+      ligne.appendChild(blocCommande(cle));
+      var etapes = el("div", "index-etapes");
+      etapes.appendChild(el("span", null, "Utilisée"));
+      (usages[cle] || []).forEach(function (u) {
+        var a = el("a", null, u.label);
+        a.href = "#" + u.id;
+        etapes.appendChild(a);
+      });
+      if (!usages[cle]) etapes.appendChild(el("em", null, "à tout moment"));
+      ligne.appendChild(etapes);
+      bloc.appendChild(ligne);
+    });
+    index.appendChild(bloc);
+  });
+
+  // --- Matériel du projet -----------------------------------------------
+  // État de chaque objet : à mettre à jour quand il est obtenu
+  var ETAT_MATERIEL = {
+    pc: "ok", chargeur: "ok", internet: "ok", robot: "ok", portique: "ok", tele: "ok", ethernet: "ok",
+    aide: "organiser", appli: "ok", manette: "ok", camera: "ok", support: "fabriquer", metre: "obtenir",
+    scotch: "obtenir", obstacles: "obtenir", plans: "obtenir", video: "ok", chrono: "ok", feuille: "fabriquer",
+    micro: "obtenir", tablette: "obtenir", tuteur: "organiser", volontaires: "organiser", chargeurRobot: "ok",
+    espace: "organiser"
+  };
+  var LIBELLES_ETAT = { ok: ["disponible", "lvl-1"], obtenir: ["à obtenir", "lvl-3"],
+                        fabriquer: ["à fabriquer", "lvl-3"], organiser: ["à organiser", "lvl-2"] };
+  var tableMat = document.getElementById("table-materiel");
+  Object.keys(M).forEach(function (cle) {
+    var u = usagesMateriel[M[cle]];
+    if (!u) return;
+    var tr = el("tr");
+    tr.appendChild(el("td", null, M[cle]));
+    var tdEtat = el("td");
+    tdEtat.appendChild(chip(LIBELLES_ETAT[ETAT_MATERIEL[cle] || "ok"]));
+    tr.appendChild(tdEtat);
+    var tdJours = el("td");
+    var lien = el("a", null, u[0].label);
+    lien.href = "#" + u[0].id;
+    tdJours.appendChild(lien);
+    tdJours.appendChild(document.createTextNode(u.length > 1 ? " · puis " + (u.length - 1) + " autre(s) jour(s)" : ""));
+    tr.appendChild(tdJours);
+    tableMat.appendChild(tr);
+  });
+
+  var boutonDeplier = document.getElementById("tout-deplier");
+  boutonDeplier.addEventListener("click", function () {
+    var guides = document.querySelectorAll("details.guide");
+    var ouvrir = boutonDeplier.dataset.ouvert !== "1";
+    guides.forEach(function (g) { g.open = ouvrir; });
+    boutonDeplier.dataset.ouvert = ouvrir ? "1" : "0";
+    boutonDeplier.textContent = ouvrir ? "Replier toutes les étapes" : "Déplier toutes les étapes";
+  });
+
+  // --- Progression --------------------------------------------------------
+  var cases = Array.prototype.slice.call(document.querySelectorAll(".taches input[type=checkbox]"));
+  function majProgression() {
+    var faites = cases.filter(function (c) { return c.checked; }).length;
+    document.getElementById("progress-count").textContent = faites + " / " + cases.length;
+    document.getElementById("progress-bar").style.width = (cases.length ? faites / cases.length * 100 : 0) + "%";
+    SEMAINES.forEach(function (s) {
+      var cs = s.el.querySelectorAll(".taches input[type=checkbox]");
+      var f = 0;
+      cs.forEach(function (c) { if (c.checked) f++; });
+      s.el.querySelector(".compte-txt").textContent = f + "/" + cs.length;
+    });
+  }
+  cases.forEach(function (c) {
+    c.addEventListener("change", function () {
+      etat[c.id] = c.checked;
+      try { localStorage.setItem(CLE, JSON.stringify(etat)); } catch (e) {}
+      majProgression();
+    });
+  });
+  majProgression();
+
+  // --- Aujourd'hui --------------------------------------------------------
+  var auj = isoDe(new Date());
+  var statut = document.getElementById("statut-jour");
+  // Prochaine journée à partir d'aujourd'hui qui a encore des cases à cocher
+  var cible = null;
+  SEMAINES.forEach(function (s) {
+    s.jours.forEach(function (j) {
+      var reste = document.querySelectorAll("#j-" + j.d + " .taches input:not(:checked)").length;
+      if (!cible && j.d >= auj && reste > 0) cible = j.d;
+    });
+  });
+  var semaineEnCours = SEMAINES.filter(function (s) { return auj <= s.fin; })[0];
+  if (auj < SEMAINES[0].debut) {
+    statut.textContent = "Le projet commence le " + court(SEMAINES[0].debut);
+  } else if (!semaineEnCours) {
+    statut.textContent = "Projet terminé le " + court(SEMAINES[SEMAINES.length - 1].fin);
+  } else {
+    semaineEnCours.el.classList.add("en-cours");
+    var badge = el("span", "chip lvl-1", "semaine en cours");
+    semaineEnCours.el.querySelector(".semaine-compte").appendChild(badge);
+    statut.textContent = court(auj) + " · " + semaineEnCours.n + " : " + semaineEnCours.titre;
+  }
+  if (cible) {
+    document.getElementById("aller-aujourdhui").href = "#j-" + cible;
+    var jourEl = document.getElementById("j-" + cible);
+    jourEl.classList.add("aujourdhui");
+    jourEl.querySelector(".jour-tete").appendChild(el("span", "badge-jour", cible === auj ? "Aujourd'hui" : "Prochaine étape"));
+    var guideCible = jourEl.querySelector("details.guide");
+    if (guideCible) guideCible.open = true;
+  }
+
+  // --- Copier -------------------------------------------------------------
+  document.addEventListener("click", function (ev) {
+    var b = ev.target.closest(".copy");
+    if (!b) return;
+    var code = b.parentNode.querySelector("code");
+    var texte = code.textContent;
+    function selectionner() {
+      var r = document.createRange();
+      r.selectNodeContents(code);
+      var s = window.getSelection();
+      s.removeAllRanges(); s.addRange(r);
+      b.textContent = "Ctrl+C";
+    }
+    try {
+      navigator.clipboard.writeText(texte).then(function () { b.textContent = "Copié"; }, selectionner);
+    } catch (e) { selectionner(); }
+    setTimeout(function () { b.textContent = "Copier"; }, 1800);
+  });
+})();
+</script>

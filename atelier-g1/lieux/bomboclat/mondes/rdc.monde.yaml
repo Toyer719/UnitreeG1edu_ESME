@@ -1,0 +1,95 @@
+# Environnement inventé d'un étage. Format : atelier/lieu/schemas/monde.schema.json.
+# Écrit par l'Atelier G1 : les commentaires ajoutés à la main ne sont pas conservés.
+version: 1
+emprise: {min: [0, -1], max: [54, 42]}
+murs:
+- {id: ext_sud, de: [0, 0], a: [40, 0], epaisseur: 0.2, hauteur: 2.5}
+- {id: ext_est, de: [40, 0], a: [40, 40], epaisseur: 0.2, hauteur: 2.5}
+- {id: ext_nord, de: [40, 40], a: [0, 40], epaisseur: 0.2, hauteur: 2.5}
+- {id: ext_ouest, de: [0, 40], a: [0, 0], epaisseur: 0.2, hauteur: 2.5}
+- {id: mur_1, de: [5.5, 36], a: [5.25, 14], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_2, de: [8, 33.5], a: [19.825, 33.5], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_14, de: [20.825, 33.5], a: [29, 33.5], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_3, de: [9.75, 31.5], a: [9.5, 12.25], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_4, de: [12.25, 15.75], a: [25, 15.75], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_5, de: [15, 18.5], a: [15.25, 30.75], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_6, de: [11.75, 24.75], a: [32.5, 24.75], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_7, de: [19, 17.75], a: [19.25, 28.25], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_8, de: [2.25, 19.75], a: [8, 19.75], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_9, de: [13.75, 4.5], a: [14, 17.5], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_10, de: [3.25, 8.75], a: [36, 8.75], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_11, de: [23.5, 21.75], a: [23.5, 11], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_12, de: [28.25, 21.75], a: [28.25, -0.25], epaisseur: 0.15, hauteur: 2.5}
+- {id: mur_13, de: [4.25, 2.25], a: [35.5, 2.25], epaisseur: 0.15, hauteur: 2.5}
+objets:
+- {id: table_1, type: modele, modele: table, centre: [15.75, 36.5], cap: 0}
+- {id: table_2, type: modele, modele: table, centre: [20, 37.75], cap: 0}
+- {id: table_3, type: modele, modele: table, centre: [20.25, 34.75], cap: 0}
+- {id: table_4, type: modele, modele: table, centre: [10.75, 38.5], cap: 0}
+- {id: table_5, type: modele, modele: table, centre: [11.5, 36.25], cap: 0}
+- {id: table_6, type: modele, modele: table, centre: [14.25, 34.75], cap: 0}
+- {id: table_7, type: modele, modele: table, centre: [8, 35.75], cap: 0}
+- {id: table_8, type: modele, modele: table, centre: [2.5, 31.25], cap: 0}
+- {id: table_9, type: modele, modele: table, centre: [2.5, 35.25], cap: 0}
+- {id: table_10, type: modele, modele: table, centre: [5, 37.75], cap: 0}
+- {id: table_11, type: modele, modele: table, centre: [0.5, 27.5], cap: 0}
+- {id: table_12, type: modele, modele: table, centre: [4, 26.75], cap: 0}
+- {id: table_13, type: modele, modele: table, centre: [1.25, 21.5], cap: 0}
+- {id: table_14, type: modele, modele: table, centre: [3.25, 23.5], cap: 0}
+- {id: table_15, type: modele, modele: table, centre: [2.25, 17.25], cap: 0}
+- {id: table_16, type: modele, modele: table, centre: [3.5, 15], cap: 0}
+- {id: table_17, type: modele, modele: table, centre: [1, 12.75], cap: 0}
+- {id: table_18, type: modele, modele: table, centre: [5, 10.75], cap: 0}
+- {id: table_19, type: modele, modele: table, centre: [6.75, 15.75], cap: 0}
+- {id: table_20, type: modele, modele: table, centre: [7, 21.25], cap: 0}
+- {id: table_21, type: modele, modele: table, centre: [8.5, 23.75], cap: 0}
+- {id: table_22, type: modele, modele: table, centre: [6.75, 27], cap: 0}
+- {id: table_23, type: modele, modele: table, centre: [8, 30], cap: 0}
+- {id: table_24, type: modele, modele: table, centre: [7, 32.5], cap: 0}
+- {id: table_25, type: modele, modele: table, centre: [11.75, 31.75], cap: 0}
+- {id: table_26, type: modele, modele: table, centre: [13.75, 27.75], cap: 0}
+- {id: table_27, type: modele, modele: table, centre: [12, 28.5], cap: 0}
+- {id: table_28, type: modele, modele: table, centre: [13.75, 20.75], cap: 0}
+- {id: table_29, type: modele, modele: table, centre: [12.75, 23.75], cap: 0}
+- {id: table_30, type: modele, modele: table, centre: [10.75, 17.5], cap: 0}
+- {id: table_31, type: modele, modele: table, centre: [12, 12.5], cap: 0}
+- {id: table_32, type: modele, modele: table, centre: [10.5, 14.5], cap: 0}
+- {id: table_33, type: modele, modele: table, centre: [1.25, 7.75], cap: 0}
+- {id: table_34, type: modele, modele: table, centre: [3.5, 6], cap: 0}
+- {id: table_35, type: modele, modele: table, centre: [6.25, 4], cap: 0}
+- {id: table_36, type: modele, modele: table, centre: [9.25, 7], cap: 0}
+- {id: table_37, type: modele, modele: table, centre: [12.5, 4], cap: 0}
+- {id: table_38, type: modele, modele: table, centre: [15.75, 7], cap: 0}
+- {id: table_39, type: modele, modele: table, centre: [19.25, 3.5], cap: 0}
+- {id: table_40, type: modele, modele: table, centre: [21.5, 7.25], cap: 0}
+- {id: table_41, type: modele, modele: table, centre: [23.75, 4], cap: 0}
+- {id: table_42, type: modele, modele: table, centre: [26.25, 7.5], cap: 0}
+- {id: table_43, type: modele, modele: table, centre: [15.5, 10.75], cap: 0}
+- {id: table_44, type: modele, modele: table, centre: [18, 14.75], cap: 0}
+- {id: table_45, type: modele, modele: table, centre: [21, 11], cap: 0}
+- {id: table_46, type: modele, modele: table, centre: [21.25, 17], cap: 0}
+- {id: table_47, type: modele, modele: table, centre: [22.5, 23.5], cap: 0}
+- {id: table_48, type: modele, modele: table, centre: [27, 23.25], cap: 0}
+- {id: table_49, type: modele, modele: table, centre: [26.25, 18.25], cap: 0}
+- {id: table_50, type: modele, modele: table, centre: [26.5, 12.5], cap: 0}
+- {id: table_51, type: modele, modele: table, centre: [31.25, 22], cap: 0}
+- {id: table_52, type: modele, modele: table, centre: [30, 16], cap: 0}
+- {id: table_53, type: modele, modele: table, centre: [31.5, 12], cap: 0}
+- {id: table_54, type: modele, modele: table, centre: [22, 26.5], cap: 0}
+- {id: table_55, type: modele, modele: table, centre: [20.75, 30.5], cap: 0}
+- {id: table_56, type: modele, modele: table, centre: [23.75, 32.25], cap: 0}
+- {id: table_57, type: modele, modele: table, centre: [25.25, 31.5], cap: 0}
+- {id: table_58, type: modele, modele: table, centre: [28.25, 30], cap: 0}
+- {id: table_59, type: modele, modele: table, centre: [29.75, 28.75], cap: 0}
+- {id: table_60, type: modele, modele: table, centre: [33.75, 26.25], cap: 0}
+pietons:
+- {id: pieton_1, trajet: [[36.75, 39], [38.5, 7.5]], vitesse: 1, aller_retour: true}
+- {id: pieton_2, trajet: [[34.75, 23.25], [25.25, 22]], vitesse: 1, aller_retour: true}
+- {id: pieton_3, trajet: [[20, 23.5], [21.5, 19], [19, 17], [14, 18.25], [10.75, 21], [11, 25.75], [10.75,
+      30], [14.75, 32.5], [18, 31.5]], vitesse: 1, aller_retour: true}
+- {id: pieton_4, trajet: [[7.75, 37.25], [4, 36.25], [4.25, 31.75], [4, 29.5], [1.5, 23.5], [3.25, 21.25],
+    [1.25, 19.25], [4.75, 16.75], [1.5, 15], [3.75, 12.75], [2.25, 10], [2.5, 7], [1.25, 5.25]], vitesse: 1,
+  aller_retour: true}
+- {id: pieton_5, trajet: [[2.75, 3], [5.25, 7.25], [9.25, 4], [10.75, 3], [15.5, 3], [19.25, 5.75], [
+      22.25, 3.75], [23.75, 6.5], [26.5, 4.5]], vitesse: 1, aller_retour: true}
+depart_robot: {x: 1, y: 1, theta: 0}

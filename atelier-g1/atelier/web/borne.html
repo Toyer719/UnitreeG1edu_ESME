@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="fr" data-theme="sombre">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Borne du robot d'accueil</title>
+  <meta name="description" content="La borne du robot d'accueil G1 : choisissez une salle, le robot vous y accompagne.">
+  <!-- Vague 6 (section 13.5 du plan) : page de la borne, servie par GET /borne, pour une tablette ou un téléphone du
+       même réseau. Elle ne charge que des fichiers permis depuis la tablette (atelier.lieu.accueil.chemin_permis_borne) :
+       css/theme.css, css/borne.css et js/borne/. Tout le contenu est fabriqué par js/borne/borne.js (textContent).
+       Page de l'agent Borne et orchestrateur. -->
+  <link rel="stylesheet" href="/css/theme.css">
+  <link rel="stylesheet" href="/css/borne.css">
+  <script>
+    // Erreurs JavaScript de la page, gardées pour les tests dans le navigateur (critère 39)
+    window.erreursBorne = [];
+    window.addEventListener('error', function (e) { window.erreursBorne.push(String(e.message || e)); });
+    window.addEventListener('unhandledrejection', function (e) {
+      window.erreursBorne.push(String((e.reason && e.reason.message) || e.reason));
+    });
+  </script>
+  <script type="module" src="/js/borne/borne.js"></script>
+</head>
+<body class="borne">
+  <main id="borne" class="borne-page" data-role="borne" data-ecran="hors_service"></main>
+  <noscript>La borne a besoin de JavaScript.</noscript>
+</body>
+</html>

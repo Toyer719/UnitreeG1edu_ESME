@@ -1,0 +1,82 @@
+/* Vague 6 (section 13.3 du plan) : la boîte noire, styles de js/coque/seance.js (agent Boîte noire).
+   Seulement les jetons de css/theme.css, aucune couleur en dur. Le badge « ● Enregistrement » et le lien du rapport
+   dans la barre d'outils ; le menu de la séance, posé sous la barre d'outils (il ne couvre jamais l'ARRÊT). */
+
+.zone-seance { display: inline-flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.zone-seance:empty { display: none; }
+
+/* le badge : un point rouge qui bat doucement pendant l'enregistrement (comme un enregistreur) */
+.seance-badge {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; flex: 0 0 auto;
+  border: 1px solid var(--bord); border-radius: var(--rayon-pilule); background: var(--surface-3);
+  color: var(--texte); font: inherit; font-size: 0.78rem; font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.seance-badge:hover, .seance-badge[aria-expanded="true"] { background: var(--surface-2); border-color: var(--bord-fort); }
+.seance-badge:focus-visible { outline: 2px solid var(--accent-actif); outline-offset: 1px; }
+.seance-point { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: var(--danger); }
+.seance-badge[data-etat="enregistrement"] .seance-point { animation: seance-battement 1.6s ease-in-out infinite; }
+.seance-badge[data-etat="coupe"] .seance-point { background: var(--avertissement); }
+.seance-badge[data-etat="coupe"] { border-color: var(--avertissement); }
+.seance-badge[data-etat="arrete"] .seance-point { background: var(--texte-doux); }
+.seance-badge[data-etat="arrete"] { color: var(--texte-doux); }
+@keyframes seance-battement { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) {
+  .seance-badge[data-etat="enregistrement"] .seance-point { animation: none; }
+}
+
+/* le lien du rapport, après « Terminer la séance » */
+.seance-lien-rapport {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; flex: 0 0 auto;
+  border-radius: var(--rayon-pilule); background: var(--accent-doux); color: var(--accent-texte);
+  font-size: 0.78rem; font-weight: 600; white-space: nowrap; text-decoration: none;
+}
+.seance-lien-rapport[aria-disabled="true"] { background: var(--surface-3); color: var(--texte-doux); cursor: progress; }
+.seance-lien-rapport[data-etat="echec"] { cursor: default; }
+.seance-lien-rapport:hover:not([aria-disabled="true"]) { box-shadow: 0 0 0 2px var(--selection); }
+
+/* le menu de la séance (classe menu-ruban : Échap le ferme sans envoyer l'ARRÊT quand rien ne bouge) */
+.menu-seance { width: 340px; display: flex; flex-direction: column; gap: 4px; }
+.seance-menu-entete { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 2px 10px; }
+.seance-menu-etat-ouverte { margin: 0; padding: 2px 10px 4px; font-size: 0.88rem; color: var(--texte); }
+.seance-menu-message { margin: 0; padding: 0 10px 4px; font-size: 0.8rem; color: var(--texte-doux); overflow-wrap: anywhere; }
+.seance-menu-titre {
+  margin-top: 6px; padding: 6px 10px 2px; border-top: 1px solid var(--bord); font-size: 0.78rem; font-weight: 650;
+  color: var(--texte-doux);
+}
+.seance-menu-liste { display: flex; flex-direction: column; gap: 2px; }
+.seance-menu-ligne { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 6px; }
+.seance-menu-lien {
+  display: flex; align-items: center; gap: 8px; flex: 1 1 auto; min-width: 0; min-height: 36px; padding: 4px 6px;
+  border-radius: 8px; color: var(--accent-texte); text-decoration: none; font-size: 0.86rem;
+}
+.seance-menu-lien:hover, .seance-menu-lien:focus-visible { background: var(--accent-doux); }
+.seance-menu-texte { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; padding: 4px 6px; font-size: 0.86rem; }
+.seance-menu-etat { font-size: 0.76rem; color: var(--texte-doux); }
+.seance-refaire { flex: 0 0 auto; }
+@media (pointer: coarse) {
+  .seance-badge, .seance-lien-rapport { min-height: 40px; }
+  .seance-menu-ligne, .seance-menu-lien { min-height: var(--cible); }
+}
+/* « Nouvelle séance » (corrections de la vague 6) : en Réel sans séance ouverte, après « Terminer la séance » */
+.seance-nouvelle {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; flex: 0 0 auto;
+  border: 1px dashed var(--bord-fort); border-radius: var(--rayon-pilule); background: transparent;
+  color: var(--texte-doux); font: inherit; font-size: 0.78rem; font-weight: 600; white-space: nowrap; cursor: pointer;
+}
+.seance-nouvelle:hover { background: var(--surface-2); color: var(--texte); }
+.seance-nouvelle:focus-visible { outline: 2px solid var(--accent-actif); outline-offset: 1px; }
+.seance-nouvelle:disabled { cursor: progress; opacity: 0.6; }
+@media (pointer: coarse) { .seance-nouvelle { min-height: 40px; } }
+/* sous 1 800 px, la barre d'outils manque de place (assemblage de la vague 6 : à 1 600 px, les listes du lieu et de
+   l'étage tombaient à une lettre) : le badge ne dit que « Séance » de 1 366 à 1 799 px (corrections de la vague 6 :
+   un simple point rouge ressemblait à un voyant d'erreur ; la marque « Atelier G1 », puis le texte d'« Enregistrer »
+   sous 1 440 px, laissent leur place), puis devient un point sous 1 366 px ; le lien du rapport et « Nouvelle
+   séance » gardent leur icône (infobulle et menu) */
+.seance-badge-court { display: none; }
+@media (max-width: 1799px) {
+  .seance-badge-texte, .seance-lien-texte, .seance-nouvelle-texte { display: none; }
+  .seance-badge, .seance-lien-rapport, .seance-nouvelle { padding: 0 9px; }
+}
+@media (min-width: 1366px) and (max-width: 1799px) {
+  .seance-badge-court { display: inline; }
+}

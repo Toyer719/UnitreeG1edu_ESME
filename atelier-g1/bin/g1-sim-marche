@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# G1 qui marche dans MuJoCo, piloté à la manette ou au clavier.
+exec env -u PYTHONPATH -u CYCLONEDDS_URI "$HOME/robot-g1/.venv-sim/bin/python" "$HOME/robot-g1/sim/g1_marche.py" "$@"

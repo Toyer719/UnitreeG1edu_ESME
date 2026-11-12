@@ -1,0 +1,217 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Diagnostic du robot",
+  "description": "Résultat de « Vérifier le robot » (vague 6, section 13.2 du plan) : GET /api/robot/diagnostic, g1-diagnostic --json, diagnostic_debut.json d'une séance. Chaque vérification dit ok, attention, probleme ou inconnu, avec une phrase qui dit quoi faire. Règles en plus (atelier.lieu.validation) : ids uniques, resume et etat cohérents avec les vérifications, actions = celles des vérifications.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "date",
+    "mode",
+    "duree_s",
+    "etat",
+    "resume",
+    "message",
+    "verifications"
+  ],
+  "properties": {
+    "version": {
+      "description": "Version du format. Toujours 1.",
+      "const": 1
+    },
+    "date": {
+      "description": "Date et heure ISO 8601 à l'heure locale, à la seconde, avec le décalage : 2026-11-12T14:03:05+01:00.",
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"
+    },
+    "mode": {
+      "description": "reel (vrai robot) ou repetition (faux G1 : les vérifications du réseau et du Jetson sont sans objet, dans ignorees).",
+      "enum": [
+        "reel",
+        "repetition"
+      ]
+    },
+    "duree_s": {
+      "description": "Durée totale du diagnostic (15 s au plus).",
+      "type": "number",
+      "minimum": 0
+    },
+    "etat": {
+      "$ref": "#/definitions/etat"
+    },
+    "resume": {
+      "description": "Nombre de vérifications dans chaque état.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ok": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attention": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "probleme": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inconnu": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "ok",
+        "attention",
+        "probleme",
+        "inconnu"
+      ]
+    },
+    "message": {
+      "description": "Une phrase : tout va bien, ou la chose la plus importante à faire.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "verifications": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 40,
+      "items": {
+        "description": "Une vérification.",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Identifiant de la vérification (atelier.lieu.diagnostic.VERIFICATIONS) : cable, adresse, profil, ros, pc1, jetson, lidar, sujets, services, mode, batterie, jetson_ssh, jetson_docker, jetson_image, jetson_place, jetson_horloge, camera…",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,39}$"
+          },
+          "groupe": {
+            "description": "Groupe affiché : reseau (câble et réseau), robot, jetson.",
+            "enum": [
+              "reseau",
+              "robot",
+              "jetson"
+            ]
+          },
+          "titre": {
+            "description": "Titre affiché, sans jargon (ex. « Services de cartographie »).",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "etat": {
+            "$ref": "#/definitions/etat"
+          },
+          "detail": {
+            "description": "Une phrase : ce qui a été vu.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "conseil": {
+            "description": "Une phrase qui dit quoi faire ; obligatoire (non null) si l'état n'est pas ok.",
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 300
+          },
+          "action": {
+            "description": "Action que l'Atelier peut faire lui-même sur un clic confirmé, ou null.",
+            "enum": [
+              "demarrer-services",
+              "retablir-cable",
+              "cable-automatique",
+              null
+            ]
+          },
+          "technique": {
+            "description": "Facultatif : le détail technique (infobulle, rapport) : interface, sujet, code…",
+            "type": "string",
+            "maxLength": 500
+          },
+          "duree_s": {
+            "description": "Facultatif : durée de la vérification.",
+            "type": "number",
+            "minimum": 0
+          },
+          "donnees": {
+            "description": "Facultatif : les valeurs lues (ex. {\"services\": [...]}, {\"soc\": 87}).",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "groupe",
+          "titre",
+          "etat",
+          "detail",
+          "conseil",
+          "action"
+        ]
+      }
+    },
+    "ignorees": {
+      "description": "Facultatif : vérifications sans objet ici, et pourquoi.",
+      "type": "array",
+      "maxItems": 40,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,39}$"
+          },
+          "raison": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "id",
+          "raison"
+        ]
+      }
+    },
+    "actions": {
+      "description": "Facultatif : actions proposées (celles des vérifications), sans doublon.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "demarrer-services",
+          "retablir-cable",
+          "cable-automatique"
+        ]
+      }
+    },
+    "source": {
+      "description": "Facultatif : qui l'a fait.",
+      "enum": [
+        "atelier",
+        "g1-diagnostic",
+        "seance"
+      ]
+    },
+    "faux": {
+      "description": "Facultatif : vrai si les vérifications système sont simulées (ATELIER_DIAGNOSTIC_FAUX).",
+      "type": "boolean"
+    }
+  },
+  "definitions": {
+    "etat": {
+      "description": "ok, attention, probleme ou inconnu (rien pu vérifier).",
+      "enum": [
+        "ok",
+        "attention",
+        "probleme",
+        "inconnu"
+      ]
+    }
+  }
+}

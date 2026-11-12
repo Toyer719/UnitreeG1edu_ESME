@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Pilotage du G1 en ligne de commande, comme l'onglet Pilotage de l'Atelier (section 11.5 du plan) :
+#   g1-pilotage noeud [--port 8010] [--hote 127.0.0.1]   lance le nœud pilotage (simulation, répétition)
+#   g1-pilotage etat | prendre [--forcer] | rendre | arret
+#   g1-pilotage posture N [--portique] | geste N | tache N | dire TEXTE | volume N | led R G B
+#   g1-pilotage danses [--lire] | danse N --zone-libre | verifier FICHIER | jouer FICHIER --zone-libre
+# Nœud joint à $G1_PILOTAGE_URL (défaut http://127.0.0.1:8010), jeton $G1_PILOTAGE_JETON.
+# Pas de set -u : les scripts de ROS 2 ne le supportent pas.
+#   g1-pilotage importer-video DANSE.mp4 --id ma_danse   bras d'une vidéo de danse (pose YOLO, hors ligne)
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+SOURCES="$RACINE/ws/src/g1_pilotage"
+if [ "$1" = "importer-video" ]; then
+  # Python du projet : ultralytics, OpenCV, numpy
+  shift
+  export PYTHONPATH="$SOURCES:$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+  exec "$RACINE/.venv-projet/bin/python" -m g1_pilotage.video "$@"
+fi
+if [ "$1" = "noeud" ]; then
+  source "$HOME/robot-g1/setup/env.sh"
+  # g1_pilotage compilé avec les autres paquets (ws/install), sinon dans son propre dossier
+  if [ ! -d "$RACINE/ws/install/g1_pilotage" ] && [ -f "$RACINE/ws/install_g1_pilotage/local_setup.bash" ]; then
+    source "$RACINE/ws/install_g1_pilotage/local_setup.bash"
+  fi
+  export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+  if ! ros2 pkg prefix g1_pilotage > /dev/null 2>&1; then
+    # pas encore compilé : le nœud se lance depuis les sources
+    shift
+    export PYTHONPATH="$SOURCES:$PYTHONPATH"
+    exec python3 -m g1_pilotage.pilote "$@"
+  fi
+fi
+exec /usr/bin/python3 -c "import sys; sys.path.insert(0, '$SOURCES'); from g1_pilotage.commande import main; sys.exit(main())" "$@"

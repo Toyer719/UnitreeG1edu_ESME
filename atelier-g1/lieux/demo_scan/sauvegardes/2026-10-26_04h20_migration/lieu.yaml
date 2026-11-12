@@ -1,0 +1,9 @@
+# Fiche du lieu. Format : atelier/lieu/schemas/lieu.schema.json. Unités : mètres et radians.
+# Écrit par l'Atelier G1 : les commentaires ajoutés à la main ne sont pas conservés.
+version: 1
+nom: Lycée démo, scan simulé du 25/10/2026
+langue: fr
+etages:
+- {id: rdc, nom: Rez-de-chaussée, source_carte: scan}
+accueil: {etage: rdc, x: 2.5, y: 10.0, theta: 0.0}
+carte_unitree: null

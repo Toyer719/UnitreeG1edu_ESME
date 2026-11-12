@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Service slam_operate du G1 : scan 3D, repérage sur la carte, navigation d'Unitree (1102).
+#   g1-slam scan-debut | scan-fin --nom N | relocaliser | aller X Y [THETA] | pause | reprendre | arreter
+#   g1-slam faux-service       faux service sur lo, pour essayer sans robot ; puis g1-slam ... --faux
+# Pas de set -u : les scripts de ROS 2 ne le supportent pas.
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+source "$HOME/robot-g1/setup/env.sh"
+PY="$RACINE/.venv-projet/bin/python"
+[ -x "$PY" ] || PY="$HOME/robot-g1/.venv-projet/bin/python"
+export PYTHONPATH="$RACINE${PYTHONPATH:+:$PYTHONPATH}"
+exec "$PY" -m atelier.scan.commande slam "$@"

@@ -1,0 +1,81 @@
+/* Écrans de l'équipe (vague 4, section 11.6 du plan) : Personnalités, Dialogues et Caméra. Vague 5 : les
+   listes sont une page qui défile dans la vue centrale, la fiche choisie est dans le panneau de droite.
+   Couleurs : les jetons de theme.css. */
+
+.equipe-titre { margin: 0; font-size: 1.25rem; }
+.equipe-fichier { color: var(--texte-doux); font-size: 0.8rem; }
+.equipe-absent { max-width: 680px; }
+.equipe-absent p { color: var(--texte-doux); }
+.equipe-contenu { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.equipe-contenu[hidden], .equipe-absent[hidden], .equipe-verification[hidden] { display: none; }
+.equipe-espace { min-height: 0; }
+.equipe-liste { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.equipe-verification { max-width: 100%; }
+.equipe-contenu .formulaire-ligne { display: flex; }
+
+/* état reçu par ROS 2 (personnalité annoncée, détections) */
+.equipe-annonce { margin: 0; padding: 8px 12px; border-radius: 12px; background: var(--surface); border: 1px solid var(--bord); font-size: 0.9rem; }
+.equipe-age { color: var(--texte-doux); font-size: 0.86rem; }
+.equipe-ecart { color: var(--avertissement); font-weight: 600; }
+
+/* Personnalités : une carte par mode */
+.equipe-cartes { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.equipe-carte { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; border: 1px solid var(--bord);
+  border-radius: 16px; background: var(--surface); }
+.equipe-carte.choisie { border-color: var(--accent-actif); box-shadow: 0 0 0 2px var(--selection); }
+.equipe-carte.active { background: linear-gradient(160deg, var(--accent-doux), var(--surface) 70%); }
+.equipe-carte-tete { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.equipe-carte-nom { font-size: 1.02rem; }
+.equipe-carte-id { color: var(--texte-doux); }
+.equipe-carte-texte { margin: 0; color: var(--texte-doux); font-size: 0.88rem; }
+.equipe-carte-salut { margin: 0; font-style: italic; }
+.equipe-carte-boutons { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; }
+.equipe-carte-boutons .bouton { min-height: 36px; }
+.equipe-led { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--bord); flex-shrink: 0; }
+.champ input[type="color"] { width: 56px; height: 36px; padding: 2px; border: 1px solid var(--bord); border-radius: 8px;
+  background: var(--champ); }
+
+/* Dialogues : essai d'une phrase, liste des règles, phrases dites */
+.equipe-essai h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.equipe-essai .formulaire-ligne { margin-top: 4px; }
+.equipe-essai input[type="text"] { flex: 1 1 260px; min-height: 44px; padding: 0 12px; border: 1px solid var(--bord);
+  border-radius: var(--rayon-pilule); background: var(--champ); color: var(--texte); }
+.equipe-resultat { margin-top: 8px; }
+.equipe-reponse { margin: 0 0 4px; font-size: 1.08rem; font-weight: 600; }
+.equipe-details { margin: 0; padding-left: 20px; color: var(--texte-doux); font-size: 0.9rem; overflow-wrap: anywhere; }
+.equipe-regles { background: var(--surface); border-radius: 12px; overflow: hidden; }
+.equipe-regles tr.choisie td { background: var(--accent-doux); }
+.equipe-rang { color: var(--texte-doux); width: 2em; }
+.equipe-motifs { color: var(--texte-doux); font-size: 0.86rem; overflow-wrap: anywhere; }
+.equipe-deplacer { white-space: nowrap; }
+.equipe-deplacer .bouton-petit { margin-right: 4px; }
+.equipe-syntaxe summary { cursor: pointer; color: var(--accent-texte); }
+.equipe-syntaxe ul { margin: 6px 0; padding-left: 20px; font-size: 0.9rem; }
+.equipe-dit { border-top: 1px solid var(--bord); padding-top: 8px; }
+.equipe-phrases { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 0.92rem; }
+.equipe-source { display: inline-block; min-width: 6em; padding: 1px 8px; border-radius: var(--rayon-pilule); background: var(--surface-3);
+  color: var(--texte-doux); font-size: 0.8rem; }
+
+/* Caméra : vues de dessus et de côté (SVG) */
+.cam-vues { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; }
+.cam-vue { display: flex; flex-direction: column; min-width: 0; }
+.cam-svg { width: 100%; height: auto; background: var(--vue-fond); border: 1px solid var(--bord); border-radius: 12px; }
+.cam-grille { stroke: var(--vue-grille); stroke-width: 1; }
+.cam-sol { stroke: var(--vue-texte-doux); stroke-width: 2; }
+.cam-champ { fill: var(--accent-actif); fill-opacity: 0.16; stroke: var(--accent-actif); stroke-width: 1.5; }
+.cam-axe { stroke: var(--accent-actif); stroke-width: 2; stroke-dasharray: 6 4; }
+.cam-robot { fill: var(--repere-robot); fill-opacity: 0.85; stroke: var(--vue-fond); stroke-width: 1.5; }
+.cam-robot-cap { stroke: var(--repere-robot); stroke-width: 3; }
+.cam-camera { fill: var(--accent-actif); stroke: var(--vue-texte); stroke-width: 2; }
+.cam-visiteur { fill: var(--succes); fill-opacity: 0.85; stroke: var(--vue-texte); stroke-width: 2; }
+.cam-lidar { fill: var(--vue-texte-doux); fill-opacity: 0.8; stroke: var(--vue-texte); stroke-width: 2; }
+.cam-texte { font-size: 13px; fill: var(--vue-texte-doux); }
+.cam-texte-petit { font-size: 11px; fill: var(--vue-texte); }
+
+@media (max-width: 900px) {
+  .cam-vues { grid-template-columns: minmax(0, 1fr); }
+  .equipe-cartes { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 600px) {
+  .equipe-regles th:nth-child(4), .equipe-regles td.equipe-motifs { display: none; }
+}

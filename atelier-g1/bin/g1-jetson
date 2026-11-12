@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Conteneur ROS 2 Humble du Jetson du G1 : Nav2, guide, relais et pont (section 10.2 du plan) :
+#   g1-jetson construire [--arch arm64|amd64] [--sans-cache]     g1-jetson envoyer
+#   g1-jetson lieu --lieu L       g1-jetson verifier
+#   g1-jetson demarrer --lieu L --etage E [--local] [--localisation unitree|amcl] [--veille]
+#   g1-jetson tester-local --lieu L --etage E   (le conteneur amd64 sur le PC, lieu monté)
+#   g1-jetson arreter|etat|journal|shell [--local]
+#   --dry-run partout : affiche les commandes sans rien lancer. Guide : docs/jetson.md
+# Python du système, sans ROS : seuls docker, ssh, scp, tar et gzip sont appelés.
+RACINE="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+exec /usr/bin/python3 "$RACINE/docker/jetson.py" "$@"
