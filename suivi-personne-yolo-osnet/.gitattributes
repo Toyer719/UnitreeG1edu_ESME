@@ -1,0 +1,7 @@
+*.sh text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.toml text eol=lf
+# Copie tierce inchangée, y compris ses espaces de fin de ligne.
+suivi_personne/vendor/osnet.py -whitespace
